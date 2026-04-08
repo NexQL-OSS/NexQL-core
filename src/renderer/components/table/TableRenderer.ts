@@ -116,16 +116,25 @@ export class TableRenderer {
     // Header Row
     const headerRow = document.createElement('tr');
 
-    // 1. Selection Header Column
+    // 1. Row Number Header Column (Task 5.3)
     const selectTh = document.createElement('th');
+    selectTh.textContent = '#';
     selectTh.style.cssText = `
-            width: 30px;
+            width: 32px;
+            min-width: 32px;
             position: sticky;
             top: 0;
             left: 0;
             background: var(--vscode-editor-background);
             border-bottom: 1px solid var(--vscode-widget-border);
+            border-right: 1px solid var(--vscode-widget-border);
             z-index: 20;
+            font-family: monospace;
+            color: var(--vscode-descriptionForeground);
+            text-align: right;
+            padding: 8px 6px;
+            font-weight: 400;
+            user-select: none;
         `;
     headerRow.appendChild(selectTh);
 
@@ -158,31 +167,48 @@ export class TableRenderer {
             max-width: 400px;
         `;
 
+    // Task 5.1 & 5.2: flex row with space-between so type badge is right-aligned
     const container = document.createElement('div');
-    container.style.cssText = 'display: flex; align-items: center; gap: 4px;';
+    container.style.cssText = 'display: flex; justify-content: space-between; align-items: center; gap: 4px;';
+
+    // Left side: optional PK icon + column name
+    const leftSide = document.createElement('div');
+    leftSide.style.cssText = 'display: flex; align-items: center; gap: 4px; overflow: hidden;';
+
+    // Task 5.2: PK icon (⚿) for primary key columns
+    if (this.tableInfo?.primaryKeys?.includes(col)) {
+      const pkIcon = document.createElement('span');
+      pkIcon.textContent = '⚿';
+      pkIcon.title = 'Primary Key';
+      pkIcon.style.cssText = 'color: var(--vscode-textLink-foreground); font-size: 12px; flex-shrink: 0;';
+      leftSide.appendChild(pkIcon);
+    }
 
     const colName = document.createElement('span');
     colName.textContent = col;
-    container.appendChild(colName);
+    colName.style.cssText = 'overflow: hidden; text-overflow: ellipsis;';
+    leftSide.appendChild(colName);
+    container.appendChild(leftSide);
+
+    // Task 5.1: type badge right-aligned
+    if (this.columnTypes[col]) {
+      const typeBadge = document.createElement('span');
+      typeBadge.className = 'type-badge';
+      typeBadge.textContent = this.columnTypes[col];
+      typeBadge.style.cssText = `
+                font-size: 10px;
+                font-family: var(--vscode-editor-font-family), monospace;
+                color: var(--vscode-descriptionForeground);
+                flex-shrink: 0;
+                margin-left: 6px;
+            `;
+      container.appendChild(typeBadge);
+    }
+
     th.appendChild(container);
 
-    // Type info
+    // Date/Time Toggle (kept below the main row)
     if (this.columnTypes[col]) {
-      const typeContainer = document.createElement('div');
-      typeContainer.style.cssText = 'display: flex; align-items: center; gap: 4px; margin-top: 2px;';
-
-      const colType = document.createElement('span');
-      colType.textContent = this.columnTypes[col];
-      colType.style.cssText = 'font-size: 0.8em; font-weight: 500; opacity: 0.7;';
-      typeContainer.appendChild(colType);
-
-      if (this.tableInfo?.primaryKeys?.includes(col)) {
-        typeContainer.innerHTML += '<span title="Primary Key" style="font-size: 0.85em">🔑</span>';
-      } else if (this.tableInfo?.uniqueKeys?.includes(col)) {
-        typeContainer.innerHTML += '<span title="Unique Key" style="font-size: 0.85em">🔐</span>';
-      }
-
-      // Date/Time Toggle
       const lowerType = this.columnTypes[col].toLowerCase();
       const isDateTime = lowerType.includes('timestamp') || lowerType === 'timestamptz' ||
         lowerType === 'date' || lowerType === 'time' || lowerType === 'timetz';
@@ -191,6 +217,9 @@ export class TableRenderer {
         if (!this.dateTimeDisplayMode.has(col)) {
           this.dateTimeDisplayMode.set(col, false);
         }
+        const toggleRow = document.createElement('div');
+        toggleRow.style.cssText = 'display: flex; align-items: center; gap: 4px; margin-top: 2px;';
+
         const toggle = document.createElement('button');
         const isFormatted = this.dateTimeDisplayMode.get(col);
         toggle.textContent = isFormatted ? '📆' : '#';
@@ -210,10 +239,9 @@ export class TableRenderer {
           this.dateTimeDisplayMode.set(col, !isFormatted);
           this.rerenderTable();
         };
-        typeContainer.appendChild(toggle);
+        toggleRow.appendChild(toggle);
+        th.appendChild(toggleRow);
       }
-
-      th.appendChild(typeContainer);
     }
 
     this.addResizeHandle(th);
@@ -292,12 +320,19 @@ export class TableRenderer {
       if (!this.selectedIndices.has(index)) this.applyRowStyle(tr, index);
     };
 
+    // Task 5.3: muted monospace row number cell
     const selectTd = document.createElement('td');
     selectTd.textContent = String(index + 1);
     selectTd.style.cssText = `
             border-bottom: 1px solid var(--vscode-widget-border);
             border-right: 1px solid var(--vscode-widget-border);
-            text-align: center; font-size: 10px; color: var(--vscode-descriptionForeground);
+            text-align: right;
+            font-family: monospace;
+            font-size: 10px;
+            color: var(--vscode-descriptionForeground);
+            user-select: none;
+            min-width: 32px;
+            padding: 6px 6px;
             position: sticky;
             left: 0;
             z-index: 5;
@@ -368,7 +403,16 @@ export class TableRenderer {
       td.style.color = '#856404';
     }
 
-    td.textContent = text;
+    // Task 5.4: render NULL/undefined values in italics with dim color
+    if (val === null || val === undefined) {
+      const nullSpan = document.createElement('span');
+      nullSpan.textContent = 'NULL';
+      nullSpan.style.cssText = 'color: var(--vscode-descriptionForeground); font-style: italic; opacity: 0.6;';
+      td.appendChild(nullSpan);
+    } else {
+      td.textContent = text;
+    }
+
     return td;
   }
 

@@ -166,3 +166,31 @@ export class ShowErrorMessageHandler implements IMessageHandler {
   }
 }
 
+export class RetryCellHandler implements IMessageHandler {
+  async handle(message: any, context: { editor?: vscode.NotebookEditor }) {
+    if (!context.editor) return;
+    // Re-execute the active cell that produced this error
+    const notebook = context.editor.notebook;
+    const cells = notebook.getCells();
+    // Find the cell whose query matches, or just re-run the active selection
+    await vscode.commands.executeCommand('notebook.cell.execute');
+  }
+}
+
+export class ShowConnectionInfoHandler implements IMessageHandler {
+  async handle(message: any, context: { editor?: vscode.NotebookEditor }) {
+    if (!context.editor) return;
+    const notebook = context.editor.notebook;
+    const metadata = notebook.metadata as any;
+    const connections = vscode.workspace.getConfiguration().get<any[]>('postgresExplorer.connections') || [];
+    const conn = connections.find(c => c.id === metadata?.connectionId);
+    if (conn) {
+      vscode.window.showInformationMessage(
+        `Connection: ${conn.name || conn.host} | Host: ${conn.host}:${conn.port} | Database: ${metadata?.databaseName || conn.database}`
+      );
+    } else {
+      vscode.window.showInformationMessage('No active connection for this notebook.');
+    }
+  }
+}
+

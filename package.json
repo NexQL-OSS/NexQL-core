@@ -1064,7 +1064,8 @@
         "mimeTypes": [
           "application/x-postgres-result",
           "application/vnd.postgres-notebook.result",
-          "application/vnd.postgres-notebook.error"
+          "application/vnd.postgres-notebook.error",
+          "application/x-postgres-notebook-header+json"
         ],
         "requiresMessaging": "always"
       }

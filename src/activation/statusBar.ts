@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { PostgresMetadata } from '../common/types';
 import { extensionContext } from '../extension';
 import { ProfileManager } from '../services/ProfileManager';
+import { getTransactionManager } from '../services/TransactionManager';
 
 /**
  * Manages the notebook status bar items that display connection and database info.
@@ -12,6 +13,7 @@ export class NotebookStatusBar implements vscode.Disposable {
   private readonly databaseItem: vscode.StatusBarItem;
   private readonly riskIndicatorItem: vscode.StatusBarItem;
   private readonly profileItem: vscode.StatusBarItem;
+  private readonly transactionItem: vscode.StatusBarItem;
   private readonly disposables: vscode.Disposable[] = [];
 
   constructor() {
@@ -31,11 +33,15 @@ export class NotebookStatusBar implements vscode.Disposable {
     this.profileItem.command = 'postgres-explorer.switchConnectionProfile';
     this.profileItem.tooltip = 'Click to switch connection profile';
 
+    this.transactionItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 96);
+    this.transactionItem.tooltip = 'Transaction is open — click to view transaction details';
+
     this.disposables.push(
       this.connectionItem,
       this.databaseItem,
       this.riskIndicatorItem,
       this.profileItem,
+      this.transactionItem,
       vscode.window.onDidChangeActiveNotebookEditor(() => this.update()),
       vscode.workspace.onDidChangeNotebookDocument((e) => {
         if (vscode.window.activeNotebookEditor?.notebook === e.notebook) {
@@ -85,6 +91,7 @@ export class NotebookStatusBar implements vscode.Disposable {
     this.databaseItem.hide();
     this.riskIndicatorItem.hide();
     this.profileItem.hide();
+    this.transactionItem.hide();
   }
 
   private showNoConnection(): void {
@@ -94,6 +101,7 @@ export class NotebookStatusBar implements vscode.Disposable {
     this.databaseItem.hide();
     this.riskIndicatorItem.hide();
     this.profileItem.hide();
+    this.transactionItem.hide();
   }
 
   private showConnection(connection: any, metadata: PostgresMetadata): void {
@@ -185,6 +193,32 @@ export class NotebookStatusBar implements vscode.Disposable {
       }
     } else {
       this.riskIndicatorItem.hide();
+    }
+  }
+
+  /**
+   * Updates the transaction status bar item based on the current transaction state.
+   * Call this after a transaction begins, commits, or rolls back.
+   * @param sessionId The notebook URI string used as the session ID.
+   */
+  public updateTransactionState(sessionId?: string): void {
+    const editor = vscode.window.activeNotebookEditor;
+    if (!this.isPostgresNotebook(editor)) {
+      this.transactionItem.hide();
+      return;
+    }
+
+    const id = sessionId ?? editor!.notebook.uri.toString();
+    const txManager = getTransactionManager();
+    const txInfo = txManager.getTransactionInfo(id);
+
+    if (txInfo?.isActive) {
+      this.transactionItem.text = '$(sync~spin) Transaction open';
+      this.transactionItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
+      this.transactionItem.tooltip = 'A PostgreSQL transaction is open — commit or rollback to close it';
+      this.transactionItem.show();
+    } else {
+      this.transactionItem.hide();
     }
   }
 

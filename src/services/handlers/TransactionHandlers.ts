@@ -4,6 +4,7 @@ import { getTransactionManager, IsolationLevel } from '../../services/Transactio
 import { ConnectionManager } from '../../services/ConnectionManager';
 import { ConnectionUtils } from '../../utils/connectionUtils';
 import { PostgresMetadata } from '../../common/types';
+import { statusBar } from '../../extension';
 
 async function getSessionClient(notebook: vscode.NotebookDocument): Promise<any> {
   const metadata = notebook.metadata as PostgresMetadata;
@@ -36,6 +37,7 @@ export class TransactionBeginHandler implements IMessageHandler {
 
       const summary = txManager.getTransactionSummary(sessionId);
       vscode.window.showInformationMessage(summary);
+      statusBar?.updateTransactionState(sessionId);
     } catch (err: any) {
       vscode.window.showErrorMessage(`Failed to begin transaction: ${err.message}`);
     }
@@ -53,6 +55,7 @@ export class TransactionCommitHandler implements IMessageHandler {
 
       await txManager.commitTransaction(client, sessionId);
       vscode.window.showInformationMessage('✅ Transaction committed');
+      statusBar?.updateTransactionState(sessionId);
     } catch (err: any) {
       vscode.window.showErrorMessage(`Failed to commit transaction: ${err.message}`);
     }
@@ -70,6 +73,7 @@ export class TransactionRollbackHandler implements IMessageHandler {
 
       await txManager.rollbackTransaction(client, sessionId);
       vscode.window.showInformationMessage('⏮️ Transaction rolled back');
+      statusBar?.updateTransactionState(sessionId);
     } catch (err: any) {
       vscode.window.showErrorMessage(`Failed to rollback transaction: ${err.message}`);
     }

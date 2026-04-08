@@ -6,12 +6,14 @@ import { TelemetryService, SpanNames } from '../../services/TelemetryService';
 import { PostgresMetadata, QueryResults } from '../../common/types';
 import { SqlParser } from './SqlParser';
 import { SecretStorageService } from '../../services/SecretStorageService';
-import { ErrorService } from '../../services/ErrorService';
+import { ErrorService, getErrorExplanation } from '../../services/ErrorService';
 import { QueryHistoryService } from '../../services/QueryHistoryService';
 import { getTransactionManager } from '../../services/TransactionManager';
 import { QueryAnalyzer } from '../../services/QueryAnalyzer';
 import { QueryPerformanceService } from '../../services/QueryPerformanceService';
 import { extensionContext } from '../../extension';
+import { QueryCodeLensProvider } from '../QueryCodeLensProvider';
+import { updateNotebookTitle } from '../../utils/notebookTitle';
 
 export class SqlExecutor {
   constructor(private readonly _controller: vscode.NotebookController) { }
@@ -289,6 +291,13 @@ export class SqlExecutor {
             new NotebookCellOutputItem(Buffer.from(JSON.stringify(outputData), 'utf8'), 'application/vnd.postgres-notebook.result')
           ]));
 
+          // Update execution time pill in CodeLens bar
+          QueryCodeLensProvider.getInstance()?.updatePill(cell.document.uri.toString(), {
+            success: true,
+            elapsedSeconds: executionTime,
+            rowCount: result.rowCount ?? 0
+          });
+
           // Log to history
           QueryHistoryService.getInstance().add({
             query: query,
@@ -319,18 +328,26 @@ export class SqlExecutor {
           const durationMs = executionTime * 1000;
           const isSlow = durationMs >= slowThresholdMs;
 
+          const pgErrorCode: string | undefined = err.code;
           const errorData = {
             success: false,
             error: err.message,
             query: query,
             executionTime,
             slowQuery: isSlow,
-            canExplain: true
+            canExplain: true,
+            errorCode: pgErrorCode,
+            errorExplanation: pgErrorCode ? getErrorExplanation(pgErrorCode) : undefined
           };
 
           await execution.appendOutput(new NotebookCellOutput([
             new NotebookCellOutputItem(Buffer.from(JSON.stringify(errorData), 'utf8'), 'application/vnd.postgres-notebook.error')
           ]));
+
+          // Update execution time pill in CodeLens bar (failure)
+          QueryCodeLensProvider.getInstance()?.updatePill(cell.document.uri.toString(), {
+            success: false
+          });
 
           // Log to history
           QueryHistoryService.getInstance().add({
@@ -349,6 +366,8 @@ export class SqlExecutor {
 
       client.removeListener('notice', noticeListener);
       execution.end(true, Date.now());
+      // Update notebook title after successful cell execution
+      updateNotebookTitle(cell.notebook).catch(err => console.warn('Failed to update notebook title:', err));
 
     } catch (err: any) {
       console.error('SqlExecutor: Execution failed:', err);
@@ -356,6 +375,8 @@ export class SqlExecutor {
         new NotebookCellOutputItem(Buffer.from(String(err), 'utf8'), 'application/vnd.code.notebook.error')
       ]));
       execution.end(false, Date.now());
+      // Update notebook title even after failed execution (cell content may have changed)
+      updateNotebookTitle(cell.notebook).catch(err => console.warn('Failed to update notebook title:', err));
     }
   }
 

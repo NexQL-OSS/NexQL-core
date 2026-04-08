@@ -61,6 +61,10 @@ export class PostgresKernel implements vscode.Disposable {
     registry.register('savepoint_release', new SavepointReleaseHandler());
     registry.register('savepoint_rollback', new SavepointRollbackHandler());
 
+    // Renderer-side camelCase aliases for commit/rollback (posted by TransactionBanner)
+    registry.register('commitTransaction', new TransactionCommitHandler());
+    registry.register('rollbackTransaction', new TransactionRollbackHandler());
+
     registry.register('cancel_query', new CancelQueryHandler());
     registry.register('execute_update_background', new ExecuteUpdateBackgroundHandler());
     registry.register('script_delete', new ScriptDeleteHandler());
@@ -76,7 +80,49 @@ export class PostgresKernel implements vscode.Disposable {
 
     (this._controller as any).onDidReceiveMessage(async (event: any) => {
       // console.log('[NotebookKernel] onDidReceiveMessage', event.message.type);
-      await registry.handleMessage(event.message, {
+      const msg = event.message;
+
+      // Handle notebook-level TopBar actions
+      if (msg.type === 'runAll') {
+        const notebook = event.editor?.notebook;
+        if (notebook) {
+          await vscode.commands.executeCommand('notebook.execute', notebook.uri);
+        }
+        return;
+      }
+      if (msg.type === 'clearOutputs') {
+        const notebook = event.editor?.notebook;
+        if (notebook) {
+          await vscode.commands.executeCommand('notebook.clearAllCellsOutputs', notebook.uri);
+        }
+        return;
+      }
+      if (msg.type === 'addCodeCell') {
+        await vscode.commands.executeCommand('notebook.cell.insertCodeCellBelow');
+        return;
+      }
+      if (msg.type === 'addMarkdownCell') {
+        await vscode.commands.executeCommand('notebook.cell.insertMarkdownCellBelow');
+        return;
+      }
+      if (msg.type === 'showConnectionInfo') {
+        const notebook = event.editor?.notebook;
+        if (notebook) {
+          const metadata = notebook.metadata as any;
+          const connections = vscode.workspace.getConfiguration().get<any[]>('postgresExplorer.connections') || [];
+          const conn = connections.find(c => c.id === metadata?.connectionId);
+          if (conn) {
+            vscode.window.showInformationMessage(
+              `Connection: ${conn.name || conn.host} | Host: ${conn.host}:${conn.port} | Database: ${metadata?.databaseName || conn.database}`
+            );
+          } else {
+            vscode.window.showInformationMessage('No active connection for this notebook.');
+          }
+        }
+        return;
+      }
+
+      await registry.handleMessage(msg, {
         editor: event.editor,
         executor: this._executor,
         postMessage: (msg) => this.messaging.postMessage(msg, event.editor)

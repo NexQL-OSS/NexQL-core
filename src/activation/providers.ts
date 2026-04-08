@@ -66,6 +66,7 @@ export function registerProviders(context: vscode.ExtensionContext, outputChanne
 
   // Register Query CodeLens Provider for EXPLAIN actions
   const queryCodeLensProvider = new QueryCodeLensProvider();
+  QueryCodeLensProvider.setInstance(queryCodeLensProvider);
   context.subscriptions.push(
     vscode.languages.registerCodeLensProvider(
       { language: 'postgres', scheme: 'vscode-notebook-cell' },

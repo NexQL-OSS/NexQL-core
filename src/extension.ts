@@ -21,7 +21,7 @@ import {
   ExplainErrorHandler, FixQueryHandler, AnalyzeDataHandler, OptimizeQueryHandler,
   SendToChatHandler, ShowExplainPlanHandler, ConvertExplainHandler
 } from './services/handlers/ExplainHandlers';
-import { ShowConnectionSwitcherHandler, ShowDatabaseSwitcherHandler, ShowErrorMessageHandler, ExportRequestHandler } from './services/handlers/CoreHandlers';
+import { ShowConnectionSwitcherHandler, ShowDatabaseSwitcherHandler, ShowErrorMessageHandler, ExportRequestHandler, RetryCellHandler, ShowConnectionInfoHandler } from './services/handlers/CoreHandlers';
 import { ExecuteUpdateBackgroundHandler, ScriptDeleteHandler, SaveChangesHandler } from './services/handlers/QueryHandlers';
 
 export let outputChannel: vscode.OutputChannel;
@@ -159,6 +159,8 @@ export async function activate(context: vscode.ExtensionContext) {
   registry.register('showDatabaseSwitcher', new ShowDatabaseSwitcherHandler(statusBar));
   registry.register('showErrorMessage', new ShowErrorMessageHandler());
   registry.register('export_request', new ExportRequestHandler());
+  registry.register('retryCell', new RetryCellHandler());
+  registry.register('showConnectionInfo', new ShowConnectionInfoHandler());
 
   // Query Execution Handlers
   registry.register('execute_update_background', new ExecuteUpdateBackgroundHandler());
@@ -171,6 +173,16 @@ export async function activate(context: vscode.ExtensionContext) {
       postMessage: (msg) => rendererMessaging.postMessage(msg, event.editor)
     });
   });
+
+  // Auto-generate notebook title on open
+  const { updateNotebookTitle } = await import('./utils/notebookTitle');
+  context.subscriptions.push(
+    vscode.workspace.onDidOpenNotebookDocument(async (notebook) => {
+      if (notebook.notebookType === 'postgres-notebook' || notebook.notebookType === 'postgres-query') {
+        await updateNotebookTitle(notebook);
+      }
+    })
+  );
 
   const { migrateExistingPasswords } = await import('./services/SecretStorageService');
   await migrateExistingPasswords(context);

@@ -94,6 +94,13 @@ export interface QueryResults {
   performanceAnalysis?: any;
   slowQuery?: boolean;
   breadcrumb?: BreadcrumbContext;
+  errorCode?: string;           // PostgreSQL error code (e.g., "42P01")
+  errorExplanation?: string;    // Plain-English explanation from ErrorService
+  transactionState?: {
+    isActive: boolean;
+    statementCount: number;     // Statements executed in current transaction
+  };
+  pendingCommit?: boolean;      // True when result was produced inside a transaction
 }
 
 export interface TableRenderOptions {
