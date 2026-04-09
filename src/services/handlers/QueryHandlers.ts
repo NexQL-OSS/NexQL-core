@@ -315,6 +315,10 @@ export class SaveChangesHandler implements IMessageHandler {
         }
       }
       vscode.window.showErrorMessage(`Failed to save changes: ${err.message}`);
+      // Notify renderer to restore the save button
+      if (context.postMessage) {
+        context.postMessage({ type: 'saveFailed' });
+      }
     } finally {
       if (client) client.release();
     }

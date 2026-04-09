@@ -8,6 +8,7 @@ import { QueryCodeLensProvider } from '../providers/QueryCodeLensProvider';
 import { QueryHistoryProvider } from '../providers/QueryHistoryProvider';
 import { ProfilesTreeProvider, SavedQueriesTreeProvider } from '../providers/Phase7TreeProviders';
 import { NotebooksTreeProvider } from '../providers/NotebooksTreeProvider';
+import { AutoRefreshService } from '../services/AutoRefreshService';
 
 export function registerProviders(context: vscode.ExtensionContext, outputChannel: vscode.OutputChannel) {
   // Create database tree provider instance
@@ -103,12 +104,23 @@ export function registerProviders(context: vscode.ExtensionContext, outputChanne
   });
   context.subscriptions.push(notebooksTreeView);
 
+  // Auto-refresh service — keeps the explorer and notebooks panel in sync
+  const autoRefreshService = new AutoRefreshService(
+    databaseTreeProvider,
+    notebooksTreeProvider,
+    context.globalStorageUri,
+    outputChannel
+  );
+  autoRefreshService.start();
+  databaseTreeProvider.setAutoRefreshService(autoRefreshService);
+
   return {
     databaseTreeProvider,
     treeView,
     chatViewProviderInstance,
     queryHistoryProvider,
     savedQueriesTreeProvider,
-    notebooksTreeProvider
+    notebooksTreeProvider,
+    autoRefreshService
   };
 }

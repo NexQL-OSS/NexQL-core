@@ -124,7 +124,8 @@ export async function activate(context: vscode.ExtensionContext) {
   SavedQueriesService.getInstance().initialize(context);
   await ProfileManager.getInstance().initializeDefaultProfiles();
 
-  const { databaseTreeProvider, treeView, chatViewProviderInstance: chatView, savedQueriesTreeProvider, notebooksTreeProvider } = registerProviders(context, outputChannel);
+  const { databaseTreeProvider, treeView, chatViewProviderInstance: chatView, savedQueriesTreeProvider, notebooksTreeProvider, autoRefreshService } = registerProviders(context, outputChannel);
+  context.subscriptions.push(autoRefreshService);
   chatViewProvider = chatView;
 
   // Store tree view instance for reveal functionality

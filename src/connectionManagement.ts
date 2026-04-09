@@ -144,12 +144,14 @@ export class ConnectionManagementPanel {
         const connections = config.get<ConnectionInfo[]>('postgresExplorer.connections') || [];
         const logoPath = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'resources', 'postgres-vsc-icon.png'));
 
-        // Get passwords for connections (to show if they exist)
+        // Get passwords and probe reachability for each connection
         const connectionsWithStatus = await Promise.all(connections.map(async (conn) => {
             const password = await SecretStorageService.getInstance().getPassword(conn.id);
+            const isReachable = await this._probeConnection(conn, password || conn.password);
             return {
                 ...conn,
-                hasPassword: !!password
+                hasPassword: !!password,
+                isReachable
             };
         }));
 
@@ -349,7 +351,9 @@ export class ConnectionManagementPanel {
                 }
 
                 .status-pill.offline {
-                    color: var(--secondary-text);
+                    color: var(--danger-color);
+                    border-color: color-mix(in srgb, var(--danger-color) 40%, transparent);
+                    background: color-mix(in srgb, var(--danger-color) 10%, transparent);
                 }
 
                 .card-details {
@@ -596,7 +600,31 @@ export class ConnectionManagementPanel {
         </html>`;
     }
 
-    private _getConnectionCardHtml(conn: ConnectionInfo & { hasPassword: boolean }): string {
+    /**
+     * Attempts a quick TCP connection to the host:port to determine reachability.
+     * Times out after 3 seconds to keep the panel load fast.
+     */
+    private async _probeConnection(conn: ConnectionInfo, password?: string): Promise<boolean> {
+        return new Promise((resolve) => {
+            const net = require('net') as typeof import('net');
+            const socket = new net.Socket();
+            const timeout = 3000;
+            let settled = false;
+            const done = (result: boolean) => {
+                if (settled) { return; }
+                settled = true;
+                socket.destroy();
+                resolve(result);
+            };
+            socket.setTimeout(timeout);
+            socket.on('connect', () => done(true));
+            socket.on('timeout', () => done(false));
+            socket.on('error', () => done(false));
+            socket.connect(conn.port || 5432, conn.host || 'localhost');
+        });
+    }
+
+    private _getConnectionCardHtml(conn: ConnectionInfo & { hasPassword: boolean; isReachable: boolean }): string {
         const escape = (s: string | undefined) => this._escapeHtml(s || '');
 
         // Derive env class from connection name (case-insensitive keywords)
@@ -606,9 +634,9 @@ export class ConnectionManagementPanel {
         else if (/stag|staging|uat/.test(nameLower)) { envClass = 'env-staging'; }
         else if (/dev|local|test/.test(nameLower)) { envClass = 'env-dev'; }
 
-        // Single status pill — always "Live" since the connection is configured
-        const pillClass = conn.hasPassword || conn.username ? 'live' : 'offline';
-        const pillLabel = pillClass === 'live' ? 'Live' : 'Offline';
+        // Status pill based on actual TCP reachability
+        const pillClass = conn.isReachable ? 'live' : 'offline';
+        const pillLabel = conn.isReachable ? 'Live' : 'Down';
 
         return `
             <div class="connection-card ${envClass}" data-card-id="${conn.id}">

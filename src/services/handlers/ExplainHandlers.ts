@@ -34,6 +34,7 @@ export class AnalyzeDataHandler implements IMessageHandler {
 
   async handle(message: any) {
     if (this.chatViewProvider) {
+      await vscode.commands.executeCommand('postgresExplorer.chatView.focus');
       await this.chatViewProvider.handleAnalyzeData(message.data, message.query, message.rowCount);
     }
   }
@@ -44,6 +45,7 @@ export class OptimizeQueryHandler implements IMessageHandler {
 
   async handle(message: any) {
     if (this.chatViewProvider) {
+      await vscode.commands.executeCommand('postgresExplorer.chatView.focus');
       await this.chatViewProvider.handleOptimizeQuery(message.query, message.executionTime);
     }
   }

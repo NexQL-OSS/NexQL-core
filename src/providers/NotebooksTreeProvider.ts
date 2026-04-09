@@ -126,18 +126,16 @@ export class NotebooksTreeProvider implements vscode.TreeDataProvider<NotebookTr
         tooltip
       ));
     }
-    // Sort: scratch file (no number suffix) first, then numbered ascending
+    // Sort: scratch file first, then named notebooks alphabetically
     items.sort((a, b) => {
-      const numA = this._fileNumber(a.label as string);
-      const numB = this._fileNumber(b.label as string);
-      return numA - numB;
+      const aLabel = a.label as string;
+      const bLabel = b.label as string;
+      const aIsScratch = aLabel === 'scratch';
+      const bIsScratch = bLabel === 'scratch';
+      if (aIsScratch !== bIsScratch) { return aIsScratch ? -1 : 1; }
+      return aLabel.localeCompare(bLabel);
     });
     return items;
-  }
-
-  private _fileNumber(label: string): number {
-    const m = label.match(/-(\d+)$/);
-    return m ? parseInt(m[1], 10) : 0;
   }
 
   private async _getFileMeta(uri: vscode.Uri, filename: string): Promise<{ description: string; tooltip: string }> {

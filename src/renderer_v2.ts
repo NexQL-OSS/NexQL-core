@@ -8,6 +8,7 @@ import { ChartControls } from './renderer/components/chart/ChartControls';
 import { ExplainVisualizer } from './renderer/components/ExplainVisualizer';
 import { createErrorPanel } from './renderer/components/ErrorPanel';
 import { createActionBar } from './renderer/components/ActionBar';
+import { showImportModal } from './renderer/features/import';
 import { createTransactionBanner } from './renderer/components/TransactionBanner';
 import { parseBreadcrumbFromSql } from './renderer/utils/sqlParsing';
 
@@ -19,6 +20,35 @@ const chartInstances = new WeakMap<HTMLElement, ChartRenderer>();
 const tableInstances = new WeakMap<HTMLElement, TableRenderer>();
 const BRAND_ACCENT = 'var(--vscode-textLink-foreground)';
 const BRAND_ACCENT_MUTED = 'color-mix(in srgb, var(--vscode-textLink-foreground) 20%, transparent)';
+
+const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+
+/**
+ * Puts a button into a loading state with an animated braille spinner.
+ * Returns a cleanup function that restores the original label and re-enables the button.
+ */
+function startButtonLoading(btn: HTMLElement, loadingLabel: string): () => void {
+  const originalText = btn.innerText;
+  const originalDisabled = (btn as HTMLButtonElement).disabled;
+  (btn as HTMLButtonElement).disabled = true;
+  btn.style.opacity = '0.7';
+  btn.style.cursor = 'not-allowed';
+
+  let frame = 0;
+  btn.innerText = `${SPINNER_FRAMES[frame]} ${loadingLabel}`;
+  const interval = setInterval(() => {
+    frame = (frame + 1) % SPINNER_FRAMES.length;
+    btn.innerText = `${SPINNER_FRAMES[frame]} ${loadingLabel}`;
+  }, 100);
+
+  return () => {
+    clearInterval(interval);
+    btn.innerText = originalText;
+    (btn as HTMLButtonElement).disabled = originalDisabled;
+    btn.style.opacity = '';
+    btn.style.cursor = '';
+  };
+}
 
 // Inject amber-gutter CSS once
 function ensureAmberGutterStyle(): void {
@@ -319,7 +349,7 @@ export const activate: ActivationFunction = context => {
           navigator.clipboard?.writeText(csv);
         },
         onImport: () => {
-          context.postMessage?.({ type: 'import_request', tableInfo, columns });
+          showImportModal(columns, tableInfo, context);
         },
         onExport: (anchorBtn: HTMLElement) => {
           // Remove existing dropdown if open (toggle)
@@ -560,6 +590,9 @@ export const activate: ActivationFunction = context => {
 
         if (updates.length > 0 || deletions.length > 0) {
           console.log('Renderer: Posting saveChanges message');
+          const stopLoading = startButtonLoading(saveBtn, 'Saving...');
+          // stopLoading is called when saveSuccess or saveFailed arrives
+          (saveBtn as any)._stopLoading = stopLoading;
           context.postMessage?.({
             type: 'saveChanges',
             updates,
@@ -582,6 +615,10 @@ export const activate: ActivationFunction = context => {
       context.onDidReceiveMessage?.((message: any) => {
         if (message.type === 'saveSuccess') {
           console.log('Renderer: Received saveSuccess, clearing modified cells and removing deleted rows');
+
+          // Stop the loading spinner on the save button
+          (saveBtn as any)._stopLoading?.();
+          (saveBtn as any)._stopLoading = undefined;
 
           // Remove deleted rows from arrays (in reverse order to maintain indices)
           const deletedIndices = Array.from(rowsMarkedForDeletion).sort((a, b) => b - a);
@@ -618,6 +655,12 @@ export const activate: ActivationFunction = context => {
               modifiedCells
             });
           }
+        }
+
+        if (message.type === 'saveFailed') {
+          // Restore save button on error
+          (saveBtn as any)._stopLoading?.();
+          (saveBtn as any)._stopLoading = undefined;
         }
       });
 

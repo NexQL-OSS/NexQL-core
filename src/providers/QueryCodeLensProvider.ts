@@ -24,6 +24,20 @@ export class QueryCodeLensProvider implements vscode.CodeLensProvider {
   private _onDidChangeCodeLenses: vscode.EventEmitter<void> = new vscode.EventEmitter<void>();
   public readonly onDidChangeCodeLenses: vscode.Event<void> = this._onDidChangeCodeLenses.event;
   private pillData: Map<string, PillData> = new Map();
+  private aiWorkingCells: Set<string> = new Set();
+
+  public setAiWorking(cellUri: string, working: boolean): void {
+    if (working) {
+      this.aiWorkingCells.add(cellUri);
+    } else {
+      this.aiWorkingCells.delete(cellUri);
+    }
+    this._onDidChangeCodeLenses.fire();
+  }
+
+  public isAiWorking(cellUri: string): boolean {
+    return this.aiWorkingCells.has(cellUri);
+  }
 
   public refresh(): void {
     this._onDidChangeCodeLenses.fire();
@@ -56,13 +70,14 @@ export class QueryCodeLensProvider implements vscode.CodeLensProvider {
 
     const codeLenses: vscode.CodeLens[] = [];
     const range = new vscode.Range(0, 0, 0, 0);
+    const isAiWorking = this.aiWorkingCells.has(document.uri.toString());
 
-    // 1. Ask AI
+    // 1. Ask AI (shows spinner while working)
     codeLenses.push(
       new vscode.CodeLens(range, {
-        title: '✦ Ask AI',
-        tooltip: 'Ask AI to modify this query',
-        command: 'postgres-explorer.aiAssist',
+        title: isAiWorking ? '$(loading~spin) Working...' : '✦ Ask AI',
+        tooltip: isAiWorking ? 'AI is analyzing your query...' : 'Ask AI to modify this query',
+        command: isAiWorking ? '' : 'postgres-explorer.aiAssist',
         arguments: []
       })
     );

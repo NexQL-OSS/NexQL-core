@@ -4,6 +4,7 @@ import * as path from 'path';
 import { ConnectionManager } from '../services/ConnectionManager';
 import { getSchemaCache, SchemaCache } from '../lib/schema-cache';
 import { Debouncer } from '../lib/debounce';
+import { AutoRefreshService } from '../services/AutoRefreshService';
 
 function buildItemKey(item: DatabaseTreeItem): string {
   return [item.type, item.connectionId || '', item.databaseName || '', item.schema || '', item.label].join(':');
@@ -16,6 +17,7 @@ export class DatabaseTreeProvider implements vscode.TreeDataProvider<DatabaseTre
   private readonly _cache: SchemaCache = getSchemaCache();
   private readonly debouncer = new Debouncer();
   private treeView?: vscode.TreeView<DatabaseTreeItem>;
+  private _autoRefreshService: AutoRefreshService | undefined;
 
   // Filter, Favorites, and Recent Items
   private _favorites: Set<string> = new Set();
@@ -40,6 +42,10 @@ export class DatabaseTreeProvider implements vscode.TreeDataProvider<DatabaseTre
    */
   public setTreeView(treeView: vscode.TreeView<DatabaseTreeItem>): void {
     this.treeView = treeView;
+  }
+
+  setAutoRefreshService(service: AutoRefreshService): void {
+    this._autoRefreshService = service;
   }
 
   /**
@@ -162,12 +168,14 @@ export class DatabaseTreeProvider implements vscode.TreeDataProvider<DatabaseTre
     this.disconnectedConnections.add(connectionId);
     // Fire a full refresh to update tree state and collapse items
     this._onDidChangeTreeData.fire(undefined);
+    this._autoRefreshService?.onConnectionDisconnected(connectionId);
   }
 
   public markConnectionConnected(connectionId: string): void {
     this.disconnectedConnections.delete(connectionId);
     // Fire a full refresh to update tree state
     this._onDidChangeTreeData.fire(undefined);
+    this._autoRefreshService?.onConnectionConnected(connectionId);
   }
 
   /**

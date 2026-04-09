@@ -1238,6 +1238,17 @@
           "type": "boolean",
           "default": true,
           "description": "Automatically append LIMIT clause to SELECT queries that don't have one. Always enabled in read-only mode."
+        },
+        "postgresExplorer.autoRefresh.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable automatic background refresh of the explorer tree and notebooks panel."
+        },
+        "postgresExplorer.autoRefresh.pollIntervalSeconds": {
+          "type": "number",
+          "default": 30,
+          "minimum": 10,
+          "description": "How often (in seconds) to poll PostgreSQL for schema changes."
         }
       }
     },
@@ -2161,6 +2172,7 @@
     "@types/vscode-notebook-renderer": "^1.72.4",
     "chai": "^6.2.2",
     "esbuild": ">=0.28.0",
+    "fast-check": "^4.6.0",
     "jsdom": "^29.0.1",
     "mocha": "^11.7.5",
     "module-alias": "^2.3.4",
