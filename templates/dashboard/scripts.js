@@ -53,8 +53,16 @@ let rollbackHistory = new Array(maxHistory).fill(0);
 let cacheHitHistory = new Array(maxHistory).fill(100);
 let longRunningHistory = new Array(maxHistory).fill(0);
 
-// Initial State Placeholder - Will be injected
-const initialStats = null; // __STATS_JSON__
+const statsElement = document.getElementById('dashboard-stats');
+let initialStats = null;
+
+if (statsElement && statsElement.textContent) {
+  try {
+    initialStats = JSON.parse(statsElement.textContent);
+  } catch (error) {
+    console.error('Dashboard: Failed to parse initial stats', error);
+  }
+}
 
 // Track PIDs for lock visualization
 let blockingPids = new Set();
@@ -1118,4 +1126,6 @@ document.querySelectorAll('.tab').forEach(t => {
 
 // Init
 initializeDashboard(initialStats);
-updateDashboard(initialStats); // Populate initial charts
+if (initialStats) {
+  updateDashboard(initialStats); // Populate initial charts
+}

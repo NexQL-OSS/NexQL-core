@@ -11,7 +11,7 @@ import { cmdConnectDatabase, cmdDisconnectConnection, cmdDisconnectDatabase, cmd
 import { showIndexProperties, copyIndexName, generateDropIndexScript, generateReindexScript, generateScriptCreate, analyzeIndexUsage, generateAlterIndexScript, addIndexComment, cmdIndexOperations, cmdAddIndex } from '../commands/indexes';
 import { cmdAddObjectInDatabase, cmdBackupDatabase, cmdCreateDatabase, cmdDatabaseDashboard, cmdDatabaseOperations, cmdDeleteDatabase, cmdDisconnectDatabase as cmdDisconnectDatabaseLegacy, cmdGenerateCreateScript, cmdMaintenanceDatabase, cmdPsqlTool, cmdQueryTool, cmdRestoreDatabase, cmdScriptAlterDatabase, cmdShowConfiguration } from '../commands/database';
 import { cmdDropExtension, cmdEnableExtension, cmdExtensionOperations, cmdRefreshExtension } from '../commands/extensions';
-import { cmdCreateForeignTable, cmdEditForeignTable, cmdForeignTableOperations, cmdRefreshForeignTable } from '../commands/foreignTables';
+import { cmdCreateForeignTable, cmdDropForeignTable, cmdEditForeignTable, cmdForeignTableOperations, cmdRefreshForeignTable, cmdShowForeignTableProperties, cmdViewForeignTableData } from '../commands/foreignTables';
 import { cmdForeignDataWrapperOperations, cmdShowForeignDataWrapperProperties, cmdCreateForeignServer, cmdForeignServerOperations, cmdShowForeignServerProperties, cmdDropForeignServer, cmdCreateUserMapping, cmdUserMappingOperations, cmdShowUserMappingProperties, cmdDropUserMapping, cmdRefreshForeignDataWrapper, cmdRefreshForeignServer, cmdRefreshUserMapping } from '../commands/foreignDataWrappers';
 import { cmdCallFunction, cmdCreateFunction, cmdDropFunction, cmdEditFunction, cmdFunctionOperations, cmdRefreshFunction, cmdShowFunctionProperties } from '../commands/functions';
 import { cmdCreateMaterializedView, cmdDropMatView, cmdEditMatView, cmdMatViewOperations, cmdRefreshMatView, cmdViewMatViewData, cmdViewMatViewProperties } from '../commands/materializedViews';
@@ -245,6 +245,38 @@ export function registerAllCommands(
         } catch (error: any) {
           vscode.window.showErrorMessage(`Failed to fetch database objects: ${error.message}`);
         }
+      }
+    },
+    {
+      command: 'postgres-explorer.optimizeQuery',
+      callback: async () => {
+        if (!chatViewProviderInstance) {
+          vscode.window.showErrorMessage('AI Chat is not initialized');
+          return;
+        }
+
+        let query = '';
+        const activeNotebookEditor = vscode.window.activeNotebookEditor;
+        if (activeNotebookEditor && activeNotebookEditor.selections.length > 0) {
+          const cellIndex = activeNotebookEditor.selections[0].start;
+          const cell = activeNotebookEditor.notebook.cellAt(cellIndex);
+          query = cell.document.getText().trim();
+        }
+
+        if (!query) {
+          query = (await vscode.window.showInputBox({
+            prompt: 'Paste or type the SQL query you want to optimize',
+            placeHolder: 'SELECT ...'
+          }))?.trim() || '';
+        }
+
+        if (!query) {
+          vscode.window.showWarningMessage('No query provided for optimization.');
+          return;
+        }
+
+        await vscode.commands.executeCommand('postgresExplorer.chatView.focus');
+        await chatViewProviderInstance.handleOptimizeQuery(query);
       }
     },
     {
@@ -581,6 +613,10 @@ export function registerAllCommands(
       callback: async (item: DatabaseTreeItem) => await cmdEditMatView(item, context)
     },
     {
+      command: 'postgres-explorer.editMaterializedView',
+      callback: async (item: DatabaseTreeItem) => await cmdEditMatView(item, context)
+    },
+    {
       command: 'postgres-explorer.viewMaterializedViewData',
       callback: async (item: DatabaseTreeItem) => await cmdViewMatViewData(item, context)
     },
@@ -629,6 +665,18 @@ export function registerAllCommands(
     {
       command: 'postgres-explorer.editForeignTable',
       callback: async (item: DatabaseTreeItem) => await cmdEditForeignTable(item, context)
+    },
+    {
+      command: 'postgres-explorer.showForeignTableProperties',
+      callback: async (item: DatabaseTreeItem) => await cmdShowForeignTableProperties(item, context)
+    },
+    {
+      command: 'postgres-explorer.viewForeignTableData',
+      callback: async (item: DatabaseTreeItem) => await cmdViewForeignTableData(item, context)
+    },
+    {
+      command: 'postgres-explorer.dropForeignTable',
+      callback: async (item: DatabaseTreeItem) => await cmdDropForeignTable(item, context)
     },
     // Add role/user commands
     {
@@ -900,6 +948,10 @@ export function registerAllCommands(
     {
       command: 'postgres-explorer.generateSelectStatement',
       callback: async (item: DatabaseTreeItem) => await generateSelectStatement(item)
+    },
+    {
+      command: 'postgresExplorer.openColumnNotebook',
+      callback: async (item: DatabaseTreeItem) => await showColumnProperties(item)
     },
     {
       command: 'postgres-explorer.generateWhereClause',
@@ -1183,6 +1235,18 @@ export function registerAllCommands(
     {
       command: 'postgres-explorer.openSchemaDiff',
       callback: (item: DatabaseTreeItem) => cmdOpenSchemaDiff(item, context)
+    },
+    {
+      command: 'postgres-explorer.viewMaintenanceVacuum',
+      callback: async () => {
+        vscode.window.showInformationMessage('VACUUM is not applicable to regular views. Use this on tables or materialized views.');
+      }
+    },
+    {
+      command: 'postgres-explorer.viewMaintenanceAnalyze',
+      callback: async () => {
+        vscode.window.showInformationMessage('ANALYZE is not applicable to regular views. Use this on tables or materialized views.');
+      }
     },
   ];
 

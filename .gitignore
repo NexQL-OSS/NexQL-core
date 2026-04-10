@@ -19,3 +19,4 @@ src/test/unit/PgPassSupport.test.ts
 .kiro/
 .nightly/
 CLAUDE.md
+.claude/

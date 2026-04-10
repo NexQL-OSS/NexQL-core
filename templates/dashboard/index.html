@@ -8,7 +8,7 @@
   <title>Dashboard</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
-    /* INLINE_STYLES */
+    {{INLINE_STYLES}}
   </style>
 </head>
 
@@ -191,8 +191,10 @@
     <div id="detail-content"></div>
   </div>
 
+  <script type="application/json" id="dashboard-stats">{{STATS_JSON}}</script>
+
   <script nonce="{{NONCE}}">
-    /* INLINE_SCRIPTS */
+    {{INLINE_SCRIPTS}}
   </script>
 </body>
 

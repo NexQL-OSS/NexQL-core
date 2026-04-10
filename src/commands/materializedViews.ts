@@ -57,7 +57,7 @@ export async function cmdEditMatView(item: DatabaseTreeItem, context: vscode.Ext
           MarkdownUtils.warningBox('This will drop and recreate the materialized view.')
         )
         .addMarkdown('##### 📝 View Definition')
-        .addSql(`DROP MATERIALIZED VIEW IF EXISTS ${item.schema}.${item.label};\n\n${createMatViewStatement}\nWITH DATA;`)
+        .addSql(`DROP MATERIALIZED VIEW IF EXISTS ${item.schema}.${item.label};\n\n${createMatViewStatement}`)
         .show();
     } finally {
       // Connection is managed by ConnectionManager

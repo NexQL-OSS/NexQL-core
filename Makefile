@@ -6,7 +6,8 @@ NPM_BIN := npm
 VSCE_CMD := npx -y @vscode/vsce@2.24.0
 OVSX_CMD := npx -y ovsx
 OPENVSX_NIGHTLY_NAME ?= postgres-explorer-nightly
-NIGHTLY_RUN_NUMBER ?= $(shell date +%s)
+# Evaluate once per make invocation to keep package/publish nightly version consistent.
+NIGHTLY_RUN_NUMBER := $(shell date +%s)
 
 # Get version and name from package.json using node
 EXTENSION_NAME := $(shell $(NODE_BIN) -p "require('./package.json').name")

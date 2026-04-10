@@ -15,43 +15,24 @@ export async function getHtmlForWebview(webview: vscode.Webview, extensionUri: v
 
     let html = new TextDecoder().decode(htmlBuffer);
     const css = new TextDecoder().decode(cssBuffer);
-    let js = new TextDecoder().decode(jsBuffer);
+    const js = new TextDecoder().decode(jsBuffer);
 
     // Security: Content Security Policy
     const csp = `default-src 'none'; img-src ${cspSource} https:; style-src ${cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}' https://cdn.jsdelivr.net;`;
 
-    // Inject Data safely
-    js = js.replace('null; // __STATS_JSON__', JSON.stringify(stats));
-
-    console.log('DashboardHtml: Loaded resources. HTML length:', html.length, 'CSS length:', css.length, 'JS length:', js.length);
-
-    // Inject content
-    // Use replacer function to avoid special replacement patterns (like $&) in the code/css
-    // Inject content with flexible Regex: matches {{NAME}}, { { NAME } }, or /* NAME */
-    const replacePlaceholder = (name: string, value: string) => {
-      // Regex explanation:
-      // 1. (?:\s*\{\s*\{\s*${name}\s*\}\s*\}\s*)  -> Matches curly braces with optional whitespace/split
-      // 2. (?:\/\*\s*${name}\s*\*\/)              -> Matches /* NAME */ comments
-      const regex = new RegExp(`(?:\\{\\s*\\{\\s*${name}\\s*\\}\\s*\\}|\\/\\*\\s*${name}\\s*\\*\\/)`);
-
-      if (regex.test(html)) {
-        html = html.replace(regex, () => value);
-        console.log(`DashboardHtml: Successfully replaced ${name}`);
-      } else {
-        console.error(`DashboardHtml: Placeholder ${name} NOT found! Regex: ${regex.source}`);
-        // Log start and end of HTML to debug
-        console.log('DashboardHtml Head (500 chars):', html.substring(0, 500));
-        console.log('DashboardHtml Tail (500 chars):', html.substring(html.length - 500));
-      }
-    };
+    const statsJson = JSON.stringify(stats)
+      .replace(/&/g, '\\u0026')
+      .replace(/</g, '\\u003c')
+      .replace(/>/g, '\\u003e')
+      .replace(/\u2028/g, '\\u2028')
+      .replace(/\u2029/g, '\\u2029');
 
     html = html.replace('{{CSP}}', () => csp);
-    replacePlaceholder('INLINE_STYLES', css);
-    replacePlaceholder('INLINE_SCRIPTS', js);
-
+    html = html.replace('{{STATS_JSON}}', () => statsJson);
+    html = html.replace('{{INLINE_STYLES}}', () => css);
+    html = html.replace('{{INLINE_SCRIPTS}}', () => js);
     html = html.replace('{{NONCE}}', () => nonce);
 
-    console.log('DashboardHtml: Final HTML length:', html.length);
     return html;
   } catch (error) {
     console.error('Failed to load dashboard templates:', error);

@@ -83,9 +83,12 @@ export const window = {
   showErrorMessage: async (_msg?: string) => undefined,
   showInformationMessage: async (_msg?: string) => undefined,
   showWarningMessage: async (_msg?: string) => undefined,
+  showInputBox: async (_options?: any) => undefined,
   showQuickPick: async (_items?: any[], _opts?: any) => undefined,
   showSaveDialog: async (_opts?: any) => undefined,
   showNotebookDocument: async (_doc?: any, _opts?: any) => new NotebookEditor(),
+  createTerminal: (_name?: string) => ({ show: (_preserveFocus?: boolean) => { }, sendText: (_text: string, _addNewLine?: boolean) => { }, dispose: () => { } }),
+  onDidChangeActiveNotebookEditor: (_cb?: any) => ({ dispose: () => { } }),
   createTreeView: (_id: string, _opts?: any) => ({ reveal: async (_item?: any, _opts?: any) => { } }),
   withProgress: async (_opt: any, _cb: any) => { return await _cb({ report: (_: any) => { } }); }
 } as any;
@@ -119,7 +122,7 @@ export class NotebookEdit {
   constructor(public range: NotebookRange | number, public cells: NotebookCellData[]) { }
   static insertCells(rangeOrIndex: any, cells: NotebookCellData[]) { return new NotebookEdit(rangeOrIndex, cells); }
   static replaceCells(rangeOrIndex: any, cells: NotebookCellData[]) { return new NotebookEdit(rangeOrIndex, cells); }
-  static updateNotebookMetadata(_meta: any) { return new NotebookEdit(0, []); }
+  static updateNotebookMetadata(meta: any) { const edit = new NotebookEdit(0, []); (edit as any).metadata = meta; return edit; }
 }
 export class NotebookData { constructor(public cells: NotebookCellData[]) { } public metadata?: any; }
 export interface NotebookSerializer { serializeNotebook(data: NotebookData, _token?: CancellationToken): Uint8Array | Thenable<Uint8Array>; deserializeNotebook(content: Uint8Array, _token?: CancellationToken): NotebookData | Thenable<NotebookData>; }
@@ -191,7 +194,14 @@ export interface NotebookController {
 
 // (no-op) ensure single NotebookCellOutputItem definition above
 
-export class Uri { constructor(public fsPath: string, public scheme: string = 'file') { } toString() { return this.fsPath; } static file(path: string) { return new Uri(path); } static parse(s: string) { const scheme = s.includes(':') ? s.split(':')[0] : 'file'; return new Uri(s, scheme); } static joinPath(base: Uri, ...segments: string[]) { return new Uri([base.fsPath, ...segments].join('/'), base.scheme); } }
+export class Uri {
+  public path: string;
+  constructor(public fsPath: string, public scheme: string = 'file') { this.path = fsPath; }
+  toString() { return this.fsPath; }
+  static file(path: string) { return new Uri(path); }
+  static parse(s: string) { const scheme = s.includes(':') ? s.split(':')[0] : 'file'; return new Uri(s, scheme); }
+  static joinPath(base: Uri, ...segments: string[]) { return new Uri([base.fsPath, ...segments].join('/'), base.scheme); }
+}
 Object.assign(Uri.prototype, { with: function (opts: any) { const scheme = opts && opts.scheme ? opts.scheme : this.scheme; const path = opts && opts.path ? opts.path : this.fsPath; return new Uri(path, scheme); } });
 
 // Augment module types used during tests so `with` and `resourceUri` are recognized by the compiler

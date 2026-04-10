@@ -1,7 +1,7 @@
 {
   "name": "postgres-explorer",
   "displayName": "PgStudio (PostgreSQL Explorer)",
-  "version": "0.9.1775748108",
+  "version": "0.9.5",
   "description": "PostgreSQL database explorer for VS Code with notebook support [Nightly]",
   "publisher": "ric-v",
   "private": false,
@@ -24,17 +24,24 @@
     "node": ">=18.0.0"
   },
   "categories": [
-    "Programming Languages",
     "Data Science",
     "Notebooks",
-    "Visualization"
+    "Other"
   ],
   "keywords": [
     "postgresql",
     "postgres",
     "database",
     "sql",
-    "notebook"
+    "sql notebook",
+    "ai sql",
+    "database explorer",
+    "pgadmin",
+    "db client",
+    "postgresql vs code extension",
+    "postgres database explorer",
+    "sql notebook vs code",
+    "ai sql assistant"
   ],
   "contributes": {
     "languages": [
@@ -467,6 +474,11 @@
         "command": "postgres-explorer.editForeignTable",
         "title": "Edit Foreign Table",
         "icon": "$(edit)"
+      },
+      {
+        "command": "postgres-explorer.viewForeignTableData",
+        "title": "Query Foreign Table Data",
+        "icon": "$(table)"
       },
       {
         "command": "postgres-explorer.showForeignTableProperties",
@@ -1497,9 +1509,14 @@
           "group": "1_actions@0"
         },
         {
-          "submenu": "postgres-explorer.viewScriptsMenu",
+          "command": "postgres-explorer.editViewDefinition",
           "when": "view == postgresExplorer && viewItem == view",
           "group": "1_actions@1"
+        },
+        {
+          "submenu": "postgres-explorer.viewScriptsMenu",
+          "when": "view == postgresExplorer && viewItem == view",
+          "group": "1_actions@2"
         },
         {
           "command": "postgres-explorer.truncateTable",
@@ -1564,6 +1581,11 @@
           "group": "1_operations@0"
         },
         {
+          "command": "postgres-explorer.editMaterializedView",
+          "when": "view == postgresExplorer && viewItem == materialized-view",
+          "group": "1_operations@1"
+        },
+        {
           "command": "postgres-explorer.foreignTableOperations",
           "when": "view == postgresExplorer && viewItem == foreign-table",
           "group": "1_operations@0"
@@ -1572,6 +1594,11 @@
           "command": "postgres-explorer.typeOperations",
           "when": "view == postgresExplorer && viewItem == type",
           "group": "1_operations@0"
+        },
+        {
+          "command": "postgres-explorer.editType",
+          "when": "view == postgresExplorer && viewItem == type",
+          "group": "1_operations@1"
         },
         {
           "command": "postgres-explorer.createDatabase",
@@ -1729,6 +1756,11 @@
           "group": "inline@2"
         },
         {
+          "command": "postgres-explorer.viewForeignTableData",
+          "when": "view == postgresExplorer && viewItem == foreign-table",
+          "group": "inline@3"
+        },
+        {
           "command": "postgres-explorer.dropForeignTable",
           "when": "view == postgresExplorer && viewItem == foreign-table",
           "group": "9_delete"
@@ -1808,11 +1840,6 @@
           "submenu": "postgres-explorer.databaseScriptsMenu",
           "when": "view == postgresExplorer && viewItem == database",
           "group": "1_operations@2"
-        },
-        {
-          "command": "postgres-explorer.dropDatabase",
-          "when": "view == postgresExplorer && viewItem == database",
-          "group": "9_delete"
         },
         {
           "command": "postgres-explorer.disconnectDatabase",
@@ -2171,6 +2198,7 @@
     "@types/ssh2": "^1.15.5",
     "@types/vscode": "^1.105.0",
     "@types/vscode-notebook-renderer": "^1.72.4",
+    "baseline-browser-mapping": "^2.10.17",
     "chai": "^6.2.2",
     "esbuild": ">=0.28.0",
     "fast-check": "^4.6.0",

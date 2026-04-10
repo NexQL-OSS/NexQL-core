@@ -16,7 +16,44 @@ import { QueryCodeLensProvider } from '../QueryCodeLensProvider';
 import { updateNotebookTitle } from '../../utils/notebookTitle';
 
 export class SqlExecutor {
+  private static readonly REVIEW_COUNT_KEY = 'postgresExplorer.reviewPrompt.successCount';
+  private static readonly REVIEW_SHOWN_KEY = 'postgresExplorer.reviewPrompt.shown';
+  private static readonly REVIEW_THRESHOLD = 3;
+
   constructor(private readonly _controller: vscode.NotebookController) { }
+
+  private async maybePromptForReview(): Promise<void> {
+    if (!extensionContext) {
+      return;
+    }
+
+    const shown = extensionContext.globalState.get<boolean>(SqlExecutor.REVIEW_SHOWN_KEY, false);
+    if (shown) {
+      return;
+    }
+
+    const currentCount = extensionContext.globalState.get<number>(SqlExecutor.REVIEW_COUNT_KEY, 0);
+    const nextCount = currentCount + 1;
+    await extensionContext.globalState.update(SqlExecutor.REVIEW_COUNT_KEY, nextCount);
+
+    if (nextCount < SqlExecutor.REVIEW_THRESHOLD) {
+      return;
+    }
+
+    const leaveReview = 'Leave a Review';
+    const maybeLater = 'Maybe Later';
+    const selection = await vscode.window.showInformationMessage(
+      'Enjoying PgStudio? A quick VS Code Marketplace review helps other PostgreSQL users discover it.',
+      leaveReview,
+      maybeLater
+    );
+
+    await extensionContext.globalState.update(SqlExecutor.REVIEW_SHOWN_KEY, true);
+
+    if (selection === leaveReview) {
+      await vscode.env.openExternal(vscode.Uri.parse('https://marketplace.visualstudio.com/items?itemName=ric-v.postgres-explorer&ssr=false#review-details'));
+    }
+  }
 
   /**
    * Apply auto-LIMIT to SELECT queries that don't already have one
@@ -308,6 +345,8 @@ export class SqlExecutor {
             rowCount: result.rowCount || 0,
             connectionName: connection.name
           });
+
+          await this.maybePromptForReview();
 
         } catch (err: any) {
           const stmtEndTime = Date.now();

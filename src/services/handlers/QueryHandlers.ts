@@ -5,6 +5,7 @@ import { ConnectionManager } from '../../services/ConnectionManager';
 import { ErrorHandlers } from '../../commands/helper';
 import { ConnectionUtils } from '../../utils/connectionUtils';
 import { SqlExecutor } from '../../providers/kernel/SqlExecutor';
+export { FkLookupHandler } from './FkLookupHandler';
 
 function quoteIdentifier(identifier: string): string {
   return `"${String(identifier).replace(/"/g, '""')}"`;

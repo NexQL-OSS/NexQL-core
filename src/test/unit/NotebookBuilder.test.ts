@@ -90,10 +90,11 @@ describe('NotebookBuilder.show()', () => {
     const ctx = makeContext(vscode.Uri.file('/global-storage'));
     NotebookBuilder.setContext(ctx);
 
-    const scratchUri = vscode.Uri.file('/global-storage/scratch-conn-1.pgsql');
+    const scratchUri = vscode.Uri.file('/global-storage/conn-1/mydb/scratch.pgsql');
     const doc = makeNotebookDoc(scratchUri, 0);
 
     const createDir = sandbox.stub(vscode.workspace.fs, 'createDirectory').resolves();
+    const writeFile = sandbox.stub(vscode.workspace.fs, 'writeFile').resolves();
     // stat throws → file does not exist
     sandbox.stub(vscode.workspace.fs, 'stat').rejects(new Error('FileNotFound'));
     const openNotebook = sandbox.stub(vscode.workspace, 'openNotebookDocument').resolves(doc);
@@ -108,20 +109,21 @@ describe('NotebookBuilder.show()', () => {
     await builder.show();
 
     expect(createDir.calledOnce).to.be.true;
-    // Opens with 'postgres-notebook' type for new file (Req 1.4)
+    expect(writeFile.calledOnce).to.be.true;
+    // Opens the persistent scratch URI for the connection+database pair
     expect(openNotebook.calledOnce).to.be.true;
-    expect(openNotebook.firstCall.args[0]).to.equal('postgres-notebook');
+    expect((openNotebook.firstCall.args[0] as vscode.Uri).fsPath).to.equal(scratchUri.fsPath);
     expect(applyEditSpy.calledOnce).to.be.true;
     expect(showNotebook.calledOnce).to.be.true;
     // Registered in registry
-    expect(SessionRegistry.get('conn-1')).to.equal(doc);
+    expect(SessionRegistry.get('conn-1:mydb')).to.equal(doc);
   });
 
   it('opens existing file by URI when scratch file exists (Req 1.3, 3.1)', async () => {
     const ctx = makeContext(vscode.Uri.file('/global-storage'));
     NotebookBuilder.setContext(ctx);
 
-    const scratchUri = vscode.Uri.file('/global-storage/scratch-conn-2.pgsql');
+    const scratchUri = vscode.Uri.file('/global-storage/conn-2/mydb/scratch.pgsql');
     const doc = makeNotebookDoc(scratchUri, 2);
 
     sandbox.stub(vscode.workspace.fs, 'createDirectory').resolves();
@@ -139,8 +141,7 @@ describe('NotebookBuilder.show()', () => {
     // Opens by URI (not by type string) to preserve existing content
     expect(openNotebook.calledOnce).to.be.true;
     const firstArg = openNotebook.firstCall.args[0];
-    expect(firstArg).to.not.equal('postgres-notebook');
-    expect(firstArg.toString()).to.include('scratch-conn-2.pgsql');
+    expect((firstArg as vscode.Uri).fsPath).to.equal(scratchUri.fsPath);
   });
 
   // ── Append path ───────────────────────────────────────────────────────────
@@ -149,18 +150,22 @@ describe('NotebookBuilder.show()', () => {
     const ctx = makeContext(vscode.Uri.file('/global-storage'));
     NotebookBuilder.setContext(ctx);
 
-    const scratchUri = vscode.Uri.file('/global-storage/scratch-conn-3.pgsql');
+    const scratchUri = vscode.Uri.file('/global-storage/conn-3/mydb/scratch.pgsql');
     const doc = makeNotebookDoc(scratchUri, 3, false);
-    SessionRegistry.set('conn-3', doc);
+    SessionRegistry.set('conn-3:mydb', doc);
 
     const openNotebook = sandbox.stub(vscode.workspace, 'openNotebookDocument');
     const applyEditSpy = sinon.spy();
-    (vscode.workspace as any).applyEdit = async (edit: any) => { applyEditSpy(edit); return true; };
+    (vscode.workspace as any).applyEdit = async (edit: any) => {
+      applyEditSpy(edit);
+      doc.cellCount += 2;
+      return true;
+    };
     const mockEditor = new (vscode.NotebookEditor as any)();
     const revealRange = sandbox.stub(mockEditor, 'revealRange');
     const showNotebook = sandbox.stub(vscode.window, 'showNotebookDocument').resolves(mockEditor);
 
-    const builder = new NotebookBuilder({ connectionId: 'conn-3' });
+    const builder = new NotebookBuilder({ connectionId: 'conn-3', databaseName: 'mydb' });
     builder.addSql('SELECT 3');
     await builder.show();
 
@@ -181,10 +186,10 @@ describe('NotebookBuilder.show()', () => {
     const ctx = makeContext(vscode.Uri.file('/global-storage'));
     NotebookBuilder.setContext(ctx);
 
-    const scratchUri = vscode.Uri.file('/global-storage/scratch-conn-4.pgsql');
+    const scratchUri = vscode.Uri.file('/global-storage/conn-4/mydb/scratch.pgsql');
     // Registry has a closed document
     const closedDoc = makeNotebookDoc(scratchUri, 1, true /* isClosed */);
-    SessionRegistry.set('conn-4', closedDoc);
+    SessionRegistry.set('conn-4:mydb', closedDoc);
 
     const freshDoc = makeNotebookDoc(scratchUri, 1, false);
     sandbox.stub(vscode.workspace.fs, 'createDirectory').resolves();
@@ -194,54 +199,14 @@ describe('NotebookBuilder.show()', () => {
     mockEditor.revealRange = sandbox.stub();
     sandbox.stub(vscode.window, 'showNotebookDocument').resolves(mockEditor);
 
-    const builder = new NotebookBuilder({ connectionId: 'conn-4' });
+    const builder = new NotebookBuilder({ connectionId: 'conn-4', databaseName: 'mydb' });
     builder.addSql('SELECT 4');
     await builder.show();
 
     // Should have opened a new document (not used the closed one)
     expect(openNotebook.calledOnce).to.be.true;
     // Registry should now point to the fresh document
-    expect(SessionRegistry.get('conn-4')).to.equal(freshDoc);
-  });
-
-  // ── Metadata restoration (file-open path) ────────────────────────────────
-
-  it('restores connection metadata after opening an existing scratch file (Req 3.3)', async () => {
-    const ctx = makeContext(vscode.Uri.file('/global-storage'));
-    NotebookBuilder.setContext(ctx);
-
-    const scratchUri = vscode.Uri.file('/global-storage/scratch-conn-meta.pgsql');
-    // Existing doc has stale/empty metadata
-    const doc = makeNotebookDoc(scratchUri, 1);
-    (doc as any).metadata = {};
-
-    sandbox.stub(vscode.workspace.fs, 'createDirectory').resolves();
-    // stat resolves → file exists
-    sandbox.stub(vscode.workspace.fs, 'stat').resolves({ type: 1, ctime: 0, mtime: 0, size: 100 });
-    sandbox.stub(vscode.workspace, 'openNotebookDocument').resolves(doc);
-
-    const updateMetaSpy = sinon.spy();
-    const updateNotebookMetadataStub = sinon.stub(vscode.NotebookEdit, 'updateNotebookMetadata').callsFake((meta: any) => {
-      updateMetaSpy(meta);
-      return new (vscode.NotebookEdit as any)(0, []);
-    });
-
-    const mockEditor = new (vscode.NotebookEditor as any)();
-    mockEditor.revealRange = sandbox.stub();
-    sandbox.stub(vscode.window, 'showNotebookDocument').resolves(mockEditor);
-
-    const builder = new NotebookBuilder({ connectionId: 'conn-meta', host: 'db.example.com', databaseName: 'mydb' });
-    builder.addSql('SELECT 1');
-    await builder.show();
-
-    // updateNotebookMetadata should have been called with the connection info
-    expect(updateMetaSpy.called).to.be.true;
-    const metaArg = updateMetaSpy.firstCall.args[0];
-    expect(metaArg).to.have.property('connectionId', 'conn-meta');
-    expect(metaArg).to.have.property('host', 'db.example.com');
-    expect(metaArg).to.have.property('database', 'mydb');
-
-    updateNotebookMetadataStub.restore();
+    expect(SessionRegistry.get('conn-4:mydb')).to.equal(freshDoc);
   });
 
   it('includes all required metadata fields when creating a new scratch file (Req 3.3)', async () => {
@@ -249,12 +214,12 @@ describe('NotebookBuilder.show()', () => {
     NotebookBuilder.setContext(ctx);
 
     sandbox.stub(vscode.workspace.fs, 'createDirectory').resolves();
+    const writeFile = sandbox.stub(vscode.workspace.fs, 'writeFile').resolves();
     sandbox.stub(vscode.workspace.fs, 'stat').rejects(new Error('FileNotFound'));
 
-    let capturedData: vscode.NotebookData | undefined;
-    sandbox.stub(vscode.workspace, 'openNotebookDocument').callsFake(async (_typeOrUri: any, data?: any) => {
-      capturedData = data;
-      return makeNotebookDoc(vscode.Uri.file('/global-storage/scratch-conn-newmeta.pgsql'), 0);
+    const scratchUri = vscode.Uri.file('/global-storage/conn-newmeta/testdb/scratch.pgsql');
+    sandbox.stub(vscode.workspace, 'openNotebookDocument').callsFake(async (_typeOrUri: any) => {
+      return makeNotebookDoc(scratchUri, 0);
     });
 
     const mockEditor = new (vscode.NotebookEditor as any)();
@@ -265,11 +230,14 @@ describe('NotebookBuilder.show()', () => {
     builder.addSql('SELECT 1');
     await builder.show();
 
-    expect(capturedData).to.not.be.undefined;
-    expect(capturedData!.metadata).to.have.property('connectionId', 'conn-newmeta');
-    expect(capturedData!.metadata).to.have.property('host', 'pg.host');
-    expect(capturedData!.metadata).to.have.property('database', 'testdb');
-    expect(capturedData!.metadata).to.have.property('databaseName', 'testdb');
+    expect(writeFile.calledOnce).to.be.true;
+    const payload = JSON.parse(Buffer.from(writeFile.firstCall.args[1] as Uint8Array).toString('utf8'));
+    expect(payload.metadata).to.have.property('connectionId', 'conn-newmeta');
+    expect(payload.metadata).to.have.property('host', 'pg.host');
+    expect(payload.metadata).to.have.property('database', 'testdb');
+    expect(payload.metadata).to.have.property('databaseName', 'testdb');
+    expect(payload.metadata).to.have.property('title', 'testdb');
+    expect(payload.cells).to.deep.equal([]);
   });
 
   // ── Duplicate-tab guard ───────────────────────────────────────────────────
@@ -278,7 +246,7 @@ describe('NotebookBuilder.show()', () => {
     const ctx = makeContext(vscode.Uri.file('/global-storage'));
     NotebookBuilder.setContext(ctx);
 
-    const scratchUri = vscode.Uri.file('/global-storage/scratch-conn-5.pgsql');
+    const scratchUri = vscode.Uri.file('/global-storage/conn-5/mydb/scratch.pgsql');
     // Registry is empty but the document is already open in workspace
     const existingDoc = makeNotebookDoc(scratchUri, 2, false);
     (vscode.workspace as any).notebookDocuments = [existingDoc];
@@ -290,7 +258,7 @@ describe('NotebookBuilder.show()', () => {
     mockEditor.revealRange = sandbox.stub();
     const showNotebook = sandbox.stub(vscode.window, 'showNotebookDocument').resolves(mockEditor);
 
-    const builder = new NotebookBuilder({ connectionId: 'conn-5' });
+    const builder = new NotebookBuilder({ connectionId: 'conn-5', databaseName: 'mydb' });
     builder.addSql('SELECT 5');
     await builder.show();
 
@@ -300,6 +268,6 @@ describe('NotebookBuilder.show()', () => {
     expect(showNotebook.calledOnce).to.be.true;
     expect(showNotebook.firstCall.args[0]).to.equal(existingDoc);
     // Registry should now track it
-    expect(SessionRegistry.get('conn-5')).to.equal(existingDoc);
+    expect(SessionRegistry.get('conn-5:mydb')).to.equal(existingDoc);
   });
 });
