@@ -427,7 +427,7 @@ export class ConnectionManager {
       user: config.username || undefined,
       password: password || undefined,
       database: config.database || "postgres",
-      connectionTimeoutMillis: (config.connectTimeout || 5) * 1000,
+      connectionTimeoutMillis: (config.connectTimeout || 15) * 1000,
       statement_timeout:
         config.statementTimeout ||
         vscode.workspace

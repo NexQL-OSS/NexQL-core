@@ -5,6 +5,14 @@ import * as vscode from 'vscode';
 import * as https from 'https';
 import * as http from 'http';
 import { ChatMessage } from './types';
+import { SecretStorageService } from '../../services/SecretStorageService';
+
+// GitHub Models permission applies to fine-grained tokens/GitHub Apps.
+// For VS Code OAuth sessions, request no explicit scope.
+const GITHUB_MODELS_SCOPES: string[] = [];
+const GITHUB_MODELS_API_BASE = 'https://models.github.ai';
+const GITHUB_MODELS_API_VERSION = '2026-03-10';
+const DEFAULT_GITHUB_MODEL = 'openai/gpt-4.1';
 
 export class AiService {
   private _messages: ChatMessage[] = [];
@@ -115,7 +123,48 @@ IMPORTANT: At the end of each response, provide 2-4 numbered follow-up questions
 2. [Second question]
 3. [Third question]
 
-Make these questions relevant to the topic discussed and progressively more advanced.`;
+Make these questions relevant to the topic discussed and progressively more advanced.
+
+IMPORTANT: If there is a genuinely good factoid or contextual joke, add it immediately before the follow-up questions as a short Markdown blockquote.
+- Use your judgment: this is mainly for general-knowledge, conceptual, or exploratory answers.
+- For simple fix, error, or query-generation tasks, usually omit it unless there is a truly apt one-liner.
+- You may include a factoid, a joke, both, or neither.
+- Keep it short, self-contained, and clearly relevant to the current answer.
+- Format it as quote style markdown using blockquote lines only; do not add a heading.
+
+IMPORTANT: Follow-up questions are distinct from next-step suggestion bubbles.
+- If the user's latest message is only a number, treat it as selecting that numbered question from the immediately previous assistant response's "Follow-up questions:" list.
+- Answer the selected follow-up question directly.
+- Do not confuse this with next-step bubbles, which are optional model suggestions and not user selections.
+
+**PHASE D: NEXT STEPS SUGGESTION BUBBLES (Optional):**
+After your response, you MAY optionally provide suggested follow-up actions the user might want to take. If you do, append them as a raw JSON object at the very end of your response (after the follow-up questions). Do not wrap the JSON in markdown or code fences.
+
+{
+  "next_steps": [
+    "Short action phrase, 3 to 6 words max",
+    "Short action phrase, 3 to 6 words max",
+    "Short action phrase, 3 to 6 words max"
+  ]
+}
+
+
+IMPORTANT: Only include this JSON block if you have 2-3 truly valuable next-step suggestions. The suggestions should be:
+- Actionable and relevant to the current conversation
+- Phrased as concise, self-contained action phrases or prompts (ideally 3-6 words, max 40 characters each)
+- Progressive in complexity or depth
+- Examples: "Review query plan", "Add missing index", "Compare join options"
+
+Do NOT include the JSON block if:
+- There are no clear follow-up actions
+- The suggestions are obvious or trivial
+- You're uncertain about what would be helpful next
+- Do not invent filler suggestions just to reach 3 entries
+- Do not repeat the follow-up questions in this JSON block
+- If only 1 or 2 actions are appropriate, provide only those
+- If no actions are appropriate, omit the JSON block entirely
+
+The UI will automatically parse this and show clickable suggestion bubbles.`;
   }
 
   async callVsCodeLm(userMessage: string, config: vscode.WorkspaceConfiguration, customSystemPrompt?: string): Promise<{ text: string, usage?: string }> {
@@ -150,21 +199,78 @@ Make these questions relevant to the topic discussed and progressively more adva
       throw new Error('No AI models available via VS Code API. Please ensure GitHub Copilot Chat is installed or switch provider.');
     }
 
+    console.log('[AiService] Selected model details:', JSON.stringify({
+      id: model.id,
+      name: model.name,
+      family: (model as any).family,
+      vendor: (model as any).vendor,
+      version: (model as any).version,
+      maxInputTokens: (model as any).maxInputTokens,
+      maxOutputTokens: (model as any).maxOutputTokens
+    }));
+
     const systemPrompt = customSystemPrompt !== undefined ? customSystemPrompt : this.buildSystemPrompt();
 
-    const messages = [];
+    const messages: any[] = [];
     if (systemPrompt) {
-      messages.push(vscode.LanguageModelChatMessage.User(systemPrompt));
+      const lmMessageCtor = vscode.LanguageModelChatMessage as any;
+      // Prefer system role when available; older API versions only expose User/Assistant.
+      if (typeof lmMessageCtor.System === 'function') {
+        messages.push(lmMessageCtor.System(systemPrompt));
+      } else {
+        messages.push(vscode.LanguageModelChatMessage.User(systemPrompt));
+      }
     }
 
+    const history = this._messages.slice(-10);
+
     messages.push(
-      ...this._messages.slice(-10).map(msg =>
-        msg.role === 'user'
-          ? vscode.LanguageModelChatMessage.User(this._sanitizeContent(this._getMessageContent(msg)))
-          : vscode.LanguageModelChatMessage.Assistant(this._sanitizeContent(this._getMessageContent(msg)))
-      )
+      ...history.map(msg => {
+        const text = this._sanitizeContent(this._getMessageContent(msg));
+        const images = msg.attachments?.filter(a => a.type === 'image' && a.dataUrl) || [];
+        if (images.length > 0) {
+          const parts: any[] = [];
+          for (const img of images) {
+            const match = img.dataUrl!.match(/^data:([^;]+);base64,(.+)$/);
+            if (match) {
+              const bytes = Buffer.from(match[2], 'base64');
+              const lmImagePart = (vscode as any).LanguageModelImagePart;
+              if (typeof lmImagePart === 'function') {
+                parts.push(new lmImagePart(match[1], bytes));
+              }
+            }
+          }
+          if (text.trim()) {
+            parts.push(new (vscode as any).LanguageModelTextPart(text));
+          }
+          return msg.role === 'user'
+            ? vscode.LanguageModelChatMessage.User(parts.length > 0 ? parts : text)
+            : vscode.LanguageModelChatMessage.Assistant(text);
+        }
+        return msg.role === 'user'
+          ? vscode.LanguageModelChatMessage.User(text)
+          : vscode.LanguageModelChatMessage.Assistant(text);
+      })
     );
+    // Always include the latest user prompt as the final turn.
+    // Some models are sensitive to explicit final-turn structure.
     messages.push(vscode.LanguageModelChatMessage.User(userMessage));
+
+    const compactHistory = history.map((msg, idx) => ({
+      idx,
+      role: msg.role,
+      contentLength: this._getMessageContent(msg).length,
+      attachmentCount: msg.attachments?.length || 0,
+      mentionCount: msg.mentions?.length || 0
+    }));
+
+    console.log('[AiService] Prepared request payload summary:', JSON.stringify({
+      totalMessages: messages.length,
+      historyMessages: history.length,
+      userMessageLength: userMessage.length,
+      systemPromptLength: systemPrompt.length,
+      history: compactHistory
+    }));
 
     // Debug: Log all messages being sent to model
     console.log('[AiService] ========== MESSAGES SENT TO MODEL ==========');
@@ -175,11 +281,69 @@ Make these questions relevant to the topic discussed and progressively more adva
     this._cancellationTokenSource = new vscode.CancellationTokenSource();
 
     try {
+      console.log('[AiService] sendRequest initial attempt started');
       const chatRequest = await model.sendRequest(messages, {}, this._cancellationTokenSource.token);
-      let responseText = '';
+      const rawChatRequest = chatRequest as any;
+      console.log('[AiService] sendRequest initial attempt resolved:', JSON.stringify({
+        hasStream: !!rawChatRequest?.stream,
+        hasText: !!rawChatRequest?.text,
+        hasResult: !!rawChatRequest?.result,
+        resultKeys: rawChatRequest?.result ? Object.keys(rawChatRequest.result) : []
+      }));
 
-      for await (const fragment of chatRequest.text) {
-        responseText += fragment;
+      let responseText = await this._extractVsCodeLmResponseText(chatRequest as any);
+      console.log('[AiService] Initial extraction result length:', responseText.length);
+
+      // Some models may return an empty text stream on the first attempt for verbose histories.
+      // Retry once with a minimal context to avoid persisting blank assistant replies.
+      let effectiveMessagesForFallback = messages;
+      if (!responseText.trim()) {
+        console.warn('[AiService] Empty response from VS Code LM; retrying with minimal prompt context.');
+        const retryMessages: any[] = [];
+        if (systemPrompt) {
+          const lmMessageCtor = vscode.LanguageModelChatMessage as any;
+          if (typeof lmMessageCtor.System === 'function') {
+            retryMessages.push(lmMessageCtor.System(systemPrompt));
+          } else {
+            retryMessages.push(vscode.LanguageModelChatMessage.User(systemPrompt));
+          }
+        }
+        retryMessages.push(vscode.LanguageModelChatMessage.User(userMessage));
+
+        console.log('[AiService] Retry payload summary:', JSON.stringify({
+          totalMessages: retryMessages.length,
+          userMessageLength: userMessage.length,
+          systemPromptLength: systemPrompt.length
+        }));
+
+        console.log('[AiService] sendRequest retry attempt started');
+        const retryRequest = await model.sendRequest(retryMessages, {}, this._cancellationTokenSource.token);
+        const rawRetryRequest = retryRequest as any;
+        console.log('[AiService] sendRequest retry attempt resolved:', JSON.stringify({
+          hasStream: !!rawRetryRequest?.stream,
+          hasText: !!rawRetryRequest?.text,
+          hasResult: !!rawRetryRequest?.result,
+          resultKeys: rawRetryRequest?.result ? Object.keys(rawRetryRequest.result) : []
+        }));
+
+        responseText = await this._extractVsCodeLmResponseText(retryRequest as any);
+        console.log('[AiService] Retry extraction result length:', responseText.length);
+        effectiveMessagesForFallback = retryMessages;
+      }
+
+      // If the configured model yields no chunks at all, try another available model once.
+      if (!responseText.trim()) {
+        const fallbackModel = await this._findAlternateModel(model.id);
+        if (fallbackModel) {
+          console.warn('[AiService] Selected model produced empty output. Trying alternate model:', fallbackModel.name || fallbackModel.id);
+          const fallbackRequest = await fallbackModel.sendRequest(effectiveMessagesForFallback, {}, this._cancellationTokenSource.token);
+          responseText = await this._extractVsCodeLmResponseText(fallbackRequest as any);
+          console.log('[AiService] Alternate model extraction result length:', responseText.length);
+        }
+      }
+
+      if (!responseText.trim()) {
+        throw new Error('AI model returned an empty response. Please retry or select a different model.');
       }
 
       return { text: responseText };
@@ -190,6 +354,173 @@ Make these questions relevant to the topic discussed and progressively more adva
         this._cancellationTokenSource = null;
       }
     }
+  }
+
+  private async _findAlternateModel(currentModelId: string): Promise<vscode.LanguageModelChat | undefined> {
+    const allModels = await this._selectChatModelsWithTimeout({});
+    if (allModels.length === 0) {
+      return undefined;
+    }
+
+    const candidates = allModels.filter(m => m.id !== currentModelId);
+    if (candidates.length === 0) {
+      return undefined;
+    }
+
+    // Prefer known stable families first if available.
+    const preferredFamilyOrder = ['gpt-4o', 'gpt-4.1', 'o3', 'claude'];
+    for (const family of preferredFamilyOrder) {
+      const match = candidates.find(m => (m.family || '').toLowerCase().includes(family));
+      if (match) {
+        return match;
+      }
+    }
+
+    return candidates[0];
+  }
+
+  private async _extractVsCodeLmResponseText(chatRequest: any): Promise<string> {
+    let responseText = '';
+    const streamPartDebug: string[] = [];
+    let streamChunkCount = 0;
+    let textChunkCount = 0;
+
+    // Stream is the canonical response channel in current VS Code APIs.
+    if (chatRequest?.stream && Symbol.asyncIterator in Object(chatRequest.stream)) {
+      for await (const part of chatRequest.stream) {
+        streamChunkCount += 1;
+        responseText += this._extractTextFromStreamPart(part, streamPartDebug);
+      }
+    }
+
+    console.log('[AiService] Stream extraction stats:', JSON.stringify({
+      streamChunkCount,
+      streamChunkTypes: streamPartDebug,
+      extractedLength: responseText.length
+    }));
+
+    if (responseText.trim()) {
+      return responseText;
+    }
+
+    // Fallback for environments where text is the only available channel.
+    if (chatRequest?.text && Symbol.asyncIterator in Object(chatRequest.text)) {
+      for await (const fragment of chatRequest.text) {
+        textChunkCount += 1;
+        responseText += this._normalizeLmTextFragment(fragment);
+      }
+    }
+
+    console.log('[AiService] Text extraction stats:', JSON.stringify({
+      textChunkCount,
+      extractedLength: responseText.length
+    }));
+
+    if (responseText.trim()) {
+      return responseText;
+    }
+
+    // Last-resort compatibility fallback.
+    const resultContent = chatRequest?.result?.content;
+    if (typeof resultContent === 'string') {
+      console.log('[AiService] Using result.content string fallback with length:', resultContent.length);
+      return resultContent;
+    }
+    if (Array.isArray(resultContent)) {
+      console.log('[AiService] Using result.content array fallback with parts:', resultContent.length);
+      return resultContent
+        .map((item: any) => {
+          if (typeof item === 'string') return item;
+          if (typeof item?.text === 'string') return item.text;
+          if (typeof item?.value === 'string') return item.value;
+          return '';
+        })
+        .join('');
+    }
+
+    if (!responseText.trim() && streamPartDebug.length > 0) {
+      console.warn('[AiService] LM stream yielded non-text parts only:', streamPartDebug.join(' | '));
+    }
+
+    return responseText;
+  }
+
+  private _normalizeLmTextFragment(fragment: any): string {
+    if (fragment === null || fragment === undefined) {
+      return '';
+    }
+    if (typeof fragment === 'string') {
+      return fragment;
+    }
+    if (typeof fragment?.value === 'string') {
+      return fragment.value;
+    }
+    if (typeof fragment?.text === 'string') {
+      return fragment.text;
+    }
+    return '';
+  }
+
+  private _extractTextFromStreamPart(part: any, debugParts?: string[]): string {
+    if (!part) {
+      return '';
+    }
+
+    const addDebugPart = (value: string): void => {
+      if (!debugParts) {
+        return;
+      }
+      if (debugParts.length < 8) {
+        debugParts.push(value);
+      }
+    };
+
+    const ctorName = part?.constructor?.name || typeof part;
+    addDebugPart(ctorName);
+
+    if (part instanceof (vscode as any).LanguageModelTextPart) {
+      return typeof part.value === 'string' ? part.value : '';
+    }
+
+    if (part instanceof (vscode as any).LanguageModelToolCallPart) {
+      addDebugPart(`tool:${part.name || 'unknown'}`);
+      return '';
+    }
+
+    if (typeof part === 'string') {
+      return part;
+    }
+    if (typeof part.text === 'string') {
+      return part.text;
+    }
+    if (typeof part.value === 'string') {
+      return part.value;
+    }
+
+    const nestedText = part?.part?.text;
+    if (typeof nestedText === 'string') {
+      return nestedText;
+    }
+
+    const nestedValue = part?.part?.value;
+    if (typeof nestedValue === 'string') {
+      return nestedValue;
+    }
+
+    const candidates = [part?.content, part?.chunk, part?.delta];
+    for (const candidate of candidates) {
+      if (typeof candidate === 'string') {
+        return candidate;
+      }
+      if (typeof candidate?.text === 'string') {
+        return candidate.text;
+      }
+      if (typeof candidate?.value === 'string') {
+        return candidate.value;
+      }
+    }
+
+    return '';
   }
 
   // Sanitize content to remove any HTML/CSS artifacts before sending to AI
@@ -203,19 +534,95 @@ Make these questions relevant to the topic discussed and progressively more adva
   private _getMessageContent(msg: ChatMessage): string {
     let content = msg.content;
     if (msg.attachments && msg.attachments.length > 0) {
-      const attachmentTexts = msg.attachments.map(att =>
-        `\n\nFile: ${att.name} (${att.type})\n\`\`\`${att.type}\n${att.content}\n\`\`\``
-      ).join('');
+      const attachmentTexts = msg.attachments
+        .filter(att => att.type !== 'image')
+        .map(att => `\n\nFile: ${att.name} (${att.type})\n\`\`\`${att.type}\n${att.content}\n\`\`\``)
+        .join('');
       content += attachmentTexts;
     }
     return content;
   }
 
+  /**
+   * Build a multipart content array for providers that support vision (images).
+   * Returns null if there are no image attachments (caller should use plain string).
+   */
+  private _buildMultipartContent(msg: ChatMessage, textOverride?: string): any[] | null {
+    const images = msg.attachments?.filter(att => att.type === 'image' && att.dataUrl) || [];
+    if (images.length === 0) return null;
+
+    const text = textOverride ?? this._getMessageContent(msg);
+    const parts: any[] = [];
+
+    if (text.trim()) {
+      parts.push({ type: 'text', text });
+    }
+
+    for (const img of images) {
+      // dataUrl format: "data:<mimeType>;base64,<data>"
+      const match = img.dataUrl!.match(/^data:([^;]+);base64,(.+)$/);
+      if (match) {
+        parts.push({
+          type: 'image_url',
+          image_url: { url: img.dataUrl! }
+        });
+      }
+    }
+
+    return parts.length > 0 ? parts : null;
+  }
+
+  /**
+   * Build Anthropic-style multipart content with image blocks.
+   */
+  private _buildAnthropicContent(msg: ChatMessage, textOverride?: string): any[] | string {
+    const images = msg.attachments?.filter(att => att.type === 'image' && att.dataUrl) || [];
+    const text = textOverride ?? this._getMessageContent(msg);
+
+    if (images.length === 0) return text;
+
+    const parts: any[] = [];
+    for (const img of images) {
+      const match = img.dataUrl!.match(/^data:([^;]+);base64,(.+)$/);
+      if (match) {
+        parts.push({
+          type: 'image',
+          source: { type: 'base64', media_type: match[1], data: match[2] }
+        });
+      }
+    }
+    if (text.trim()) {
+      parts.push({ type: 'text', text });
+    }
+    return parts;
+  }
+
+  /**
+   * Build Gemini-style parts array with inline image data.
+   */
+  private _buildGeminiParts(msg: ChatMessage, textOverride?: string): any[] {
+    const images = msg.attachments?.filter(att => att.type === 'image' && att.dataUrl) || [];
+    const text = textOverride ?? this._getMessageContent(msg);
+    const parts: any[] = [];
+
+    if (text.trim()) {
+      parts.push({ text });
+    }
+    for (const img of images) {
+      const match = img.dataUrl!.match(/^data:([^;]+);base64,(.+)$/);
+      if (match) {
+        parts.push({ inline_data: { mime_type: match[1], data: match[2] } });
+      }
+    }
+    return parts;
+  }
+
   async callDirectApi(provider: string, userMessage: string, config: vscode.WorkspaceConfiguration, customSystemPrompt?: string): Promise<{ text: string, usage?: string }> {
-    const apiKey = config.get<string>('aiApiKey');
+    const apiKey = await this._getDirectApiKey(config);
+    const githubSession = provider === 'github' ? await this._getGitHubSession() : undefined;
     
     // API key is required for most providers, but optional for custom endpoints
-    if (!apiKey && provider !== 'custom') {
+    if (!apiKey && provider !== 'custom' && provider !== 'ollama' && provider !== 'lmstudio' && provider !== 'github') {
       throw new Error(`API Key is required for ${provider} provider. Please configure postgresExplorer.aiApiKey.`);
     }
 
@@ -248,8 +655,18 @@ Make these questions relevant to the topic discussed and progressively more adva
       if (systemPrompt) {
         messages.push({ role: 'system', content: systemPrompt });
       }
-      messages.push(...conversationHistory);
-      messages.push({ role: 'user', content: userMessage });
+      // History with vision support
+      for (const msg of this._messages.slice(-10)) {
+        const multipart = this._buildMultipartContent(msg);
+        messages.push({
+          role: msg.role,
+          content: multipart ?? this._sanitizeContent(this._getMessageContent(msg))
+        });
+      }
+      // Current user message — check if it carries images
+      const currentMsg: ChatMessage = { role: 'user', content: userMessage, attachments: this._messages[this._messages.length - 1]?.attachments };
+      const currentMultipart = this._buildMultipartContent(currentMsg, userMessage);
+      messages.push({ role: 'user', content: currentMultipart ?? userMessage });
 
       body = {
         model: model,
@@ -262,13 +679,24 @@ Make these questions relevant to the topic discussed and progressively more adva
       headers['x-api-key'] = apiKey;
       headers['anthropic-version'] = '2023-06-01';
       delete headers['Authorization'];
+
+      const anthropicMessages: any[] = [];
+      for (const msg of this._messages.slice(-10)) {
+        anthropicMessages.push({
+          role: msg.role === 'assistant' ? 'assistant' : 'user',
+          content: this._buildAnthropicContent(msg)
+        });
+      }
+      const lastMsg = this._messages[this._messages.length - 1];
+      const currentAnthropicContent = lastMsg?.attachments?.some(a => a.type === 'image')
+        ? this._buildAnthropicContent(lastMsg, userMessage)
+        : userMessage;
+      anthropicMessages.push({ role: 'user', content: currentAnthropicContent });
+
       body = {
         model: model,
         system: systemPrompt,
-        messages: [
-          ...conversationHistory,
-          { role: 'user', content: userMessage }
-        ],
+        messages: anthropicMessages,
         max_tokens: 4096
       };
     } else if (provider === 'gemini') {
@@ -277,15 +705,22 @@ Make these questions relevant to the topic discussed and progressively more adva
       headers['X-goog-api-key'] = apiKey;
       delete headers['Authorization'];
 
+      const geminiContents: any[] = [];
+      for (const msg of this._messages.slice(-10)) {
+        geminiContents.push({
+          role: msg.role === 'assistant' ? 'model' : 'user',
+          parts: this._buildGeminiParts(msg)
+        });
+      }
+      const lastMsg = this._messages[this._messages.length - 1];
+      const currentGeminiParts = lastMsg?.attachments?.some(a => a.type === 'image')
+        ? this._buildGeminiParts(lastMsg, userMessage)
+        : [{ text: userMessage }];
+      geminiContents.push({ role: 'user', parts: currentGeminiParts });
+
       body = {
         systemInstruction: systemPrompt ? { parts: [{ text: systemPrompt }] } : undefined,
-        contents: [
-          ...conversationHistory.map(msg => ({
-            role: msg.role === 'assistant' ? 'model' : 'user',
-            parts: [{ text: msg.content }]
-          })),
-          { role: 'user', parts: [{ text: userMessage }] }
-        ]
+        contents: geminiContents
       };
     } else if (provider === 'custom') {
       endpoint = config.get<string>('aiEndpoint') || '';
@@ -305,11 +740,82 @@ Make these questions relevant to the topic discussed and progressively more adva
         model: model,
         messages: messages
       };
+    } else if (provider === 'ollama') {
+      endpoint = config.get<string>('aiEndpoint') || 'http://localhost:11434/v1/chat/completions';
+      model = model || '';
+
+      const messages: any[] = [];
+      if (systemPrompt) {
+        messages.push({ role: 'system', content: systemPrompt });
+      }
+      messages.push(...conversationHistory);
+      messages.push({ role: 'user', content: userMessage });
+
+      body = { model, messages };
+    } else if (provider === 'lmstudio') {
+      endpoint = config.get<string>('aiEndpoint') || 'http://localhost:1234/v1/chat/completions';
+      model = model || '';
+
+      const messages: any[] = [];
+      if (systemPrompt) {
+        messages.push({ role: 'system', content: systemPrompt });
+      }
+      messages.push(...conversationHistory);
+      messages.push({ role: 'user', content: userMessage });
+
+      body = { model, messages };
+    } else if (provider === 'github') {
+      if (!githubSession) {
+        throw new Error('Sign in to GitHub in AI Settings to use GitHub Models.');
+      }
+
+      endpoint = `${GITHUB_MODELS_API_BASE}/inference/chat/completions`;
+      model = model || DEFAULT_GITHUB_MODEL;
+
+      const messages: any[] = [];
+      if (systemPrompt) {
+        messages.push({ role: 'system', content: systemPrompt });
+      }
+      messages.push(...conversationHistory);
+      messages.push({ role: 'user', content: userMessage });
+
+      headers = {
+        'Accept': 'application/vnd.github+json',
+        'Authorization': `Bearer ${githubSession.accessToken}`,
+        'X-GitHub-Api-Version': GITHUB_MODELS_API_VERSION,
+        'Content-Type': 'application/json'
+      };
+
+      body = {
+        model,
+        messages,
+        temperature: 0.7
+      };
     } else {
       throw new Error(`Unsupported provider: ${provider}`);
     }
 
     return this._makeHttpRequest(endpoint, headers, body, provider);
+  }
+
+  private async _getDirectApiKey(config: vscode.WorkspaceConfiguration): Promise<string> {
+    try {
+      const secretApiKey = await SecretStorageService.getInstance().getAiApiKey();
+      return secretApiKey || config.get<string>('aiApiKey') || '';
+    } catch {
+      return config.get<string>('aiApiKey') || '';
+    }
+  }
+
+  private async _getGitHubSession(): Promise<vscode.AuthenticationSession | undefined> {
+    try {
+      return await vscode.authentication.getSession('github', GITHUB_MODELS_SCOPES, {
+        silent: true,
+        clearSessionPreference: false
+      });
+    } catch {
+      return undefined;
+    }
   }
 
   private _makeHttpRequest(endpoint: string, headers: any, body: any, provider: string): Promise<{ text: string, usage?: string }> {
@@ -437,10 +943,13 @@ Make these questions relevant to the topic discussed and progressively more adva
 
   private _getDefaultModel(provider: string): string {
     switch (provider) {
+      case 'github': return DEFAULT_GITHUB_MODEL;
       case 'openai': return 'gpt-4o';
       case 'anthropic': return 'claude-3-5-sonnet-20241022';
       case 'gemini': return 'gemini-1.5-flash';
       case 'custom': return 'custom-model';
+      case 'ollama': return 'ollama';
+      case 'lmstudio': return 'lm-studio';
       default: return 'Unknown';
     }
   }

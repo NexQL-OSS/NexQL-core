@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { DatabaseTreeItem } from '../../providers/DatabaseTreeProvider';
 import { CommandBase } from '../../common/commands/CommandBase';
 import { NotebookBuilder, MarkdownUtils } from '../helper';
-import { TableSQL } from '../sql/tables';
+import { TableSQL } from '../sql';
 import { cmdInsertTable, cmdUpdateTable, cmdEditTable } from './operations';
 
 export async function cmdScriptSelect(item: DatabaseTreeItem, context: vscode.ExtensionContext) {

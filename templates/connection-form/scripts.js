@@ -1,22 +1,27 @@
 console.log('[PgStudio] Connection form script starting...');
 window.onerror = function (msg, source, line, col, error) {
   console.error('[PgStudio] Global Error:', msg, error);
-  // Try to notify VS Code if possible
   if (typeof vscode !== 'undefined') {
     vscode.postMessage({ type: 'error', error: msg });
   }
 };
+
 const vscode = acquireVsCodeApi();
 const messageDiv = document.getElementById('message');
 const testBtn = document.getElementById('testConnection');
 const addBtn = document.getElementById('addConnection');
+const addBtnLabel = addBtn.querySelector('span:last-child').textContent;
 const form = document.getElementById('connectionForm');
 const inputs = form.querySelectorAll('input');
 
-// Injected connection data (replaced at runtime)
+// Injected connection data (replaced at runtime by the extension)
 const connectionData = {{ CONNECTION_DATA }};
 
-// Populate form if editing existing connection
+// In edit mode we allow saving without re-testing
+const isEditMode = !!connectionData;
+let isTested = isEditMode;
+
+// ── Populate form when editing ────────────────────────────────────────────────
 if (connectionData) {
   document.getElementById('name').value = connectionData.name || '';
   document.getElementById('host').value = connectionData.host || '';
@@ -26,73 +31,45 @@ if (connectionData) {
   document.getElementById('username').value = connectionData.username || '';
   document.getElementById('password').value = connectionData.password || '';
 
-  // Populate advanced options
-  if (connectionData.sslmode) {
-    document.getElementById('sslmode').value = connectionData.sslmode;
-  }
-  if (connectionData.sslCertPath) {
-    document.getElementById('sslCertPath').value = connectionData.sslCertPath;
-  }
-  if (connectionData.sslKeyPath) {
-    document.getElementById('sslKeyPath').value = connectionData.sslKeyPath;
-  }
-  if (connectionData.sslRootCertPath) {
-    document.getElementById('sslRootCertPath').value = connectionData.sslRootCertPath;
-  }
-  if (connectionData.statementTimeout) {
-    document.getElementById('statementTimeout').value = connectionData.statementTimeout;
-  }
-  if (connectionData.connectTimeout) {
-    document.getElementById('connectTimeout').value = connectionData.connectTimeout;
-  }
-  if (connectionData.applicationName) {
-    document.getElementById('applicationName').value = connectionData.applicationName;
-  }
-  if (connectionData.options) {
-    document.getElementById('options').value = connectionData.options;
-  }
+  if (connectionData.sslmode)         { document.getElementById('sslmode').value = connectionData.sslmode; }
+  if (connectionData.sslCertPath)     { document.getElementById('sslCertPath').value = connectionData.sslCertPath; }
+  if (connectionData.sslKeyPath)      { document.getElementById('sslKeyPath').value = connectionData.sslKeyPath; }
+  if (connectionData.sslRootCertPath) { document.getElementById('sslRootCertPath').value = connectionData.sslRootCertPath; }
+  if (connectionData.statementTimeout){ document.getElementById('statementTimeout').value = connectionData.statementTimeout; }
+  if (connectionData.connectTimeout)  { document.getElementById('connectTimeout').value = connectionData.connectTimeout; }
+  if (connectionData.applicationName) { document.getElementById('applicationName').value = connectionData.applicationName; }
+  if (connectionData.options)         { document.getElementById('options').value = connectionData.options; }
+  if (connectionData.environment)     { document.getElementById('environment').value = connectionData.environment; }
+  if (connectionData.readOnlyMode)    { document.getElementById('readOnlyMode').checked = connectionData.readOnlyMode; }
 
-  // Populate safety options
-  if (connectionData.environment) {
-    document.getElementById('environment').value = connectionData.environment;
-  }
-  if (connectionData.readOnlyMode) {
-    document.getElementById('readOnlyMode').checked = connectionData.readOnlyMode;
-  }
-
-  // Show advanced section if any advanced options are set
   const hasAdvancedOptions = connectionData.sslmode || connectionData.statementTimeout ||
     connectionData.connectTimeout || connectionData.applicationName || connectionData.options;
   if (hasAdvancedOptions) {
     setTimeout(() => {
-      const advSection = document.getElementById('advanced-section');
-      const advArrow = document.getElementById('advanced-arrow');
-      advSection.style.display = 'block';
-      advArrow.style.transform = 'rotate(180deg)';
+      document.getElementById('advanced-section').style.display = 'block';
+      document.getElementById('advanced-arrow').style.transform = 'rotate(180deg)';
       updateSSLCertFields();
     }, 100);
   }
 
-  // SSH settings
+  // Allow saving immediately in edit mode
+  addBtn.disabled = false;
+
   if (connectionData.ssh) {
     document.getElementById('sshEnabled').checked = connectionData.ssh.enabled;
     document.getElementById('sshHost').value = connectionData.ssh.host || '';
     document.getElementById('sshPort').value = connectionData.ssh.port || 22;
     document.getElementById('sshUsername').value = connectionData.ssh.username || '';
     document.getElementById('sshKeyPath').value = connectionData.ssh.privateKeyPath || '';
-
-    // Trigger SSH UI state update
     setTimeout(() => {
-      const sshSection = document.getElementById('ssh-section');
-      const arrow = document.getElementById('ssh-arrow');
-      sshSection.style.display = 'block';
-      arrow.style.transform = 'rotate(180deg)';
+      document.getElementById('ssh-section').style.display = 'block';
+      document.getElementById('ssh-arrow').style.transform = 'rotate(180deg)';
       updateSSHState();
     }, 100);
   }
 }
 
-// SSH toggle
+// ── SSH toggle ────────────────────────────────────────────────────────────────
 function toggleSSH() {
   const section = document.getElementById('ssh-section');
   const arrow = document.getElementById('ssh-arrow');
@@ -108,23 +85,22 @@ function toggleSSH() {
 function updateSSHState() {
   const enabled = document.getElementById('sshEnabled').checked;
   const fields = document.getElementById('ssh-fields');
-  const inputs = fields.querySelectorAll('input');
-
+  const sshInputs = fields.querySelectorAll('input');
   if (enabled) {
     fields.style.opacity = '1';
     fields.style.pointerEvents = 'auto';
-    inputs.forEach(i => i.required = true);
+    sshInputs.forEach(i => i.required = true);
     document.getElementById('sshKeyPath').required = true;
   } else {
     fields.style.opacity = '0.5';
     fields.style.pointerEvents = 'none';
-    inputs.forEach(i => i.required = false);
+    sshInputs.forEach(i => i.required = false);
   }
 }
 
 document.getElementById('sshEnabled').addEventListener('change', updateSSHState);
 
-// Advanced Options toggle
+// ── Advanced options toggle ───────────────────────────────────────────────────
 function toggleAdvanced() {
   const section = document.getElementById('advanced-section');
   const arrow = document.getElementById('advanced-arrow');
@@ -137,11 +113,10 @@ function toggleAdvanced() {
   }
 }
 
-// Attach click event listeners to collapsible headers
 document.getElementById('ssh-header').addEventListener('click', toggleSSH);
 document.getElementById('advanced-header').addEventListener('click', toggleAdvanced);
 
-// SSL mode change handler - show cert fields for verify modes
+// ── SSL cert fields ───────────────────────────────────────────────────────────
 function updateSSLCertFields() {
   const sslmode = document.getElementById('sslmode').value;
   const certFields = document.getElementById('ssl-cert-fields');
@@ -156,26 +131,17 @@ function updateSSLCertFields() {
 
 document.getElementById('sslmode').addEventListener('change', updateSSLCertFields);
 
-let isTested = false;
-
+// ── Message helpers ───────────────────────────────────────────────────────────
 function showMessage(text, type = 'info') {
-  const icons = {
-    success: '✓',
-    error: '✗',
-    info: 'ℹ'
-  };
-  // Use DOM APIs to avoid inserting untrusted HTML
+  const icons = { success: '✓', error: '✗', info: 'ℹ' };
   messageDiv.className = 'message ' + type;
   messageDiv.style.display = 'flex';
-  while (messageDiv.firstChild) messageDiv.removeChild(messageDiv.firstChild);
-
+  while (messageDiv.firstChild) { messageDiv.removeChild(messageDiv.firstChild); }
   const iconSpan = document.createElement('span');
   iconSpan.className = 'message-icon';
   iconSpan.textContent = icons[type];
-
   const textSpan = document.createElement('span');
   textSpan.textContent = text;
-
   messageDiv.appendChild(iconSpan);
   messageDiv.appendChild(textSpan);
 }
@@ -184,6 +150,7 @@ function hideMessage() {
   messageDiv.style.display = 'none';
 }
 
+// ── Form data ─────────────────────────────────────────────────────────────────
 function getFormData() {
   const usernameInput = document.getElementById('username').value.trim();
   const passwordInput = document.getElementById('password').value;
@@ -197,10 +164,8 @@ function getFormData() {
     group: document.getElementById('group').value || undefined,
     username: usernameInput || undefined,
     password: passwordInput || undefined,
-    // Safety options
     environment: document.getElementById('environment').value || undefined,
     readOnlyMode: document.getElementById('readOnlyMode').checked || undefined,
-    // Advanced options
     sslmode: document.getElementById('sslmode').value || undefined,
     sslCertPath: document.getElementById('sslCertPath').value || undefined,
     sslKeyPath: document.getElementById('sslKeyPath').value || undefined,
@@ -224,67 +189,60 @@ function getFormData() {
   return data;
 }
 
-// Reset tested state on any input change
+// ── Input change: reset tested state (but keep save enabled in edit mode) ─────
 inputs.forEach(input => {
   input.addEventListener('input', () => {
-    if (isTested) {
+    if (isTested && !isEditMode) {
       isTested = false;
-      addBtn.classList.add('hidden');
-      testBtn.classList.remove('hidden');
+      addBtn.disabled = true;
       hideMessage();
     }
   });
 });
 
+// ── Test connection ───────────────────────────────────────────────────────────
 testBtn.addEventListener('click', () => {
   if (!form.checkValidity()) {
     form.reportValidity();
     return;
   }
-
   hideMessage();
   testBtn.disabled = true;
-  testBtn.innerHTML = '<span class="btn-icon">⏳</span><span>Testing...</span>';
-
-  vscode.postMessage({
-    command: 'testConnection',
-    connection: getFormData()
-  });
+  testBtn.innerHTML = '<span>Testing…</span>';
+  vscode.postMessage({ command: 'testConnection', connection: getFormData() });
 });
 
+// ── Save / submit ─────────────────────────────────────────────────────────────
 form.addEventListener('submit', (e) => {
   e.preventDefault();
-  if (!isTested) return;
-
+  if (!isTested) { return; }
   hideMessage();
   addBtn.disabled = true;
-  addBtn.innerHTML = '<span class="btn-icon">⏳</span><span>Saving...</span>';
-
-  vscode.postMessage({
-    command: 'saveConnection',
-    connection: getFormData()
-  });
+  addBtn.innerHTML = '<span class="btn-icon">⏳</span><span>Saving…</span>';
+  vscode.postMessage({ command: 'saveConnection', connection: getFormData() });
 });
 
+// ── Messages from extension ───────────────────────────────────────────────────
 window.addEventListener('message', event => {
   const message = event.data;
   testBtn.disabled = false;
-  testBtn.innerHTML = '<span class="btn-icon">⚡</span><span>Test Connection</span>';
-  addBtn.disabled = false;
-  addBtn.innerHTML = '<span class="btn-icon">✓</span><span>Add Connection</span>';
+  testBtn.innerHTML = '<span>Test Connection</span>';
+  addBtn.innerHTML = `<span class="btn-icon">✓</span><span>${addBtnLabel}</span>`;
 
   switch (message.type) {
-    case 'testSuccess':
-      showMessage('Connection successful! ' + message.version, 'success');
+    case 'testSuccess': {
+      const versionMatch = message.version && message.version.match(/PostgreSQL\s+[\d.]+/i);
+      const versionLabel = versionMatch ? versionMatch[0] : 'Connected';
+      showMessage('Connected — ' + versionLabel, 'success');
       isTested = true;
-      testBtn.classList.add('hidden');
-      addBtn.classList.remove('hidden');
+      addBtn.disabled = false;
       break;
+    }
     case 'testError':
-      showMessage('Connection failed: ' + message.error, 'error');
+      showMessage(message.error || 'Connection failed', 'error');
       isTested = false;
-      addBtn.classList.add('hidden');
-      testBtn.classList.remove('hidden');
+      // In edit mode keep save enabled even after a failed test
+      if (!isEditMode) { addBtn.disabled = true; }
       break;
   }
 });

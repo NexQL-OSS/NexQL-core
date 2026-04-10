@@ -2,14 +2,15 @@ import type { ActivationFunction } from 'vscode-notebook-renderer';
 import { Chart, registerables } from 'chart.js';
 import { createButton, createTab, createBreadcrumb, BreadcrumbSegment } from './renderer/components/ui';
 import { createExportButton } from './renderer/features/export';
-import { createImportButton } from './renderer/features/import';
-import { createAiButtons } from './renderer/features/ai';
 import { TableRenderer, TableEvents } from './renderer/components/table/TableRenderer';
 import { ChartRenderer } from './renderer/components/chart/ChartRenderer';
 import { ChartControls } from './renderer/components/chart/ChartControls';
-import { TableInfo, QueryResults, ChartRenderOptions } from './common/types';
-import { getNumericColumns, isDateColumn } from './renderer/utils/formatting';
 import { ExplainVisualizer } from './renderer/components/ExplainVisualizer';
+import { createErrorPanel } from './renderer/components/ErrorPanel';
+import { createActionBar } from './renderer/components/ActionBar';
+import { showImportModal } from './renderer/features/import';
+import { createTransactionBanner } from './renderer/components/TransactionBanner';
+import { parseBreadcrumbFromSql } from './renderer/utils/sqlParsing';
 
 // Register Chart.js components
 Chart.register(...registerables);
@@ -20,9 +21,64 @@ const tableInstances = new WeakMap<HTMLElement, TableRenderer>();
 const BRAND_ACCENT = 'var(--vscode-textLink-foreground)';
 const BRAND_ACCENT_MUTED = 'color-mix(in srgb, var(--vscode-textLink-foreground) 20%, transparent)';
 
+const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+
+/**
+ * Puts a button into a loading state with an animated braille spinner.
+ * Returns a cleanup function that restores the original label and re-enables the button.
+ */
+function startButtonLoading(btn: HTMLElement, loadingLabel: string): () => void {
+  const originalText = btn.innerText;
+  const originalDisabled = (btn as HTMLButtonElement).disabled;
+  (btn as HTMLButtonElement).disabled = true;
+  btn.style.opacity = '0.7';
+  btn.style.cursor = 'not-allowed';
+
+  let frame = 0;
+  btn.innerText = `${SPINNER_FRAMES[frame]} ${loadingLabel}`;
+  const interval = setInterval(() => {
+    frame = (frame + 1) % SPINNER_FRAMES.length;
+    btn.innerText = `${SPINNER_FRAMES[frame]} ${loadingLabel}`;
+  }, 100);
+
+  return () => {
+    clearInterval(interval);
+    btn.innerText = originalText;
+    (btn as HTMLButtonElement).disabled = originalDisabled;
+    btn.style.opacity = '';
+    btn.style.cursor = '';
+  };
+}
+
+// Inject amber-gutter CSS once
+function ensureAmberGutterStyle(): void {
+  const STYLE_ID = 'amber-gutter-style';
+  if (document.getElementById(STYLE_ID)) return;
+  const style = document.createElement('style');
+  style.id = STYLE_ID;
+  style.textContent = `
+    .amber-gutter {
+      border-left: 4px solid #ffb000 !important;
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+/** Remove all transaction banners and amber gutters from the document */
+function clearTransactionUI(): void {
+  document.querySelectorAll('[data-transaction-banner="true"]').forEach(el => el.remove());
+  document.querySelectorAll('.amber-gutter').forEach(el => el.classList.remove('amber-gutter'));
+}
+
 export const activate: ActivationFunction = context => {
   return {
     renderOutputItem(data, element) {
+      // Silently ignore the legacy TopBar header output (removed feature)
+      if (data.mime === 'application/x-postgres-notebook-header+json') {
+        element.innerHTML = '';
+        return;
+      }
+
       const json = data.json();
 
       if (!json) {
@@ -31,6 +87,10 @@ export const activate: ActivationFunction = context => {
       }
 
       const { columns = [], rows, rowCount, command, query, notices, executionTime, tableInfo, success, columnTypes, backendPid, breadcrumb } = json;
+
+      // Transaction state from payload
+      const transactionState: { isActive: boolean; statementCount: number } | undefined = json.transactionState;
+      const pendingCommit: boolean = !!json.pendingCommit;
 
       // Data Management
       const originalRows: any[] = rows ? JSON.parse(JSON.stringify(rows)) : [];
@@ -88,6 +148,26 @@ export const activate: ActivationFunction = context => {
       header.appendChild(chevron);
       header.appendChild(title);
       header.appendChild(summary);
+
+      // Pending commit badge — shown when result was produced inside an open transaction
+      if (pendingCommit) {
+        const pendingBadge = document.createElement('span');
+        pendingBadge.textContent = 'pending commit';
+        pendingBadge.style.cssText = `
+          font-size: 10px;
+          font-weight: 600;
+          padding: 2px 6px;
+          border-radius: 10px;
+          background: rgba(255, 176, 0, 0.25);
+          color: #ffb000;
+          border: 1px solid rgba(255, 176, 0, 0.5);
+          margin-left: 8px;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+        `;
+        header.appendChild(pendingBadge);
+      }
+
       mainContainer.appendChild(header);
 
       // Performance Warning
@@ -111,6 +191,19 @@ export const activate: ActivationFunction = context => {
 
       // Breadcrumb Navigation
       if (breadcrumb) {
+        // Auto-populate schema/table from SQL when not provided in the payload (12.1)
+        let resolvedSchema = breadcrumb.schema;
+        let resolvedTable = breadcrumb.object?.name;
+        if ((!resolvedSchema || !resolvedTable) && query) {
+          const parsed = parseBreadcrumbFromSql(query);
+          if (!resolvedSchema && parsed.schema) {
+            resolvedSchema = parsed.schema;
+          }
+          if (!resolvedTable && parsed.table) {
+            resolvedTable = parsed.table;
+          }
+        }
+
         const segments: BreadcrumbSegment[] = [];
 
         if (breadcrumb.connectionName) {
@@ -119,12 +212,19 @@ export const activate: ActivationFunction = context => {
         if (breadcrumb.database) {
           segments.push({ label: breadcrumb.database, id: 'database', type: 'database' });
         }
-        if (breadcrumb.schema) {
-          segments.push({ label: breadcrumb.schema, id: 'schema', type: 'schema' });
-        }
-        if (breadcrumb.object?.name) {
+        if (resolvedSchema) {
           segments.push({
-            label: breadcrumb.object.name,
+            label: resolvedSchema,
+            id: 'schema',
+            type: 'schema',
+            onClick: () => {
+              context.postMessage?.({ type: 'breadcrumbNavigate', segment: resolvedSchema, segmentType: 'schema' });
+            }
+          });
+        }
+        if (resolvedTable) {
+          segments.push({
+            label: resolvedTable,
             id: 'object',
             type: 'object',
             isLast: true
@@ -138,12 +238,16 @@ export const activate: ActivationFunction = context => {
 
         const breadcrumbEl = createBreadcrumb(segments, {
           onConnectionDropdown: (anchorEl: HTMLElement) => {
+            // Also emit breadcrumbNavigate for connection (12.2)
+            context.postMessage?.({ type: 'breadcrumbNavigate', segment: breadcrumb.connectionName, segmentType: 'connection' });
             context.postMessage?.({
               type: 'showConnectionSwitcher',
               connectionId: breadcrumb.connectionId
             });
           },
           onDatabaseDropdown: (anchorEl: HTMLElement) => {
+            // Also emit breadcrumbNavigate for database (12.2)
+            context.postMessage?.({ type: 'breadcrumbNavigate', segment: breadcrumb.database, segmentType: 'database' });
             context.postMessage?.({
               type: 'showDatabaseSwitcher',
               connectionId: breadcrumb.connectionId,
@@ -169,35 +273,22 @@ export const activate: ActivationFunction = context => {
 
       // Error Section
       if (json.error) {
-        const errorContainer = document.createElement('div');
-        errorContainer.style.cssText = 'padding: 12px; border-bottom: 1px solid var(--vscode-widget-border);';
-
-        const errorMsg = document.createElement('div');
-        errorMsg.style.cssText = 'color: var(--vscode-errorForeground); padding: 8px;';
-        errorMsg.innerHTML = `<strong>Error executing query:</strong><br><pre style="white-space: pre-wrap; margin-top: 4px;">${json.error}</pre>`;
-        errorContainer.appendChild(errorMsg);
-
-        if (json.canExplain) {
-          const btnContainer = document.createElement('div');
-          btnContainer.style.cssText = 'margin-top: 12px; display: flex; gap: 8px;';
-
-          const explainBtn = createButton('✨ Explain Error');
-          explainBtn.onclick = (e: MouseEvent) => {
-            e.stopPropagation();
+        const errorPanel = createErrorPanel({
+          errorCode: json.errorCode,
+          errorMessage: json.error,
+          explanation: json.errorExplanation,
+          onExplainError: () => {
             context.postMessage?.({ type: 'explainError', error: json.error, query: json.query });
-          };
-
-          const fixBtn = createButton('🛠️ Fix Query');
-          fixBtn.onclick = (e: MouseEvent) => {
-            e.stopPropagation();
+          },
+          onFixWithAI: () => {
             context.postMessage?.({ type: 'fixQuery', error: json.error, query: json.query });
-          };
-
-          btnContainer.appendChild(explainBtn);
-          btnContainer.appendChild(fixBtn);
-          errorMsg.appendChild(btnContainer);
-        }
-        contentContainer.appendChild(errorContainer);
+          },
+          onRetry: () => {
+            // Client-side retry: re-execute the cell by posting retryCell to the kernel
+            context.postMessage?.({ type: 'retryCell', query: json.query });
+          }
+        });
+        contentContainer.appendChild(errorPanel);
       }
 
       // Messages Section
@@ -222,72 +313,171 @@ export const activate: ActivationFunction = context => {
         contentContainer.appendChild(msgContainer);
       }
 
-      // Actions Bar
-      const actionsBar = document.createElement('div');
-      actionsBar.style.cssText = `
-        display: none; padding: 8px 12px; gap: 8px; align-items: center; justify-content: space-between;
-        border-bottom: 1px solid var(--vscode-panel-border); background: var(--vscode-editor-background);
-      `;
+      // Build the hidden export button to reuse its existing dropdown flow
+      const exportBtn = createExportButton(columns, currentRows, tableInfo, context, query);
+      exportBtn.style.display = 'none';
 
-      // Helper to export/copy based on CURRENT selection or ALL if none selected
-      const getSelectedRows = () => {
-        if (selectedIndices.size === 0) return currentRows;
-        return currentRows.filter((_, i) => selectedIndices.has(i));
-      };
+      // Actions Bar — built with ActionBar component
+      const actionsBar = createActionBar({
+        onSelectAll: () => {
+          // Toggle: if all rows are selected, deselect all; otherwise select all
+          if (selectedIndices.size === currentRows.length && currentRows.length > 0) {
+            selectedIndices.clear();
+          } else {
+            currentRows.forEach((_: any, i: number) => selectedIndices.add(i));
+          }
+          tableRenderer.updateSelection(selectedIndices);
+          updateActionsVisibility();
+        },
+        onCopy: () => {
+          // Copy selected rows (or all rows if none selected) to clipboard as CSV
+          const rowsToCopy = selectedIndices.size > 0
+            ? Array.from(selectedIndices).map(i => currentRows[i])
+            : currentRows;
+          const escapeCSV = (val: any): string => {
+            if (val === null || val === undefined) return '';
+            const str = typeof val === 'object' ? JSON.stringify(val) : String(val);
+            if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+              return `"${str.replace(/"/g, '""')}"`;
+            }
+            return str;
+          };
+          const csv = [
+            columns.map((c: string) => `"${c.replace(/"/g, '""')}"`).join(','),
+            ...rowsToCopy.map((r: any) => columns.map((c: string) => escapeCSV(r[c])).join(','))
+          ].join('\n');
+          navigator.clipboard?.writeText(csv);
+        },
+        onImport: () => {
+          showImportModal(columns, tableInfo, context);
+        },
+        onExport: (anchorBtn: HTMLElement) => {
+          // Remove existing dropdown if open (toggle)
+          const existing = document.querySelector('.export-dropdown');
+          if (existing) { existing.remove(); return; }
 
-      const selectAllBtn = createButton('Select All', true);
-      const copyBtn = createButton('Copy Selected', true);
+          const stringifyValue = (val: any): string => {
+            if (val === null || val === undefined) return '';
+            if (typeof val === 'object') return JSON.stringify(val);
+            return String(val);
+          };
+          const getCSV = () => {
+            const header = columns.map((c: string) => `"${c.replace(/"/g, '""')}"`).join(',');
+            const body = currentRows.map((row: any) => columns.map((col: string) => {
+              const str = stringifyValue(row[col]);
+              return (str.includes(',') || str.includes('"') || str.includes('\n'))
+                ? `"${str.replace(/"/g, '""')}"` : str;
+            }).join(',')).join('\n');
+            return `${header}\n${body}`;
+          };
+          const downloadFile = (content: string, filename: string, type: string) => {
+            const blob = new Blob([content], { type });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = filename;
+            document.body.appendChild(a); a.click();
+            document.body.removeChild(a); URL.revokeObjectURL(url);
+          };
+
+          const menu = document.createElement('div');
+          menu.className = 'export-dropdown';
+          menu.style.cssText = 'position:absolute;top:100%;left:0;background:var(--vscode-menu-background);border:1px solid var(--vscode-menu-border);box-shadow:0 2px 8px rgba(0,0,0,0.15);z-index:100;min-width:160px;border-radius:3px;padding:4px 0;';
+
+          const addItem = (label: string, onClick: () => void) => {
+            const item = document.createElement('div');
+            item.textContent = label;
+            item.style.cssText = 'padding:6px 12px;cursor:pointer;color:var(--vscode-menu-foreground);font-size:12px;';
+            item.onmouseenter = () => { item.style.background = 'var(--vscode-menu-selectionBackground)'; item.style.color = 'var(--vscode-menu-selectionForeground)'; };
+            item.onmouseleave = () => { item.style.background = 'transparent'; item.style.color = 'var(--vscode-menu-foreground)'; };
+            item.onclick = (e) => { e.stopPropagation(); onClick(); menu.remove(); };
+            menu.appendChild(item);
+          };
+
+          addItem('Save as CSV', () => downloadFile(getCSV(), `export_${Date.now()}.csv`, 'text/csv'));
+          addItem('Save as JSON', () => downloadFile(JSON.stringify(currentRows, null, 2), `export_${Date.now()}.json`, 'application/json'));
+          addItem('Save as Markdown', () => {
+            const header = `| ${columns.join(' | ')} |`;
+            const sep = `| ${columns.map(() => '---').join(' | ')} |`;
+            const body = currentRows.map((row: any) => `| ${columns.map((col: string) => {
+              const v = row[col]; if (v === null || v === undefined) return 'NULL';
+              return (typeof v === 'object' ? JSON.stringify(v) : String(v)).replace(/\|/g, '\\|').replace(/\n/g, ' ');
+            }).join(' | ')} |`).join('\n');
+            downloadFile(`${header}\n${sep}\n${body}`, `export_${Date.now()}.md`, 'text/markdown');
+          });
+          addItem('Copy to Clipboard', () => {
+            navigator.clipboard?.writeText(getCSV()).then(() => {
+              anchorBtn.textContent = 'Copied!';
+              setTimeout(() => { anchorBtn.textContent = '↓ Export'; }, 2000);
+            });
+          });
+          if (tableInfo) {
+            addItem('Copy SQL INSERT', () => {
+              const tableName = `"${tableInfo.schema}"."${tableInfo.table}"`;
+              const cols = columns.map((c: string) => `"${c}"`).join(', ');
+              const inserts = currentRows.map((row: any) => {
+                const vals = columns.map((col: string) => {
+                  const v = row[col];
+                  if (v === null || v === undefined) return 'NULL';
+                  if (typeof v === 'number') return v;
+                  if (typeof v === 'boolean') return v ? 'TRUE' : 'FALSE';
+                  const s = typeof v === 'object' ? JSON.stringify(v) : String(v);
+                  return `'${s.replace(/'/g, "''")}'`;
+                }).join(', ');
+                return `INSERT INTO ${tableName} (${cols}) VALUES (${vals});`;
+              }).join('\n');
+              navigator.clipboard?.writeText(inserts);
+            });
+          }
+
+          anchorBtn.appendChild(menu);
+          setTimeout(() => {
+            const close = () => { menu.remove(); document.removeEventListener('click', close); };
+            document.addEventListener('click', close);
+          }, 0);
+        },
+        onSendToChat: () => {
+          const resultsJson = JSON.stringify({ columns, rows: currentRows });
+          context.postMessage?.({
+            type: 'sendToChat',
+            data: {
+              query: json.query || '',
+              results: resultsJson,
+              message: 'I ran this query and got these results. Please help me understand them.'
+            }
+          });
+        },
+        onAnalyzeWithAI: () => {
+          const escapeCSV = (val: any): string => {
+            if (val === null || val === undefined) return '';
+            const str = typeof val === 'object' ? JSON.stringify(val) : String(val);
+            if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+              return `"${str.replace(/"/g, '""')}"`;
+            }
+            return str;
+          };
+          const csvHeader = columns.map((c: string) => `"${c.replace(/"/g, '""')}"`).join(',');
+          const csvRows = currentRows.map((r: any) => columns.map((c: string) => escapeCSV(r[c])).join(','));
+          const dataCsv = [csvHeader, ...csvRows].join('\n');
+          context.postMessage?.({
+            type: 'analyzeData',
+            data: dataCsv,
+            query: json.query || '',
+            rowCount: currentRows.length
+          });
+        },
+        onOptimize: () => {
+          context.postMessage?.({ type: 'optimizeQuery', query: json.query, executionTime: json.executionTime });
+        }
+      });
+
+      // Capture left/right groups before appending extra elements
+      const leftActions = actionsBar.firstElementChild as HTMLElement;
+      const rightActions = actionsBar.children[2] as HTMLElement; // index 2: right group (0=left, 1=divider, 2=right)
+
+      // Delete button — appended to leftActions, shown when rows are selected
       const deleteBtn = createButton('🗑️ Delete Selected', true);
       deleteBtn.style.cssText = 'display: none; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); margin-left: 8px;';
-
-      const exportBtn = createExportButton(columns, currentRows, tableInfo, context, query);
-      const importBtn = createImportButton(columns, tableInfo, context);
-
-      // Left Group
-      const leftActions = document.createElement('div');
-      leftActions.style.cssText = 'display: flex; gap: 8px; align-items: center;';
-      leftActions.appendChild(selectAllBtn);
-      leftActions.appendChild(copyBtn);
       leftActions.appendChild(deleteBtn);
-      leftActions.appendChild(importBtn);
-      leftActions.appendChild(exportBtn);
-
-      // Right Group
-      const rightActions = document.createElement('div');
-      rightActions.style.cssText = 'display: flex; gap: 8px; align-items: center;';
-
-      // Copy to Chat
-      const copyToChatBtn = createButton('💬 Send to Chat', true);
-      copyToChatBtn.title = 'Send results to SQL Assistant chat';
-      copyToChatBtn.onclick = () => {
-        const rowsToSend = currentRows.slice(0, 100);
-        const resultsJson = JSON.stringify({
-          totalRows: currentRows.length,
-          columns: columns,
-          rows: rowsToSend
-        }, null, 2);
-        context.postMessage?.({
-          type: 'sendToChat',
-          data: {
-            query: query || '-- Query',
-            results: resultsJson,
-            message: ''
-          }
-        });
-      };
-      rightActions.appendChild(copyToChatBtn);
-
-      // AI Buttons
-      const { analyzeBtn, optimizeBtn } = createAiButtons(
-        { postMessage: (msg: any) => context.postMessage?.(msg) },
-        columns,
-        currentRows,
-        query || command || 'result set',
-        command,
-        executionTime
-      );
-      rightActions.appendChild(analyzeBtn);
-      rightActions.appendChild(optimizeBtn);
 
       // Detect if this is an EXPLAIN query (either JSON or text format)
       const isExplainQuery = json.explainPlan ||
@@ -303,12 +493,9 @@ export const activate: ActivationFunction = context => {
 
         explainPlanBtn.onclick = () => {
           if (json.explainPlan) {
-            // Already have JSON plan, show it directly
-            // Now we prefer the in-renderer tab if available
             if (explainTab) {
               switchTab('explain');
             } else {
-              // Fallback / legacy external view
               context.postMessage?.({
                 type: 'showExplainPlan',
                 plan: json.explainPlan,
@@ -316,8 +503,6 @@ export const activate: ActivationFunction = context => {
               });
             }
           } else {
-            // Text format - request re-execution with FORMAT JSON
-            // Log for debugging
             console.log('Converting EXPLAIN to JSON, query:', query);
             if (!query) {
               alert('Cannot convert EXPLAIN plan: query not available');
@@ -332,8 +517,6 @@ export const activate: ActivationFunction = context => {
         rightActions.appendChild(explainPlanBtn);
       }
 
-      actionsBar.appendChild(leftActions);
-      actionsBar.appendChild(rightActions);
       if (!json.error) {
         contentContainer.appendChild(actionsBar);
       }
@@ -407,6 +590,9 @@ export const activate: ActivationFunction = context => {
 
         if (updates.length > 0 || deletions.length > 0) {
           console.log('Renderer: Posting saveChanges message');
+          const stopLoading = startButtonLoading(saveBtn, 'Saving...');
+          // stopLoading is called when saveSuccess or saveFailed arrives
+          (saveBtn as any)._stopLoading = stopLoading;
           context.postMessage?.({
             type: 'saveChanges',
             updates,
@@ -429,6 +615,10 @@ export const activate: ActivationFunction = context => {
       context.onDidReceiveMessage?.((message: any) => {
         if (message.type === 'saveSuccess') {
           console.log('Renderer: Received saveSuccess, clearing modified cells and removing deleted rows');
+
+          // Stop the loading spinner on the save button
+          (saveBtn as any)._stopLoading?.();
+          (saveBtn as any)._stopLoading = undefined;
 
           // Remove deleted rows from arrays (in reverse order to maintain indices)
           const deletedIndices = Array.from(rowsMarkedForDeletion).sort((a, b) => b - a);
@@ -465,6 +655,12 @@ export const activate: ActivationFunction = context => {
               modifiedCells
             });
           }
+        }
+
+        if (message.type === 'saveFailed') {
+          // Restore save button on error
+          (saveBtn as any)._stopLoading?.();
+          (saveBtn as any)._stopLoading = undefined;
         }
       });
 
@@ -536,30 +732,15 @@ export const activate: ActivationFunction = context => {
       leftActions.appendChild(exportChartBtn);
 
       const updateActionsVisibility = () => {
-        // Always show actions bar
-        actionsBar.style.display = 'flex';
-
-        if (currentMode === 'table') {
-          // Table Mode: Show Table Buttons, Hide Chart Buttons
-          selectAllBtn.style.display = 'inline-block';
-          copyBtn.style.display = 'inline-block';
-          exportBtn.style.display = 'inline-block';
-          importBtn.style.display = tableInfo ? 'inline-block' : 'none';
-          exportChartBtn.style.display = 'none';
-        } else {
-          // Chart Mode: Hide Table Buttons, Show Chart Button
-          selectAllBtn.style.display = 'none';
-          copyBtn.style.display = 'none';
-          exportBtn.style.display = 'none'; // Hide Data Export in Chart Mode
-          importBtn.style.display = 'none';
+        if (currentMode === 'chart') {
           exportChartBtn.style.display = 'inline-block';
+        } else {
+          exportChartBtn.style.display = 'none';
         }
 
-        // Update Select All Button Text
+        // Update Select All Button Text and delete button
         if (currentMode === 'table') {
-          selectAllBtn.innerText = selectedIndices.size === currentRows.length ? 'Deselect All' : 'Select All';
-
-          if (selectedIndices.size > 0) { // Removed PK check for debugging
+          if (selectedIndices.size > 0) {
             deleteBtn.style.display = 'inline-block';
             deleteBtn.innerText = `🗑️ Delete (${selectedIndices.size})`;
             if (!tableInfo?.primaryKeys) {
@@ -570,7 +751,6 @@ export const activate: ActivationFunction = context => {
               deleteBtn.style.opacity = '1';
             }
           } else {
-            // console.log('Renderer: Delete button hidden. Selected:', selectedIndices.size);
             deleteBtn.style.display = 'none';
           }
         }
@@ -613,37 +793,6 @@ export const activate: ActivationFunction = context => {
         updateActionsVisibility();
       };
 
-      selectAllBtn.onclick = () => {
-        const allSelected = selectedIndices.size === currentRows.length;
-        if (allSelected) selectedIndices.clear();
-        else currentRows.forEach((_, i) => selectedIndices.add(i));
-
-        tableRenderer.updateSelection(selectedIndices);
-        updateActionsVisibility();
-      };
-
-      copyBtn.onclick = () => {
-        if (selectedIndices.size === 0) return;
-        const selected = currentRows.filter((_, i) => selectedIndices.has(i));
-
-        // Convert to CSV
-        const csv = columns.map((c: string) => `"${c}"`).join(',') + '\n' +
-          selected.map(row =>
-            columns.map((col: string) => {
-              const val = row[col];
-              const str = (typeof val === 'object' && val !== null) ? JSON.stringify(val) : String(val ?? '');
-              if (str.includes(',') || str.includes('"') || str.includes('\n')) return `"${str.replace(/"/g, '""')}"`;
-              return str;
-            }).join(',')
-          ).join('\n');
-
-        navigator.clipboard.writeText(csv).then(() => {
-          const prev = copyBtn.innerText;
-          copyBtn.innerText = 'Copied!';
-          setTimeout(() => copyBtn.innerText = prev, 2000);
-        });
-      };
-
       // Switch Tab Logic
       let currentMode = 'table';
       const switchTab = (mode: string) => {
@@ -677,10 +826,18 @@ export const activate: ActivationFunction = context => {
           updateActionsVisibility(); // Should probably hide most actions
 
           const explainWrapper = document.createElement('div');
-          explainWrapper.style.cssText = 'flex: 1; overflow: hidden; height: 100%; display: flex; flex-direction: column;';
+          explainWrapper.style.cssText = 'flex: 1; overflow: auto; height: 100%; display: flex; flex-direction: column;';
           viewContainer.appendChild(explainWrapper);
 
-          new ExplainVisualizer(explainWrapper, json.explainPlan).render();
+          if (json.explainPlan) {
+            try {
+              new ExplainVisualizer(explainWrapper, json.explainPlan).render();
+            } catch (e) {
+              explainWrapper.textContent = 'Failed to render explain plan: ' + String(e);
+            }
+          } else {
+            explainWrapper.textContent = 'No explain plan data available. Run EXPLAIN (ANALYZE, FORMAT JSON) to get a visual plan.';
+          }
 
         } else {
           // Hide table specific styles
@@ -696,7 +853,7 @@ export const activate: ActivationFunction = context => {
           chartWrapper.style.cssText = 'flex: 1; display: flex; flex-direction: column; height: 100%; overflow: hidden;';
 
           const controlsContainer = document.createElement('div');
-          controlsContainer.style.cssText = 'width: 250px; border-left: 1px solid var(--vscode-panel-border); background: var(--vscode-sideBar-background); display: flex; flex-direction: column;';
+          controlsContainer.style.cssText = 'width: 140px; min-width: 140px; max-width: 140px; display: flex; flex-direction: column;';
 
           const canvasContainer = document.createElement('div');
           canvasContainer.style.cssText = 'flex: 1; padding: 8px; position: relative; min-height: 0;';
@@ -728,6 +885,32 @@ export const activate: ActivationFunction = context => {
       }
 
       element.appendChild(mainContainer);
+
+      // Transaction state: show banner and amber gutter
+      ensureAmberGutterStyle();
+      if (transactionState?.isActive) {
+        mainContainer.classList.add('amber-gutter');
+
+        // Only add one banner per document (remove stale ones first)
+        const existingBanner = document.querySelector('[data-transaction-banner="true"]');
+        if (!existingBanner) {
+          const banner = createTransactionBanner({
+            statementCount: transactionState.statementCount,
+            onCommit: () => {
+              context.postMessage?.({ type: 'commitTransaction' });
+            },
+            onRollback: () => {
+              context.postMessage?.({ type: 'rollbackTransaction' });
+            }
+          });
+          // Insert banner before the first output container in the element's parent
+          const outputHost = element.parentElement || element;
+          outputHost.insertBefore(banner, outputHost.firstChild);
+        }
+      } else {
+        // Transaction closed — clear all transaction UI
+        clearTransactionUI();
+      }
     }
   };
 };

@@ -81,6 +81,7 @@ export class ConnectionFormPanel {
             user: connection.username || undefined,
             password: effectivePassword,
             database: dbName,
+            connectionTimeoutMillis: (connection.connectTimeout || 15) * 1000,
           };
 
           if (!forceDisableSSL) {

@@ -5,6 +5,7 @@ import { ErrorHandlers } from '../../commands/helper';
 import { ConnectionManager } from '../../services/ConnectionManager';
 import { ConnectionUtils } from '../../utils/connectionUtils';
 import {
+  FkLookupHandler,
   ExecuteUpdateBackgroundHandler,
   ExecuteUpdateHandler,
   DeleteRowsHandler,
@@ -68,6 +69,117 @@ describe('QueryHandlers (additional error branches)', () => {
     const handler = new SaveChangesHandler();
     await handler.handle({ tableInfo: { schema: 'public', table: 'users' }, updates: [], deletions: [] }, { editor: { notebook: { metadata: {} } } } as any);
     expect((vscode.window.showErrorMessage as any).called).to.be.true;
+  });
+
+  it('FkLookupHandler posts matching rows and clamps the limit', async () => {
+    const query = sandbox.stub().resolves({
+      rows: [{ id: 1, name: 'Ada' }],
+      fields: [{ name: 'id' }, { name: 'name' }]
+    });
+    const release = sandbox.stub();
+    sandbox.stub(ConnectionManager, 'getInstance').returns({
+      getPooledClient: sandbox.stub().resolves({ query, release })
+    } as any);
+    sandbox.stub(ConnectionUtils, 'findConnection').returns({
+      id: 'conn-1',
+      host: 'localhost',
+      port: 5432,
+      username: 'postgres',
+      database: 'postgres'
+    } as any);
+    const postMessage = sandbox.stub().resolves(true);
+
+    const handler = new FkLookupHandler();
+    await handler.handle(
+      {
+        requestId: 'req-1',
+        fkSchema: 'public',
+        fkTable: 'users',
+        fkColumn: 'name',
+        searchText: '  Ada  ',
+        limit: 250
+      },
+      {
+        editor: {
+          notebook: {
+            metadata: {
+              connectionId: 'conn-1',
+              databaseName: 'postgres'
+            }
+          }
+        } as any,
+        postMessage
+      }
+    );
+
+    expect(query.calledOnce).to.be.true;
+    const [sql, params] = query.firstCall.args;
+    expect(sql).to.contain('SELECT "name"');
+    expect(sql).to.contain('FROM "public"."users"');
+    expect(sql).to.contain('ILIKE $2');
+    expect(params).to.deep.equal(['Ada', '%Ada%', 100]);
+    expect(postMessage.calledOnceWithMatch({
+      type: 'fkLookupResponse',
+      requestId: 'req-1',
+      rows: [{ id: 1, name: 'Ada' }],
+      columns: ['id', 'name']
+    })).to.be.true;
+    expect(release.calledOnce).to.be.true;
+  });
+
+  it('FkLookupHandler returns an empty response when connection lookup fails', async () => {
+    sandbox.stub(ConnectionUtils, 'findConnection').returns(undefined);
+    const postMessage = sandbox.stub().resolves(true);
+
+    const handler = new FkLookupHandler();
+    await handler.handle(
+      {
+        requestId: 'req-2',
+        fkSchema: 'public',
+        fkTable: 'users',
+        fkColumn: 'name',
+        searchText: 'Ada',
+        limit: 10
+      },
+      {
+        editor: {
+          notebook: {
+            metadata: {
+              connectionId: 'conn-1',
+              databaseName: 'postgres'
+            }
+          }
+        } as any,
+        postMessage
+      }
+    );
+
+    expect(postMessage.calledOnceWithMatch({
+      type: 'fkLookupResponse',
+      requestId: 'req-2',
+      rows: [],
+      columns: []
+    })).to.be.true;
+    expect((vscode.window.showErrorMessage as sinon.SinonStub).calledWith(sinon.match(/^FK lookup failed:/))).to.be
+      .true;
+  });
+
+  it('FkLookupHandler ignores requests without an editor or connection metadata', async () => {
+    const handler = new FkLookupHandler();
+    const postMessage = sandbox.stub();
+
+    await handler.handle({ requestId: 'req-3' }, {} as any);
+    await handler.handle(
+      { requestId: 'req-4' },
+      {
+        editor: {
+          notebook: { metadata: {} }
+        } as any,
+        postMessage
+      }
+    );
+
+    expect(postMessage.called).to.be.false;
   });
 
   it('handlers return early when no editor provided', async () => {

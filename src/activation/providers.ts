@@ -7,6 +7,8 @@ import { PostgresNotebookSerializer } from '../postgresNotebook';
 import { QueryCodeLensProvider } from '../providers/QueryCodeLensProvider';
 import { QueryHistoryProvider } from '../providers/QueryHistoryProvider';
 import { ProfilesTreeProvider, SavedQueriesTreeProvider } from '../providers/Phase7TreeProviders';
+import { NotebooksTreeProvider } from '../providers/NotebooksTreeProvider';
+import { AutoRefreshService } from '../services/AutoRefreshService';
 
 export function registerProviders(context: vscode.ExtensionContext, outputChannel: vscode.OutputChannel) {
   // Create database tree provider instance
@@ -66,6 +68,7 @@ export function registerProviders(context: vscode.ExtensionContext, outputChanne
 
   // Register Query CodeLens Provider for EXPLAIN actions
   const queryCodeLensProvider = new QueryCodeLensProvider();
+  QueryCodeLensProvider.setInstance(queryCodeLensProvider);
   context.subscriptions.push(
     vscode.languages.registerCodeLensProvider(
       { language: 'postgres', scheme: 'vscode-notebook-cell' },
@@ -81,7 +84,7 @@ export function registerProviders(context: vscode.ExtensionContext, outputChanne
   // Register Query History Provider
   const queryHistoryProvider = new QueryHistoryProvider();
   context.subscriptions.push(
-    vscode.window.registerTreeDataProvider('postgresExplorer.executedQueryHistory', queryHistoryProvider)
+    vscode.window.registerTreeDataProvider('postgresExplorer.history', queryHistoryProvider)
   );
 
   // Store query history provider instance for command access
@@ -90,14 +93,34 @@ export function registerProviders(context: vscode.ExtensionContext, outputChanne
   // Phase 7: Register Saved Queries Tree Provider
   const savedQueriesTreeProvider = new SavedQueriesTreeProvider();
   context.subscriptions.push(
-    vscode.window.registerTreeDataProvider('postgresExplorer.savedQueryLibrary', savedQueriesTreeProvider)
+    vscode.window.registerTreeDataProvider('postgresExplorer.savedQueries', savedQueriesTreeProvider)
   );
+
+  // Notebooks panel — browse all notebooks in globalStorage
+  const notebooksTreeProvider = new NotebooksTreeProvider(context.globalStorageUri);
+  const notebooksTreeView = vscode.window.createTreeView('postgresExplorer.notebooks', {
+    treeDataProvider: notebooksTreeProvider,
+    showCollapseAll: true
+  });
+  context.subscriptions.push(notebooksTreeView);
+
+  // Auto-refresh service — keeps the explorer and notebooks panel in sync
+  const autoRefreshService = new AutoRefreshService(
+    databaseTreeProvider,
+    notebooksTreeProvider,
+    context.globalStorageUri,
+    outputChannel
+  );
+  autoRefreshService.start();
+  databaseTreeProvider.setAutoRefreshService(autoRefreshService);
 
   return {
     databaseTreeProvider,
     treeView,
     chatViewProviderInstance,
     queryHistoryProvider,
-    savedQueriesTreeProvider
+    savedQueriesTreeProvider,
+    notebooksTreeProvider,
+    autoRefreshService
   };
 }

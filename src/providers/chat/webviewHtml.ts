@@ -29,7 +29,7 @@ export async function getWebviewHtml(
     const themeDetection = new TextDecoder().decode(themeBuffer);
 
     // Build CSP string
-    const csp = `default-src 'none'; style-src ${cspSource} 'unsafe-inline'; script-src ${cspSource} 'unsafe-inline';`;
+    const csp = `default-src 'none'; style-src ${cspSource} 'unsafe-inline'; script-src ${cspSource} 'unsafe-inline'; img-src ${cspSource} data: blob:;`;
 
     // Replace placeholders
     html = html.replace('{{CSP}}', csp);

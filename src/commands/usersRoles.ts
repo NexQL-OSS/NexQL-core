@@ -4,22 +4,12 @@ import {
   MarkdownUtils,
   FormatHelpers,
   ErrorHandlers,
-
   QueryBuilder,
   NotebookBuilder,
   getDatabaseConnection,
   validateRoleItem
 } from './helper';
-import { UsersRolesSQL } from './sql';
-
-/**
- * SQL Queries for role operations
- */
-
-/**
- * ROLE_DETAILS_QUERY - Query to get detailed role information including attributes, memberships, and privileges
- */
-
+import { UserRoleSQL } from './sql';
 
 /**
  * Show role properties in a notebook
@@ -70,7 +60,6 @@ export async function cmdShowRoleProperties(item: DatabaseTreeItem, context: vsc
       markdown += '\n\n#### 🔑 Active Privileges\n\n' + attributes.join(' | ');
     }
 
-    // Memberships
     if (role.member_of && role.member_of.length > 0) {
       markdown += '\n\n#### 👪 Member Of\n\n- ' + role.member_of.join('\n- ');
     }
@@ -79,21 +68,68 @@ export async function cmdShowRoleProperties(item: DatabaseTreeItem, context: vsc
       markdown += '\n\n#### 👥 Has Members\n\n- ' + role.members.join('\n- ');
     }
 
-    // Accessible databases
     if (role.accessible_databases && role.accessible_databases.length > 0) {
       markdown += '\n\n#### 🗄️ Accessible Databases\n\n- ' + role.accessible_databases.join('\n- ');
     }
 
-    markdown += '\n\n---';
-
     await new NotebookBuilder(metadata)
       .addMarkdown(markdown)
       .addMarkdown('##### 🔍 Query Role Attributes')
-      .addSql(UsersRolesSQL.roleAttributes(roleName))
+      .addSql(`SELECT
+    r.rolname,
+    r.rolsuper,
+    r.rolinherit,
+    r.rolcreaterole,
+    r.rolcreatedb,
+    r.rolcanlogin,
+    r.rolreplication,
+    r.rolconnlimit,
+    r.rolvaliduntil,
+    r.rolbypassrls,
+    pg_catalog.shobj_description(r.oid, 'pg_authid') as description
+FROM pg_roles r
+WHERE r.rolname = '${roleName}'`)
       .addMarkdown('##### 👪 Role Memberships')
-      .addSql(UsersRolesSQL.roleMemberships(roleName))
+      .addSql(`-- Roles this role belongs to
+SELECT
+    m.rolname as "Member Of",
+    g.rolname as "Granted By",
+    am.admin_option as "Admin Option"
+FROM pg_auth_members am
+JOIN pg_roles r ON r.oid = am.member
+JOIN pg_roles m ON m.oid = am.roleid
+JOIN pg_roles g ON g.oid = am.grantor
+WHERE r.rolname = '${roleName}';
+
+-- Roles that belong to this role
+SELECT
+    m.rolname as "Has Member",
+    g.rolname as "Granted By",
+    am.admin_option as "Admin Option"
+FROM pg_auth_members am
+JOIN pg_roles r ON r.oid = am.roleid
+JOIN pg_roles m ON m.oid = am.member
+JOIN pg_roles g ON g.oid = am.grantor
+WHERE r.rolname = '${roleName}';`)
       .addMarkdown('##### 🔐 Granted Privileges')
-      .addSql(UsersRolesSQL.grantedPrivileges(roleName))
+      .addSql(`-- Table privileges
+SELECT
+    table_schema as "Schema",
+    table_name as "Table",
+    privilege_type as "Privilege",
+    is_grantable as "Grantable"
+FROM information_schema.table_privileges
+WHERE grantee = '${roleName}'
+ORDER BY table_schema, table_name, privilege_type;
+
+-- Schema privileges
+SELECT
+    n.nspname as "Schema",
+    'USAGE' as "Privilege"
+FROM pg_namespace n
+WHERE has_schema_privilege('${roleName}', n.nspname, 'USAGE')
+AND n.nspname NOT LIKE 'pg_%'
+AND n.nspname != 'information_schema';`)
       .show();
 
   } catch (err: any) {
@@ -122,7 +158,7 @@ export async function copyRoleNameQuoted(item: DatabaseTreeItem): Promise<void> 
 }
 
 /**
- * Generate CREATE USER script
+ * Generate CREATE USER script — single-operation notebook
  */
 export async function cmdAddUser(item: DatabaseTreeItem, context: vscode.ExtensionContext): Promise<void> {
   let dbConn;
@@ -131,20 +167,8 @@ export async function cmdAddUser(item: DatabaseTreeItem, context: vscode.Extensi
     const { metadata } = dbConn;
 
     await new NotebookBuilder(metadata)
-      .addMarkdown(
-        MarkdownUtils.header('➕ Create New User') +
-        MarkdownUtils.infoBox('Users are roles with LOGIN privilege. Modify the template below to create a new user.') +
-        '\n\n#### 👤 User Attributes\n\n' +
-        MarkdownUtils.operationsTable([
-          { operation: 'LOGIN', description: 'Allows the role to connect to the database' },
-          { operation: 'PASSWORD', description: 'Sets the authentication password' },
-          { operation: 'CREATEDB', description: 'Allows creating new databases' },
-          { operation: 'CREATEROLE', description: 'Allows creating new roles' },
-          { operation: 'SUPERUSER', description: 'Grants all privileges (use with caution!)' },
-          { operation: 'VALID UNTIL', description: 'Sets password expiration date' }
-        ])
-      )
-      .addSql(UsersRolesSQL.createUser(item.databaseName || 'database_name'))
+      .addMarkdown(`### ➕ Create New User\n\nCreate a new PostgreSQL user with login privileges.`)
+      .addSql(UserRoleSQL.createUser(item.databaseName || 'database_name'))
       .show();
   } catch (err: any) {
     await ErrorHandlers.handleCommandError(err, 'create user notebook');
@@ -154,7 +178,7 @@ export async function cmdAddUser(item: DatabaseTreeItem, context: vscode.Extensi
 }
 
 /**
- * Generate CREATE ROLE script
+ * Generate CREATE ROLE script — single-operation notebook
  */
 export async function cmdAddRole(item: DatabaseTreeItem, context: vscode.ExtensionContext): Promise<void> {
   let dbConn;
@@ -163,18 +187,8 @@ export async function cmdAddRole(item: DatabaseTreeItem, context: vscode.Extensi
     const { metadata } = dbConn;
 
     await new NotebookBuilder(metadata)
-      .addMarkdown(
-        MarkdownUtils.header('➕ Create New Role') +
-        MarkdownUtils.infoBox('Roles are used to manage database access permissions. Roles without LOGIN are typically used for grouping privileges.') +
-        '\n\n#### 🛡️ Role Attributes\n\n' +
-        MarkdownUtils.operationsTable([
-          { operation: 'NOLOGIN', description: 'Role cannot connect directly (default for roles)' },
-          { operation: 'INHERIT', description: 'Role inherits privileges from member roles' },
-          { operation: 'CREATEDB', description: 'Role can create databases' },
-          { operation: 'CREATEROLE', description: 'Role can create other roles' }
-        ])
-      )
-      .addSql(UsersRolesSQL.createRole())
+      .addMarkdown(`### ➕ Create New Role\n\nCreate a new PostgreSQL role for grouping privileges.`)
+      .addSql(UserRoleSQL.createRole())
       .show();
   } catch (err: any) {
     await ErrorHandlers.handleCommandError(err, 'create role notebook');
@@ -184,7 +198,7 @@ export async function cmdAddRole(item: DatabaseTreeItem, context: vscode.Extensi
 }
 
 /**
- * Generate ALTER ROLE script
+ * Generate ALTER ROLE script — single-operation notebook
  */
 export async function cmdEditRole(item: DatabaseTreeItem, context: vscode.ExtensionContext): Promise<void> {
   let dbConn;
@@ -193,20 +207,8 @@ export async function cmdEditRole(item: DatabaseTreeItem, context: vscode.Extens
     const { metadata } = dbConn;
 
     await new NotebookBuilder(metadata)
-      .addMarkdown(
-        MarkdownUtils.header(`✏️ Edit Role: \`${item.label}\``) +
-        MarkdownUtils.infoBox('Modify the role\'s attributes using ALTER ROLE. Changes take effect immediately.') +
-        '\n\n#### 🛠️ Available Modifications\n\n' +
-        MarkdownUtils.operationsTable([
-          { operation: 'PASSWORD', description: 'Change the role password' },
-          { operation: 'LOGIN/NOLOGIN', description: 'Enable or disable login capability' },
-          { operation: 'SUPERUSER', description: 'Grant or revoke superuser status' },
-          { operation: 'CREATEDB', description: 'Grant or revoke database creation' },
-          { operation: 'CREATEROLE', description: 'Grant or revoke role creation' },
-          { operation: 'VALID UNTIL', description: 'Set password expiration' }
-        ])
-      )
-      .addSql(UsersRolesSQL.alterRole(item.label))
+      .addMarkdown(`### ✏️ Edit Role: \`${item.label}\`\n\nModify role attributes using ALTER ROLE.`)
+      .addSql(UserRoleSQL.alterRole(item.label))
       .show();
   } catch (err: any) {
     await ErrorHandlers.handleCommandError(err, 'edit role');
@@ -216,7 +218,7 @@ export async function cmdEditRole(item: DatabaseTreeItem, context: vscode.Extens
 }
 
 /**
- * Generate GRANT/REVOKE script
+ * Generate GRANT script — single-operation notebook
  */
 export async function cmdGrantRevokeRole(item: DatabaseTreeItem, context: vscode.ExtensionContext): Promise<void> {
   let dbConn;
@@ -224,31 +226,9 @@ export async function cmdGrantRevokeRole(item: DatabaseTreeItem, context: vscode
     dbConn = await getDatabaseConnection(item, validateRoleItem);
     const { metadata } = dbConn;
 
-    const dbName = item.databaseName || 'database_name';
-
     await new NotebookBuilder(metadata)
-      .addMarkdown(
-        MarkdownUtils.header(`🔐 Manage Privileges: \`${item.label}\``) +
-        MarkdownUtils.infoBox('Grant or revoke privileges for this role. Uncomment the operations you want to execute.') +
-        '\n\n#### 🔑 Privilege Levels\n\n' +
-        MarkdownUtils.operationsTable([
-          { operation: 'Database', description: 'CONNECT, CREATE, TEMP privileges' },
-          { operation: 'Schema', description: 'USAGE, CREATE privileges' },
-          { operation: 'Table', description: 'SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER' },
-          { operation: 'Function', description: 'EXECUTE privilege' },
-          { operation: 'Sequence', description: 'USAGE, SELECT, UPDATE privileges' }
-        ])
-      )
-      .addMarkdown('##### 🗄️ Database Privileges')
-      .addSql(UsersRolesSQL.privileges.database(item.label, dbName))
-      .addMarkdown('##### 📂 Schema Privileges')
-      .addSql(UsersRolesSQL.privileges.schema(item.label))
-      .addMarkdown('##### 📊 Table Privileges')
-      .addSql(UsersRolesSQL.privileges.table(item.label))
-      .addMarkdown('##### ⚡ Function & Sequence Privileges')
-      .addSql(UsersRolesSQL.privileges.function(item.label))
-      .addMarkdown('##### 👥 Role Membership')
-      .addSql(UsersRolesSQL.privileges.roleMembership(item.label))
+      .addMarkdown(`### 🔐 Manage Privileges: \`${item.label}\`\n\nGrant or revoke privileges for this role.`)
+      .addSql(UserRoleSQL.grant(item.label))
       .show();
   } catch (err: any) {
     await ErrorHandlers.handleCommandError(err, 'manage privileges');
@@ -258,7 +238,7 @@ export async function cmdGrantRevokeRole(item: DatabaseTreeItem, context: vscode
 }
 
 /**
- * Generate DROP ROLE script
+ * Generate DROP ROLE script — single-operation notebook
  */
 export async function cmdDropRole(item: DatabaseTreeItem, context: vscode.ExtensionContext): Promise<void> {
   let dbConn;
@@ -267,17 +247,8 @@ export async function cmdDropRole(item: DatabaseTreeItem, context: vscode.Extens
     const { metadata } = dbConn;
 
     await new NotebookBuilder(metadata)
-      .addMarkdown(
-        MarkdownUtils.header(`❌ Drop Role: \`${item.label}\``) +
-        MarkdownUtils.dangerBox('This will permanently delete the role. All objects owned by this role must be reassigned or dropped first.') +
-        '\n\n#### ⚠️ Before Dropping\n\n' +
-        '1. **Reassign owned objects** to another role\n' +
-        '2. **Drop owned objects** if no longer needed\n' +
-        '3. **Revoke privileges** granted to this role\n' +
-        '4. **Remove role memberships**\n\n' +
-        MarkdownUtils.warningBox('Cannot drop a role that owns objects or has privileges on objects.')
-      )
-      .addSql(UsersRolesSQL.dropRole(item.label))
+      .addMarkdown(`### ❌ Drop Role: \`${item.label}\`\n\n⚠️ **Warning:** This permanently deletes the role. Reassign or drop owned objects first.`)
+      .addSql(UserRoleSQL.dropRole(item.label))
       .show();
   } catch (err: any) {
     await ErrorHandlers.handleCommandError(err, 'drop role');
@@ -287,7 +258,8 @@ export async function cmdDropRole(item: DatabaseTreeItem, context: vscode.Extens
 }
 
 /**
- * Show role operations notebook
+ * Show role operations notebook — Operations_Notebook
+ * Cell order: read → write/modify → destructive
  */
 export async function cmdRoleOperations(item: DatabaseTreeItem, context: vscode.ExtensionContext): Promise<void> {
   let dbConn;
@@ -296,33 +268,29 @@ export async function cmdRoleOperations(item: DatabaseTreeItem, context: vscode.
     const { metadata } = dbConn;
 
     await new NotebookBuilder(metadata)
-      .addMarkdown(
-        MarkdownUtils.header(`🛠️ Role Operations: \`${item.label}\``) +
-        MarkdownUtils.infoBox('This notebook provides a dashboard for managing your role. Each cell is a ready-to-execute template.') +
-        '\n\n#### ⚡ Available Operations\n\n' +
-        MarkdownUtils.operationsTable([
-          { operation: '🔍 View Attributes', description: 'Display role settings and configuration', riskLevel: '🟢 Safe' },
-          { operation: '👥 View Memberships', description: 'Show role membership hierarchy', riskLevel: '🟢 Safe' },
-          { operation: '🔑 View Privileges', description: 'List all granted privileges', riskLevel: '🟢 Safe' },
-          { operation: '✏️ Modify Role', description: 'Change role attributes', riskLevel: '🟡 Low Risk' },
-          { operation: '🔑 Change Password', description: 'Update role password', riskLevel: '🟡 Low Risk' },
-          { operation: '❌ Drop Role', description: 'Remove role permanently', riskLevel: '🔴 Destructive' }
-        ]) + '\n' +
-        MarkdownUtils.successBox('Use Ctrl+Enter to execute individual cells.') +
-        '\n---'
-      )
-      .addMarkdown('##### 🔍 View Role Attributes')
-      .addSql(`-- View role attributes\nSELECT \n    r.rolname as "Name",\n    r.rolsuper as "Superuser",\n    r.rolinherit as "Inherit",\n    r.rolcreaterole as "Create Role",\n    r.rolcreatedb as "Create DB",\n    r.rolcanlogin as "Can Login",\n    r.rolreplication as "Replication",\n    r.rolconnlimit as "Connection Limit",\n    r.rolvaliduntil as "Valid Until",\n    r.rolbypassrls as "Bypass RLS",\n    pg_catalog.shobj_description(r.oid, 'pg_authid') as "Description"\nFROM pg_roles r\nWHERE r.rolname = '${item.label}';`)
-      .addMarkdown('##### 👥 Role Memberships')
-      .addSql(`-- Roles this role belongs to\nSELECT \n    m.rolname as "Member Of",\n    g.rolname as "Granted By",\n    am.admin_option as "Admin Option"\nFROM pg_auth_members am\nJOIN pg_roles r ON r.oid = am.member\nJOIN pg_roles m ON m.oid = am.roleid\nJOIN pg_roles g ON g.oid = am.grantor\nWHERE r.rolname = '${item.label}';\n\n-- Roles that belong to this role\nSELECT \n    m.rolname as "Has Member",\n    g.rolname as "Granted By",\n    am.admin_option as "Admin Option"\nFROM pg_auth_members am\nJOIN pg_roles r ON r.oid = am.roleid\nJOIN pg_roles m ON m.oid = am.member\nJOIN pg_roles g ON g.oid = am.grantor\nWHERE r.rolname = '${item.label}';`)
-      .addMarkdown('##### 🔑 Granted Privileges')
-      .addSql(`-- Table privileges\nSELECT \n    table_schema as "Schema",\n    table_name as "Table",\n    privilege_type as "Privilege",\n    is_grantable as "Grantable"\nFROM information_schema.table_privileges\nWHERE grantee = '${item.label}'\nORDER BY table_schema, table_name, privilege_type;\n\n-- Schema privileges\nSELECT \n    n.nspname as "Schema",\n    'USAGE' as "Privilege"\nFROM pg_namespace n\nWHERE has_schema_privilege('${item.label}', n.nspname, 'USAGE')\nAND n.nspname NOT LIKE 'pg_%'\nAND n.nspname != 'information_schema';`)
-      .addMarkdown('##### ✏️ Modify Role')
-      .addSql(`-- Modify role attributes\nALTER ROLE ${item.label}\n    -- Uncomment and modify:\n    -- WITH PASSWORD 'new_password'\n    -- SUPERUSER | NOSUPERUSER\n    -- CREATEDB | NOCREATEDB\n    -- CREATEROLE | NOCREATEROLE\n    -- LOGIN | NOLOGIN\n    -- VALID UNTIL '2025-12-31'\n;`)
-      .addMarkdown('##### 🔑 Change Password')
-      .addSql(`-- Change role password\nALTER ROLE ${item.label} WITH PASSWORD 'new_secure_password';\n\n-- Set password with expiration\n-- ALTER ROLE ${item.label} WITH PASSWORD 'new_password' VALID UNTIL '2025-12-31';`)
-      .addMarkdown(MarkdownUtils.dangerBox('The following operation is destructive and cannot be undone.') + '\n\n##### ❌ Drop Role')
-      .addSql(`-- Reassign owned objects first\n-- REASSIGN OWNED BY ${item.label} TO postgres;\n\n-- Drop owned objects\n-- DROP OWNED BY ${item.label};\n\n-- Drop the role\n-- DROP ROLE ${item.label};`)
+      .addMarkdown(`### 🛠️ Role Operations: \`${item.label}\`\n\nCommon operations for this PostgreSQL role.`)
+      .addMarkdown('##### 🔍 Role Attributes')
+      .addSql(`-- View role attributes
+SELECT
+    r.rolname as "Name",
+    r.rolsuper as "Superuser",
+    r.rolinherit as "Inherit",
+    r.rolcreaterole as "Create Role",
+    r.rolcreatedb as "Create DB",
+    r.rolcanlogin as "Can Login",
+    r.rolreplication as "Replication",
+    r.rolconnlimit as "Connection Limit",
+    r.rolvaliduntil as "Valid Until",
+    r.rolbypassrls as "Bypass RLS",
+    pg_catalog.shobj_description(r.oid, 'pg_authid') as "Description"
+FROM pg_roles r
+WHERE r.rolname = '${item.label}';`)
+      .addMarkdown('##### ✏️ ALTER ROLE')
+      .addSql(UserRoleSQL.alterRole(item.label))
+      .addMarkdown('##### 🔐 GRANT Privileges')
+      .addSql(UserRoleSQL.grant(item.label))
+      .addMarkdown('##### ❌ DROP ROLE — ⚠️ Warning: permanently deletes the role')
+      .addSql(UserRoleSQL.dropRole(item.label))
       .show();
   } catch (err: any) {
     await ErrorHandlers.handleCommandError(err, 'show role operations');
@@ -341,11 +309,24 @@ export async function viewRoleDependencies(item: DatabaseTreeItem): Promise<void
     const { metadata } = dbConn;
 
     await new NotebookBuilder(metadata)
-      .addMarkdown(
-        MarkdownUtils.header(`🔗 Role Dependencies: \`${item.label}\``) +
-        MarkdownUtils.infoBox('Shows objects owned by or dependent on this role.')
-      )
-      .addSql(UsersRolesSQL.roleDependencies(item.label))
+      .addMarkdown(`### 🔗 Role Dependencies: \`${item.label}\`\n\nShows objects owned by or dependent on this role.`)
+      .addSql(`-- Objects owned by this role
+SELECT
+    n.nspname as "Schema",
+    c.relname as "Object Name",
+    CASE c.relkind
+        WHEN 'r' THEN 'Table'
+        WHEN 'v' THEN 'View'
+        WHEN 'm' THEN 'Materialized View'
+        WHEN 'S' THEN 'Sequence'
+        WHEN 'f' THEN 'Foreign Table'
+        ELSE c.relkind::text
+    END as "Type"
+FROM pg_class c
+JOIN pg_namespace n ON n.oid = c.relnamespace
+JOIN pg_roles r ON r.oid = c.relowner
+WHERE r.rolname = '${item.label}'
+ORDER BY n.nspname, c.relname;`)
       .show();
   } catch (err: any) {
     await ErrorHandlers.handleCommandError(err, 'view role dependencies');

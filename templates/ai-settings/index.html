@@ -18,33 +18,30 @@
         </div>
 
         <div class="card">
-            <div id="message" class="message"></div>
-
             <form id="settingsForm">
                 <div class="section-header">
                     <div class="section-icon">🤖</div>
                     <div class="section-title">AI Provider Configuration</div>
                 </div>
 
-                <div class="info-box info">
-                    <span class="info-box-icon">💡</span>
+                <div id="githubAuthBanner" class="info-box info hidden">
+                    <span class="info-box-icon">🔐</span>
                     <div>
-                        <strong>About AI Features</strong>
-                        The AI assistant helps you write SQL queries, understand database concepts, and optimize your PostgreSQL workflows.
+                        <strong>GitHub account access</strong>
+                        <div id="githubAuthStatusText">Not connected</div>
                     </div>
                 </div>
 
                 <div class="form-group">
-                    <label for="provider">
-                        AI Provider
-                        <span class="required-indicator">*</span>
-                        <span class="label-description">Select which AI service to use</span>
-                    </label>
+                    <label for="provider">AI Provider</label>
                     <select id="provider" required>
                         <option value="vscode-lm">VS Code Language Model (GitHub Copilot)</option>
+                        <option value="github">GitHub Models (GitHub account)</option>
                         <option value="openai">OpenAI (GPT-4, GPT-3.5)</option>
                         <option value="anthropic">Anthropic (Claude)</option>
                         <option value="gemini">Google Gemini</option>
+                        <option value="ollama">Ollama (local)</option>
+                        <option value="lmstudio">LM Studio (local)</option>
                         <option value="custom">Custom Endpoint (OpenAI-compatible)</option>
                     </select>
                 </div>
@@ -60,7 +57,7 @@
                     </div>
                     <div class="form-group">
                         <label for="model-vscode-lm">
-                            Model (Optional)
+                            Model
                             <span class="label-description">
                                 <button type="button" class="btn-link list-models-btn" data-provider="vscode-lm">List available models</button>
                             </span>
@@ -72,15 +69,42 @@
                     </div>
                 </div>
 
+                <!-- GitHub Models Details -->
+                <div id="provider-github" class="provider-details">
+                    <div class="info-box info">
+                        <span class="info-box-icon">🧑‍💻</span>
+                        <div>
+                            <strong>GitHub Models</strong>
+                            Sign in with your GitHub account to use the GitHub Models catalog and chat inference API.
+                        </div>
+                    </div>
+                    <div class="github-auth-actions">
+                        <button type="button" id="githubConnectBtn" class="btn-secondary">
+                            <span class="btn-icon">↗</span><span>Connect GitHub</span>
+                        </button>
+                        <button type="button" id="githubDisconnectBtn" class="btn-secondary">
+                            <span class="btn-icon">⎋</span><span>Disconnect</span>
+                        </button>
+                    </div>
+                    <div class="form-group">
+                        <label for="model-github">
+                            Model
+                            <span class="label-description">
+                                <button type="button" class="btn-link list-models-btn" data-provider="github">List available models</button>
+                            </span>
+                        </label>
+                        <select id="model-github-select" class="hidden">
+                            <option value="">Select a model...</option>
+                        </select>
+                        <input type="text" id="model-github" placeholder="openai/gpt-4.1">
+                    </div>
+                </div>
+
                 <!-- OpenAI Details -->
                 <div id="provider-openai" class="provider-details">
                     <div class="form-group">
-                        <label for="apiKey-openai">
-                            OpenAI API Key
-                            <span class="required-indicator">*</span>
-                            <span class="label-description">Get your API key from <a href="https://platform.openai.com/api-keys" class="link" target="_blank">OpenAI Platform</a></span>
-                        </label>
-                        <input type="password" id="apiKey-openai" placeholder="sk-...">
+                        <label for="apiKey-openai">OpenAI API Key <span class="required-indicator">*</span> <a href="https://platform.openai.com/api-keys" class="label-link" target="_blank">↗ Get key</a></label>
+                        <input type="password" id="apiKey-openai" placeholder="sk-… · platform.openai.com/api-keys">
                     </div>
                     <div class="form-group">
                         <label for="model-openai">
@@ -99,12 +123,8 @@
                 <!-- Anthropic Details -->
                 <div id="provider-anthropic" class="provider-details">
                     <div class="form-group">
-                        <label for="apiKey-anthropic">
-                            Anthropic API Key
-                            <span class="required-indicator">*</span>
-                            <span class="label-description">Get your API key from <a href="https://console.anthropic.com/settings/keys" class="link" target="_blank">Anthropic Console</a></span>
-                        </label>
-                        <input type="password" id="apiKey-anthropic" placeholder="sk-ant-...">
+                        <label for="apiKey-anthropic">Anthropic API Key <span class="required-indicator">*</span> <a href="https://console.anthropic.com/settings/keys" class="label-link" target="_blank">↗ Get key</a></label>
+                        <input type="password" id="apiKey-anthropic" placeholder="sk-ant-… · console.anthropic.com">
                     </div>
                     <div class="form-group">
                         <label for="model-anthropic">
@@ -123,12 +143,8 @@
                 <!-- Gemini Details -->
                 <div id="provider-gemini" class="provider-details">
                     <div class="form-group">
-                        <label for="apiKey-gemini">
-                            Google API Key
-                            <span class="required-indicator">*</span>
-                            <span class="label-description">Get your API key from <a href="https://makersuite.google.com/app/apikey" class="link" target="_blank">Google AI Studio</a></span>
-                        </label>
-                        <input type="password" id="apiKey-gemini" placeholder="AIza...">
+                        <label for="apiKey-gemini">Google API Key <span class="required-indicator">*</span> <a href="https://aistudio.google.com/app/apikey" class="label-link" target="_blank">↗ Get key</a></label>
+                        <input type="password" id="apiKey-gemini" placeholder="AIza… · aistudio.google.com">
                     </div>
                     <div class="form-group">
                         <label for="model-gemini">
@@ -144,6 +160,60 @@
                     </div>
                 </div>
 
+                <!-- Ollama Details -->
+                <div id="provider-ollama" class="provider-details">
+                    <div class="info-box info">
+                        <span class="info-box-icon">🦙</span>
+                        <div>
+                            <strong>Ollama</strong>
+                            Runs models locally. Make sure Ollama is running — default endpoint is pre-filled. <a href="https://ollama.com" class="link" target="_blank">ollama.com ↗</a>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="endpoint-ollama">API Endpoint</label>
+                        <input type="text" id="endpoint-ollama" placeholder="http://localhost:11434/v1/chat/completions" value="http://localhost:11434/v1/chat/completions">
+                    </div>
+                    <div class="form-group">
+                        <label for="model-ollama">
+                            Model
+                            <span class="label-description">
+                                <button type="button" class="btn-link list-models-btn" data-provider="ollama">List available models</button>
+                            </span>
+                        </label>
+                        <select id="model-ollama-select" class="hidden">
+                            <option value="">Select a model...</option>
+                        </select>
+                        <input type="text" id="model-ollama" placeholder="llama3, mistral, codellama…">
+                    </div>
+                </div>
+
+                <!-- LM Studio Details -->
+                <div id="provider-lmstudio" class="provider-details">
+                    <div class="info-box info">
+                        <span class="info-box-icon">🖥️</span>
+                        <div>
+                            <strong>LM Studio</strong>
+                            Runs models locally via LM Studio's built-in server. Start the server in LM Studio first — default endpoint is pre-filled. <a href="https://lmstudio.ai" class="link" target="_blank">lmstudio.ai ↗</a>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="endpoint-lmstudio">API Endpoint</label>
+                        <input type="text" id="endpoint-lmstudio" placeholder="http://localhost:1234/v1/chat/completions" value="http://localhost:1234/v1/chat/completions">
+                    </div>
+                    <div class="form-group">
+                        <label for="model-lmstudio">
+                            Model
+                            <span class="label-description">
+                                <button type="button" class="btn-link list-models-btn" data-provider="lmstudio">List available models</button>
+                            </span>
+                        </label>
+                        <select id="model-lmstudio-select" class="hidden">
+                            <option value="">Select a model...</option>
+                        </select>
+                        <input type="text" id="model-lmstudio" placeholder="Leave empty to use the loaded model">
+                    </div>
+                </div>
+
                 <!-- Custom Endpoint Details -->
                 <div id="provider-custom" class="provider-details">
                     <div class="info-box warning">
@@ -154,38 +224,29 @@
                         </div>
                     </div>
                     <div class="form-group">
-                        <label for="endpoint-custom">
-                            API Endpoint
-                            <span class="required-indicator">*</span>
-                            <span class="label-description">Full URL to your custom API endpoint</span>
-                        </label>
+                        <label for="endpoint-custom">API Endpoint <span class="required-indicator">*</span></label>
                         <input type="text" id="endpoint-custom" placeholder="http://localhost:8080/v1/chat/completions">
                     </div>
                     <div class="form-group">
-                        <label for="apiKey-custom">
-                            API Key (Optional)
-                            <span class="label-description">Leave empty if not required</span>
-                        </label>
-                        <input type="password" id="apiKey-custom" placeholder="Optional">
+                        <label for="apiKey-custom">API Key</label>
+                        <input type="password" id="apiKey-custom" placeholder="Optional — leave empty if not required">
                     </div>
                     <div class="form-group">
-                        <label for="model-custom">
-                            Model Name
-                            <span class="label-description">Model identifier for your custom endpoint</span>
-                        </label>
-                        <input type="text" id="model-custom" placeholder="custom-model">
+                        <label for="model-custom">Model Name</label>
+                        <input type="text" id="model-custom" placeholder="Model identifier for your endpoint">
                     </div>
                 </div>
 
                 <div class="actions">
-                    <button type="button" id="testBtn" class="btn-secondary">
-                        <span class="btn-icon">⚡</span>
-                        <span>Test Connection</span>
-                    </button>
-                    <button type="submit" id="saveBtn" class="btn-primary">
-                        <span class="btn-icon">✓</span>
-                        <span>Save Settings</span>
-                    </button>
+                    <div id="message" class="status-line"></div>
+                    <div class="actions-buttons">
+                        <button type="button" id="testBtn" class="btn-secondary">
+                            <span>Test</span>
+                        </button>
+                        <button type="submit" id="saveBtn" class="btn-primary">
+                            <span>Save</span>
+                        </button>
+                    </div>
                 </div>
             </form>
         </div>

@@ -1,14 +1,50 @@
 import * as vscode from 'vscode';
 
+export interface PillData {
+  success: boolean;
+  elapsedSeconds?: number;
+  rowCount?: number;
+}
+
 /**
  * Provides CodeLens actions for SQL queries in notebook cells
  * Detects SELECT queries and offers EXPLAIN and EXPLAIN ANALYZE options
  */
 export class QueryCodeLensProvider implements vscode.CodeLensProvider {
+  private static _instance: QueryCodeLensProvider | undefined;
+
+  public static getInstance(): QueryCodeLensProvider | undefined {
+    return QueryCodeLensProvider._instance;
+  }
+
+  public static setInstance(instance: QueryCodeLensProvider): void {
+    QueryCodeLensProvider._instance = instance;
+  }
+
   private _onDidChangeCodeLenses: vscode.EventEmitter<void> = new vscode.EventEmitter<void>();
   public readonly onDidChangeCodeLenses: vscode.Event<void> = this._onDidChangeCodeLenses.event;
+  private pillData: Map<string, PillData> = new Map();
+  private aiWorkingCells: Set<string> = new Set();
+
+  public setAiWorking(cellUri: string, working: boolean): void {
+    if (working) {
+      this.aiWorkingCells.add(cellUri);
+    } else {
+      this.aiWorkingCells.delete(cellUri);
+    }
+    this._onDidChangeCodeLenses.fire();
+  }
+
+  public isAiWorking(cellUri: string): boolean {
+    return this.aiWorkingCells.has(cellUri);
+  }
 
   public refresh(): void {
+    this._onDidChangeCodeLenses.fire();
+  }
+
+  public updatePill(cellUri: string, data: PillData): void {
+    this.pillData.set(cellUri, data);
     this._onDidChangeCodeLenses.fire();
   }
 
@@ -34,13 +70,14 @@ export class QueryCodeLensProvider implements vscode.CodeLensProvider {
 
     const codeLenses: vscode.CodeLens[] = [];
     const range = new vscode.Range(0, 0, 0, 0);
+    const isAiWorking = this.aiWorkingCells.has(document.uri.toString());
 
-    // 1. Ask AI
+    // 1. Ask AI (shows spinner while working)
     codeLenses.push(
       new vscode.CodeLens(range, {
-        title: '$(sparkle) Ask AI    ',
-        tooltip: 'Ask AI to modify this query',
-        command: 'postgres-explorer.aiAssist',
+        title: isAiWorking ? '$(loading~spin) Working...' : '✦ Ask AI',
+        tooltip: isAiWorking ? 'AI is analyzing your query...' : 'Ask AI to modify this query',
+        command: isAiWorking ? '' : 'postgres-explorer.aiAssist',
         arguments: []
       })
     );
@@ -48,7 +85,7 @@ export class QueryCodeLensProvider implements vscode.CodeLensProvider {
     // 2. Chat
     codeLenses.push(
       new vscode.CodeLens(range, {
-        title: '$(comment-discussion) Chat    ',
+        title: '◻ Chat',
         tooltip: 'Open SQL Assistant chat with this query',
         command: 'postgres-explorer.chatWithQuery',
         arguments: []
@@ -58,7 +95,7 @@ export class QueryCodeLensProvider implements vscode.CodeLensProvider {
     // 3. Save Query (Always available)
     codeLenses.push(
       new vscode.CodeLens(range, {
-        title: '$(save) Save Query    ',
+        title: '⊞ Save Query',
         tooltip: 'Save this query to the library for easy reuse',
         command: 'postgres-explorer.saveQueryToLibraryUI'
       })
@@ -69,10 +106,25 @@ export class QueryCodeLensProvider implements vscode.CodeLensProvider {
       // 4. EXPLAIN ANALYZE
       codeLenses.push(
         new vscode.CodeLens(range, {
-          title: '$(telescope) Explain Analyze',
+          title: '⟐ Explain Analyze',
           tooltip: 'Show query execution plan with actual runtime statistics',
           command: 'postgres-explorer.explainQuery',
           arguments: [document.uri, true]
+        })
+      );
+    }
+
+    // 5. Execution time pill (shown after execution)
+    const pill = this.pillData.get(document.uri.toString());
+    if (pill) {
+      const pillTitle = pill.success
+        ? `${pill.elapsedSeconds}s · ${pill.rowCount} rows`
+        : 'failed';
+      codeLenses.push(
+        new vscode.CodeLens(range, {
+          title: pillTitle,
+          tooltip: pill.success ? 'Last execution result' : 'Last execution failed',
+          command: ''
         })
       );
     }

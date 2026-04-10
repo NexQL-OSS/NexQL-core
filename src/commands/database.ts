@@ -770,7 +770,7 @@ export async function cmdQueryTool(item: DatabaseTreeItem, context: vscode.Exten
       )
       .addSql(`-- Write your SQL query here
 SELECT 1;`)
-      .show();
+      .showNew();  // always open a fresh notebook
   } catch (err: any) {
     await ErrorHandlers.handleCommandError(err, 'open query tool');
   } finally {

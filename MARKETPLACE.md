@@ -43,7 +43,7 @@
 | 🔍 **EXPLAIN CodeLens** | One-click EXPLAIN/ANALYZE with results in notebooks |
 | 🛡️ **Auto-LIMIT** | Automatic query protection with configurable row limits (default 1000) |
 | 🌍 **Foreign Data Wrappers** | Manage foreign servers, user mappings, and tables |
-| 🤖 **AI-Powered** | GitHub Copilot, OpenAI, Anthropic, and Google Gemini integration |
+| 🤖 **AI-Powered** | GitHub Copilot, GitHub Models, OpenAI, Anthropic, and Google Gemini integration |
 | ⌨️ **Developer Tools** | IntelliSense, keyboard shortcuts, PSQL terminal access |
 | 📤 **Export Data** | Export query results to CSV, JSON, or Excel formats |
 
@@ -160,6 +160,7 @@ PgStudio provides a **Safe Execution Model** for AI interactions.
 
 **Supported AI Providers:**
 - GitHub Copilot (VS Code LM)
+- GitHub Models (GitHub account sign-in)
 - OpenAI
 - Anthropic Claude
 - Google Gemini
@@ -229,16 +230,16 @@ code --install-extension ric-v.postgres-explorer
 
 ## 📚 Resources
 
-- 📖 [Full Documentation](https://dev-asterix.github.io/yape/)
-- 🐛 [Report Issues](https://github.com/dev-asterix/yape/issues)
-- 💡 [Request Features](https://github.com/dev-asterix/yape/issues/new?template=feature_request.md)
-- ⭐ [Star on GitHub](https://github.com/dev-asterix/yape)
+- 📖 [Full Documentation](https://pgstudio.astrx.dev/)
+- 🐛 [Report Issues](https://github.com/dev-asterix/PgStudio/issues)
+- 💡 [Request Features](https://github.com/dev-asterix/PgStudio/issues/new?template=feature_request.md)
+- ⭐ [Star on GitHub](https://github.com/dev-asterix/PgStudio)
 
 ---
 
 ## 📝 License
 
-This extension is licensed under the [MIT License](https://github.com/dev-asterix/yape/blob/main/LICENSE).
+This extension is licensed under the [MIT License](https://github.com/dev-asterix/PgStudio/blob/main/LICENSE).
 
 ---
 

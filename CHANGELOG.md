@@ -7,6 +7,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.9.5] - 2026-04-09
+
+### Added
+- **Image support in SQL Assistant**: Paste images directly from clipboard or upload via the new image button (🖼) in the chat input. Images render as fixed 56×56px thumbnails in a dedicated preview strip above the textarea.
+- **Image lightbox**: Click any image thumbnail (in the input strip or in message history) to open a full-size overlay preview.
+- **Vision AI support**: Images are now properly sent to AI providers that support vision — OpenAI/custom as `image_url` parts, Anthropic as `base64` image blocks, Gemini as `inline_data` parts, and VS Code LM via `LanguageModelImagePart`.
+- **File preview from chat**: Clicking an attached file chip (in the input area or in message history) opens the file as a preview tab in the VS Code editor. Works for files attached via the file picker, "Send to Chat", and "Analyze Data" buttons.
+- **GitHub Models account sign-in**: Added first-class GitHub Models provider support using VS Code GitHub authentication sessions, including model listing and connection checks from AI Settings.
+
+### Changed
+- **GitHub auth UX**: GitHub provider connection now uses the standard VS Code GitHub sign-in flow in AI Settings, with provider state reflected in the UI.
+- **Nightly release channel**: Nightly builds are now available as pre-release updates, including a dedicated Open VSX nightly companion package for early access testing.
+
+### Fixed
+- **Image CSP**: Added `img-src data: blob:` to the webview Content Security Policy so image thumbnails actually render (previously blocked by `default-src 'none'`).
+- **File path missing on attach**: Files picked via the attachment button now include their filesystem path, enabling click-to-preview.
+- **Open VSX GitHub auth fallback**: Removed invalid OAuth scope requests for GitHub session auth to prevent users from being redirected to PAT-only fallback prompts.
+
+---
+
+## [0.9.2] - 2026-04-07
+
+### Added
+- **Local AI model support**: New **Ollama** and **LM Studio** providers connect to locally-running models at their default endpoints (`http://localhost:11434` and `http://localhost:1234`). No API key required.
+- **Nightly build pipeline**: Automated GitHub Actions workflow publishes pre-release builds to VS Code Marketplace and Open VSX on every push to `main`. Nightly versions use odd minor numbers (e.g., `0.9.1.{run}`).
+- **AI response timing**: Chat responses now display elapsed time alongside token usage for quick performance feedback.
+- **Code snippet execution**: Suggestion bubbles in chat can now run code snippets directly via a new `runSnippet()` action.
+
+### Changed
+- **Connection edit flow**: Editing a connection now opens `ConnectionFormPanel` directly instead of dispatching a command, making the flow more reliable.
+- **Connection card styling**: Environment-specific accent colors (green for DEV, orange for STAGING, red for PROD) applied consistently across connection cards.
+- **Chat input focus**: `sendSuggestion()` now properly focuses the input and positions the cursor after inserting a suggestion.
+- **Publish workflow**: Version mismatch between the git tag and `package.json` now fails the build instead of emitting a warning.
+
+### Fixed
+- **Inline code rendering**: Fixed markdown rendering of inline code in chat responses (resolves display issues with meta-notation like `(u, o)`).
+- **SVG icon sizing**: Code block action buttons now have explicit `width`/`height` attributes, preventing layout inconsistencies across themes.
+
+### Removed
+- **Tree filter commands**: `postgres-explorer.filterTree` and `postgres-explorer.clearFilter` removed from activation — these experimental commands were unused.
+
+---
+
+## [0.9.0] - 2026-04-06
+
+### Added
+- **Anthropic model discovery**: AI Settings now lists Anthropic models from the official `/v1/models` API instead of a fixed local list.
+- **Guided chat responses**: Assistant replies can now include numbered follow-up questions, optional next-step suggestion bubbles, and contextual quote-style factoids or jokes when they genuinely fit.
+
+### Changed
+- **AI key lookup**: Direct AI provider keys now resolve from `SecretStorage` first, fixing false “API key required” errors when the key is already saved.
+- **Chat identity and styling**: Assistant messages are labeled **PG Studio Bot**, with improved assistant bubble contrast and quote styling for richer responses.
+- **Composer UX**: The chat input and suggestion bubbles were tightened for readability, capped to a compact height, and styled to avoid carrying stale next-step actions between chats.
+
+### Fixed
+- **Follow-up selection**: Typing a number now resolves to the corresponding numbered follow-up question from the previous assistant message, instead of being treated as a fresh prompt.
+- **Next-step carry-over**: Next-step bubbles are hidden when a new follow-up is sent or when switching chats, so actions remain specific to the active conversation.
+
 ## [0.8.8] - 2026-03-21
 
 ### Added

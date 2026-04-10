@@ -9,6 +9,7 @@ import {
   NotebookBuilder,
   QueryBuilder
 } from '../helper';
+import { TableSQL } from '../sql';
 
 export async function cmdTableOperations(item: DatabaseTreeItem, context: vscode.ExtensionContext) {
   await CommandBase.run(context, item, 'create table operations notebook', async (conn, client, metadata) => {
@@ -19,52 +20,24 @@ export async function cmdTableOperations(item: DatabaseTreeItem, context: vscode
     const tableDefinition = buildTableDefinition(item.schema!, item.label, columnsResult.rows, constraintsResult.rows);
 
     const notebook = new NotebookBuilder(metadata)
-      .addMarkdown(
-        MarkdownUtils.header(`📊 Table Operations: \`${item.schema}.${item.label}\``) +
-        MarkdownUtils.infoBox('This notebook provides comprehensive CRUD (Create, Read, Update, Delete) operations and maintenance tools for your PostgreSQL table. Each cell is a ready-to-execute template.') +
-        `\n\n#### 🎯 Available Operations\n\n` +
-        MarkdownUtils.operationsTable([
-          { operation: '🔍 View Definition', description: 'Display CREATE TABLE statement', riskLevel: '✅ Safe' },
-          { operation: '📖 Query Data', description: 'Select and view table rows', riskLevel: '✅ Safe' },
-          { operation: '➕ Insert Data', description: 'Add new rows to the table', riskLevel: '⚠️ Modifies Data' },
-          { operation: '✏️ Update Data', description: 'Modify existing rows', riskLevel: '⚠️ Modifies Data' },
-          { operation: '🗑️ Delete Data', description: 'Remove specific rows', riskLevel: '⚠️ Modifies Data' },
-          { operation: '🧹 Truncate', description: 'Remove ALL data (fast)', riskLevel: '🔴 Destructive' },
-          { operation: '❌ Drop Table', description: 'Delete table permanently', riskLevel: '🔴 Destructive' }
-        ]) +
-        MarkdownUtils.successBox('Use `Ctrl+Enter` to execute individual cells. Consider wrapping destructive operations in transactions for safety.', 'Tip') +
-        '\n\n---'
-      )
-      .addMarkdown('##### 🔍 Table Definition')
+      .addMarkdown(`### 📊 Table Operations: \`${item.schema}.${item.label}\`\n\nCommon operations for the \`${item.schema}.${item.label}\` table.`)
+      // Read operations
+      .addMarkdown('##### Table Definition')
       .addSql(`-- Table definition\n${tableDefinition}`)
-      .addMarkdown('##### 📖 Query Data')
-      .addSql(`-- Query data\nSELECT *\nFROM ${item.schema}.${item.label}\nLIMIT 100;`)
-      .addMarkdown('#### ➕ Insert Data\n\nAdd new rows to the table. Replace placeholder comments with actual column names and values.')
-      .addSql(`-- Insert data\nINSERT INTO ${item.schema}.${item.label} (\n    -- List columns here\n)\nVALUES (\n    -- List values here\n);`)
-      .addMarkdown(
-        '#### ✏️ Update Data\n\n' +
-        MarkdownUtils.warningBox('Always include a WHERE clause to avoid updating all rows unintentionally. Test with SELECT first!')
-      )
-      .addSql(`-- Update data\nUPDATE ${item.schema}.${item.label}\nSET column_name = new_value\nWHERE condition;`)
-      .addMarkdown(
-        '#### 🗑️ Delete Data\n\n' +
-        MarkdownUtils.warningBox('Deleted rows cannot be recovered unless you have backups. Always include a WHERE clause!')
-      )
-      .addSql(`-- Delete data\nDELETE FROM ${item.schema}.${item.label}\nWHERE condition;`)
-      .addMarkdown(
-        '#### 🧹 Truncate Table\n\n' +
-        MarkdownUtils.dangerBox('This removes <strong>ALL DATA</strong> from the table instantly. This operation cannot be undone. Consider backing up data first.', 'Caution')
-      )
-      .addSql(`-- Truncate table (remove all data)\nTRUNCATE TABLE ${item.schema}.${item.label};`)
-      .addMarkdown(
-        '#### ❌ Drop Table\n\n' +
-        MarkdownUtils.dangerBox('This action will <strong>PERMANENTLY DELETE</strong> the table and <strong>ALL DATA</strong>. This cannot be undone!', 'Caution') +
-        '\n\n**Before dropping:**\n' +
-        '- ✅ Verify you\'re targeting the correct table\n' +
-        '- ✅ Ensure you have recent backups\n' +
-        '- ✅ Check for dependent objects (views, foreign keys)'
-      )
-      .addSql(`-- Drop table\nDROP TABLE ${item.schema}.${item.label};`);
+      .addMarkdown('##### SELECT')
+      .addSql(TableSQL.select(item.schema!, item.label))
+      // Write/modify operations
+      .addMarkdown('##### INSERT')
+      .addSql(TableSQL.insert(item.schema!, item.label))
+      .addMarkdown('##### UPDATE')
+      .addSql(TableSQL.update(item.schema!, item.label))
+      // Destructive operations
+      .addMarkdown('##### DELETE\n\n⚠️ Warning: This operation modifies or removes data permanently.')
+      .addSql(TableSQL.delete(item.schema!, item.label))
+      .addMarkdown('##### TRUNCATE\n\n⚠️ Warning: This operation removes all rows permanently and cannot be filtered.')
+      .addSql(TableSQL.truncate(item.schema!, item.label))
+      .addMarkdown('##### DROP\n\n⚠️ Warning: This operation permanently deletes the table and all its data.')
+      .addSql(TableSQL.drop(item.schema!, item.label));
 
     await notebook.show();
   });
@@ -126,22 +99,8 @@ export async function cmdInsertTable(item: DatabaseTreeItem, context: vscode.Ext
     });
 
     await new NotebookBuilder(metadata)
-      .addMarkdown(
-        MarkdownUtils.header(`➕ Insert Data: \`${item.schema}.${item.label}\``) +
-        MarkdownUtils.infoBox('Replace placeholder values below with your actual data. Use the data type reference to format values correctly.') +
-        `\n\n#### 📋 Common Data Type Formats\n\n` +
-        MarkdownUtils.propertiesTable({
-          'Text/Varchar': "`'example text'` (Single quotes required)",
-          'Integer/Numeric': "`42` or `3.14` (No quotes)",
-          'Boolean': "`true` or `false` (Lowercase, no quotes)",
-          'Date': "`'2024-01-15'` (Format: YYYY-MM-DD)",
-          'Timestamp': "`'2024-01-15 14:30:00'` (Or use `NOW()`)",
-          'UUID': "`'550e8400...'` (Or use `gen_random_uuid()`)",
-          'JSON/JSONB': "`'{\"key\": \"value\"}'` (Valid JSON in quotes)",
-          'NULL': "`NULL` (For optional fields)"
-        }) +
-        MarkdownUtils.successBox('Use `RETURNING *` to see the inserted row immediately. For bulk inserts, specify multiple value tuples.', 'Tip')
-      )
+      .addMarkdown(`### ➕ Insert Data: \`${item.schema}.${item.label}\`\n\nInsert a new row into the \`${item.schema}.${item.label}\` table.`)
+      .addMarkdown('##### INSERT')
       .addSql(`-- Insert single row\nINSERT INTO ${item.schema}.${item.label} (\n    ${columns.join(',\n    ')}\n)\nVALUES (\n    ${placeholders.join(',\n    ')}\n)\nRETURNING *;\n\n-- Insert multiple rows (example)\n/*\nINSERT INTO ${item.schema}.${item.label} (\n    ${columns.join(',\n    ')}\n)\nVALUES\n    (${placeholders.join(', ')}),\n    (${placeholders.join(', ')})\nRETURNING *;\n*/`)
       .show();
   });
@@ -167,26 +126,8 @@ export async function cmdUpdateTable(item: DatabaseTreeItem, context: vscode.Ext
     }).join(',\n    ');
 
     await new NotebookBuilder(metadata)
-      .addMarkdown(
-        MarkdownUtils.header(`✏️ Update Data: \`${item.schema}.${item.label}\``) +
-        MarkdownUtils.warningBox('Always include a WHERE clause to avoid updating all rows unintentionally. Test with SELECT first!') +
-        `\n\n#### 🎯 Safety Checklist\n\n` +
-        MarkdownUtils.propertiesTable({
-          '✅ Test WHERE': 'Test your WHERE clause with a SELECT query first',
-          '✅ Transaction': 'Consider using a transaction (BEGIN/COMMIT/ROLLBACK)',
-          '✅ Verify Count': 'Verify the number of affected rows matches expectations',
-          '✅ Backup': 'Have a backup if updating critical data'
-        }) +
-        `\n\n#### 💡 Common Update Patterns\n\n` +
-        MarkdownUtils.propertiesTable({
-          'Single Column': "`SET status = 'active'`",
-          'Multiple Columns': "`SET status = 'active', updated_at = NOW()`",
-          'Conditional': "`SET price = CASE WHEN qty > 10 THEN price * 0.9 ELSE price END`",
-          'From Table': "`FROM other_table WHERE table.id = other_table.ref_id`"
-        }) +
-        MarkdownUtils.successBox('Use `RETURNING *` to see updated rows. For safer updates, wrap in a transaction and review changes before committing.', 'Tip')
-      )
-      .addMarkdown('##### 📝 Update Command')
+      .addMarkdown(`### ✏️ Update Data: \`${item.schema}.${item.label}\`\n\nUpdate rows in the \`${item.schema}.${item.label}\` table.`)
+      .addMarkdown('##### UPDATE')
       .addSql(`-- Update data\nUPDATE ${item.schema}.${item.label}\nSET\n    -- List columns to update:\n    column_name = new_value\n${whereClause}\nRETURNING *;\n\n-- Example of updating multiple columns with CASE\n/*\nUPDATE ${item.schema}.${item.label}\nSET\n    ${updateCaseExample}\n${whereClause}\nRETURNING *;\n*/`)
       .show();
   });
@@ -208,21 +149,11 @@ export async function cmdViewTableData(item: DatabaseTreeItem, context: vscode.E
 export async function cmdDropTable(item: DatabaseTreeItem, context: vscode.ExtensionContext) {
   await CommandBase.run(context, item, 'create drop table notebook', async (conn, client, metadata) => {
     await new NotebookBuilder(metadata)
-      .addMarkdown(
-        MarkdownUtils.header(`❌ Drop Table: \`${item.schema}.${item.label}\``) +
-        MarkdownUtils.dangerBox('This action will <strong>PERMANENTLY DELETE</strong> the table and <strong>ALL DATA</strong>. This cannot be undone!', 'Caution') +
-        `\n\n#### 🔍 Pre-Drop Checklist\n\n` +
-        MarkdownUtils.propertiesTable({
-          '✅ Backups': 'Do you have recent backups of this data?',
-          '✅ Verification': 'Is this definitely the table you want to drop?',
-          '✅ Dependencies': 'Check for views, foreign keys, and app usage',
-          '✅ Production': 'Have you followed change management procedures?'
-        }) +
-        `\n\n#### 🔗 Check Dependencies\n\nRun this query first to check for dependencies:`
-      )
+      .addMarkdown(`### ❌ Drop Table: \`${item.schema}.${item.label}\`\n\nPermanently delete the \`${item.schema}.${item.label}\` table.`)
+      .addMarkdown('##### Check Dependencies')
       .addSql(QueryBuilder.objectDependencies(item.schema!, item.label))
-      .addMarkdown('#### 🗑️ Drop Command')
-      .addSql(`-- Drop table\nDROP TABLE ${item.schema}.${item.label};`)
+      .addMarkdown('##### DROP\n\n⚠️ Warning: This operation permanently deletes the table and all its data.')
+      .addSql(TableSQL.drop(item.schema!, item.label))
       .show();
   });
 }
@@ -230,28 +161,9 @@ export async function cmdDropTable(item: DatabaseTreeItem, context: vscode.Exten
 export async function cmdTruncateTable(item: DatabaseTreeItem, context: vscode.ExtensionContext) {
   await CommandBase.run(context, item, 'create truncate notebook', async (conn, client, metadata) => {
     await new NotebookBuilder(metadata)
-      .addMarkdown(
-        MarkdownUtils.header(`🧹 Truncate Table: \`${item.schema}.${item.label}\``) +
-        MarkdownUtils.dangerBox('This removes <strong>ALL DATA</strong> from the table instantly. This operation cannot be undone.', 'Caution') +
-        `\n\n#### 🔄 TRUNCATE vs DELETE\n\n` +
-        `<table style="font-size: 11px; width: 100%; border-collapse: collapse; margin-bottom: 15px;">
-    <tr><th style="text-align: left;">Feature</th><th style="text-align: left;">TRUNCATE</th><th style="text-align: left;">DELETE</th></tr>
-    <tr><td><strong>Speed</strong></td><td>⚡ Very fast</td><td>🐌 Slower</td></tr>
-    <tr><td><strong>Triggers</strong></td><td>❌ No triggers</td><td>✅ Fires triggers</td></tr>
-    <tr><td><strong>Rollback</strong></td><td>⚠️ Transaction only</td><td>✅ Can rollback</td></tr>
-    <tr><td><strong>Space</strong></td><td>✅ Reclaimed</td><td>⚠️ Needs VACUUM</td></tr>
-</table>` +
-        `\n\n#### 🔒 Safety Recommendations\n\n` +
-        MarkdownUtils.propertiesTable({
-          '✅ Backup First': 'Ensure you have recent backups',
-          '✅ Verify Table': 'Double-check you\'re truncating the correct table',
-          '✅ Transaction': 'Wrap in BEGIN/COMMIT for safety',
-          '✅ References': 'Ensure no foreign key constraints will break'
-        }) +
-        MarkdownUtils.successBox(`To truncate despite foreign key constraints, use \`TRUNCATE TABLE ${item.schema}.${item.label} CASCADE\`. This will also truncate tables that reference this table (use with extreme caution!).`, 'Tip')
-      )
-      .addMarkdown('##### 🧹 Truncate Command')
-      .addSql(`-- Truncate table\nTRUNCATE TABLE ${item.schema}.${item.label};`)
+      .addMarkdown(`### 🧹 Truncate Table: \`${item.schema}.${item.label}\`\n\nRemove all rows from the \`${item.schema}.${item.label}\` table.`)
+      .addMarkdown('##### TRUNCATE\n\n⚠️ Warning: This operation removes all rows permanently and cannot be filtered.')
+      .addSql(TableSQL.truncate(item.schema!, item.label))
       .show();
   });
 }

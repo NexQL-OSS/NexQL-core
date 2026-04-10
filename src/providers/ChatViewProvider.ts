@@ -30,6 +30,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private _messages: ChatMessage[] = [];
   private _isProcessing = false;
 
+  // Phase C: Track current connection/database context for session metadata
+  private _currentConnectionName: string | undefined;
+  private _currentDatabase: string | undefined;
+
   // Services
   private _dbObjectService: DbObjectService;
   private _aiService: AiService;
@@ -282,6 +286,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         case 'openInNotebook':
           await this._handleOpenInNotebook(data.code);
           break;
+        case 'previewFile':
+          await this._handlePreviewFile(data.path, data.name);
+          break;
       }
     });
   }
@@ -308,8 +315,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     let fullMessage = message;
     if (attachments && attachments.length > 0) {
       const attachmentLinks = attachments.map(att => {
+        if (att.type === 'image') {
+          return `\n\n🖼️ **Image:** ${att.name}`;
+        }
         if (att.path) {
-          // If path exists, create a clickable link (using file URI scheme)
           return `\n\n📎 [${att.name}](${vscode.Uri.file(att.path).toString()})`;
         } else {
           return `\n\n📎 **Attached:** ${att.name}`;
@@ -321,9 +330,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     // For AI (current turn), we need the full content
     let aiMessage = message;
     if (attachments && attachments.length > 0) {
-      const attachmentContent = attachments.map(att =>
-        `\n\nFile: ${att.name} (${att.type})\n\`\`\`${att.type}\n${att.content}\n\`\`\``
-      ).join('');
+      const attachmentContent = attachments.map(att => {
+        if (att.type === 'image') {
+          return `\n\n[Image attached: ${att.name}]`;
+        }
+        return `\n\nFile: ${att.name} (${att.type})\n\`\`\`${att.type}\n${att.content}\n\`\`\``;
+      }).join('');
       aiMessage = message + attachmentContent;
     }
 
@@ -331,6 +343,15 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     // aiMessage already has attachments, now add schema context
     if (mentions && mentions.length > 0) {
       console.log('[ChatView] Processing mentions for schema context...');
+      
+      // Phase C: Capture connection context from first mention
+      if (mentions[0]) {
+        this._currentDatabase = mentions[0].database;
+        // Note: connectionName might not be populated in DbMention, so we use connectionId as fallback
+        this._currentConnectionName = mentions[0].breadcrumb?.split('.')[0] || mentions[0].connectionId;
+        this._sendContextUpdate();
+      }
+      
       let schemaContext = '\n\n=== DATABASE SCHEMA CONTEXT (Use this information to answer the question) ===\n';
 
       for (const mention of mentions) {
@@ -402,6 +423,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       this._aiService.setMessages(this._messages);
       let responseText: string;
       let usageInfo: string | undefined;
+      const aiStartTime = Date.now();
 
       if (provider === 'vscode-lm') {
         console.log('[ChatView] Calling VS Code LM API...');
@@ -413,6 +435,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         const result = await this._aiService.callDirectApi(provider, aiMessage, config);
         responseText = result.text;
         usageInfo = result.usage;
+      }
+
+      const aiElapsed = ((Date.now() - aiStartTime) / 1000).toFixed(1);
+      if (usageInfo) {
+        usageInfo = `${usageInfo} · ${aiElapsed}s`;
+      } else {
+        usageInfo = `${aiElapsed}s`;
       }
 
       console.log('[ChatView] AI response received, length:', responseText.length);
@@ -563,12 +592,22 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           file: {
             name: fileName,
             content: truncatedContent,
-            type: this._getFileType(fileName)
+            type: this._getFileType(fileName),
+            path: fileUri[0].fsPath
           }
         });
       } catch (error) {
         vscode.window.showErrorMessage('Failed to read file');
       }
+    }
+  }
+
+  private async _handlePreviewFile(filePath: string, fileName: string): Promise<void> {
+    try {
+      const uri = vscode.Uri.file(filePath);
+      await vscode.commands.executeCommand('vscode.open', uri, { preview: true });
+    } catch (error) {
+      vscode.window.showErrorMessage(`Could not open file: ${fileName}`);
     }
   }
 
@@ -634,9 +673,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     const config = vscode.workspace.getConfiguration('postgresExplorer');
     const provider = config.get<string>('aiProvider') || 'vscode-lm';
 
+    // Phase C: Pass metadata to session service
     await this._sessionService.saveSession(
       this._messages,
-      (msg) => this._aiService.generateTitle(msg, provider)
+      (msg) => this._aiService.generateTitle(msg, provider),
+      {
+        connectionName: this._currentConnectionName,
+        database: this._currentDatabase
+      }
     );
     this._sendHistoryToWebview();
   }
@@ -668,6 +712,17 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       this._view.webview.postMessage({
         type: 'updateHistory',
         sessions: this._sessionService.getSessionSummaries()
+      });
+    }
+  }
+
+  // Phase C: Send context bar update to webview
+  private _sendContextUpdate(): void {
+    if (this._view) {
+      this._view.webview.postMessage({
+        type: 'contextUpdate',
+        connectionName: this._currentConnectionName || null,
+        database: this._currentDatabase || null
       });
     }
   }

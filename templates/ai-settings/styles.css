@@ -8,7 +8,7 @@
     --bg-color: var(--vscode-editor-background);
     --text-color: var(--vscode-editor-foreground);
     --secondary-text: var(--vscode-descriptionForeground);
-    --card-bg: var(--vscode-editor-background);
+    --card-bg: var(--vscode-sideBar-background, var(--vscode-editor-background));
     --border-color: var(--vscode-widget-border);
     --accent-color: var(--vscode-textLink-foreground);
     --hover-bg: var(--vscode-list-hoverBackground);
@@ -29,13 +29,16 @@
     --button-secondary-bg: var(--vscode-button-secondaryBackground);
     --button-secondary-fg: var(--vscode-button-secondaryForeground);
     --button-secondary-hover: var(--vscode-button-secondaryHoverBackground);
+    /* 4px spacing tokens */
+    --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-6: 24px; --sp-8: 32px;
 }
 
 body {
     background-color: var(--bg-color);
     color: var(--text-color);
     font-family: var(--font-family);
-    padding: 32px 24px;
+    font-size: 13px;
+    padding: var(--sp-8) var(--sp-6);
     line-height: 1.6;
     min-height: 100vh;
 }
@@ -54,13 +57,13 @@ body {
 
 .header {
     text-align: center;
-    margin-bottom: 32px;
+    margin-bottom: var(--sp-8);
 }
 
 .header-icon {
     width: 56px;
     height: 56px;
-    margin: 0 auto 16px;
+    margin: 0 auto var(--sp-4);
     background: linear-gradient(135deg, #8B5CF6 0%, #A78BFA 100%);
     border-radius: 14px;
     display: flex;
@@ -75,16 +78,17 @@ body {
     filter: brightness(0) invert(1);
 }
 
+/* Typography scale */
 .header h1 {
-    font-size: 28px;
+    font-size: 22px;
     font-weight: 600;
     letter-spacing: -0.5px;
-    margin-bottom: 8px;
+    margin-bottom: var(--sp-2);
 }
 
 .header p {
     color: var(--secondary-text);
-    font-size: 14px;
+    font-size: 13px;
 }
 
 .card {
@@ -92,16 +96,17 @@ body {
     border: var(--card-border);
     border-radius: var(--card-radius);
     box-shadow: var(--shadow);
-    padding: 32px;
+    padding: var(--sp-8);
     transition: box-shadow 0.3s ease;
 }
 
+/* Section headers: 12px/500 */
 .section-header {
     display: flex;
     align-items: center;
-    gap: 12px;
-    margin-bottom: 24px;
-    padding-bottom: 12px;
+    gap: var(--sp-3);
+    margin-bottom: var(--sp-6);
+    padding-bottom: var(--sp-3);
     border-bottom: 2px solid var(--border-color);
 }
 
@@ -117,22 +122,22 @@ body {
 }
 
 .section-title {
-    font-size: 15px;
-    font-weight: 600;
-    letter-spacing: -0.2px;
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.3px;
     color: var(--text-color);
 }
 
 .form-group {
-    margin-bottom: 24px;
+    margin-bottom: var(--sp-6);
 }
 
 label {
     display: flex;
     align-items: center;
     gap: 6px;
-    margin-bottom: 8px;
-    font-size: 13px;
+    margin-bottom: var(--sp-2);
+    font-size: 12px;
     font-weight: 500;
     color: var(--text-color);
 }
@@ -143,9 +148,10 @@ label {
     line-height: 1;
 }
 
+/* Meta/hints: 11px/400 muted */
 .label-hint {
     display: block;
-    font-size: 12px;
+    font-size: 11px;
     color: var(--secondary-text);
     font-weight: 400;
     margin-top: 2px;
@@ -154,7 +160,7 @@ label {
 .label-description {
     display: block;
     margin-top: 4px;
-    font-size: 12px;
+    font-size: 11px;
     color: var(--secondary-text);
     font-weight: 400;
 }
@@ -173,13 +179,13 @@ input, select {
 }
 
 input:hover, select:hover {
-    border-color: var(--accent-color);
+    border-color: var(--vscode-focusBorder);
 }
 
 input:focus, select:focus {
     outline: none;
-    border-color: var(--accent-color);
-    box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.15);
+    border-color: var(--vscode-focusBorder);
+    box-shadow: 0 0 0 1px var(--vscode-focusBorder);
 }
 
 input::placeholder {
@@ -187,25 +193,20 @@ input::placeholder {
     opacity: 0.6;
 }
 
-select {
-    cursor: pointer;
-}
+select { cursor: pointer; }
 
 .info-box {
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 14px 16px;
+    gap: var(--sp-3);
+    padding: 14px var(--sp-4);
     border-radius: 8px;
     font-size: 13px;
-    margin-bottom: 24px;
+    margin-bottom: var(--sp-6);
     border: 1.5px solid;
 }
 
-.info-box-icon {
-    font-size: 20px;
-    line-height: 1;
-}
+.info-box-icon { font-size: 20px; line-height: 1; }
 
 .info-box.info {
     background: rgba(96, 165, 250, 0.1);
@@ -225,10 +226,20 @@ select {
     font-weight: 600;
 }
 
+.github-auth-actions {
+    display: flex;
+    gap: var(--sp-2);
+    margin-bottom: var(--sp-6);
+}
+
+.github-auth-actions .btn-secondary {
+    flex: 0 0 auto;
+}
+
 .provider-details {
     display: none;
-    margin-top: 24px;
-    padding: 24px;
+    margin-top: var(--sp-6);
+    padding: var(--sp-6);
     background: rgba(96, 165, 250, 0.03);
     border-radius: 8px;
     border: 1.5px solid var(--border-color);
@@ -240,32 +251,55 @@ select {
 }
 
 .actions {
-    margin-top: 32px;
+    margin-top: var(--sp-6);
     display: flex;
-    gap: 12px;
-    padding-top: 24px;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--sp-3);
+    padding-top: var(--sp-4);
     border-top: 1px solid var(--border-color);
 }
 
-button {
-    flex: 1;
-    padding: 11px 20px;
-    border: none;
-    border-radius: 7px;
-    font-size: 13px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    font-family: var(--font-family);
+.actions-buttons {
     display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
+    gap: var(--sp-2);
+    margin-left: auto;
 }
 
-button:active:not(:disabled) {
-    transform: scale(0.98);
+/* Meta status line: 11px/400 muted */
+.status-line {
+    font-size: 11px;
+    color: var(--secondary-text);
+    display: none;
 }
+
+.status-line.success {
+    color: var(--success-color);
+    display: block;
+}
+
+.status-line.error {
+    color: var(--danger-color);
+    display: block;
+}
+
+button {
+    padding: 6px 14px;
+    border: none;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    font-family: var(--font-family);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    white-space: nowrap;
+}
+
+button:active:not(:disabled) { transform: scale(0.98); }
 
 button:disabled {
     opacity: 0.5;
@@ -276,78 +310,77 @@ button:disabled {
 .btn-primary {
     background: var(--button-bg);
     color: var(--button-fg);
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
 }
 
-.btn-primary:hover:not(:disabled) {
-    background: var(--button-hover);
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-}
+.btn-primary:hover:not(:disabled) { background: var(--button-hover); }
 
 .btn-secondary {
-    background: var(--button-secondary-bg);
+    background: transparent;
     color: var(--button-secondary-fg);
+    border: 1px solid var(--border-color);
 }
 
 .btn-secondary:hover:not(:disabled) {
-    background: var(--button-secondary-hover);
-    transform: translateY(-1px);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    background: var(--hover-bg);
+    border-color: var(--vscode-focusBorder);
 }
 
-.btn-icon {
-    font-size: 16px;
-    line-height: 1;
-}
-
-.message {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 12px 16px;
-    border-radius: 8px;
-    font-size: 13px;
-    margin-bottom: 24px;
-    display: none;
-    animation: slideDown 0.3s ease;
-}
-
-@keyframes slideDown {
-    from { opacity: 0; transform: translateY(-10px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-
-.message-icon {
-    font-size: 18px;
-    line-height: 1;
-}
-
-.message.success {
-    background: rgba(34, 197, 94, 0.1);
-    border: 1.5px solid var(--success-color);
-    color: var(--success-color);
-}
-
-.message.error {
-    background: rgba(239, 68, 68, 0.1);
-    border: 1.5px solid var(--danger-color);
+/* Destructive: always text-danger, never primary */
+.btn-danger {
+    background: transparent;
     color: var(--danger-color);
+    border: 1px solid var(--danger-color);
+}
+.btn-danger:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--danger-color) 12%, transparent);
 }
 
-.message.info {
-    background: rgba(96, 165, 250, 0.1);
-    border: 1.5px solid var(--accent-color);
-    color: var(--accent-color);
+/* Tooltip affordance: all icon-only buttons must have title attribute */
+button[title] { cursor: pointer; }
+
+.btn-icon { font-size: 14px; line-height: 1; }
+
+.hidden { display: none !important; }
+
+/* ── Skeleton loading shimmer ── */
+@keyframes skeleton-pulse {
+    0%   { opacity: 0.45; }
+    50%  { opacity: 0.9; }
+    100% { opacity: 0.45; }
+}
+.skeleton {
+    background: var(--border-color);
+    border-radius: 3px;
+    animation: skeleton-pulse 1.6s ease-in-out infinite;
 }
 
-.hidden {
-    display: none !important;
+/* ── Empty state ── */
+.empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--sp-2);
+    padding: var(--sp-6) var(--sp-4);
+    color: var(--secondary-text);
+    font-size: 12px;
+    text-align: center;
 }
+.empty-state .empty-cta {
+    margin-top: var(--sp-2);
+    padding: var(--sp-1) var(--sp-3);
+    font-size: 12px;
+    font-weight: 500;
+    background: var(--button-bg);
+    color: var(--button-fg);
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+}
+.empty-state .empty-cta:hover { background: var(--button-hover); }
 
 .model-suggestions {
-    margin-top: 8px;
-    font-size: 12px;
+    margin-top: var(--sp-2);
+    font-size: 11px;
     color: var(--secondary-text);
 }
 
@@ -363,7 +396,19 @@ button:disabled {
     text-decoration: none;
 }
 
-.link:hover {
+.link:hover { text-decoration: underline; }
+
+.label-link {
+    margin-left: auto;
+    font-size: 11px;
+    font-weight: 400;
+    color: var(--vscode-textLink-foreground);
+    text-decoration: none;
+    opacity: 0.8;
+}
+
+.label-link:hover {
+    opacity: 1;
     text-decoration: underline;
 }
 
@@ -378,9 +423,7 @@ button:disabled {
     font-weight: 400;
 }
 
-.btn-link:hover {
-    text-decoration: underline;
-}
+.btn-link:hover { text-decoration: underline; }
 
 .btn-link:disabled {
     opacity: 0.5;
@@ -389,6 +432,6 @@ button:disabled {
 
 .model-input-group {
     display: flex;
-    gap: 8px;
+    gap: var(--sp-2);
     align-items: center;
 }

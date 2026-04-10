@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { DatabaseTreeItem } from '../../providers/DatabaseTreeProvider';
 import { CommandBase } from '../../common/commands/CommandBase';
 import { NotebookBuilder, MarkdownUtils } from '../helper';
-import { TableSQL } from '../sql/tables';
+import { TableSQL } from '../sql';
 
 export async function cmdMaintenanceVacuum(item: DatabaseTreeItem, context: vscode.ExtensionContext) {
   await CommandBase.run(context, item, 'create VACUUM notebook', async (conn, client, metadata) => {

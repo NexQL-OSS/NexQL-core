@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import * as https from 'https';
+import * as http from 'http';
 import { getChatViewProvider } from './extension';
 
 export interface AiSettings {
@@ -7,7 +8,17 @@ export interface AiSettings {
   apiKey?: string;
   model?: string;
   endpoint?: string;
+  githubAuth?: {
+    connected: boolean;
+    accountLabel?: string;
+  };
 }
+
+// GitHub Models access for OAuth sessions does not require a dedicated OAuth scope.
+// Requesting `models:read` here can force PAT fallback in some VS Code distributions.
+const GITHUB_MODELS_SCOPES: string[] = [];
+const GITHUB_MODELS_API_VERSION = '2026-03-10';
+const DEFAULT_GITHUB_MODEL = 'openai/gpt-4.1';
 
 export class AiSettingsPanel {
   public static currentPanel: AiSettingsPanel | undefined;
@@ -29,17 +40,23 @@ export class AiSettingsPanel {
     this._panel.webview.onDidReceiveMessage(
       async (message) => {
         switch (message.command) {
+          case 'connectGitHub':
+            await this._connectGitHub();
+            break;
+
+          case 'disconnectGitHub':
+            await this._disconnectGitHub();
+            break;
+
           case 'saveSettings':
             try {
               const settings = message.settings;
-              const config = vscode.workspace.getConfiguration('postgresExplorer');
-
-              await config.update('aiProvider', settings.provider, vscode.ConfigurationTarget.Global);
-              await config.update('aiModel', settings.model || '', vscode.ConfigurationTarget.Global);
-              await config.update('aiEndpoint', settings.endpoint || '', vscode.ConfigurationTarget.Global);
+              await this._setProvider(settings.provider, settings.model || '', settings.endpoint || '');
 
               // Store API key in secret storage
-              if (settings.apiKey) {
+              if (settings.provider === 'github') {
+                await this._extensionContext.secrets.delete('postgresExplorer.aiApiKey');
+              } else if (settings.apiKey) {
                 await this._extensionContext.secrets.store('postgresExplorer.aiApiKey', settings.apiKey);
               } else {
                 await this._extensionContext.secrets.delete('postgresExplorer.aiApiKey');
@@ -103,6 +120,9 @@ export class AiSettingsPanel {
                     throw new Error('No VS Code Language Models available. Please install GitHub Copilot or other LM extension.');
                   }
                 }
+              } else if (settings.provider === 'github') {
+                const session = await this._requestGitHubSession(true);
+                testResult = await this._testGitHubModels(session.accessToken, settings.model || DEFAULT_GITHUB_MODEL);
               } else if (settings.provider === 'openai') {
                 // Test OpenAI connection
                 if (!settings.apiKey) {
@@ -127,6 +147,12 @@ export class AiSettingsPanel {
                   throw new Error('Endpoint is required for custom provider');
                 }
                 testResult = 'Custom endpoint configured. Ensure it supports OpenAI-compatible API.';
+              } else if (settings.provider === 'ollama') {
+                const ep = settings.endpoint || 'http://localhost:11434/v1/chat/completions';
+                testResult = await this._testLocalEndpoint(ep, 'Ollama');
+              } else if (settings.provider === 'lmstudio') {
+                const ep = settings.endpoint || 'http://localhost:1234/v1/chat/completions';
+                testResult = await this._testLocalEndpoint(ep, 'LM Studio');
               }
 
               this._panel.webview.postMessage({
@@ -143,18 +169,7 @@ export class AiSettingsPanel {
 
           case 'loadSettings':
             try {
-              const config = vscode.workspace.getConfiguration('postgresExplorer');
-              const apiKey = await this._extensionContext.secrets.get('postgresExplorer.aiApiKey');
-
-              this._panel.webview.postMessage({
-                type: 'settingsLoaded',
-                settings: {
-                  provider: config.get('aiProvider', 'vscode-lm'),
-                  apiKey: apiKey || '',
-                  model: config.get('aiModel', ''),
-                  endpoint: config.get('aiEndpoint', '')
-                }
-              });
+              await this._sendSettingsLoaded();
             } catch (err: any) {
               console.error('Failed to load settings:', err);
             }
@@ -173,20 +188,20 @@ export class AiSettingsPanel {
                   const family = m.family;
                   return family && family !== name ? `${name} (${family})` : name;
                 });
+              } else if (settings.provider === 'github') {
+                const session = await this._requestGitHubSession(true);
+                models = await this._listGitHubModels(session.accessToken);
               } else if (settings.provider === 'openai') {
                 if (!settings.apiKey) {
                   throw new Error('API Key is required to list models');
                 }
                 models = await this._listOpenAIModels(settings.apiKey);
               } else if (settings.provider === 'anthropic') {
-                // Anthropic doesn't have a public models API, use known models
-                models = [
-                  'claude-3-5-sonnet-20241022',
-                  'claude-3-5-haiku-20241022',
-                  'claude-3-opus-20240229',
-                  'claude-3-sonnet-20240229',
-                  'claude-3-haiku-20240307'
-                ];
+                // Use Anthropic's models API when an API key is provided
+                if (!settings.apiKey) {
+                  throw new Error('API Key is required to list models for Anthropic');
+                }
+                models = await this._listAnthropicModels(settings.apiKey);
               } else if (settings.provider === 'gemini') {
                 if (!settings.apiKey) {
                   throw new Error('API Key is required to list models');
@@ -199,6 +214,12 @@ export class AiSettingsPanel {
                 } else {
                   models = ['custom-model'];
                 }
+              } else if (settings.provider === 'ollama') {
+                const ep = settings.endpoint || 'http://localhost:11434/v1/chat/completions';
+                models = await this._listCustomModels(ep, '');
+              } else if (settings.provider === 'lmstudio') {
+                const ep = settings.endpoint || 'http://localhost:1234/v1/chat/completions';
+                models = await this._listCustomModels(ep, '');
               }
 
               this._panel.webview.postMessage({
@@ -249,6 +270,63 @@ export class AiSettingsPanel {
             }
           } else {
             reject(new Error(`Failed to list models: ${res.statusCode}`));
+          }
+        });
+      });
+
+      req.on('error', (err: any) => reject(err));
+      req.end();
+    });
+  }
+
+  private async _listAnthropicModels(apiKey: string): Promise<string[]> {
+    return new Promise((resolve, reject) => {
+      const options = {
+        hostname: 'api.anthropic.com',
+        path: '/v1/models',
+        method: 'GET',
+        headers: {
+          'X-Api-Key': apiKey,
+          'anthropic-version': '2023-06-01'
+        }
+      };
+
+      const req = https.request(options, (res: any) => {
+        let body = '';
+        res.on('data', (chunk: any) => body += chunk);
+        res.on('end', () => {
+          if (res.statusCode === 200) {
+            try {
+              const data = JSON.parse(body);
+
+              // Accept several response shapes (models, data, or array)
+              let list: any[] = [];
+              if (Array.isArray(data)) {
+                list = data;
+              } else if (Array.isArray(data.models)) {
+                list = data.models;
+              } else if (Array.isArray(data.data)) {
+                list = data.data;
+              } else {
+                for (const k of Object.keys(data)) {
+                  if (Array.isArray((data as any)[k])) {
+                    list = (data as any)[k];
+                    break;
+                  }
+                }
+              }
+
+              const models = list
+                .map((m: any) => m.id || m.name || m.model || (typeof m === 'string' ? m : undefined))
+                .filter(Boolean)
+                .sort();
+
+              resolve(models as string[]);
+            } catch (e) {
+              reject(new Error('Failed to parse Anthropic models response'));
+            }
+          } else {
+            reject(new Error(`Failed to list Anthropic models: ${res.statusCode} - ${body}`));
           }
         });
       });
@@ -313,7 +391,7 @@ export class AiSettingsPanel {
           } : {}
         };
 
-        const protocol = url.protocol === 'https:' ? https : require('http');
+        const protocol = url.protocol === 'https:' ? https : http;
         const req = protocol.request(options, (res: any) => {
           let body = '';
           res.on('data', (chunk: any) => body += chunk);
@@ -336,6 +414,192 @@ export class AiSettingsPanel {
         req.end();
       } catch (e) {
         resolve(['custom-model']); // Fallback
+      }
+    });
+  }
+
+  private async _requestGitHubSession(interactive: boolean): Promise<vscode.AuthenticationSession> {
+    return await vscode.authentication.getSession('github', GITHUB_MODELS_SCOPES, interactive ? {
+      createIfNone: true,
+      forceNewSession: false,
+      clearSessionPreference: false
+    } as any : {
+      silent: true,
+      clearSessionPreference: false
+    });
+  }
+
+  private async _getGitHubSession(): Promise<vscode.AuthenticationSession | undefined> {
+    try {
+      return await vscode.authentication.getSession('github', GITHUB_MODELS_SCOPES, {
+        silent: true,
+        clearSessionPreference: false
+      });
+    } catch {
+      return undefined;
+    }
+  }
+
+  private async _listGitHubModels(token: string): Promise<string[]> {
+    return new Promise((resolve, reject) => {
+      const options = {
+        hostname: 'models.github.ai',
+        path: '/catalog/models',
+        method: 'GET',
+        headers: {
+          'Accept': 'application/vnd.github+json',
+          'Authorization': `Bearer ${token}`,
+          'X-GitHub-Api-Version': GITHUB_MODELS_API_VERSION
+        }
+      };
+
+      const req = https.request(options, (res: any) => {
+        let body = '';
+        res.on('data', (chunk: any) => body += chunk);
+        res.on('end', () => {
+          if (res.statusCode === 200) {
+            try {
+              const data = JSON.parse(body);
+              const models = Array.isArray(data)
+                ? data
+                    .filter((model: any) => (model.supported_output_modalities?.includes('text') ?? true))
+                    .map((model: any) => model.id)
+                    .filter(Boolean)
+                    .sort()
+                : [];
+              resolve(models);
+            } catch {
+              reject(new Error('Failed to parse GitHub Models catalog response'));
+            }
+          } else {
+            reject(new Error(`Failed to list GitHub Models: ${res.statusCode} - ${body}`));
+          }
+        });
+      });
+
+      req.on('error', (err: any) => reject(err));
+      req.end();
+    });
+  }
+
+  private async _testGitHubModels(token: string, model: string): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const data = JSON.stringify({
+        model,
+        messages: [{ role: 'user', content: 'Hello' }],
+        max_tokens: 16,
+        temperature: 0.2
+      });
+
+      const options = {
+        hostname: 'models.github.ai',
+        path: '/inference/chat/completions',
+        method: 'POST',
+        headers: {
+          'Accept': 'application/vnd.github+json',
+          'Authorization': `Bearer ${token}`,
+          'X-GitHub-Api-Version': GITHUB_MODELS_API_VERSION,
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(data)
+        }
+      };
+
+      const req = https.request(options, (res) => {
+        let body = '';
+        res.on('data', (chunk) => body += chunk);
+        res.on('end', () => {
+          if (res.statusCode === 200) {
+            resolve(`GitHub Models connection successful! Model: ${model}`);
+          } else {
+            reject(new Error(`GitHub Models API error: ${res.statusCode} - ${body}`));
+          }
+        });
+      });
+
+      req.on('error', (err) => reject(err));
+      req.write(data);
+      req.end();
+    });
+  }
+
+  private async _sendSettingsLoaded(): Promise<void> {
+    const config = vscode.workspace.getConfiguration('postgresExplorer');
+    const apiKey = await this._extensionContext.secrets.get('postgresExplorer.aiApiKey');
+    const githubSession = await this._getGitHubSession();
+
+    await this._panel.webview.postMessage({
+      type: 'settingsLoaded',
+      settings: {
+        provider: config.get('aiProvider', 'vscode-lm'),
+        apiKey: apiKey || '',
+        model: config.get('aiModel', ''),
+        endpoint: config.get('aiEndpoint', ''),
+        githubAuth: {
+          connected: !!githubSession,
+          accountLabel: githubSession?.account.label
+        }
+      }
+    });
+  }
+
+  private async _setProvider(provider: string, model: string, endpoint: string): Promise<void> {
+    const config = vscode.workspace.getConfiguration('postgresExplorer');
+    await config.update('aiProvider', provider, vscode.ConfigurationTarget.Global);
+    await config.update('aiModel', model, vscode.ConfigurationTarget.Global);
+    await config.update('aiEndpoint', endpoint, vscode.ConfigurationTarget.Global);
+  }
+
+  private async _connectGitHub(): Promise<void> {
+    const session = await this._requestGitHubSession(true);
+    await this._setProvider('github', '', '');
+    await this._panel.webview.postMessage({
+      type: 'githubConnected',
+      accountLabel: session.account.label,
+      scopes: session.scopes
+    });
+    await this._sendSettingsLoaded();
+    await this._refreshModelInfo();
+  }
+
+  private async _disconnectGitHub(): Promise<void> {
+    await this._setProvider('vscode-lm', '', '');
+    await this._panel.webview.postMessage({
+      type: 'githubDisconnected'
+    });
+    await this._sendSettingsLoaded();
+    await this._refreshModelInfo();
+  }
+
+  private async _refreshModelInfo(): Promise<void> {
+    const chatViewProvider = getChatViewProvider();
+    if (chatViewProvider) {
+      chatViewProvider.refreshModelInfo();
+    }
+  }
+
+  private async _testLocalEndpoint(endpoint: string, name: string): Promise<string> {
+    return new Promise((resolve, reject) => {
+      try {
+        const url = new URL(endpoint);
+        const modelsPath = url.pathname.replace(/\/chat\/completions$/, '') + '/models';
+        const protocol = url.protocol === 'https:' ? https : http;
+        const req = protocol.request({
+          hostname: url.hostname,
+          port: url.port || (url.protocol === 'https:' ? 443 : 80),
+          path: modelsPath,
+          method: 'GET'
+        }, (res: any) => {
+          if (res.statusCode === 200) {
+            resolve(`${name} is running and reachable at ${url.hostname}:${url.port || 80}`);
+          } else {
+            reject(new Error(`${name} responded with status ${res.statusCode}. Is it running?`));
+          }
+          res.resume();
+        });
+        req.on('error', () => reject(new Error(`Cannot reach ${name} at ${endpoint}. Make sure it is running.`)));
+        req.end();
+      } catch (e: any) {
+        reject(new Error(`Invalid endpoint URL: ${e.message}`));
       }
     });
   }

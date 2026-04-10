@@ -3,6 +3,7 @@ import { ErrorHandlers, StringUtils } from './helper';
 import { ConnectionManager } from '../services/ConnectionManager';
 import { PostgresMetadata } from '../common/types';
 import { AiService } from '../providers/chat/AiService';
+import { QueryCodeLensProvider } from '../providers/QueryCodeLensProvider';
 
 interface TableSchemaInfo {
   tableName: string;
@@ -61,6 +62,82 @@ export async function cmdAiAssist(cell: vscode.NotebookCell | undefined, context
   if (!userInput) {
     return;
   }
+
+  // Apply visual feedback to the cell while AI is working
+  const cellUri = validCell.document.uri.toString();
+  const codeLensProvider = QueryCodeLensProvider.getInstance();
+
+  // Option 6: CodeLens spinner
+  codeLensProvider?.setAiWorking(cellUri, true);
+
+  // Option 3: background tint + animated after-line spinner
+  const spinnerFrames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+  let spinnerIndex = 0;
+  let activeSpinnerType: vscode.TextEditorDecorationType | null = null;
+
+  const bgDecorationType = vscode.window.createTextEditorDecorationType({
+    isWholeLine: true,
+    backgroundColor: 'rgba(99, 179, 237, 0.07)',
+  });
+
+  const getCellEditor = () => vscode.window.visibleTextEditors.find(
+    e => e.document.uri.toString() === validCell.document.uri.toString()
+  );
+
+  const applyBgDecoration = () => {
+    const cellEditor = getCellEditor();
+    if (!cellEditor) { return; }
+    const lineCount = cellEditor.document.lineCount;
+    const fullRanges = Array.from({ length: lineCount }, (_, i) =>
+      new vscode.Range(i, 0, i, cellEditor.document.lineAt(i).text.length)
+    );
+    cellEditor.setDecorations(bgDecorationType, fullRanges);
+  };
+
+  const updateSpinner = () => {
+    const cellEditor = getCellEditor();
+    if (!cellEditor) { return; }
+    // Clear previous spinner decoration
+    if (activeSpinnerType) {
+      cellEditor.setDecorations(activeSpinnerType, []);
+      activeSpinnerType.dispose();
+    }
+    // Create new one with updated frame
+    activeSpinnerType = vscode.window.createTextEditorDecorationType({
+      after: {
+        contentText: spinnerFrames[spinnerIndex],
+        color: 'rgba(99, 179, 237, 0.9)',
+        margin: '0 0 0 12px',
+      }
+    });
+    const lastLine = cellEditor.document.lineCount - 1;
+    cellEditor.setDecorations(activeSpinnerType, [
+      new vscode.Range(lastLine, 0, lastLine, cellEditor.document.lineAt(lastLine).text.length)
+    ]);
+  };
+
+  const removeDecorations = () => {
+    clearInterval(spinnerInterval);
+    const cellEditor = getCellEditor();
+    if (cellEditor) {
+      cellEditor.setDecorations(bgDecorationType, []);
+      if (activeSpinnerType) {
+        cellEditor.setDecorations(activeSpinnerType, []);
+      }
+    }
+    bgDecorationType.dispose();
+    activeSpinnerType?.dispose();
+    activeSpinnerType = null;
+    codeLensProvider?.setAiWorking(cellUri, false);
+  };
+
+  applyBgDecoration();
+  updateSpinner();
+
+  const spinnerInterval = setInterval(() => {
+    spinnerIndex = (spinnerIndex + 1) % spinnerFrames.length;
+    updateSpinner();
+  }, 100);
 
   try {
     const config = vscode.workspace.getConfiguration('postgresExplorer');
@@ -128,7 +205,11 @@ export async function cmdAiAssist(cell: vscode.NotebookCell | undefined, context
       }
     });
 
+    removeDecorations();
+
   } catch (error) {
+    removeDecorations();
+
     console.error('AI Assist Error:', error);
     const message = error instanceof Error ? error.message : String(error);
     await ErrorHandlers.showError(

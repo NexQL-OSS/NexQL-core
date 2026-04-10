@@ -5,7 +5,6 @@ import {
   MarkdownUtils,
   FormatHelpers,
   ErrorHandlers,
-  SQL_TEMPLATES,
   ObjectUtils,
   getDatabaseConnection,
   NotebookBuilder,
@@ -117,14 +116,12 @@ export async function showIndexProperties(treeItem: DatabaseTreeItem): Promise<v
       markdown += `\n\n#### 📝 Comment\n\n${idx.comment}`;
     }
 
-    markdown += '\n\n---';
-
     await new NotebookBuilder(metadata)
       .addMarkdown(markdown)
       .addMarkdown('##### 📝 Index Definition')
       .addSql(`-- Index Definition\n${idx.index_definition};`)
-      .addMarkdown('##### 📊 Detailed Statistics')
-      .addSql(IndexSQL.detailedStatistics(schema, indexName))
+      .addMarkdown('##### 📊 Usage Statistics')
+      .addSql(IndexSQL.usageStats(schema, indexName))
       .show();
 
   } catch (err: any) {
@@ -155,15 +152,8 @@ export async function generateDropIndexScript(treeItem: DatabaseTreeItem): Promi
     const indexName = treeItem.label.replace(/^[🔑⭐🔍]\s+/, '');
 
     await new NotebookBuilder(metadata)
-      .addMarkdown(
-        MarkdownUtils.header(`🗑️ Drop Index: \`${indexName}\``) +
-        MarkdownUtils.dangerBox('This will permanently remove the index. Query performance may be affected.') +
-        MarkdownUtils.infoBox(`Schema: \`${schema}\``)
-      )
-      .addSql(`${SQL_TEMPLATES.DROP.INDEX(schema, indexName)}
-
--- Drop index concurrently (doesn't block writes)
--- DROP INDEX CONCURRENTLY "${schema}"."${indexName}";`)
+      .addMarkdown(`### 🗑️ Drop Index: \`${schema}.${indexName}\`\n\n⚠️ **Warning:** Dropping this index is permanent and may affect query performance.`)
+      .addSql(IndexSQL.drop(schema, indexName))
       .show();
   } catch (err: any) {
     await ErrorHandlers.handleCommandError(err, 'generate drop index script');
@@ -181,15 +171,10 @@ export async function generateReindexScript(treeItem: DatabaseTreeItem): Promise
     dbConn = await getDatabaseConnection(treeItem);
     const { metadata } = dbConn;
     const schema = treeItem.schema!;
-    const tableName = treeItem.tableName!;
     const indexName = treeItem.label;
 
     await new NotebookBuilder(metadata)
-      .addMarkdown(
-        MarkdownUtils.header(`🔄 Reindex: \`${indexName}\``) +
-        MarkdownUtils.warningBox('Reindexing will lock the table unless done concurrently.') +
-        MarkdownUtils.infoBox(`Schema: \`${schema}\` | Table: \`${tableName}\``)
-      )
+      .addMarkdown(`### 🔄 Reindex: \`${schema}.${indexName}\`\n\nRebuild the index to reclaim space and improve performance.`)
       .addSql(IndexSQL.reindex(schema, indexName))
       .show();
   } catch (err: any) {
@@ -211,23 +196,23 @@ export async function generateCreateIndexScript(treeItem: DatabaseTreeItem): Pro
     const tableName = treeItem.tableName!;
 
     await new NotebookBuilder(metadata)
-      .addMarkdown(
-        MarkdownUtils.header('📐 Create Index Templates') +
-        MarkdownUtils.infoBox(`Schema: \`${schema}\` | Table: \`${tableName}\``) +
-        MarkdownUtils.successBox('Choose the index type that best fits your query patterns.')
-      )
-      .addMarkdown('##### 📝 Basic B-tree Index')
-      .addSql(IndexSQL.create.btree(schema, tableName, `idx_${tableName}_column_name`))
-      .addMarkdown('##### ⭐ Unique Index')
-      .addSql(IndexSQL.create.unique(schema, tableName, `idx_${tableName}_column_name_unique`))
-      .addMarkdown('##### 🔍 Partial Index')
-      .addSql(IndexSQL.create.partial(schema, tableName, `idx_${tableName}_column_name_partial`))
-      .addMarkdown('##### 🔗 Composite Index')
-      .addSql(IndexSQL.create.composite(schema, tableName, `idx_${tableName}_composite`))
-      .addMarkdown('##### ⚡ Concurrent Index')
-      .addSql(IndexSQL.create.concurrent(schema, tableName, `idx_${tableName}_concurrent`))
-      .addMarkdown('##### 📦 GIN Index')
-      .addSql(IndexSQL.create.gin(schema, tableName, `idx_${tableName}_gin`))
+      .addMarkdown(`### 📐 Create Index: \`${schema}.${tableName}\`\n\nCreate a new index on the table using the template below.`)
+      .addSql(`-- Create B-tree index (default)
+CREATE INDEX idx_${tableName}_column_name
+ON "${schema}"."${tableName}" (column_name);
+
+-- Use CONCURRENTLY to avoid locking the table during creation
+-- CREATE INDEX CONCURRENTLY idx_${tableName}_column_name
+-- ON "${schema}"."${tableName}" (column_name);
+
+-- Use UNIQUE to enforce uniqueness
+-- CREATE UNIQUE INDEX idx_${tableName}_column_name_unique
+-- ON "${schema}"."${tableName}" (column_name);
+
+-- Use WHERE to create a partial index
+-- CREATE INDEX idx_${tableName}_partial
+-- ON "${schema}"."${tableName}" (column_name)
+-- WHERE condition;`)
       .show();
   } catch (err: any) {
     await ErrorHandlers.handleCommandError(err, 'generate create index script');
@@ -245,16 +230,11 @@ export async function analyzeIndexUsage(treeItem: DatabaseTreeItem): Promise<voi
     dbConn = await getDatabaseConnection(treeItem);
     const { metadata } = dbConn;
     const schema = treeItem.schema!;
-    const tableName = treeItem.tableName!;
     const indexName = treeItem.label;
 
     await new NotebookBuilder(metadata)
-      .addMarkdown(
-        MarkdownUtils.header(`📊 Index Usage Analysis: \`${indexName}\``) +
-        MarkdownUtils.infoBox(`Schema: \`${schema}\` | Table: \`${tableName}\``)
-      )
-      .addSql(IndexSQL.usageAnalysis(schema, tableName, indexName))
-      .addSql(IndexSQL.scanComparison(schema, tableName, indexName))
+      .addMarkdown(`### 📊 Index Usage Analysis: \`${schema}.${indexName}\`\n\nQuery usage statistics for this index.`)
+      .addSql(IndexSQL.usageStats(schema, indexName))
       .show();
   } catch (err: any) {
     await ErrorHandlers.handleCommandError(err, 'analyze index usage');
@@ -275,16 +255,8 @@ export async function generateAlterIndexScript(treeItem: DatabaseTreeItem): Prom
     const indexName = treeItem.label;
 
     await new NotebookBuilder(metadata)
-      .addMarkdown(
-        MarkdownUtils.header(`✏️ Alter Index: \`${indexName}\``) +
-        MarkdownUtils.infoBox(`Schema: \`${schema}\``)
-      )
-      .addMarkdown('##### 🔄 Rename Index')
-      .addSql(IndexSQL.alter.rename(schema, indexName))
-      .addMarkdown('##### 📁 Set Tablespace')
-      .addSql(IndexSQL.alter.setTablespace(schema, indexName))
-      .addMarkdown('##### ⚙️ Set Statistics')
-      .addSql(IndexSQL.alter.setStatistics(schema, indexName))
+      .addMarkdown(`### ✏️ Alter Index: \`${schema}.${indexName}\`\n\nModify index properties using the template below.`)
+      .addSql(IndexSQL.alter(schema, indexName))
       .show();
   } catch (err: any) {
     await ErrorHandlers.handleCommandError(err, 'generate alter index script');
@@ -343,25 +315,14 @@ export async function cmdIndexOperations(item: DatabaseTreeItem, context: vscode
     const indexName = item.label;
 
     await new NotebookBuilder(metadata)
-      .addMarkdown(
-        MarkdownUtils.header(`🔧 Index Operations: \`${indexName}\``) +
-        MarkdownUtils.infoBox('This notebook provides common operations for managing your index. Each cell is a ready-to-execute template.') +
-        `\n\n#### 🎯 Available Operations\n\n` +
-        MarkdownUtils.operationsTable([
-          { operation: '🔍 <strong>Properties</strong>', description: 'View index definition and stats', riskLevel: '✅ Safe' },
-          { operation: '📊 <strong>Analyze</strong>', description: 'Check usage statistics', riskLevel: '✅ Safe' },
-          { operation: '🔄 <strong>Reindex</strong>', description: 'Rebuild the index', riskLevel: '⚠️ Locks Table' },
-          { operation: '✏️ <strong>Alter</strong>', description: 'Rename or change settings', riskLevel: '⚠️ Modifies Schema' },
-          { operation: '❌ <strong>Drop</strong>', description: 'Remove the index', riskLevel: '🔴 Destructive' }
-        ]) + `\n---`
-      )
-      .addMarkdown('##### 🔍 Index Definition')
-      .addSql(IndexSQL.definition(schema, indexName))
-      .addMarkdown('##### 📊 Analyze Usage')
-      .addSql(IndexSQL.statistics(schema, indexName))
+      .addMarkdown(`### 🔧 Index Operations: \`${schema}.${indexName}\`\n\nCommon operations for managing this index.`)
+      .addMarkdown('##### 📊 Usage Statistics')
+      .addSql(IndexSQL.usageStats(schema, indexName))
       .addMarkdown('##### 🔄 Reindex')
       .addSql(IndexSQL.reindex(schema, indexName))
-      .addMarkdown('##### ❌ Drop Index')
+      .addMarkdown('##### ✏️ Alter Index')
+      .addSql(IndexSQL.alter(schema, indexName))
+      .addMarkdown('##### 🗑️ Drop Index\n\n⚠️ **Warning:** Dropping this index is permanent and may affect query performance.')
       .addSql(IndexSQL.drop(schema, indexName))
       .show();
   } catch (err: any) {
@@ -372,7 +333,7 @@ export async function cmdIndexOperations(item: DatabaseTreeItem, context: vscode
 }
 
 /**
- * Add new index to table - generates a comprehensive notebook with guidelines and SQL templates
+ * Add new index to table - generates a notebook with a CREATE INDEX template
  */
 export async function cmdAddIndex(item: DatabaseTreeItem): Promise<void> {
   let dbConn;
@@ -383,107 +344,23 @@ export async function cmdAddIndex(item: DatabaseTreeItem): Promise<void> {
     const tableName = item.tableName!;
 
     await new NotebookBuilder(metadata)
-      .addMarkdown(
-        MarkdownUtils.header(`➕ Add New Index to \`${schema}.${tableName}\``) +
-        MarkdownUtils.infoBox('Indexes improve query performance by providing fast lookup paths. Choose the right index type for your use case.') +
-        `\n\n#### 📋 Index Types Overview\n\n` +
-        MarkdownUtils.operationsTable([
-          { operation: '🔍 <strong>B-tree</strong>', description: 'Default. Best for equality and range queries (=, <, >, BETWEEN).' },
-          { operation: '📚 <strong>Hash</strong>', description: 'Equality comparisons only (=). Faster for exact matches.' },
-          { operation: '🔎 <strong>GiST</strong>', description: 'Generalized. Good for geometric, full-text, and range types.' },
-          { operation: '📖 <strong>GIN</strong>', description: 'Inverted index. Best for arrays, JSONB, and full-text search.' },
-          { operation: '🔤 <strong>BRIN</strong>', description: 'Block Range. Very efficient for large, naturally ordered tables.' }
-        ]) +
-        `\n\n#### ⚡ Best Practices\n\n` +
-        MarkdownUtils.propertiesTable({
-          'WHERE clauses': 'Index columns frequently used in WHERE conditions',
-          'JOIN columns': 'Index foreign keys and join columns',
-          'ORDER BY': 'Index columns used for sorting',
-          'Partial Index': 'Use WHERE clause to index subset of rows',
-          'Expression Index': 'Index computed expressions (e.g., LOWER(email))',
-          'Concurrently': 'Use CONCURRENTLY to avoid locking in production'
-        }) +
-        MarkdownUtils.warningBox('Too many indexes slow down INSERT/UPDATE/DELETE. Only create indexes for frequent queries.') +
-        `\n\n---`
-      )
-      .addMarkdown('##### 🔍 Basic B-tree Index (Most Common)')
-      .addSql(`-- Create basic B-tree index
-CREATE INDEX idx_${tableName}_column_name 
+      .addMarkdown(`### ➕ Add Index to \`${schema}.${tableName}\`\n\nCreate a new index using the template below.`)
+      .addSql(`-- Create B-tree index (default)
+CREATE INDEX idx_${tableName}_column_name
 ON "${schema}"."${tableName}" (column_name);
 
--- Create index concurrently (doesn't block writes)
--- CREATE INDEX CONCURRENTLY idx_${tableName}_column_name 
--- ON "${schema}"."${tableName}" (column_name);`)
-      .addMarkdown('##### ⭐ Unique Index')
-      .addSql(`-- Create unique index (enforces uniqueness)
-CREATE UNIQUE INDEX idx_${tableName}_unique_column 
-ON "${schema}"."${tableName}" (column_name);
+-- Use CONCURRENTLY to avoid locking the table during creation
+-- CREATE INDEX CONCURRENTLY idx_${tableName}_column_name
+-- ON "${schema}"."${tableName}" (column_name);
 
--- Unique index on multiple columns
--- CREATE UNIQUE INDEX idx_${tableName}_multi_unique 
--- ON "${schema}"."${tableName}" (col1, col2);`)
-      .addMarkdown('##### 📊 Composite Index (Multiple Columns)')
-      .addSql(`-- Composite index (column order matters!)
--- Place most selective columns first
-CREATE INDEX idx_${tableName}_composite 
-ON "${schema}"."${tableName}" (status, created_at, user_id);
+-- Use UNIQUE to enforce uniqueness
+-- CREATE UNIQUE INDEX idx_${tableName}_column_name_unique
+-- ON "${schema}"."${tableName}" (column_name);
 
--- Good for queries like:
--- WHERE status = 'active' AND created_at > '2024-01-01'`)
-      .addMarkdown('##### 📍 Partial Index (WHERE clause)')
-      .addSql(`-- Partial index - only indexes rows matching condition
--- Smaller and faster than full index
-CREATE INDEX idx_${tableName}_active_only 
-ON "${schema}"."${tableName}" (created_at)
-WHERE status = 'active';
-
--- Index only non-null values
--- CREATE INDEX idx_${tableName}_not_null 
--- ON "${schema}"."${tableName}" (email)
--- WHERE email IS NOT NULL;`)
-      .addMarkdown('##### 🔤 Expression Index')
-      .addSql(`-- Index on expression (for case-insensitive search)
-CREATE INDEX idx_${tableName}_lower_email 
-ON "${schema}"."${tableName}" (LOWER(email));
-
--- Date extraction
--- CREATE INDEX idx_${tableName}_year 
--- ON "${schema}"."${tableName}" (EXTRACT(YEAR FROM created_at));`)
-      .addMarkdown('##### 📖 GIN Index (for JSONB, Arrays, Full-Text)')
-      .addSql(`-- GIN index for JSONB column
-CREATE INDEX idx_${tableName}_jsonb_gin 
-ON "${schema}"."${tableName}" USING GIN (data);
-
--- GIN index for JSONB with specific operators
--- CREATE INDEX idx_${tableName}_jsonb_path 
--- ON "${schema}"."${tableName}" USING GIN (data jsonb_path_ops);
-
--- For array columns
--- CREATE INDEX idx_${tableName}_tags 
--- ON "${schema}"."${tableName}" USING GIN (tags);`)
-      .addMarkdown('##### 🔎 Full-Text Search Index')
-      .addSql(`-- Full-text search index
-CREATE INDEX idx_${tableName}_fts 
-ON "${schema}"."${tableName}" 
-USING GIN (to_tsvector('english', title || ' ' || description));
-
--- Usage: 
--- SELECT * FROM ${tableName} 
--- WHERE to_tsvector('english', title || ' ' || description) @@ to_tsquery('search_term');`)
-      .addMarkdown('##### 🔤 BRIN Index (for large, ordered tables)')
-      .addSql(`-- BRIN index - very compact, good for time-series data
--- Works best when data is naturally ordered by the indexed column
-CREATE INDEX idx_${tableName}_brin 
-ON "${schema}"."${tableName}" USING BRIN (created_at);`)
-      .addMarkdown('##### 📈 Covering Index (INCLUDE columns)')
-      .addSql(`-- Covering index with INCLUDE (PostgreSQL 11+)
--- Includes additional columns in the index for index-only scans
-CREATE INDEX idx_${tableName}_covering 
-ON "${schema}"."${tableName}" (user_id)
-INCLUDE (username, email);
-
--- Useful for: SELECT username, email FROM ${tableName} WHERE user_id = 123;`)
-      .addMarkdown(MarkdownUtils.successBox('After creating an index, use EXPLAIN ANALYZE to verify it is being used by your queries.'))
+-- Use WHERE to create a partial index
+-- CREATE INDEX idx_${tableName}_partial
+-- ON "${schema}"."${tableName}" (column_name)
+-- WHERE condition;`)
       .show();
   } catch (err: any) {
     await ErrorHandlers.handleCommandError(err, 'add index');

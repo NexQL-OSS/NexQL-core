@@ -27,6 +27,9 @@ const mentionSearch = document.getElementById('mentionSearch');
 const mentionList = document.getElementById('mentionList');
 const mentionBtn = document.getElementById('mentionBtn');
 
+const CHAT_INPUT_MIN_HEIGHT = 38;
+const CHAT_INPUT_MAX_VISIBLE_LINES = 5;
+
 let attachedFiles = [];
 let loadingInterval = null;
 let typingAnimation = null;
@@ -36,11 +39,34 @@ let selectedMentions = [];
 let mentionPickerVisible = false;
 let selectedMentionIndex = -1;
 let searchDebounceTimer = null;
+let currentMessages = [];
 let currentHierarchyPath = {
   connection: null,
   database: null,
   schema: null
 };
+
+// Phase B: New state for context bar, retries, and debounced search
+let currentContext = {
+  connectionName: null,
+  database: null
+};
+let lastUserMessage = null;
+let historySearchDebounceTimer = null;
+
+// Phase B: Quick actions and snippets configuration
+const QUICK_ACTIONS = [
+  { prompt: 'How do I write a JOIN query?', icon: '🔗', title: 'JOINs', desc: 'Query patterns' },
+  { prompt: 'Explain CTEs in PostgreSQL', icon: '📋', title: 'CTEs', desc: 'Temp tables' },
+  { prompt: 'How to optimize a slow query?', icon: '⚡', title: 'Optimize', desc: 'Performance' },
+  { prompt: 'What are window functions?', icon: '📊', title: 'Window Fn', desc: 'Advanced SQL' }
+];
+
+const SNIPPETS = [
+  { prompt: 'Show me a basic SELECT example', icon: '📝', text: 'SELECT Basics' },
+  { prompt: 'How do I filter rows with WHERE?', icon: '🔍', text: 'WHERE Clauses' },
+  { prompt: 'Explain GROUP BY and aggregation', icon: '📊', text: 'Aggregations' }
+];
 
 // Hierarchy Navigation
 function navigateToRoot() {
@@ -136,6 +162,28 @@ function renderBreadcrumbs() {
     schema.addEventListener('click', () => navigateToSchema(currentHierarchyPath.schema));
     container.appendChild(schema);
   }
+}
+
+function resizeChatInput() {
+  if (!chatInput) {
+    return;
+  }
+
+  chatInput.style.height = 'auto';
+
+  const styles = window.getComputedStyle(chatInput);
+  const lineHeight = parseFloat(styles.lineHeight) || 20;
+  const paddingTop = parseFloat(styles.paddingTop) || 0;
+  const paddingBottom = parseFloat(styles.paddingBottom) || 0;
+  const maxHeight = Math.ceil((lineHeight * CHAT_INPUT_MAX_VISIBLE_LINES) + paddingTop + paddingBottom);
+
+  const nextHeight = Math.max(
+    CHAT_INPUT_MIN_HEIGHT,
+    Math.min(chatInput.scrollHeight, maxHeight)
+  );
+
+  chatInput.style.height = `${nextHeight}px`;
+  chatInput.style.overflowY = chatInput.scrollHeight > maxHeight ? 'auto' : 'hidden';
 }
 
 function handleContainerClick(index) {
@@ -671,27 +719,36 @@ function renderMentionChips() {
 
   attachedFiles.forEach((file, index) => {
     const chip = document.createElement('div');
-    chip.className = 'attachment-chip';
 
+    if (file.type === 'image' && file.dataUrl) {
+      // Images go to the strip, not here — skip
+      return;
+    }
+
+    chip.className = 'attachment-chip';
+    if (file.path) {
+      chip.title = 'Click to preview';
+      chip.style.cursor = 'pointer';
+      chip.addEventListener('click', () => vscode.postMessage({ type: 'previewFile', path: file.path, name: file.name }));
+    }
     const iconSpan = document.createElement('span');
     iconSpan.className = 'file-icon';
     iconSpan.textContent = getFileIcon(file.type);
-
     const nameSpan = document.createElement('span');
     nameSpan.className = 'file-name';
     nameSpan.textContent = file.name || '';
-
     const removeBtn = document.createElement('button');
     removeBtn.className = 'remove-btn';
     removeBtn.title = 'Remove file';
     removeBtn.innerHTML = '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 8.707l3.646 3.647.708-.707L8.707 8l3.647-3.646-.707-.708L8 7.293 4.354 3.646l-.708.708L7.293 8l-3.647 3.646.708.708L8 8.707z"/></svg>';
     removeBtn.addEventListener('click', (e) => { e.stopPropagation(); removeAttachment(index); });
-
     chip.appendChild(iconSpan);
     chip.appendChild(nameSpan);
     chip.appendChild(removeBtn);
     attachmentsContainer.appendChild(chip);
   });
+
+  renderImageStrip();
 
   selectedMentions.forEach((mention, index) => {
     const chip = document.createElement('div');
@@ -757,9 +814,8 @@ function handleChatInput(event) {
     hideMentionPicker();
   }
 
-  // Auto-resize textarea
-  chatInput.style.height = 'auto';
-  chatInput.style.height = Math.min(chatInput.scrollHeight, 120) + 'px';
+  // Auto-resize textarea, capped to five visible lines
+  resizeChatInput();
 }
 
 function handleMentionKeydown(event) {
@@ -899,26 +955,111 @@ function attachFile() {
   vscode.postMessage({ type: 'pickFile' });
 }
 
+function attachImage() {
+  document.getElementById('imageFileInput').click();
+}
+
+function handleImageFileInput(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  readImageFile(file);
+  // Reset so same file can be re-selected
+  event.target.value = '';
+}
+
+function readImageFile(file) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const dataUrl = e.target.result;
+    attachedFiles.push({
+      name: file.name,
+      content: '',
+      type: 'image',
+      dataUrl: dataUrl,
+      mimeType: file.type
+    });
+    renderAttachments();
+  };
+  reader.readAsDataURL(file);
+}
+
+function openLightbox(src) {
+  const lb = document.getElementById('imageLightbox');
+  const img = document.getElementById('lightboxImg');
+  img.src = src;
+  lb.style.display = 'flex';
+}
+
+function closeLightbox() {
+  const lb = document.getElementById('imageLightbox');
+  lb.style.display = 'none';
+  document.getElementById('lightboxImg').src = '';
+}
+
 function removeAttachment(index) {
   attachedFiles.splice(index, 1);
   renderAttachments();
 }
 
+function renderImageStrip() {
+  const strip = document.getElementById('imagePreviewStrip');
+  if (!strip) return;
+  strip.innerHTML = '';
+  const images = attachedFiles.filter(f => f.type === 'image' && f.dataUrl);
+  if (images.length === 0) {
+    strip.classList.remove('has-images');
+    return;
+  }
+  strip.classList.add('has-images');
+  images.forEach((file) => {
+    const realIndex = attachedFiles.indexOf(file);
+    const item = document.createElement('div');
+    item.className = 'image-strip-item';
+
+    const thumb = document.createElement('img');
+    thumb.className = 'image-strip-thumb';
+    thumb.src = file.dataUrl;
+    thumb.alt = file.name;
+    thumb.title = 'Click to preview';
+    thumb.addEventListener('click', () => openLightbox(file.dataUrl));
+
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'image-strip-remove';
+    removeBtn.title = 'Remove image';
+    removeBtn.innerHTML = '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 8.707l3.646 3.647.708-.707L8.707 8l3.647-3.646-.707-.708L8 7.293 4.354 3.646l-.708.708L7.293 8l-3.647 3.646.708.708L8 8.707z"/></svg>';
+    removeBtn.addEventListener('click', (e) => { e.stopPropagation(); removeAttachment(realIndex); });
+
+    item.appendChild(thumb);
+    item.appendChild(removeBtn);
+    strip.appendChild(item);
+  });
+}
+
 function renderAttachments() {
   attachmentsContainer.innerHTML = '';
+  renderImageStrip();
 
-  if (attachedFiles.length === 0) {
+  const nonImages = attachedFiles.filter(f => f.type !== 'image');
+  if (nonImages.length === 0) {
     attachmentsContainer.classList.remove('has-files');
-    inputWrapper.classList.remove('has-attachments');
+    if (attachedFiles.length === 0) {
+      inputWrapper.classList.remove('has-attachments');
+    }
     return;
   }
 
   attachmentsContainer.classList.add('has-files');
   inputWrapper.classList.add('has-attachments');
 
-  attachedFiles.forEach((file, index) => {
+  nonImages.forEach((file) => {
+    const realIndex = attachedFiles.indexOf(file);
     const chip = document.createElement('div');
     chip.className = 'attachment-chip';
+    if (file.path) {
+      chip.title = 'Click to preview';
+      chip.style.cursor = 'pointer';
+      chip.addEventListener('click', () => vscode.postMessage({ type: 'previewFile', path: file.path, name: file.name }));
+    }
 
     const iconSpan = document.createElement('span');
     iconSpan.className = 'file-icon';
@@ -932,12 +1073,11 @@ function renderAttachments() {
     removeBtn.className = 'remove-btn';
     removeBtn.title = 'Remove file';
     removeBtn.innerHTML = '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 8.707l3.646 3.647.708-.707L8.707 8l3.647-3.646-.707-.708L8 7.293 4.354 3.646l-.708.708L7.293 8l-3.647 3.646.708.708L8 8.707z"/></svg>';
-    removeBtn.addEventListener('click', (e) => { e.stopPropagation(); removeAttachment(index); });
+    removeBtn.addEventListener('click', (e) => { e.stopPropagation(); removeAttachment(realIndex); });
 
     chip.appendChild(iconSpan);
     chip.appendChild(nameSpan);
     chip.appendChild(removeBtn);
-
     attachmentsContainer.appendChild(chip);
   });
 }
@@ -947,14 +1087,28 @@ function getFileIcon(type) {
     'sql': '📄',
     'json': '📋',
     'csv': '📊',
-    'text': '📝'
+    'text': '📝',
+    'image': '🖼️'
   };
   return icons[type] || '📎';
 }
 
 function sendMessage() {
-  const message = chatInput.value.trim();
+  const rawMessage = chatInput.value.trim();
+  const resolvedFollowUp = (/^\d+$/.test(rawMessage) && attachedFiles.length === 0 && selectedMentions.length === 0)
+    ? resolveFollowUpQuestionSelection(rawMessage)
+    : null;
+  const message = resolvedFollowUp || rawMessage;
   if (!message && attachedFiles.length === 0 && selectedMentions.length === 0) return;
+
+  // Phase B: Track last message for retry functionality
+  lastUserMessage = message;
+
+  // Dismiss error card when sending new message
+  dismissError();
+
+  // Dismiss bubble strip when user sends a message
+  dismissBubbleStrip();
 
   vscode.postMessage({
     type: 'sendMessage',
@@ -964,10 +1118,11 @@ function sendMessage() {
   });
 
   chatInput.value = '';
-  chatInput.style.height = 'auto';
+  resizeChatInput();
   chatInput.disabled = true;
   sendBtn.disabled = true;
   attachBtn.disabled = true;
+  document.getElementById('imageBtn').disabled = true;
   mentionBtn.disabled = true;
 
   // Clear attachments and mentions after sending
@@ -978,6 +1133,14 @@ function sendMessage() {
 
 function sendSuggestion(text) {
   chatInput.value = text;
+  resizeChatInput();
+  chatInput.focus();
+  chatInput.selectionStart = chatInput.selectionEnd = chatInput.value.length;
+}
+
+function runSnippet(text) {
+  chatInput.value = text;
+  resizeChatInput();
   sendMessage();
 }
 
@@ -1009,6 +1172,20 @@ function handleKeyDown(event) {
 chatInput.addEventListener('input', function () {
   this.style.height = 'auto';
   this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+});
+
+// Paste image from clipboard
+chatInput.addEventListener('paste', function (e) {
+  const items = e.clipboardData && e.clipboardData.items;
+  if (!items) return;
+  for (const item of items) {
+    if (item.type.startsWith('image/')) {
+      e.preventDefault();
+      const file = item.getAsFile();
+      if (file) readImageFile(file);
+      break;
+    }
+  }
 });
 
 // Escape HTML for safe display
@@ -1285,25 +1462,30 @@ function getMarkedRenderer() {
     return `<div class="code-block-wrapper">
             <div class="code-block-header">
               <span class="code-language">${displayLang}</span>
-              <div class="code-block-actions">
-                ${isSQL ? `<button class="notebook-btn" title="Add to active notebook">
-                  <svg viewBox="0 0 16 16" fill="currentColor">
-                    <path d="M2.5 2A1.5 1.5 0 001 3.5v9A1.5 1.5 0 002.5 14h11a1.5 1.5 0 001.5-1.5v-9A1.5 1.5 0 0013.5 2h-11zM2 3.5a.5.5 0 01.5-.5h11a.5.5 0 01.5.5v9a.5.5 0 01-.5.5h-11a.5.5 0 01-.5-.5v-9z"/>
-                    <path d="M7.5 5.5v2h-2v1h2v2h1v-2h2v-1h-2v-2h-1z"/>
-                  </svg>
-                  Notebook
-                </button>` : ''}
-                <button class="copy-btn">
-                  <svg viewBox="0 0 16 16" fill="currentColor">
-                    <path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z"/>
-                    <path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z"/>
-                  </svg>
-                  Copy
-                </button>
-              </div>
             </div>
             <pre><code id="${codeId}" class="hljs language-${language}" data-raw="${safeRawCode}">${highlightedCode}</code></pre>
+            <div class="code-block-actions">
+              ${isSQL ? `<button class="notebook-btn" title="Add to active notebook">
+                <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor">
+                  <path d="M2.5 2A1.5 1.5 0 001 3.5v9A1.5 1.5 0 002.5 14h11a1.5 1.5 0 001.5-1.5v-9A1.5 1.5 0 0013.5 2h-11zM2 3.5a.5.5 0 01.5-.5h11a.5.5 0 01.5.5v9a.5.5 0 01-.5.5h-11a.5.5 0 01-.5-.5v-9z"/>
+                  <path d="M7.5 5.5v2h-2v1h2v2h1v-2h2v-1h-2v-2h-1z"/>
+                </svg>
+                Notebook
+              </button>` : ''}
+              <button class="copy-btn">
+                <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor">
+                  <path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z"/>
+                  <path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z"/>
+                </svg>
+                Copy
+              </button>
+            </div>
           </div>`;
+  };
+
+  // Render inline code as proper <code> tags (fixes "(u, o)" meta-notation)
+  renderer.codespan = function ({ text }) {
+    return `<code class="inline-code">${escapeHtml(text)}</code>`;
   };
 
   markedRenderer = renderer;
@@ -1330,7 +1512,9 @@ function sanitizeHtml(dirty) {
   const allowedTags = new Set([
     'a','b','i','em','strong','code','pre','p','br','ul','ol','li',
     'span','div','blockquote','hr','h1','h2','h3','h4','h5','h6',
-    'table','thead','tbody','tr','th','td'
+    'table','thead','tbody','tr','th','td',
+    // Keep buttons and simple SVG so action controls remain interactive
+    'button','svg','path'
   ]);
 
   // Allowed attributes per tag ("*" applies to all tags)
@@ -1338,8 +1522,12 @@ function sanitizeHtml(dirty) {
     '*': ['class'],
     'a': ['href', 'title', 'rel', 'target', 'class'],
     'img': ['src', 'alt', 'title', 'class'],
-    'code': ['class'],
+    // Preserve data-raw and id on code elements so copy/notebook features work
+    'code': ['class', 'data-raw', 'id'],
     'pre': ['class'],
+    'button': ['class', 'title', 'aria-label', 'aria-pressed', 'aria-expanded'],
+    'svg': ['viewBox', 'width', 'height', 'fill', 'class'],
+    'path': ['d', 'fill', 'fill-rule', 'clip-rule', 'stroke', 'stroke-width'],
     'span': ['class'],
     'div': ['class'],
     'p': ['class'],
@@ -1472,6 +1660,7 @@ window.addEventListener('message', event => {
       chatInput.disabled = false;
       sendBtn.disabled = false;
       attachBtn.disabled = false;
+      document.getElementById('imageBtn').disabled = false;
       mentionBtn.disabled = false;
       chatInput.focus();
       break;
@@ -1567,8 +1756,12 @@ window.addEventListener('message', event => {
       break;
     case 'updateModelInfo':
       const aiModelNameEl = document.getElementById('aiModelName');
+      const aiModelBadgeEl = document.getElementById('aiModelBadge');
       if (aiModelNameEl) {
         aiModelNameEl.textContent = message.modelName || 'Unknown';
+      }
+      if (aiModelBadgeEl) {
+        aiModelBadgeEl.title = message.modelName || 'Unknown';
       }
       break;
 
@@ -1587,6 +1780,16 @@ window.addEventListener('message', event => {
           sendMessage();
         }
       }
+      break;
+
+    // Phase B: Context bar update
+    case 'contextUpdate':
+      updateContextBar(message.connectionName || null, message.database || null);
+      break;
+
+    // Phase B: Error card display
+    case 'error':
+      showErrorCard(message.title || 'Error', message.message || 'An error occurred');
       break;
   }
 });
@@ -1613,15 +1816,19 @@ function showToast(text, type = 'info') {
 let lastMessageCount = 0;
 
 function renderMessages(messages, animate = false) {
+  currentMessages = Array.isArray(messages) ? [...messages] : [];
+
   if (messages.length === 0) {
     emptyState.style.display = 'flex';
     const messageElements = messagesContainer.querySelectorAll('.message');
     messageElements.forEach(el => el.remove());
+    dismissBubbleStrip();
     lastMessageCount = 0;
     return;
   }
 
   emptyState.style.display = 'none';
+  dismissBubbleStrip();
 
   // Check if this is a new assistant message (for typing effect)
   const isNewAssistantMessage = animate &&
@@ -1629,6 +1836,7 @@ function renderMessages(messages, animate = false) {
     messages[messages.length - 1].role === 'assistant';
 
   lastMessageCount = messages.length;
+  let activeSuggestionBubbles = [];
 
   // Clear existing messages (but keep typing indicator)
   const messageElements = messagesContainer.querySelectorAll('.message');
@@ -1641,7 +1849,8 @@ function renderMessages(messages, animate = false) {
 
     const roleDiv = document.createElement('div');
     roleDiv.className = 'message-role';
-    roleDiv.textContent = msg.role === 'user' ? 'You' : 'Assistant';
+    const emojis = ['😒', '🙄', '😕', '🤔', '😐', '🙂', '😀', '😁', '😴'];
+    roleDiv.textContent = msg.role === 'user' ? ' ' + emojis[Math.floor(Math.random() * emojis.length)] + ' You' : '🤖 PG Studio Bot';
 
     const bubbleDiv = document.createElement('div');
     bubbleDiv.className = 'message-bubble';
@@ -1652,20 +1861,39 @@ function renderMessages(messages, animate = false) {
     // Render attachments for user messages
     if (msg.role === 'user' && msg.attachments && msg.attachments.length > 0) {
       msg.attachments.forEach(att => {
-        const filePreview = document.createElement('div');
-        filePreview.className = 'file-preview';
-        filePreview.innerHTML = `
-                  <div class="file-preview-header">
-                    <span>${getFileIcon(att.type)}</span>
-                    <span>${escapeHtml(att.name)}</span>
-                  </div>
-                  <div class="file-preview-content">${escapeHtml(att.content.substring(0, 500))}${att.content.length > 500 ? '...' : ''}</div>
-                `;
-        contentDiv.appendChild(filePreview);
+        if (att.type === 'image' && att.dataUrl) {
+          const imgWrap = document.createElement('div');
+          imgWrap.className = 'file-preview image-message-preview';
+          const img = document.createElement('img');
+          img.src = att.dataUrl;
+          img.alt = att.name;
+          img.title = 'Click to preview';
+          img.className = 'image-message-thumb';
+          img.addEventListener('click', () => openLightbox(att.dataUrl));
+          imgWrap.appendChild(img);
+          contentDiv.appendChild(imgWrap);
+        } else {
+          const filePreview = document.createElement('div');
+          filePreview.className = 'file-preview';
+          if (att.path) {
+            filePreview.style.cursor = 'pointer';
+            filePreview.title = 'Click to open in editor';
+            filePreview.addEventListener('click', () => vscode.postMessage({ type: 'previewFile', path: att.path, name: att.name }));
+          }
+          filePreview.innerHTML = `
+                    <div class="file-preview-header">
+                      <span>${getFileIcon(att.type)}</span>
+                      <span>${escapeHtml(att.name)}</span>
+                      ${att.path ? '<span style="margin-left:auto;opacity:0.6;font-size:10px;">open ↗</span>' : ''}
+                    </div>
+                    <div class="file-preview-content">${escapeHtml(att.content.substring(0, 500))}${att.content.length > 500 ? '...' : ''}</div>
+                  `;
+          contentDiv.appendChild(filePreview);
+        }
       });
 
       // Add the text message after attachments if exists
-      const textWithoutAttachments = msg.content.split('\n\n📎')[0].trim();
+      const textWithoutAttachments = msg.content.split('\n\n📎')[0].split('\n\n🖼️')[0].trim();
       if (textWithoutAttachments && textWithoutAttachments !== 'Please analyze the attached file(s)') {
         const textP = document.createElement('p');
         textP.innerHTML = highlightMentionsInText(textWithoutAttachments);
@@ -1682,13 +1910,17 @@ function renderMessages(messages, animate = false) {
     } else if (msg.role === 'assistant') {
       // Apply typing effect for the newest assistant message
       const isLastMessage = idx === messages.length - 1;
+      const extracted = safeJsonTailExtract(msg.content);
+      const cleanContent = extracted.content;
+      const bubbles = extracted.bubbles;
+
       if (isNewAssistantMessage && isLastMessage) {
         // Will be typed out
         bubbleDiv.appendChild(contentDiv);
         messageDiv.appendChild(roleDiv);
         messageDiv.appendChild(bubbleDiv);
         messagesContainer.insertBefore(messageDiv, typingIndicator);
-        typeText(contentDiv, msg.content, () => {
+        typeText(contentDiv, cleanContent, () => {
           if (msg.usage) {
             const usageDiv = document.createElement('div');
             usageDiv.className = 'message-usage';
@@ -1696,10 +1928,19 @@ function renderMessages(messages, animate = false) {
             messageDiv.appendChild(usageDiv);
             messagesContainer.scrollTo({ top: messagesContainer.scrollHeight, behavior: 'smooth' });
           }
+          // Show bubbles after typing finishes
+          if (bubbles.length > 0) {
+            showSuggestionBubbles(bubbles);
+          } else {
+            dismissBubbleStrip();
+          }
         });
         return; // Skip the normal append below
       } else {
-        contentDiv.innerHTML = parseMarkdown(msg.content);
+        contentDiv.innerHTML = parseMarkdown(cleanContent);
+        if (isLastMessage) {
+          activeSuggestionBubbles = bubbles;
+        }
       }
     } else {
       contentDiv.textContent = msg.content;
@@ -1724,6 +1965,337 @@ function renderMessages(messages, animate = false) {
     top: messagesContainer.scrollHeight,
     behavior: 'smooth'
   });
+
+  if (activeSuggestionBubbles.length > 0) {
+    showSuggestionBubbles(activeSuggestionBubbles);
+  } else {
+    dismissBubbleStrip();
+  }
+}
+
+// ============================================================================
+// Phase B: Frontend Logic - Context Bar, Bubbles, Errors, and Utilities
+// ============================================================================
+
+/**
+ * Update the context bar with current connection and database
+ * @param {string} connectionName - Name of the active connection
+ * @param {string} database - Name of the active database
+ * @param {string} tableName - Name of the referenced table (optional)
+ */
+function updateContextBar(connectionName, database, tableName) {
+  currentContext.connectionName = connectionName;
+  currentContext.database = database;
+  
+  const contextBar = document.getElementById('contextBar');
+  if (!contextBar) return;
+  
+  if (connectionName || database || tableName) {
+    contextBar.style.display = 'flex';
+    const connElem = document.getElementById('contextConnection');
+    const tableElem = document.getElementById('contextTable');
+    
+    if (connElem) {
+      // Format: "Connection Name • database_name"
+      const connInfo = connectionName ? connectionName : 'Connected';
+      const dbInfo = database ? database : '';
+      connElem.textContent = [connInfo, dbInfo].filter(Boolean).join(' • ');
+    }
+    
+    if (tableElem) {
+      // Format: "@table_name" or "@schema.table_name"
+      if (tableName) {
+        tableElem.textContent = '@' + tableName;
+        tableElem.parentElement.style.display = 'flex';
+      } else {
+        tableElem.parentElement.style.display = 'none';
+      }
+    }
+  } else {
+    contextBar.style.display = 'none';
+  }
+}
+
+/**
+ * Show suggestion bubbles from AI next-step recommendations
+ * Expects bubbles to be an array of strings, each < 140 chars
+ * @param {string[]} bubbles - Array of next-step suggestion texts
+ */
+function showSuggestionBubbles(bubbles) {
+  // Remove any existing suggestion pills
+  dismissBubbleStrip();
+
+  // Filter and validate bubbles
+  const validBubbles = bubbles
+    .filter(b => typeof b === 'string' && b.length > 0 && b.length <= 200)
+    .slice(0, 5); // Max 5 bubbles
+
+  if (validBubbles.length === 0) return;
+
+  // Find the last assistant message bubble to attach pills below it
+  const allMessages = messagesContainer.querySelectorAll('.message.assistant');
+  const lastAssistant = allMessages[allMessages.length - 1];
+  if (!lastAssistant) return;
+
+  const pillRow = document.createElement('div');
+  pillRow.className = 'suggestion-pill-row';
+  pillRow.id = 'bubbleStrip';
+
+  validBubbles.forEach(text => {
+    const pill = document.createElement('button');
+    pill.className = 'suggestion-bubble';
+    pill.textContent = text;
+    pill.title = text;
+    pill.onclick = () => {
+      chatInput.value = text;
+      chatInput.focus();
+      dismissBubbleStrip();
+    };
+    pillRow.appendChild(pill);
+  });
+
+  lastAssistant.appendChild(pillRow);
+  messagesContainer.scrollTo({ top: messagesContainer.scrollHeight, behavior: 'smooth' });
+}
+
+/**
+ * Dismiss the suggestion bubble strip
+ */
+function dismissBubbleStrip() {
+  const existing = document.getElementById('bubbleStrip');
+  if (existing) existing.remove();
+}
+
+/**
+ * Convert a numeric user reply into the selected follow-up question text from
+ * the latest assistant message that listed follow-up questions.
+ * Returns null if there is no matching follow-up question list.
+ */
+function resolveFollowUpQuestionSelection(rawSelection) {
+  const selectedIndex = Number.parseInt(rawSelection, 10) - 1;
+  if (Number.isNaN(selectedIndex) || selectedIndex < 0) {
+    return null;
+  }
+
+  for (let index = currentMessages.length - 1; index >= 0; index--) {
+    const message = currentMessages[index];
+    if (message.role !== 'assistant' || !message.content) {
+      continue;
+    }
+
+    const questions = extractFollowUpQuestions(message.content);
+    if (selectedIndex < questions.length) {
+      return `Follow-up question ${selectedIndex + 1}: ${questions[selectedIndex]}`;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Extract numbered follow-up questions from an assistant response.
+ * The parser looks for a "Follow-up questions:" heading followed by a numbered list.
+ */
+function extractFollowUpQuestions(responseText) {
+  if (!responseText) {
+    return [];
+  }
+
+  const lines = responseText.split(/\r?\n/);
+  const headingIndex = lines.findIndex(line => /^\s*Follow-up questions:\s*$/i.test(line));
+  if (headingIndex === -1) {
+    return [];
+  }
+
+  const questions = [];
+
+  for (let index = headingIndex + 1; index < lines.length; index++) {
+    const line = lines[index].trim();
+
+    if (!line) {
+      if (questions.length > 0) {
+        break;
+      }
+      continue;
+    }
+
+    const match = line.match(/^\d+\.\s+(.*)$/);
+    if (!match) {
+      if (questions.length > 0) {
+        break;
+      }
+      continue;
+    }
+
+    questions.push(match[1].trim());
+  }
+
+  return questions;
+}
+
+/**
+ * Show error card with message and action buttons
+ * @param {string} title - Error title
+ * @param {string} message - Error message
+ */
+function showErrorCard(title, message) {
+  const errorCard = document.getElementById('errorCard');
+  const titleElem = document.getElementById('errorCardTitle');
+  const messageElem = document.getElementById('errorCardMessage');
+  
+  if (!errorCard) return;
+  
+  if (titleElem) titleElem.textContent = title || 'Error';
+  if (messageElem) messageElem.textContent = message || 'An error occurred';
+  
+  errorCard.style.display = 'flex';
+}
+
+/**
+ * Dismiss the error card
+ */
+function dismissError() {
+  const errorCard = document.getElementById('errorCard');
+  if (errorCard) {
+    errorCard.style.display = 'none';
+  }
+}
+
+/**
+ * Retry the last user message
+ */
+function retryLastMessage() {
+  if (!lastUserMessage) {
+    console.warn('[PgStudio] No previous message to retry');
+    return;
+  }
+  
+  dismissError();
+  chatInput.value = lastUserMessage;
+  chatInput.focus();
+  sendMessage();
+}
+
+/**
+ * Safely extract JSON next_steps from end of model response
+ * Looks for { "next_steps": [...] } pattern at the end
+ * Removes JSON from display content and returns parsed bubbles
+ * @param {string} responseText - Full model response text
+ * @returns {object} { content: cleanedText, bubbles: string[] }
+ */
+function safeJsonTailExtract(responseText) {
+  try {
+    const trimmed = responseText.trimEnd();
+
+    const parseNextSteps = (jsonText, cleanContent) => {
+      const parsed = JSON.parse(jsonText);
+      if (!Array.isArray(parsed.next_steps)) {
+        return null;
+      }
+
+      return {
+        content: cleanContent.trimEnd(),
+        bubbles: parsed.next_steps
+          .filter(step => typeof step === 'string' && step.trim().length > 0)
+          .map(step => step.trim())
+          .slice(0, 5)
+      };
+    };
+
+    // Prefer fenced JSON blocks because the model often formats the tail that way.
+    const fencedMatch = trimmed.match(/(?:^|\n)```(?:json)?\s*\n([\s\S]*?)\n```\s*$/i);
+    if (fencedMatch) {
+      const parsed = parseNextSteps(fencedMatch[1], trimmed.slice(0, fencedMatch.index));
+      if (parsed) {
+        return parsed;
+      }
+    }
+
+    // Fallback to a bare JSON object at the end of the response.
+    const tailMatch = trimmed.match(/(\{\s*"next_steps"\s*:\s*\[[\s\S]*\]\s*\})\s*$/i);
+    if (tailMatch) {
+      const parsed = parseNextSteps(tailMatch[1], trimmed.slice(0, trimmed.length - tailMatch[1].length));
+      if (parsed) {
+        return parsed;
+      }
+    }
+
+    return { content: responseText, bubbles: [] };
+  } catch (err) {
+    // JSON parse failed, return original content
+    console.warn('[PgStudio] JSON extraction failed:', err.message);
+    return { content: responseText, bubbles: [] };
+  }
+}
+
+/**
+ * Debounced history search with delay timer
+ * @param {string} value - Search query
+ * @param {number} delay - Debounce delay in ms (default 300)
+ */
+function debounceHistorySearch(value, delay = 300) {
+  if (historySearchDebounceTimer) {
+    clearTimeout(historySearchDebounceTimer);
+  }
+  
+  historySearchDebounceTimer = setTimeout(() => {
+    filterHistoryHelper(value);
+  }, delay);
+}
+
+/**
+ * Helper for history filtering (called after debounce)
+ * @param {string} searchTerm - Search query
+ */
+function filterHistoryHelper(searchTerm) {
+  const historyItems = document.querySelectorAll('.history-item');
+  const normalizedTerm = searchTerm.toLowerCase();
+  
+  historyItems.forEach(item => {
+    const title = item.querySelector('.history-item-title');
+    if (!title) return;
+    
+    const matches = title.textContent.toLowerCase().includes(normalizedTerm);
+    item.style.display = matches ? 'block' : 'none';
+  });
+}
+
+/**
+ * Group history sessions by date (Today, Yesterday, This week, Older)
+ * @param {array} sessions - Array of ChatSessionSummary
+ * @returns {object} Sessions grouped by date category
+ */
+function groupSessionsByDate(sessions) {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const weekAgo = new Date(today);
+  weekAgo.setDate(weekAgo.getDate() - 7);
+  
+  const groups = {
+    today: [],
+    yesterday: [],
+    thisWeek: [],
+    older: []
+  };
+  
+  sessions.forEach(session => {
+    const sessionDate = new Date(session.createdAt);
+    const sessionDay = new Date(sessionDate.getFullYear(), sessionDate.getMonth(), sessionDate.getDate());
+    
+    if (sessionDay.getTime() === today.getTime()) {
+      groups.today.push(session);
+    } else if (sessionDay.getTime() === yesterday.getTime()) {
+      groups.yesterday.push(session);
+    } else if (sessionDay.getTime() >= weekAgo.getTime()) {
+      groups.thisWeek.push(session);
+    } else {
+      groups.older.push(session);
+    }
+  });
+  
+  return groups;
 }
 
 

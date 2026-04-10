@@ -10,7 +10,7 @@ export { ViewSQL } from './views';
 export { FunctionSQL } from './functions';
 export { SchemaSQL } from './schema';
 export { ConstraintSQL } from './constraints';
-export { UsersRolesSQL } from './usersRoles';
+export { UserRoleSQL, UsersRolesSQL } from './usersRoles';
 export { TypeSQL } from './types';
 export { ExtensionSQL } from './extensions';
 export { MaterializedViewSQL } from './materializedViews';

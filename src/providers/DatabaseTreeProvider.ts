@@ -4,6 +4,7 @@ import * as path from 'path';
 import { ConnectionManager } from '../services/ConnectionManager';
 import { getSchemaCache, SchemaCache } from '../lib/schema-cache';
 import { Debouncer } from '../lib/debounce';
+import { AutoRefreshService } from '../services/AutoRefreshService';
 
 function buildItemKey(item: DatabaseTreeItem): string {
   return [item.type, item.connectionId || '', item.databaseName || '', item.schema || '', item.label].join(':');
@@ -16,9 +17,9 @@ export class DatabaseTreeProvider implements vscode.TreeDataProvider<DatabaseTre
   private readonly _cache: SchemaCache = getSchemaCache();
   private readonly debouncer = new Debouncer();
   private treeView?: vscode.TreeView<DatabaseTreeItem>;
+  private _autoRefreshService: AutoRefreshService | undefined;
 
   // Filter, Favorites, and Recent Items
-  private _filterPattern: string = '';
   private _favorites: Set<string> = new Set();
   private _recentItems: string[] = [];
   private static readonly MAX_RECENT_ITEMS = 10;
@@ -41,6 +42,10 @@ export class DatabaseTreeProvider implements vscode.TreeDataProvider<DatabaseTre
    */
   public setTreeView(treeView: vscode.TreeView<DatabaseTreeItem>): void {
     this.treeView = treeView;
+  }
+
+  setAutoRefreshService(service: AutoRefreshService): void {
+    this._autoRefreshService = service;
   }
 
   /**
@@ -104,21 +109,6 @@ export class DatabaseTreeProvider implements vscode.TreeDataProvider<DatabaseTre
     await this.extensionContext.globalState.update(DatabaseTreeProvider.RECENT_KEY, this._recentItems);
   }
 
-  // Filter methods
-  get filterPattern(): string {
-    return this._filterPattern;
-  }
-
-  setFilter(pattern: string): void {
-    this._filterPattern = pattern.toLowerCase();
-    this.refresh();
-  }
-
-  clearFilter(): void {
-    this._filterPattern = '';
-    this.refresh();
-  }
-
   // Favorites methods
   isFavorite(item: DatabaseTreeItem): boolean {
     return this._favorites.has(buildItemKey(item));
@@ -162,11 +152,6 @@ export class DatabaseTreeProvider implements vscode.TreeDataProvider<DatabaseTre
     return [...this._recentItems];
   }
 
-  private matchesFilter(label: string): boolean {
-    if (!this._filterPattern) return true;
-    return label.toLowerCase().includes(this._filterPattern);
-  }
-
   private isFavoriteItem(type: string, connectionId?: string, databaseName?: string, schema?: string, name?: string): boolean {
     const key = `${type}:${connectionId || ''}:${databaseName || ''}:${schema || ''}:${name || ''} `;
     return this._favorites.has(key);
@@ -183,12 +168,14 @@ export class DatabaseTreeProvider implements vscode.TreeDataProvider<DatabaseTre
     this.disconnectedConnections.add(connectionId);
     // Fire a full refresh to update tree state and collapse items
     this._onDidChangeTreeData.fire(undefined);
+    this._autoRefreshService?.onConnectionDisconnected(connectionId);
   }
 
   public markConnectionConnected(connectionId: string): void {
     this.disconnectedConnections.delete(connectionId);
     // Fire a full refresh to update tree state
     this._onDidChangeTreeData.fire(undefined);
+    this._autoRefreshService?.onConnectionConnected(connectionId);
   }
 
   /**
@@ -709,50 +696,6 @@ i.relname as index_name,
                    n.nspname`
               );
 
-              // If filter is active, only show schemas that have matching items
-              if (this._filterPattern) {
-                const filteredSchemas: DatabaseTreeItem[] = [];
-                for (const row of schemaResult.rows) {
-                  // Check if schema has any matching tables, views, or functions
-                  const matchResult = await client.query(
-                    `SELECT 1 FROM information_schema.tables 
-                     WHERE table_schema = $1 AND table_type = 'BASE TABLE' 
-                       AND LOWER(table_name) LIKE $2
-                     UNION ALL
-                     SELECT 1 FROM information_schema.views 
-                     WHERE table_schema = $1 AND LOWER(table_name) LIKE $2
-                     UNION ALL
-                     SELECT 1 FROM information_schema.routines 
-                     WHERE routine_schema = $1 AND routine_type = 'FUNCTION' 
-                       AND LOWER(routine_name) LIKE $2
-                     LIMIT 1`,
-                    [row.schema_name, `% ${this._filterPattern}% `]
-                  );
-                  if (matchResult.rows.length > 0) {
-                    filteredSchemas.push(new DatabaseTreeItem(
-                      row.schema_name,
-                      vscode.TreeItemCollapsibleState.Collapsed,
-                      'schema',
-                      element.connectionId,
-                      element.databaseName,
-                      row.schema_name,
-                      undefined, // tableName
-                      undefined, // columnName
-                      undefined, // comment
-                      undefined, // isInstalled
-                      undefined, // installedVersion
-                      undefined, // roleAttributes
-                      undefined, // isDisconnected
-                      undefined, // isFavorite
-                      undefined, // count
-                      undefined, // rowCount
-                      row.size   // size
-                    ));
-                  }
-                }
-                return filteredSchemas;
-              }
-
               return schemaResult.rows.map(row => new DatabaseTreeItem(
                 row.schema_name,
                 vscode.TreeItemCollapsibleState.Collapsed,
@@ -813,7 +756,6 @@ i.relname as index_name,
                 [element.schema]
               );
               return tableResult.rows
-                .filter(row => this.matchesFilter(row.table_name))
                 .map(row => {
                   const isFav = this.isFavoriteItem('table', element.connectionId, element.databaseName, element.schema, row.table_name);
                   return new DatabaseTreeItem(
@@ -843,7 +785,6 @@ i.relname as index_name,
                 [element.schema]
               );
               return viewResult.rows
-                .filter(row => this.matchesFilter(row.table_name))
                 .map(row => {
                   const isFav = this.isFavoriteItem('view', element.connectionId, element.databaseName, element.schema, row.table_name);
                   return new DatabaseTreeItem(
@@ -864,7 +805,6 @@ i.relname as index_name,
                 [element.schema]
               );
               return functionResult.rows
-                .filter(row => this.matchesFilter(row.routine_name))
                 .map(row => {
                   const isFav = this.isFavoriteItem('function', element.connectionId, element.databaseName, element.schema, row.routine_name);
                   return new DatabaseTreeItem(
@@ -894,7 +834,6 @@ i.relname as index_name,
                 [element.schema]
               );
               return materializedViewResult.rows
-                .filter(row => this.matchesFilter(row.name))
                 .map(row => {
                   const isFav = this.isFavoriteItem('materialized-view', element.connectionId, element.databaseName, element.schema, row.name);
                   return new DatabaseTreeItem(
@@ -967,35 +906,24 @@ i.relname as index_name,
           return [];
 
         case 'schema':
-          // Query counts for each category (with filter applied if active)
-          const filterPattern = this._filterPattern ? `% ${this._filterPattern.toLowerCase()}% ` : null;
-
           const tablesCountResult = await client.query(
-            filterPattern
-              ? "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = $1 AND table_type = 'BASE TABLE' AND LOWER(table_name) LIKE $2"
-              : "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = $1 AND table_type = 'BASE TABLE'",
-            filterPattern ? [element.schema, filterPattern] : [element.schema]
+            "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = $1 AND table_type = 'BASE TABLE'",
+            [element.schema]
           );
 
           const viewsCountResult = await client.query(
-            filterPattern
-              ? "SELECT COUNT(*) FROM information_schema.views WHERE table_schema = $1 AND LOWER(table_name) LIKE $2"
-              : "SELECT COUNT(*) FROM information_schema.views WHERE table_schema = $1",
-            filterPattern ? [element.schema, filterPattern] : [element.schema]
+            "SELECT COUNT(*) FROM information_schema.views WHERE table_schema = $1",
+            [element.schema]
           );
 
           const functionsCountResult = await client.query(
-            filterPattern
-              ? "SELECT COUNT(*) FROM information_schema.routines WHERE routine_schema = $1 AND routine_type = 'FUNCTION' AND LOWER(routine_name) LIKE $2"
-              : "SELECT COUNT(*) FROM information_schema.routines WHERE routine_schema = $1 AND routine_type = 'FUNCTION'",
-            filterPattern ? [element.schema, filterPattern] : [element.schema]
+            "SELECT COUNT(*) FROM information_schema.routines WHERE routine_schema = $1 AND routine_type = 'FUNCTION'",
+            [element.schema]
           );
 
           const materializedViewsCountResult = await client.query(
-            filterPattern
-              ? "SELECT COUNT(*) FROM pg_matviews WHERE schemaname = $1 AND LOWER(matviewname) LIKE $2"
-              : "SELECT COUNT(*) FROM pg_matviews WHERE schemaname = $1",
-            filterPattern ? [element.schema, filterPattern] : [element.schema]
+            "SELECT COUNT(*) FROM pg_matviews WHERE schemaname = $1",
+            [element.schema]
           );
 
           const typesCountResult = await client.query(

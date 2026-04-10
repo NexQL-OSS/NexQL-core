@@ -5,8 +5,6 @@ import { PostgresMetadata } from '../common/types';
 
 export async function cmdNewNotebook(item: DatabaseTreeItem) {
   try {
-    // For schema and table items, validateItem is appropriate
-    // For database-level operations, would need validateCategoryItem
     const dbConn = await getDatabaseConnection(item);
     const { metadata } = dbConn;
     if (dbConn.release) dbConn.release();
@@ -20,7 +18,7 @@ export async function cmdNewNotebook(item: DatabaseTreeItem) {
 -- Write your SQL query here
 SELECT * FROM ${item.schema ? `${item.schema}.${item.label}` : 'your_table'}
 LIMIT 100;`)
-      .show();
+      .showNew();  // always open a fresh notebook
 
   } catch (err: any) {
     await ErrorHandlers.handleCommandError(err, 'create new notebook');
@@ -28,7 +26,61 @@ LIMIT 100;`)
 }
 
 /**
- * Execute EXPLAIN or EXPLAIN ANALYZE for a query
+ * Jump to a section in the active scratch notebook via Quick Pick.
+ * Scans all markdown cells for top-level headings (lines starting with #)
+ * and lets the user pick one to navigate to.
+ */
+export async function cmdJumpToSection() {
+  const editor = vscode.window.activeNotebookEditor;
+  if (!editor) {
+    vscode.window.showInformationMessage('No notebook is currently open.');
+    return;
+  }
+
+  const doc = editor.notebook;
+  const sections: { label: string; detail: string; cellIndex: number }[] = [];
+
+  doc.getCells().forEach((cell, index) => {
+    if (cell.kind !== vscode.NotebookCellKind.Markup) { return; }
+    const lines = cell.document.getText().split('\n');
+    for (const line of lines) {
+      const match = line.match(/^(#{1,3})\s+(.+)/);
+      if (match) {
+        const depth = match[1].length;
+        const title = match[2].trim();
+        const indent = depth === 1 ? '' : depth === 2 ? '  ' : '    ';
+        sections.push({
+          label: `${indent}${depth === 1 ? '$(symbol-namespace)' : depth === 2 ? '$(symbol-class)' : '$(symbol-method)'} ${title}`,
+          detail: `Cell ${index + 1}`,
+          cellIndex: index
+        });
+        break; // only use the first heading per cell
+      }
+    }
+  });
+
+  if (sections.length === 0) {
+    vscode.window.showInformationMessage('No sections found. Add markdown headings (# Title) to create navigable sections.');
+    return;
+  }
+
+  const picked = await vscode.window.showQuickPick(sections, {
+    placeHolder: 'Jump to section…',
+    title: 'Notebook Sections',
+    matchOnDetail: true
+  });
+
+  if (!picked) { return; }
+
+  await vscode.window.showNotebookDocument(doc, { preserveFocus: false });
+  editor.revealRange(
+    new vscode.NotebookRange(picked.cellIndex, picked.cellIndex + 1),
+    vscode.NotebookEditorRevealType.AtTop
+  );
+}
+
+/**
+ * Execute EXPLAIN or EXPLAIN ANALYZE for a query.
  * Executes in the notebook so results can be sent to chat
  */
 export async function cmdExplainQuery(cellUri: vscode.Uri, analyze: boolean) {

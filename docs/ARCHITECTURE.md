@@ -36,7 +36,7 @@ graph TB
     
     subgraph "External Systems"
         PG[(PostgreSQL Database)]
-        AI[AI Services<br/>OpenAI/Anthropic/Gemini]
+        AI[AI Services<br/>GitHub Models/OpenAI/Anthropic/Gemini]
     end
     
     EXT --> CMD

@@ -6,7 +6,8 @@ import { ConnectionManager } from './services/ConnectionManager';
 import { SecretStorageService } from './services/SecretStorageService';
 import { ProfileManager } from './services/ProfileManager';
 import { SavedQueriesService } from './services/SavedQueriesService';
-import { ErrorHandlers } from './commands/helper';
+import { ErrorHandlers, NotebookBuilder } from './commands/helper';
+import { SessionRegistry } from './services/SessionRegistry';
 import { registerProviders } from './activation/providers';
 import { registerAllCommands } from './activation/commands';
 import { NotebookStatusBar } from './activation/statusBar';
@@ -21,7 +22,7 @@ import {
   ExplainErrorHandler, FixQueryHandler, AnalyzeDataHandler, OptimizeQueryHandler,
   SendToChatHandler, ShowExplainPlanHandler, ConvertExplainHandler
 } from './services/handlers/ExplainHandlers';
-import { ShowConnectionSwitcherHandler, ShowDatabaseSwitcherHandler, ShowErrorMessageHandler, ExportRequestHandler } from './services/handlers/CoreHandlers';
+import { ShowConnectionSwitcherHandler, ShowDatabaseSwitcherHandler, ShowErrorMessageHandler, ExportRequestHandler, RetryCellHandler, ShowConnectionInfoHandler } from './services/handlers/CoreHandlers';
 import { ExecuteUpdateBackgroundHandler, ScriptDeleteHandler, SaveChangesHandler } from './services/handlers/QueryHandlers';
 
 export let outputChannel: vscode.OutputChannel;
@@ -30,12 +31,54 @@ export let statusBar: NotebookStatusBar;
 
 let chatViewProvider: ChatViewProvider | undefined;
 
+function isAzurePostgresHost(host?: string): boolean {
+  if (!host) {
+    return false;
+  }
+
+  const normalizedHost = host.toLowerCase();
+  return normalizedHost.includes('postgres.database.azure.com');
+}
+
+function migrateLegacyAzureConnectionTimeouts(connections: any[]): { connections: any[]; migratedCount: number } {
+  let migratedCount = 0;
+
+  const migratedConnections = connections.map((connection) => {
+    // Legacy Azure connections from v0.8.8 commonly carried a 5s default timeout.
+    if (isAzurePostgresHost(connection.host) && connection.connectTimeout === 5) {
+      migratedCount++;
+      return { ...connection, connectTimeout: 15 };
+    }
+
+    return connection;
+  });
+
+  return { connections: migratedConnections, migratedCount };
+}
+
 export function getChatViewProvider(): ChatViewProvider | undefined {
   return chatViewProvider;
 }
 
 export async function activate(context: vscode.ExtensionContext) {
   extensionContext = context;
+
+  // Provide extension context to NotebookBuilder for persistent session support (Req 5.4)
+  NotebookBuilder.setContext(context);
+
+  // Clean up SessionRegistry when a scratch notebook is closed (Req 6.1, 6.2)
+  context.subscriptions.push(
+    vscode.workspace.onDidCloseNotebookDocument((closedDoc) => {
+      const closedUri = closedDoc.uri.toString();
+      for (const [connectionId, doc] of SessionRegistry.entries()) {
+        if (doc.uri.toString() === closedUri) {
+          SessionRegistry.delete(connectionId);
+          break;
+        }
+      }
+    })
+  );
+
   outputChannel = vscode.window.createOutputChannel('PgStudio');
   outputChannel.appendLine('Activating PgStudio extension');
 
@@ -63,18 +106,32 @@ export async function activate(context: vscode.ExtensionContext) {
     console.log('Migrated legacy connections to include IDs');
   }
 
+  const azureTimeoutMigrationKey = 'postgresExplorer.migrations.azureConnectionTimeouts.v0_8_9';
+  const azureTimeoutMigrationDone = context.globalState.get<boolean>(azureTimeoutMigrationKey, false);
+
+  if (!azureTimeoutMigrationDone) {
+    const timeoutMigration = migrateLegacyAzureConnectionTimeouts(migratedConnections);
+    if (timeoutMigration.migratedCount > 0) {
+      await config.update('postgresExplorer.connections', timeoutMigration.connections, vscode.ConfigurationTarget.Global);
+      console.log(`Migrated ${timeoutMigration.migratedCount} Azure connection(s) to a 15 second timeout`);
+    }
+
+    await context.globalState.update(azureTimeoutMigrationKey, true);
+  }
+
   // Phase 7: Initialize ProfileManager and SavedQueriesService
   ProfileManager.getInstance().initialize(context);
   SavedQueriesService.getInstance().initialize(context);
   await ProfileManager.getInstance().initializeDefaultProfiles();
 
-  const { databaseTreeProvider, treeView, chatViewProviderInstance: chatView, savedQueriesTreeProvider } = registerProviders(context, outputChannel);
+  const { databaseTreeProvider, treeView, chatViewProviderInstance: chatView, savedQueriesTreeProvider, notebooksTreeProvider, autoRefreshService } = registerProviders(context, outputChannel);
+  context.subscriptions.push(autoRefreshService);
   chatViewProvider = chatView;
 
   // Store tree view instance for reveal functionality
   (databaseTreeProvider as any).setTreeView(treeView);
 
-  registerAllCommands(context, databaseTreeProvider, chatView, outputChannel, savedQueriesTreeProvider);
+  registerAllCommands(context, databaseTreeProvider, chatView, outputChannel, savedQueriesTreeProvider, notebooksTreeProvider);
 
   // Kernel initialization
   const rendererMessaging = vscode.notebooks.createRendererMessaging('postgres-query-renderer');
@@ -97,6 +154,8 @@ export async function activate(context: vscode.ExtensionContext) {
       void whatsNewManager.checkAndShow(true);
     })
   );
+  // Auto-open once on install/update; manager tracks the last shown version in global state.
+  void whatsNewManager.checkAndShow(false);
 
   const queryKernel = new PostgresKernel(context, rendererMessaging, 'postgres-query');
 
@@ -121,6 +180,8 @@ export async function activate(context: vscode.ExtensionContext) {
   registry.register('showDatabaseSwitcher', new ShowDatabaseSwitcherHandler(statusBar));
   registry.register('showErrorMessage', new ShowErrorMessageHandler());
   registry.register('export_request', new ExportRequestHandler());
+  registry.register('retryCell', new RetryCellHandler());
+  registry.register('showConnectionInfo', new ShowConnectionInfoHandler());
 
   // Query Execution Handlers
   registry.register('execute_update_background', new ExecuteUpdateBackgroundHandler());
@@ -133,6 +194,16 @@ export async function activate(context: vscode.ExtensionContext) {
       postMessage: (msg) => rendererMessaging.postMessage(msg, event.editor)
     });
   });
+
+  // Auto-generate notebook title on open
+  const { updateNotebookTitle } = await import('./utils/notebookTitle');
+  context.subscriptions.push(
+    vscode.workspace.onDidOpenNotebookDocument(async (notebook) => {
+      if (notebook.notebookType === 'postgres-notebook' || notebook.notebookType === 'postgres-query') {
+        await updateNotebookTitle(notebook);
+      }
+    })
+  );
 
   const { migrateExistingPasswords } = await import('./services/SecretStorageService');
   await migrateExistingPasswords(context);

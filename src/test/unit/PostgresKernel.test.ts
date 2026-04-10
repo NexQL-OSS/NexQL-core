@@ -172,8 +172,11 @@ describe('PostgresKernel', () => {
     expect(execution.end.calledWith(true)).to.be.true;
     expect(execution.appendOutput.called).to.be.true;
 
-    const notebookOut = execution.appendOutput.firstCall.args[0];
-    expect(notebookOut.items[0].mime).to.equal('application/vnd.postgres-notebook.result');
+    const allCalls = execution.appendOutput.getCalls();
+    const notebookOut = allCalls.map((c: any) => c.args[0]).find((out: any) =>
+      out.items[0].mime === 'application/vnd.postgres-notebook.result'
+    );
+    expect(notebookOut).to.exist;
     const payload = JSON.parse(decodeCellOutputData(notebookOut.items[0].data));
     expect(payload.rows[0].name).to.equal('Test');
   });
@@ -207,7 +210,11 @@ describe('PostgresKernel', () => {
     await (kernel as any)._executor.executeCell(cell);
 
     const execution = controllerStub.createNotebookCellExecution.firstCall.returnValue;
-    const notebookOut = execution.appendOutput.firstCall.args[0];
+    const allCalls = execution.appendOutput.getCalls();
+    const notebookOut = allCalls.map((c: any) => c.args[0]).find((out: any) =>
+      out.items[0].mime === 'application/vnd.postgres-notebook.result'
+    );
+    expect(notebookOut).to.exist;
     const payload = JSON.parse(decodeCellOutputData(notebookOut.items[0].data));
     expect(JSON.stringify(payload.rows[0].data)).to.contain('"foo":"bar"');
   });
@@ -280,7 +287,11 @@ describe('PostgresKernel', () => {
 
     const execution = controllerStub.createNotebookCellExecution.firstCall.returnValue;
     expect(execution.end.calledWith(true)).to.be.true;
-    const notebookOut = execution.appendOutput.firstCall.args[0];
+    const allCalls = execution.appendOutput.getCalls();
+    const notebookOut = allCalls.map((c: any) => c.args[0]).find((out: any) =>
+      out.items[0].mime === 'application/vnd.postgres-notebook.result'
+    );
+    expect(notebookOut).to.exist;
     const payload = JSON.parse(decodeCellOutputData(notebookOut.items[0].data));
     expect(payload.success).to.be.true;
     expect(payload.command).to.equal('CREATE');
@@ -356,7 +367,11 @@ describe('PostgresKernel', () => {
 
     const execution = controllerStub.createNotebookCellExecution.firstCall.returnValue;
     expect(execution.appendOutput.called).to.be.true;
-    const notebookOut = execution.appendOutput.firstCall.args[0];
+    const allCalls = execution.appendOutput.getCalls();
+    const notebookOut = allCalls.map((c: any) => c.args[0]).find((out: any) =>
+      out.items[0].mime === 'application/vnd.postgres-notebook.error'
+    );
+    expect(notebookOut).to.exist;
     expect(notebookOut.items[0].mime).to.equal('application/vnd.postgres-notebook.error');
     const errPayload = JSON.parse(decodeCellOutputData(notebookOut.items[0].data));
     expect(errPayload.success).to.equal(false);

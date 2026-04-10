@@ -11,11 +11,11 @@ import { cmdConnectDatabase, cmdDisconnectConnection, cmdDisconnectDatabase, cmd
 import { showIndexProperties, copyIndexName, generateDropIndexScript, generateReindexScript, generateScriptCreate, analyzeIndexUsage, generateAlterIndexScript, addIndexComment, cmdIndexOperations, cmdAddIndex } from '../commands/indexes';
 import { cmdAddObjectInDatabase, cmdBackupDatabase, cmdCreateDatabase, cmdDatabaseDashboard, cmdDatabaseOperations, cmdDeleteDatabase, cmdDisconnectDatabase as cmdDisconnectDatabaseLegacy, cmdGenerateCreateScript, cmdMaintenanceDatabase, cmdPsqlTool, cmdQueryTool, cmdRestoreDatabase, cmdScriptAlterDatabase, cmdShowConfiguration } from '../commands/database';
 import { cmdDropExtension, cmdEnableExtension, cmdExtensionOperations, cmdRefreshExtension } from '../commands/extensions';
-import { cmdCreateForeignTable, cmdEditForeignTable, cmdForeignTableOperations, cmdRefreshForeignTable } from '../commands/foreignTables';
+import { cmdCreateForeignTable, cmdDropForeignTable, cmdEditForeignTable, cmdForeignTableOperations, cmdRefreshForeignTable, cmdShowForeignTableProperties, cmdViewForeignTableData } from '../commands/foreignTables';
 import { cmdForeignDataWrapperOperations, cmdShowForeignDataWrapperProperties, cmdCreateForeignServer, cmdForeignServerOperations, cmdShowForeignServerProperties, cmdDropForeignServer, cmdCreateUserMapping, cmdUserMappingOperations, cmdShowUserMappingProperties, cmdDropUserMapping, cmdRefreshForeignDataWrapper, cmdRefreshForeignServer, cmdRefreshUserMapping } from '../commands/foreignDataWrappers';
 import { cmdCallFunction, cmdCreateFunction, cmdDropFunction, cmdEditFunction, cmdFunctionOperations, cmdRefreshFunction, cmdShowFunctionProperties } from '../commands/functions';
 import { cmdCreateMaterializedView, cmdDropMatView, cmdEditMatView, cmdMatViewOperations, cmdRefreshMatView, cmdViewMatViewData, cmdViewMatViewProperties } from '../commands/materializedViews';
-import { cmdNewNotebook, cmdExplainQuery } from '../commands/notebook';
+import { cmdNewNotebook, cmdExplainQuery, cmdJumpToSection } from '../commands/notebook';
 import { cmdCreateObjectInSchema, cmdCreateSchema, cmdSchemaOperations, cmdShowSchemaProperties, cmdPasteTable } from '../commands/schema';
 import {
   cmdCreateTable, cmdDropTable, cmdEditTable, cmdInsertTable, cmdMaintenanceAnalyze, cmdMaintenanceReindex, cmdMaintenanceVacuum, cmdScriptCreate, cmdScriptDelete, cmdScriptInsert, cmdScriptSelect, cmdScriptUpdate, cmdShowTableProperties, cmdTableOperations, cmdTruncateTable, cmdUpdateTable, cmdViewTableData, cmdTableProfile, cmdTableActivity, cmdQuickCloneTable, cmdExportTable, cmdIndexUsage, cmdTableDefinition
@@ -53,13 +53,15 @@ import { pickQueryHistory } from '../commands/pickQueryHistory';
 
 // Visual Schema Design
 import { cmdOpenTableDesigner, cmdCreateTableVisual, cmdOpenSchemaDiff } from '../commands/schemaDesigner';
+import { NotebookTreeItem, NotebooksTreeProvider } from '../providers/NotebooksTreeProvider';
 
 export function registerAllCommands(
   context: vscode.ExtensionContext,
   databaseTreeProvider: DatabaseTreeProvider,
   chatViewProviderInstance: ChatViewProvider | undefined,
   outputChannel: vscode.OutputChannel,
-  savedQueriesTreeProvider?: SavedQueriesTreeProvider
+  savedQueriesTreeProvider?: SavedQueriesTreeProvider,
+  notebooksTreeProvider?: NotebooksTreeProvider
 ) {
   const commands = [
     {
@@ -149,58 +151,6 @@ export function registerAllCommands(
     {
       command: 'postgres-explorer.tableDefinition',
       callback: async (item: DatabaseTreeItem) => await cmdTableDefinition(item, context)
-    },
-    {
-      command: 'postgres-explorer.filterTree',
-      callback: async () => {
-        const currentFilter = databaseTreeProvider.filterPattern;
-
-        if (currentFilter) {
-          // Filter is active - show options to modify or clear
-          const choice = await vscode.window.showQuickPick([
-            { label: '$(close) Clear Filter', value: 'clear' },
-            { label: '$(edit) Change Filter', value: 'change', description: `Current: "${currentFilter}"` }
-          ], { placeHolder: `Filter active: "${currentFilter}"` });
-
-          if (choice?.value === 'clear') {
-            databaseTreeProvider.clearFilter();
-            vscode.commands.executeCommand('setContext', 'postgresExplorer.filterActive', false);
-            vscode.window.showInformationMessage('Filter cleared');
-          } else if (choice?.value === 'change') {
-            const pattern = await vscode.window.showInputBox({
-              prompt: 'Enter filter pattern',
-              placeHolder: 'e.g., users, product, order',
-              value: currentFilter
-            });
-            if (pattern !== undefined) {
-              databaseTreeProvider.setFilter(pattern);
-              vscode.commands.executeCommand('setContext', 'postgresExplorer.filterActive', pattern.length > 0);
-              if (pattern) {
-                vscode.window.showInformationMessage(`Filter applied: "${pattern}"`);
-              }
-            }
-          }
-        } else {
-          // No filter active - show input
-          const pattern = await vscode.window.showInputBox({
-            prompt: 'Enter filter pattern',
-            placeHolder: 'e.g., users, product, order'
-          });
-          if (pattern !== undefined && pattern.length > 0) {
-            databaseTreeProvider.setFilter(pattern);
-            vscode.commands.executeCommand('setContext', 'postgresExplorer.filterActive', true);
-            vscode.window.showInformationMessage(`Filter applied: "${pattern}"`);
-          }
-        }
-      }
-    },
-    {
-      command: 'postgres-explorer.clearFilter',
-      callback: () => {
-        databaseTreeProvider.clearFilter();
-        vscode.commands.executeCommand('setContext', 'postgresExplorer.filterActive', false);
-        vscode.window.showInformationMessage('Filter cleared');
-      }
     },
     {
       command: 'postgres-explorer.generateQuery',
@@ -298,6 +248,38 @@ export function registerAllCommands(
       }
     },
     {
+      command: 'postgres-explorer.optimizeQuery',
+      callback: async () => {
+        if (!chatViewProviderInstance) {
+          vscode.window.showErrorMessage('AI Chat is not initialized');
+          return;
+        }
+
+        let query = '';
+        const activeNotebookEditor = vscode.window.activeNotebookEditor;
+        if (activeNotebookEditor && activeNotebookEditor.selections.length > 0) {
+          const cellIndex = activeNotebookEditor.selections[0].start;
+          const cell = activeNotebookEditor.notebook.cellAt(cellIndex);
+          query = cell.document.getText().trim();
+        }
+
+        if (!query) {
+          query = (await vscode.window.showInputBox({
+            prompt: 'Paste or type the SQL query you want to optimize',
+            placeHolder: 'SELECT ...'
+          }))?.trim() || '';
+        }
+
+        if (!query) {
+          vscode.window.showWarningMessage('No query provided for optimization.');
+          return;
+        }
+
+        await vscode.commands.executeCommand('postgresExplorer.chatView.focus');
+        await chatViewProviderInstance.handleOptimizeQuery(query);
+      }
+    },
+    {
       command: 'postgres-explorer.addToFavorites',
       callback: async (item: DatabaseTreeItem) => {
         if (item) {
@@ -353,6 +335,52 @@ export function registerAllCommands(
     {
       command: 'postgres-explorer.newNotebook',
       callback: async (item: any) => await cmdNewNotebook(item)
+    },
+    {
+      command: 'postgres-explorer.jumpToSection',
+      callback: async () => await cmdJumpToSection()
+    },
+    {
+      command: 'postgres-explorer.notebooks.refresh',
+      callback: () => notebooksTreeProvider?.refresh()
+    },
+    {
+      command: 'postgres-explorer.notebooks.open',
+      callback: async (item: NotebookTreeItem) => {
+        if (item?.uri) {
+          const doc = await vscode.workspace.openNotebookDocument(item.uri);
+          await vscode.window.showNotebookDocument(doc, { preserveFocus: false });
+        }
+      }
+    },
+    {
+      command: 'postgres-explorer.notebooks.rename',
+      callback: async (item: NotebookTreeItem) => {
+        if (!item?.uri) { return; }
+        const oldName = (item.label as string);
+        const newName = await vscode.window.showInputBox({
+          prompt: 'New notebook name',
+          value: oldName,
+          validateInput: v => v && /^[a-zA-Z0-9_-]+$/.test(v) ? null : 'Use only letters, numbers, hyphens, underscores'
+        });
+        if (!newName || newName === oldName) { return; }
+        const newUri = vscode.Uri.joinPath(item.uri, '..', `${newName}.pgsql`);
+        await vscode.workspace.fs.rename(item.uri, newUri, { overwrite: false });
+        notebooksTreeProvider?.refresh();
+      }
+    },
+    {
+      command: 'postgres-explorer.notebooks.delete',
+      callback: async (item: NotebookTreeItem) => {
+        if (!item?.uri) { return; }
+        const confirm = await vscode.window.showWarningMessage(
+          `Delete "${item.label as string}.pgsql"? This cannot be undone.`,
+          { modal: true }, 'Delete'
+        );
+        if (confirm !== 'Delete') { return; }
+        await vscode.workspace.fs.delete(item.uri, { recursive: false });
+        notebooksTreeProvider?.refresh();
+      }
     },
     {
       command: 'postgres-explorer.refresh',
@@ -585,6 +613,10 @@ export function registerAllCommands(
       callback: async (item: DatabaseTreeItem) => await cmdEditMatView(item, context)
     },
     {
+      command: 'postgres-explorer.editMaterializedView',
+      callback: async (item: DatabaseTreeItem) => await cmdEditMatView(item, context)
+    },
+    {
       command: 'postgres-explorer.viewMaterializedViewData',
       callback: async (item: DatabaseTreeItem) => await cmdViewMatViewData(item, context)
     },
@@ -633,6 +665,18 @@ export function registerAllCommands(
     {
       command: 'postgres-explorer.editForeignTable',
       callback: async (item: DatabaseTreeItem) => await cmdEditForeignTable(item, context)
+    },
+    {
+      command: 'postgres-explorer.showForeignTableProperties',
+      callback: async (item: DatabaseTreeItem) => await cmdShowForeignTableProperties(item, context)
+    },
+    {
+      command: 'postgres-explorer.viewForeignTableData',
+      callback: async (item: DatabaseTreeItem) => await cmdViewForeignTableData(item, context)
+    },
+    {
+      command: 'postgres-explorer.dropForeignTable',
+      callback: async (item: DatabaseTreeItem) => await cmdDropForeignTable(item, context)
     },
     // Add role/user commands
     {
@@ -904,6 +948,10 @@ export function registerAllCommands(
     {
       command: 'postgres-explorer.generateSelectStatement',
       callback: async (item: DatabaseTreeItem) => await generateSelectStatement(item)
+    },
+    {
+      command: 'postgresExplorer.openColumnNotebook',
+      callback: async (item: DatabaseTreeItem) => await showColumnProperties(item)
     },
     {
       command: 'postgres-explorer.generateWhereClause',
@@ -1187,6 +1235,18 @@ export function registerAllCommands(
     {
       command: 'postgres-explorer.openSchemaDiff',
       callback: (item: DatabaseTreeItem) => cmdOpenSchemaDiff(item, context)
+    },
+    {
+      command: 'postgres-explorer.viewMaintenanceVacuum',
+      callback: async () => {
+        vscode.window.showInformationMessage('VACUUM is not applicable to regular views. Use this on tables or materialized views.');
+      }
+    },
+    {
+      command: 'postgres-explorer.viewMaintenanceAnalyze',
+      callback: async () => {
+        vscode.window.showInformationMessage('ANALYZE is not applicable to regular views. Use this on tables or materialized views.');
+      }
     },
   ];
 

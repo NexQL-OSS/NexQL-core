@@ -4,38 +4,35 @@
 
 export const TypeSQL = {
     /**
-     * View type information
+     * Create a composite type
      */
-    info: (schema: string, typeName: string) =>
-        `-- View type information
-SELECT 
-    t.typname as type_name,
-    n.nspname as schema_name,
-    pg_get_userbyid(t.typowner) as owner,
-    CASE t.typtype
-        WHEN 'c' THEN 'composite'
-        WHEN 'e' THEN 'enum'
-        WHEN 'r' THEN 'range'
-        ELSE t.typtype::text
-    END as type_category,
-    obj_description(t.oid) as comment
-FROM pg_type t
-JOIN pg_namespace n ON n.oid = t.typnamespace
-WHERE t.typname = '${typeName}' AND n.nspname = '${schema}';`,
+    createComposite: (schema: string) =>
+        `-- Create composite type
+CREATE TYPE "${schema}".type_name AS (
+    field1 text,
+    field2 integer
+);`,
 
     /**
-     * Add value to enum
+     * Create an enum type
      */
-    addEnumValue: (schema: string, typeName: string) =>
-        `-- Add value to enum type
-ALTER TYPE "${schema}"."${typeName}" ADD VALUE 'new_value';`,
+    createEnum: (schema: string) =>
+        `-- Create enum type
+CREATE TYPE "${schema}".status_enum AS ENUM (
+    'active',
+    'inactive',
+    'pending'
+);`,
 
     /**
-     * Add attribute to composite
+     * Drop type
      */
-    addAttribute: (schema: string, typeName: string) =>
-        `-- Add attribute to composite type
-ALTER TYPE "${schema}"."${typeName}" ADD ATTRIBUTE new_attribute_name data_type;`,
+    drop: (schema: string, typeName: string) =>
+        `-- Drop type
+DROP TYPE "${schema}"."${typeName}";
+
+-- Use CASCADE to also drop dependent objects
+-- DROP TYPE "${schema}"."${typeName}" CASCADE;`,
 
     /**
      * Rename type
@@ -58,52 +55,4 @@ JOIN pg_class c ON c.oid = a.attrelid
 JOIN pg_namespace n ON n.oid = c.relnamespace
 JOIN pg_type t ON t.oid = a.atttypid
 WHERE t.typname = '${typeName}' AND n.nspname = '${schema}';`,
-
-    /**
-     * Drop type
-     */
-    drop: (schema: string, typeName: string) =>
-        `-- Drop type
-DROP TYPE "${schema}"."${typeName}";
-
--- Drop type and dependent objects
--- DROP TYPE "${schema}"."${typeName}" CASCADE;`,
-
-    /**
-     * CREATE TYPE templates
-     */
-    create: {
-        composite: (schema: string) =>
-            `-- Create new composite type
-CREATE TYPE ${schema}.type_name AS (
-    field1 text,
-    field2 integer
-);
-
--- Add comment
-COMMENT ON TYPE ${schema}.type_name IS 'Type description';`,
-
-        enum: (schema: string) =>
-            `-- Create an enum type
-CREATE TYPE ${schema}.status_enum AS ENUM (
-    'active',
-    'inactive',
-    'pending'
-);
-
--- Add comment
-COMMENT ON TYPE ${schema}.status_enum IS 'Enum for status values';`
-    },
-
-    /**
-     * Edit type (drop and recreate)
-     */
-    edit: (schema: string, typeName: string, fields: string) =>
-        `-- Drop existing type
-DROP TYPE IF EXISTS ${schema}.${typeName} CASCADE;
-
--- Create type with new definition
-CREATE TYPE ${schema}.${typeName} AS (
-${fields}
-);`
 };

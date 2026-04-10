@@ -5,7 +5,10 @@ import { ConnectionManager } from '../../services/ConnectionManager';
 import {
   ExportRequestHandler,
   ImportRequestHandler,
+  ImportPickFileHandler,
+  RetryCellHandler,
   ShowConnectionSwitcherHandler,
+  ShowConnectionInfoHandler,
   ShowDatabaseSwitcherHandler,
   ShowErrorMessageHandler
 } from '../../services/handlers/CoreHandlers';
@@ -107,6 +110,233 @@ describe('CoreHandlers', () => {
       .true;
   });
 
+  it('ShowDatabaseSwitcherHandler does nothing when the database stays the same', async () => {
+    const statusBar = { update: sandbox.stub() };
+    const handler = new ShowDatabaseSwitcherHandler(statusBar);
+    sandbox.stub(ConnectionUtils, 'findConnection').returns({
+      id: 'c1',
+      host: 'localhost',
+      port: 5432,
+      database: 'postgres'
+    });
+    sandbox.stub(ConnectionUtils, 'showDatabasePicker').resolves('postgres');
+    const update = sandbox.stub(ConnectionUtils, 'updateNotebookMetadata').resolves();
+
+    await handler.handle(
+      { connectionId: 'c1', currentDatabase: 'postgres' },
+      {
+        editor: { notebook: { metadata: {} } } as unknown as vscode.NotebookEditor
+      }
+    );
+
+    expect(update.called).to.be.false;
+    expect(statusBar.update.called).to.be.false;
+  });
+
+  it('handlers return early when no editor is provided', async () => {
+    const statusBar = { update: sandbox.stub() };
+    await new ShowConnectionSwitcherHandler(statusBar).handle({ connectionId: 'c1' }, {} as any);
+    await new ShowDatabaseSwitcherHandler(statusBar).handle({ connectionId: 'c1', currentDatabase: 'postgres' }, {} as any);
+    await new ImportPickFileHandler().handle({ table: 't', schema: 'public' }, {} as any);
+    await new ImportRequestHandler().handle({ data: [{ a: 1 }] }, {} as any);
+    await new RetryCellHandler().handle({}, {} as any);
+    await new ShowConnectionInfoHandler().handle({}, {} as any);
+  });
+
+  it('ImportPickFileHandler returns early when no file is selected', async () => {
+    sandbox.stub(ConnectionUtils, 'findConnection').returns({
+      id: 'c1',
+      host: 'localhost',
+      port: 5432,
+      username: 'u',
+      database: 'postgres'
+    });
+    const prevOpenDialog = (vscode.window as any).showOpenDialog;
+    (vscode.window as any).showOpenDialog = async () => undefined;
+
+    const handler = new ImportPickFileHandler();
+    try {
+      await handler.handle(
+        { table: 'users', schema: 'public' },
+        {
+          editor: {
+            notebook: {
+              metadata: { connectionId: 'c1' }
+            }
+          } as any
+        }
+      );
+    } finally {
+      (vscode.window as any).showOpenDialog = prevOpenDialog;
+    }
+
+    expect((vscode.window.showErrorMessage as sinon.SinonStub).called).to.be.false;
+  });
+
+  it('ImportPickFileHandler rejects JSON files that are not arrays', async () => {
+    sandbox.stub(ConnectionUtils, 'findConnection').returns({
+      id: 'c1',
+      host: 'localhost',
+      port: 5432,
+      username: 'u',
+      database: 'postgres'
+    });
+    const prevOpenDialog = (vscode.window as any).showOpenDialog;
+    (vscode.window as any).showOpenDialog = async () => [vscode.Uri.file('/tmp/input.json')];
+    sandbox.stub(vscode.workspace.fs, 'readFile').resolves(Buffer.from('{"id":1}'));
+
+    const handler = new ImportPickFileHandler();
+    try {
+      await handler.handle(
+        { table: 'users', schema: 'public' },
+        {
+          editor: {
+            notebook: {
+              metadata: { connectionId: 'c1' }
+            }
+          } as any
+        }
+      );
+    } finally {
+      (vscode.window as any).showOpenDialog = prevOpenDialog;
+    }
+
+    expect((vscode.window.showErrorMessage as sinon.SinonStub).calledWith('JSON file must contain an array of objects.')).to
+      .be.true;
+  });
+
+  it('ImportPickFileHandler warns when CSV data has no rows', async () => {
+    sandbox.stub(ConnectionUtils, 'findConnection').returns({
+      id: 'c1',
+      host: 'localhost',
+      port: 5432,
+      username: 'u',
+      database: 'postgres'
+    });
+    const prevOpenDialog = (vscode.window as any).showOpenDialog;
+    (vscode.window as any).showOpenDialog = async () => [vscode.Uri.file('/tmp/input.csv')];
+    sandbox.stub(vscode.workspace.fs, 'readFile').resolves(Buffer.from('id,name\n'));
+    const warning = sandbox.stub(vscode.window, 'showWarningMessage').resolves(undefined);
+
+    const handler = new ImportPickFileHandler();
+    try {
+      await handler.handle(
+        { table: 'users', schema: 'public' },
+        {
+          editor: {
+            notebook: {
+              metadata: { connectionId: 'c1' }
+            }
+          } as any
+        }
+      );
+    } finally {
+      (vscode.window as any).showOpenDialog = prevOpenDialog;
+    }
+
+    expect(warning.calledWith('File contains no data rows.')).to.be.true;
+  });
+
+  it('ImportPickFileHandler imports CSV data and skips conflicts', async () => {
+    const query = sandbox.stub();
+    const release = sandbox.stub();
+    query.onCall(0).resolves({});
+    query.onCall(1).resolves({
+      rows: [
+        { column_name: 'id', column_default: null, is_identity: 'NO' },
+        { column_name: 'name', column_default: null, is_identity: 'NO' }
+      ]
+    });
+    query.onCall(2).resolves({ rowCount: 1 });
+    query.onCall(3).resolves({});
+
+    sandbox.stub(ConnectionManager, 'getInstance').returns({
+      getPooledClient: sandbox.stub().resolves({ query, release })
+    } as unknown as ConnectionManager);
+    sandbox.stub(ConnectionUtils, 'findConnection').returns({
+      id: 'c1',
+      host: 'localhost',
+      port: 5432,
+      username: 'u',
+      database: 'postgres'
+    });
+    const prevOpenDialog = (vscode.window as any).showOpenDialog;
+    (vscode.window as any).showOpenDialog = async () => [vscode.Uri.file('/tmp/input.csv')];
+    sandbox.stub(vscode.workspace.fs, 'readFile').resolves(Buffer.from('id,name\n1,"Ada, Lovelace"\n'));
+    sandbox.stub(vscode.window, 'showQuickPick').resolves({
+      label: 'Skip duplicates',
+      value: 'skip'
+    } as any);
+
+    const handler = new ImportPickFileHandler();
+    try {
+      await handler.handle(
+        { table: 'users', schema: 'public' },
+        {
+          editor: {
+            notebook: {
+              metadata: { connectionId: 'c1' }
+            }
+          } as any
+        }
+      );
+    } finally {
+      (vscode.window as any).showOpenDialog = prevOpenDialog;
+    }
+
+    expect(query.firstCall.args[0]).to.equal('BEGIN');
+    expect(query.getCall(1).args[0]).to.contain('information_schema.columns');
+    expect(query.getCall(2).args[0]).to.contain('INSERT INTO "public"."users"');
+    expect(query.getCall(2).args[0]).to.contain('ON CONFLICT DO NOTHING');
+    expect(query.getCall(2).args[1]).to.deep.equal(['1', 'Ada, Lovelace']);
+    expect(query.lastCall.args[0]).to.equal('COMMIT');
+    expect(release.calledOnce).to.be.true;
+    expect((vscode.window.showInformationMessage as sinon.SinonStub).calledWith(sinon.match(/^Successfully imported 1 rows/))).to
+      .be.true;
+  });
+
+  it('RetryCellHandler re-executes the notebook cell', async () => {
+    const execute = sandbox.stub(vscode.commands, 'executeCommand').resolves(undefined);
+    const handler = new RetryCellHandler();
+    await handler.handle(
+      {},
+      {
+        editor: {
+          notebook: {
+            getCells: sandbox.stub().returns([])
+          }
+        } as any
+      }
+    );
+
+    expect(execute.calledWith('notebook.cell.execute')).to.be.true;
+  });
+
+  it('ShowConnectionInfoHandler displays the active connection details', async () => {
+    const config = {
+      get: sandbox.stub().returns([
+        { id: 'c1', name: 'Primary', host: 'localhost', port: 5432, database: 'postgres' }
+      ])
+    };
+    sandbox.stub(vscode.workspace, 'getConfiguration').returns(config as any);
+
+    const handler = new ShowConnectionInfoHandler();
+    await handler.handle(
+      {},
+      {
+        editor: {
+          notebook: {
+            metadata: { connectionId: 'c1', databaseName: 'postgres' }
+          }
+        } as any
+      }
+    );
+
+    expect((vscode.window.showInformationMessage as sinon.SinonStub).calledWith(
+      'Connection: Primary | Host: localhost:5432 | Database: postgres'
+    )).to.be.true;
+  });
+
   it('ImportRequestHandler imports rows in batches', async () => {
     const handler = new ImportRequestHandler();
     const query = sandbox.stub();
@@ -124,8 +354,14 @@ describe('CoreHandlers', () => {
     });
 
     query.onCall(0).resolves({});
-    query.onCall(1).resolves({});
-    query.onCall(2).resolves({});
+    query.onCall(1).resolves({
+      rows: [
+        { column_name: 'a', column_default: null, is_identity: 'NO' },
+        { column_name: 'b', column_default: null, is_identity: 'NO' }
+      ]
+    });
+    query.onCall(2).resolves({ rowCount: 1 });
+    query.onCall(3).resolves({});
 
     await handler.handle(
       {
@@ -141,8 +377,10 @@ describe('CoreHandlers', () => {
     );
 
     expect(query.firstCall.args[0]).to.equal('BEGIN');
-    expect(query.getCall(1).args[0]).to.contain('INSERT INTO');
-    expect(query.lastCall.args[0]).to.equal('COMMIT');
+    expect(query.getCall(1).args[0]).to.contain('information_schema.columns');
+    expect(query.getCall(2).args[0]).to.contain('INSERT INTO');
+    expect(query.getCall(2).args[1]).to.deep.equal([1, 'x']);
+    expect(query.getCall(3).args[0]).to.equal('COMMIT');
     expect(release.calledOnce).to.be.true;
   });
 

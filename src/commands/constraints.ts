@@ -2,10 +2,7 @@ import * as vscode from 'vscode';
 import { DatabaseTreeItem } from '../providers/DatabaseTreeProvider';
 import {
   MarkdownUtils,
-  FormatHelpers,
   ErrorHandlers,
-  SQL_TEMPLATES,
-  ObjectUtils,
   getDatabaseConnection,
   NotebookBuilder,
   QueryBuilder
@@ -34,33 +31,20 @@ export async function showConstraintProperties(treeItem: DatabaseTreeItem): Prom
 
     const constraint = result.rows[0];
 
-    // Build constraint type icon
-    const typeIcon = ObjectUtils.getConstraintIcon(constraint.constraint_type);
-
     const nb = new NotebookBuilder(metadata)
       .addMarkdown(
-        MarkdownUtils.header(`${typeIcon} Constraint Properties: \`${constraint.constraint_name}\``) +
-        MarkdownUtils.infoBox(`Table: \`${schema}.${tableName}\``) +
-        `\n\n#### 📊 Basic Information\n\n` +
-        MarkdownUtils.propertiesTable({
-          'Constraint Name': `<code>${constraint.constraint_name}</code>`,
-          'Type': `<code>${constraint.constraint_type}</code>`,
-          'Columns': `<code>${constraint.columns || '—'}</code>`,
-          'Deferrable': FormatHelpers.formatBoolean(constraint.is_deferrable === 'YES'),
-          'Initially Deferred': FormatHelpers.formatBoolean(constraint.initially_deferred === 'YES')
-        })
+        `### 🛡️ Constraint Properties: \`${constraint.constraint_name}\`\n\n` +
+        `Table: \`${schema}.${tableName}\` — Type: \`${constraint.constraint_type}\``
       );
 
     if (constraint.constraint_definition) {
-      nb.addMarkdown(`#### 🔧 Definition\n\n\`\`\`sql\n${constraint.constraint_definition}\n\`\`\``);
+      nb.addMarkdown(`##### Definition`);
+      nb.addMarkdown(`\`\`\`sql\n${constraint.constraint_definition}\n\`\`\``);
     }
 
     if (constraint.check_clause) {
-      nb.addMarkdown(`#### ✓ Check Clause\n\n\`\`\`sql\n${constraint.check_clause}\n\`\`\``);
-    }
-
-    if (constraint.comment) {
-      nb.addMarkdown(`#### 💬 Comment\n\n\`\`\`\n${constraint.comment}\n\`\`\``);
+      nb.addMarkdown(`##### Check Clause`);
+      nb.addMarkdown(`\`\`\`sql\n${constraint.check_clause}\n\`\`\``);
     }
 
     // Get foreign key details if applicable
@@ -68,20 +52,12 @@ export async function showConstraintProperties(treeItem: DatabaseTreeItem): Prom
       const fkResult = await client.query(QueryBuilder.foreignKeyDetails(schema, constraintName));
 
       if (fkResult.rows.length > 0) {
-        let fkMarkdown = `#### 🔗 Foreign Key References\n\n<table style="font-size: 11px; width: 100%; border-collapse: collapse;">
-    <tr><th style="text-align: left;">Column</th><th style="text-align: left;">References</th><th style="text-align: left;">On Update</th><th style="text-align: left;">On Delete</th></tr>`;
-
-        fkResult.rows.forEach((row: any) => {
-          fkMarkdown += `\n    <tr><td><code>${row.column_name}</code></td><td><code>${row.foreign_table_schema}.${row.foreign_table_name}.${row.foreign_column_name}</code></td><td>${row.update_rule}</td><td>${row.delete_rule}</td></tr>`;
-        });
-
-        fkMarkdown += '\n</table>';
-        nb.addMarkdown(fkMarkdown);
+        const refs = fkResult.rows.map((row: any) =>
+          `${row.column_name} → ${row.foreign_table_schema}.${row.foreign_table_name}.${row.foreign_column_name} (ON UPDATE ${row.update_rule}, ON DELETE ${row.delete_rule})`
+        ).join('\n');
+        nb.addMarkdown(`##### Foreign Key References\n\n\`\`\`\n${refs}\n\`\`\``);
       }
     }
-
-    nb.addMarkdown('##### 📖 Query Constraint Details')
-      .addSql(ConstraintSQL.details(schema, constraintName));
 
     await nb.show();
 
@@ -115,11 +91,11 @@ export async function generateDropConstraintScript(treeItem: DatabaseTreeItem): 
 
     await new NotebookBuilder(metadata)
       .addMarkdown(
-        MarkdownUtils.header(`🗑️ DROP CONSTRAINT: \`${constraintName}\``) +
-        MarkdownUtils.dangerBox('This will remove the constraint from the table. Data integrity checks enforced by this constraint will no longer apply.') +
-        MarkdownUtils.infoBox(`Table: \`${schema}.${tableName}\``)
+        `### 🗑️ Drop Constraint: \`${constraintName}\`\n\n` +
+        `Removes constraint from \`${schema}.${tableName}\`.`
       )
-      .addSql(SQL_TEMPLATES.DROP.CONSTRAINT(schema, tableName, constraintName))
+      .addMarkdown(`##### ⚠️ Drop Constraint — danger: this permanently removes the constraint and its data integrity enforcement.`)
+      .addSql(ConstraintSQL.drop(schema, tableName, constraintName))
       .show();
   } catch (err: any) {
     await ErrorHandlers.handleCommandError(err, 'generate drop constraint script');
@@ -129,7 +105,7 @@ export async function generateDropConstraintScript(treeItem: DatabaseTreeItem): 
 }
 
 /**
- * Generate ALTER CONSTRAINT script
+ * Generate ALTER CONSTRAINT script (RENAME)
  */
 export async function generateAlterConstraintScript(treeItem: DatabaseTreeItem): Promise<void> {
   let dbConn;
@@ -142,15 +118,15 @@ export async function generateAlterConstraintScript(treeItem: DatabaseTreeItem):
 
     await new NotebookBuilder(metadata)
       .addMarkdown(
-        MarkdownUtils.header(`✏️ ALTER CONSTRAINT: \`${constraintName}\``) +
-        MarkdownUtils.infoBox(`Table: \`${schema}.${tableName}\``) +
-        `\n\n#### Available Operations\n\n` +
-        MarkdownUtils.operationsTable([
-          { operation: '<strong>RENAME</strong>', description: 'Change the name of the constraint' },
-          { operation: '<strong>VALIDATE</strong>', description: 'Validate a constraint that was created as NOT VALID' }
-        ])
+        `### ✏️ Rename Constraint: \`${constraintName}\`\n\n` +
+        `Renames constraint on \`${schema}.${tableName}\`.`
       )
-      .addSql(ConstraintSQL.rename(schema, tableName, constraintName))
+      .addMarkdown(`##### ✏️ Rename Constraint`)
+      .addSql(
+        `-- Rename constraint
+ALTER TABLE "${schema}"."${tableName}"
+RENAME CONSTRAINT "${constraintName}" TO new_constraint_name;`
+      )
       .show();
   } catch (err: any) {
     await ErrorHandlers.handleCommandError(err, 'generate alter constraint script');
@@ -173,10 +149,10 @@ export async function validateConstraint(treeItem: DatabaseTreeItem): Promise<vo
 
     await new NotebookBuilder(metadata)
       .addMarkdown(
-        MarkdownUtils.header(`✅ VALIDATE CONSTRAINT: \`${constraintName}\``) +
-        MarkdownUtils.infoBox('Validates a constraint that was previously created with `NOT VALID`. This scans the table to ensure all rows satisfy the constraint.') +
-        MarkdownUtils.infoBox(`Table: \`${schema}.${tableName}\``)
+        `### ✅ Validate Constraint: \`${constraintName}\`\n\n` +
+        `Validates a NOT VALID constraint on \`${schema}.${tableName}\` by scanning existing rows.`
       )
+      .addMarkdown(`##### ✅ Validate Constraint`)
       .addSql(ConstraintSQL.validate(schema, tableName, constraintName))
       .show();
   } catch (err: any) {
@@ -199,38 +175,17 @@ export async function generateAddConstraintScript(treeItem: DatabaseTreeItem): P
 
     await new NotebookBuilder(metadata)
       .addMarkdown(
-        MarkdownUtils.header('➕ ADD CONSTRAINT Templates') +
-        MarkdownUtils.infoBox(`Table: \`${schema}.${tableName}\``) +
-        `\n\n#### Constraint Types\n\n` +
-        MarkdownUtils.operationsTable([
-          { operation: '<strong>PRIMARY KEY</strong>', description: 'Uniquely identifies each row' },
-          { operation: '<strong>FOREIGN KEY</strong>', description: 'Ensures referential integrity' },
-          { operation: '<strong>UNIQUE</strong>', description: 'Ensures all values in a column are different' },
-          { operation: '<strong>CHECK</strong>', description: 'Ensures that all values in a column satisfy a specific condition' }
-        ])
+        `### ➕ Add Constraint: \`${schema}.${tableName}\`\n\n` +
+        `Templates for adding primary key, foreign key, unique, and check constraints.`
       )
-      .addSql(`-- Add Primary Key Constraint
-ALTER TABLE "${schema}"."${tableName}"
-ADD CONSTRAINT "${tableName}_pkey" 
-PRIMARY KEY (column_name);
-
--- Add Foreign Key Constraint
-ALTER TABLE "${schema}"."${tableName}"
-ADD CONSTRAINT "${tableName}_fkey" 
-FOREIGN KEY (column_name) 
-REFERENCES other_schema.other_table(other_column)
-ON DELETE CASCADE
-ON UPDATE CASCADE;
-
--- Add Unique Constraint
-ALTER TABLE "${schema}"."${tableName}"
-ADD CONSTRAINT "${tableName}_unique" 
-UNIQUE (column_name);
-
--- Add Check Constraint
-ALTER TABLE "${schema}"."${tableName}"
-ADD CONSTRAINT "${tableName}_check" 
-CHECK (column_name > 0);`)
+      .addMarkdown(`##### 🔑 Add Primary Key`)
+      .addSql(ConstraintSQL.addPrimaryKey(schema, tableName))
+      .addMarkdown(`##### 🔗 Add Foreign Key`)
+      .addSql(ConstraintSQL.addForeignKey(schema, tableName))
+      .addMarkdown(`##### ⭐ Add Unique Constraint`)
+      .addSql(ConstraintSQL.addUnique(schema, tableName))
+      .addMarkdown(`##### ✓ Add Check Constraint`)
+      .addSql(ConstraintSQL.addCheck(schema, tableName))
       .show();
   } catch (err: any) {
     await ErrorHandlers.handleCommandError(err, 'generate add constraint script');
@@ -253,10 +208,10 @@ export async function viewConstraintDependencies(treeItem: DatabaseTreeItem): Pr
 
     await new NotebookBuilder(metadata)
       .addMarkdown(
-        MarkdownUtils.header(`🕸️ Constraint Dependencies: \`${constraintName}\``) +
-        MarkdownUtils.infoBox(`Table: \`${schema}.${tableName}\``) +
-        MarkdownUtils.infoBox('Shows objects that depend on this constraint.')
+        `### 🕸️ Constraint Dependencies: \`${constraintName}\`\n\n` +
+        `Shows objects that depend on this constraint in \`${schema}.${tableName}\`.`
       )
+      .addMarkdown(`##### 🕸️ Find Dependencies`)
       .addSql(`-- Find all dependencies for this constraint
 SELECT 
     d.deptype as dependency_type,
@@ -286,42 +241,35 @@ ORDER BY dependent_schema, dependent_object;`)
   }
 }
 
-export async function cmdConstraintOperations(item: DatabaseTreeItem, context: vscode.ExtensionContext) {
+/**
+ * Constraint Operations notebook — read → write → destructive
+ */
+export async function cmdConstraintOperations(item: DatabaseTreeItem, _context?: vscode.ExtensionContext) {
   let dbConn;
   try {
     dbConn = await getDatabaseConnection(item);
     const { metadata } = dbConn;
+    const schema = item.schema!;
+    const tableName = item.tableName!;
+    const constraintName = item.label;
 
     await new NotebookBuilder(metadata)
       .addMarkdown(
-        MarkdownUtils.header(`🛡️ Constraint Operations: \`${item.label}\``) +
-        MarkdownUtils.infoBox('This notebook provides a dashboard for managing your constraint. Each cell is a ready-to-execute template.') +
-        `\n\n#### 🎯 Available Operations\n\n` +
-        MarkdownUtils.operationsTable([
-          { operation: '🔍 <strong>View Definition</strong>', description: 'Display constraint definition', riskLevel: '✅ Safe' },
-          { operation: '✅ <strong>Validate</strong>', description: 'Check existing data against constraint', riskLevel: '✅ Safe' },
-          { operation: '✏️ <strong>Rename</strong>', description: 'Change constraint name', riskLevel: '⚠️ Low Risk' },
-          { operation: '❌ <strong>Drop</strong>', description: 'Remove constraint permanently', riskLevel: '🔴 Destructive' }
-        ]) + `\n` +
-        MarkdownUtils.successBox('Use `Ctrl+Enter` to execute individual cells.') +
-        `\n---`
+        `### 🛡️ Constraint Operations: \`${constraintName}\`\n\n` +
+        `Manage constraint on \`${schema}.${tableName}\`: validate, add variants, and drop.`
       )
-      .addMarkdown(`##### 🔍 View Definition`)
-      .addSql(ConstraintSQL.definition(item.schema!, item.tableName!, item.label))
-      .addMarkdown(`#### ✅ Validate Constraint\n\n` +
-        MarkdownUtils.infoBox('Validating a constraint ensures all existing rows satisfy the condition. This is useful for constraints added as NOT VALID.'))
-      .addSql(`-- Validate constraint
-ALTER TABLE ${item.schema}.${item.tableName}
-VALIDATE CONSTRAINT ${item.label};`)
-      .addMarkdown(`#### ✏️ Rename Constraint`)
-      .addSql(`-- Rename constraint
-ALTER TABLE ${item.schema}.${item.tableName}
-RENAME CONSTRAINT ${item.label} TO new_constraint_name;`)
-      .addMarkdown(`#### ❌ Drop Constraint\n\n` +
-        MarkdownUtils.dangerBox('This will remove the constraint. Data integrity checks enforced by this constraint will no longer apply.', 'Caution'))
-      .addSql(`-- Drop constraint
-ALTER TABLE ${item.schema}.${item.tableName}
-DROP CONSTRAINT ${item.label};`)
+      .addMarkdown(`##### ✅ Validate Constraint`)
+      .addSql(ConstraintSQL.validate(schema, tableName, constraintName))
+      .addMarkdown(`##### 🔑 Add Primary Key`)
+      .addSql(ConstraintSQL.addPrimaryKey(schema, tableName))
+      .addMarkdown(`##### 🔗 Add Foreign Key`)
+      .addSql(ConstraintSQL.addForeignKey(schema, tableName))
+      .addMarkdown(`##### ⭐ Add Unique Constraint`)
+      .addSql(ConstraintSQL.addUnique(schema, tableName))
+      .addMarkdown(`##### ✓ Add Check Constraint`)
+      .addSql(ConstraintSQL.addCheck(schema, tableName))
+      .addMarkdown(`##### ❌ Drop Constraint — ⚠️ warning: permanently removes the constraint and its data integrity enforcement.`)
+      .addSql(ConstraintSQL.drop(schema, tableName, constraintName))
       .show();
   } catch (err: any) {
     await ErrorHandlers.handleCommandError(err, 'create constraint operations notebook');
@@ -331,7 +279,7 @@ DROP CONSTRAINT ${item.label};`)
 }
 
 /**
- * Add new constraint to table - generates a comprehensive notebook with guidelines and SQL templates
+ * Add new constraint to table
  */
 export async function cmdAddConstraint(item: DatabaseTreeItem): Promise<void> {
   let dbConn;
@@ -343,36 +291,17 @@ export async function cmdAddConstraint(item: DatabaseTreeItem): Promise<void> {
 
     await new NotebookBuilder(metadata)
       .addMarkdown(
-        MarkdownUtils.header(`➕ Add New Constraint to \`${schema}.${tableName}\``) +
-        MarkdownUtils.infoBox('This notebook provides templates for adding constraints. Constraints enforce data integrity rules.') +
-        `\n\n#### 📋 Constraint Types Overview\n\n` +
-        MarkdownUtils.operationsTable([
-          { operation: '🔑 <strong>PRIMARY KEY</strong>', description: 'Uniquely identifies each row. Only one per table. Cannot be NULL.' },
-          { operation: '🔗 <strong>FOREIGN KEY</strong>', description: 'References primary key in another table. Enforces referential integrity.' },
-          { operation: '⭐ <strong>UNIQUE</strong>', description: 'Ensures all values in column(s) are distinct. Multiple allowed per table.' },
-          { operation: '✓ <strong>CHECK</strong>', description: 'Validates data against a boolean expression. Flexible validation rules.' },
-          { operation: '⊗ <strong>EXCLUSION</strong>', description: 'Prevents overlapping values using operators (useful for ranges, schedules).' },
-          { operation: '⊕ <strong>NOT NULL</strong>', description: 'Prevents NULL values in a column.' }
-        ]) +
-        `\n\n#### ⚡ Important Considerations\n\n` +
-        MarkdownUtils.warningBox('Adding constraints to large tables may take time and lock the table. Consider using NOT VALID with later VALIDATE.') +
-        `\n\n---`
+        `### ➕ Add Constraint: \`${schema}.${tableName}\`\n\n` +
+        `Templates for adding constraints to enforce data integrity.`
       )
-      .addMarkdown(`##### 🔑 Primary Key Constraint`)
-      .addSql(ConstraintSQL.add.primaryKey(schema, tableName))
-      .addMarkdown(`##### 🔗 Foreign Key Constraint`)
-      .addSql(ConstraintSQL.add.foreignKey(schema, tableName))
-      .addMarkdown(`##### ⭐ Unique Constraint`)
-      .addSql(ConstraintSQL.add.unique(schema, tableName))
-      .addMarkdown(`##### ✓ Check Constraint`)
-      .addSql(ConstraintSQL.add.check(schema, tableName))
-      .addMarkdown(`##### ⊗ Exclusion Constraint (for non-overlapping ranges)`)
-      .addSql(ConstraintSQL.add.exclusion(schema, tableName))
-      .addMarkdown(`##### ⊕ NOT NULL Constraint`)
-      .addSql(ConstraintSQL.add.notNull(schema, tableName))
-      .addMarkdown(`##### ⚡ Add Constraint Without Locking (Large Tables)`)
-      .addSql(ConstraintSQL.add.notValid(schema, tableName))
-      .addMarkdown(MarkdownUtils.successBox('After adding constraints, test with sample data to ensure they work as expected.'))
+      .addMarkdown(`##### 🔑 Add Primary Key`)
+      .addSql(ConstraintSQL.addPrimaryKey(schema, tableName))
+      .addMarkdown(`##### 🔗 Add Foreign Key`)
+      .addSql(ConstraintSQL.addForeignKey(schema, tableName))
+      .addMarkdown(`##### ⭐ Add Unique Constraint`)
+      .addSql(ConstraintSQL.addUnique(schema, tableName))
+      .addMarkdown(`##### ✓ Add Check Constraint`)
+      .addSql(ConstraintSQL.addCheck(schema, tableName))
       .show();
   } catch (err: any) {
     await ErrorHandlers.handleCommandError(err, 'add constraint');

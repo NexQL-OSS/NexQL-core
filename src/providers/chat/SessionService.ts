@@ -35,7 +35,7 @@ export class SessionService {
         this._currentSessionId = id;
     }
 
-    async saveSession(messages: ChatMessage[], generateTitle: (msg: string) => Promise<string>): Promise<void> {
+    async saveSession(messages: ChatMessage[], generateTitle: (msg: string) => Promise<string>, metadata?: { connectionName?: string; database?: string }): Promise<void> {
         if (messages.length === 0) return;
 
         const sessions = this.getChatSessions();
@@ -46,18 +46,56 @@ export class SessionService {
             if (index !== -1) {
                 sessions[index].messages = [...messages];
                 sessions[index].updatedAt = now;
+                
+                // Phase C: Update metadata if provided
+                if (metadata?.connectionName) {
+                    sessions[index].connectionName = metadata.connectionName;
+                }
+                if (metadata?.database) {
+                    sessions[index].database = metadata.database;
+                }
+                
+                // Phase C: Extract preview from first AI response if not already set
+                if (!sessions[index].preview) {
+                    const firstAiMessage = messages.find(m => m.role === 'assistant');
+                    if (firstAiMessage) {
+                        // Strip markdown fence markers and take first 100 chars
+                        const cleanContent = firstAiMessage.content
+                            .replace(/^```[\s\S]*?```/gm, '') // Remove code blocks
+                            .replace(/\*\*/g, '')               // Remove bold markers
+                            .replace(/\*/g, '')                 // Remove italic markers
+                            .trim();
+                        sessions[index].preview = cleanContent.substring(0, 100);
+                    }
+                }
             }
         } else {
             this._currentSessionId = this.generateSessionId();
             const firstUserMessage = messages.find(m => m.role === 'user')?.content || 'New Chat';
             const title = await generateTitle(firstUserMessage);
             
+            // Phase C: Extract preview from first AI response
+            let preview: string | undefined;
+            const firstAiMessage = messages.find(m => m.role === 'assistant');
+            if (firstAiMessage) {
+                const cleanContent = firstAiMessage.content
+                    .replace(/^```[\s\S]*?```/gm, '')
+                    .replace(/\*\*/g, '')
+                    .replace(/\*/g, '')
+                    .trim();
+                preview = cleanContent.substring(0, 100);
+            }
+            
             sessions.unshift({
                 id: this._currentSessionId,
                 title,
                 messages: [...messages],
                 createdAt: now,
-                updatedAt: now
+                updatedAt: now,
+                // Phase C: Store metadata
+                preview,
+                connectionName: metadata?.connectionName,
+                database: metadata?.database
             });
         }
 
@@ -98,7 +136,11 @@ export class SessionService {
             createdAt: s.createdAt,
             updatedAt: s.updatedAt,
             messageCount: s.messages.length,
-            isActive: s.id === this._currentSessionId
+            isActive: s.id === this._currentSessionId,
+            // Phase C: Include metadata in summaries
+            preview: s.preview,
+            connectionName: s.connectionName,
+            database: s.database
         }));
     }
 

@@ -1,10 +1,13 @@
-.PHONY: all clean install build package publish publish-ovsx publish-vsx git-tag test test-unit test-integration test-renderer test-all coverage docker-up docker-down
+.PHONY: all clean install build package package-nightly publish publish-nightly publish-ovsx publish-vsx git-tag test test-unit test-integration test-renderer test-all coverage docker-up docker-down
 
 # Variables
 NODE_BIN := node
 NPM_BIN := npm
 VSCE_CMD := npx -y @vscode/vsce@2.24.0
 OVSX_CMD := npx -y ovsx
+OPENVSX_NIGHTLY_NAME ?= postgres-explorer-nightly
+# Evaluate once per make invocation to keep package/publish nightly version consistent.
+NIGHTLY_RUN_NUMBER := $(shell date +%s)
 
 # Get version and name from package.json using node
 EXTENSION_NAME := $(shell $(NODE_BIN) -p "require('./package.json').name")
@@ -38,6 +41,25 @@ package: build
 	echo "Restored original README.md"; \
 	exit $$EXIT_CODE
 
+# Package nightly VSIX artifacts for Marketplace (pre-release) and Open VSX companion
+package-nightly: build
+	@echo "Computing nightly version..."
+	@NIGHTLY_VERSION=$$($(NODE_BIN) -e "const [maj,min]=require('./package.json').version.split('.').map(Number); const nightlyMinor=min%2===0?min+1:min; const run='$(NIGHTLY_RUN_NUMBER)'; process.stdout.write(maj + '.' + nightlyMinor + '.' + run)"); \
+	echo "Using nightly version: $$NIGHTLY_VERSION"; \
+	NIGHTLY_VERSION=$$NIGHTLY_VERSION OPENVSX_NIGHTLY_NAME=$(OPENVSX_NIGHTLY_NAME) $(NODE_BIN) ./scripts/prepare-nightly-manifests.js
+	@echo "Packaging VS Code Marketplace nightly (pre-release)..."
+	@cp package.json package.json.bak
+	@cp .nightly/package.marketplace.json package.json
+	@$(VSCE_CMD) package --pre-release
+	@mv package.json.bak package.json
+	@echo "Packaging Open VSX nightly companion..."
+	@cp package.json package.json.bak
+	@cp .nightly/package.openvsx.json package.json
+	@$(VSCE_CMD) package
+	@mv package.json.bak package.json
+	@echo "Nightly packages created:"
+	@ls -1 *.vsix
+
 # Publish the extension to VS Code Marketplace and Open VSX Registry
 publish: package
 	@echo "Publishing $(VSIX_FILE) to VS Code Marketplace..."
@@ -49,6 +71,20 @@ publish: package
 	test -f ./pat-open-vsx || (echo "Error: pat-open-vsx file not found. Please create a file named 'pat-open-vsx' containing your Open VSX Access Token." && exit 1)
 	$(OVSX_CMD) publish $(VSIX_FILE) -p $(shell cat ./pat-open-vsx)
 	@echo "Successfully published to Open VSX Registry."
+
+# Publish nightly artifacts to both VS Code Marketplace and Open VSX
+publish-nightly: package-nightly
+	@echo "Publishing nightly pre-release to VS Code Marketplace..."
+	test -f ./pat || (echo "Error: pat file not found. Please create a file named 'pat' containing your Personal Access Token." && exit 1)
+	@NIGHTLY_VERSION=$$($(NODE_BIN) -e "const [maj,min]=require('./package.json').version.split('.').map(Number); const nightlyMinor=min%2===0?min+1:min; const run='$(NIGHTLY_RUN_NUMBER)'; process.stdout.write(maj + '.' + nightlyMinor + '.' + run)"); \
+	MARKET_VSIX="$(EXTENSION_NAME)-$$NIGHTLY_VERSION.vsix"; \
+	$(VSCE_CMD) publish --pre-release --packagePath $$MARKET_VSIX -p $$(cat ./pat)
+	@echo "Publishing nightly companion to Open VSX..."
+	test -f ./pat-open-vsx || (echo "Error: pat-open-vsx file not found. Please create a file named 'pat-open-vsx' containing your Open VSX Access Token." && exit 1)
+	@NIGHTLY_VERSION=$$($(NODE_BIN) -e "const [maj,min]=require('./package.json').version.split('.').map(Number); const nightlyMinor=min%2===0?min+1:min; const run='$(NIGHTLY_RUN_NUMBER)'; process.stdout.write(maj + '.' + nightlyMinor + '.' + run)"); \
+	OPENVSX_VSIX="$(OPENVSX_NIGHTLY_NAME)-$$NIGHTLY_VERSION.vsix"; \
+	$(OVSX_CMD) publish $$OPENVSX_VSIX -p $$(cat ./pat-open-vsx)
+	@echo "Successfully published nightly builds to both registries."
 
 # Publish the extension to VS Code Marketplace only
 publish-vsx: package
@@ -138,7 +174,9 @@ help:
 	@echo "  install         : Install dependencies"
 	@echo "  build           : Build the extension"
 	@echo "  package         : Create VSIX package"
+	@echo "  package-nightly : Create nightly VSIX packages (Marketplace pre-release + Open VSX companion)"
 	@echo "  publish         : Publish to BOTH VS Code Marketplace and Open VSX"
+	@echo "  publish-nightly : Publish nightly builds to BOTH VS Code Marketplace and Open VSX"
 	@echo "  publish-vsx     : Publish to VS Code Marketplace only"
 	@echo "  publish-ovsx    : Publish to Open VSX Registry only"
 	@echo "  git-tag         : Interactive version bump, commit, tag, and push"

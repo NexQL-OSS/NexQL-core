@@ -36,7 +36,8 @@ jobs:
           echo "Package.json version: $PKG_VERSION"
           
           if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
-            echo "::warning::Tag version ($TAG_VERSION) doesn't match package.json version ($PKG_VERSION)"
+            echo "::error::Tag version ($TAG_VERSION) doesn't match package.json version ($PKG_VERSION)"
+            exit 1
           fi
           
           # Set VSIX filename

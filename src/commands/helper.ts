@@ -3,6 +3,10 @@ import { DatabaseTreeItem } from '../providers/DatabaseTreeProvider';
 import { createAndShowNotebook, createMetadata, getConnectionWithPassword, validateItem, validateCategoryItem, validateRoleItem } from './connection';
 import { ConnectionManager } from '../services/ConnectionManager';
 import { ErrorService } from '../services/ErrorService';
+import { SessionRegistry } from '../services/SessionRegistry';
+
+/** Module-level ExtensionContext set once by NotebookBuilder.setContext() */
+let _extensionContext: vscode.ExtensionContext | undefined;
 
 // Re-export SQL templates from sql/helper.ts for backward compatibility
 export { SQL_TEMPLATES, QueryBuilder, MaintenanceTemplates } from './sql/helper';
@@ -25,15 +29,33 @@ export async function getDatabaseConnection(item: DatabaseTreeItem, validateFn: 
   return {
     connection,
     client,
-    metadata,
+    metadata: { ...metadata, name: connection.name },
     release: () => client.release()
   };
 }
 /** Fluent builder for notebook cells */
 export class NotebookBuilder {
   private cells: vscode.NotebookCellData[] = [];
+  private readonly connectionId: string | undefined;
+  private readonly databaseName: string | undefined;
+  /** Composite key used for registry and scratch file: "{connectionId}:{databaseName}" */
+  private readonly sessionKey: string | undefined;
 
-  constructor(private metadata: any) { }
+  constructor(private metadata: any) {
+    this.connectionId = metadata?.connectionId as string | undefined;
+    this.databaseName = (metadata?.databaseName ?? metadata?.database) as string | undefined;
+    if (this.connectionId && this.databaseName) {
+      this.sessionKey = `${this.connectionId}:${this.databaseName}`;
+    }
+  }
+
+  /**
+   * Called once during extension activation to provide the ExtensionContext.
+   * Satisfies Requirement 5.4.
+   */
+  static setContext(context: vscode.ExtensionContext): void {
+    _extensionContext = context;
+  }
 
   addMarkdown(content: string): NotebookBuilder {
     this.cells.push(new vscode.NotebookCellData(vscode.NotebookCellKind.Markup, content, 'markdown'));
@@ -45,8 +67,205 @@ export class NotebookBuilder {
     return this;
   }
 
+  /** Human-readable tab title: "{connectionName}-{databaseName}" or just "{databaseName}" */
+  private _scratchTitle(): string {
+    const connName = (this.metadata?.name ?? this.metadata?.connectionName) as string | undefined;
+    return connName ? `${connName}-${this.databaseName}` : this.databaseName!;
+  }
+
+  /**
+   * Always opens a brand-new named notebook file, bypassing the persistent session.
+   * Creates `{connectionName}-{databaseName}-{n}.pgsql` in globalStorageUri.
+   * Use this for explicit "New Notebook" / "Query Tool" actions.
+   */
+  async showNew(): Promise<void> {
+    if (_extensionContext && this.databaseName) {
+      const { getNewNotebookUri } = await import('../services/SessionRegistry');
+      await vscode.workspace.fs.createDirectory(_extensionContext.globalStorageUri);
+      const uri = await getNewNotebookUri(
+        _extensionContext.globalStorageUri,
+        this.databaseName,
+        this.metadata?.name as string | undefined
+      );
+      // Ensure nested folder exists before writing
+      await vscode.workspace.fs.createDirectory(vscode.Uri.joinPath(uri, '..'));
+      const fileMetadata = {
+        connectionId: this.metadata?.connectionId,
+        host: this.metadata?.host,
+        port: this.metadata?.port,
+        username: this.metadata?.username,
+        database: this.databaseName,
+        databaseName: this.databaseName,
+        title: this._scratchTitle(),
+      };
+      // Serialize initial cells into the file so content is immediately visible
+      const cells = this.cells.map(c => ({
+        value: c.value,
+        kind: c.kind === vscode.NotebookCellKind.Markup ? 'markdown' : 'sql',
+        language: c.kind === vscode.NotebookCellKind.Markup ? 'markdown' : 'sql',
+      }));
+      await vscode.workspace.fs.writeFile(uri, Buffer.from(JSON.stringify({ cells, metadata: fileMetadata })));
+      const notebook = await vscode.workspace.openNotebookDocument(uri);
+      const editor = await vscode.window.showNotebookDocument(notebook, { preserveFocus: false });
+      if (notebook.cellCount > 0) {
+        editor.revealRange(new vscode.NotebookRange(0, 1), vscode.NotebookEditorRevealType.AtTop);
+      }
+    } else {
+      // Fallback when context not set (e.g. tests / legacy path)
+      await createAndShowNotebook(this.cells, this.metadata);
+    }
+  }
+
   async show(): Promise<void> {
-    await createAndShowNotebook(this.cells, this.metadata);
+    // Persistent session path: requires sessionKey (connectionId + databaseName) and extension context
+    if (this.sessionKey && _extensionContext) {
+      await this._showPersistent();
+    } else {
+      // Legacy fallback: open a new untitled notebook (Req 5.3)
+      await createAndShowNotebook(this.cells, this.metadata);
+    }
+  }
+
+  private async _showPersistent(): Promise<void> {
+    const sessionKey = this.sessionKey!;
+    const context = _extensionContext!;
+    const { getScratchUri, getLatestNumberedUri, isNotebookForSession } = await import('../services/SessionRegistry');
+    const scratchUri = getScratchUri(
+      context.globalStorageUri,
+      this.connectionId!,
+      this.databaseName!,
+      this.metadata?.name as string | undefined
+    );
+
+    const connName = this.metadata?.name as string | undefined;
+
+    // ── Priority 1: active notebook editor, if it belongs to this connection+db ──
+    let doc: vscode.NotebookDocument | undefined;
+    const activeEditor = vscode.window.activeNotebookEditor;
+    if (activeEditor && !activeEditor.notebook.isClosed) {
+      if (isNotebookForSession(activeEditor.notebook.uri, this.databaseName!, connName, this.connectionId)) {
+        doc = activeEditor.notebook;
+        // Keep registry in sync
+        SessionRegistry.set(sessionKey, doc);
+      }
+    }
+
+    // ── Priority 2: registry entry (last known open doc for this session) ──
+    if (!doc) {
+      const registered = SessionRegistry.get(sessionKey);
+      if (registered && !registered.isClosed) {
+        doc = registered;
+      } else if (registered?.isClosed) {
+        SessionRegistry.delete(sessionKey);
+      }
+    }
+
+    // ── Priority 3: scan open notebook documents for any matching file ──
+    if (!doc) {
+      const existing = vscode.workspace.notebookDocuments.find(
+        nd => !nd.isClosed && isNotebookForSession(nd.uri, this.databaseName!, connName, this.connectionId)
+      );
+      if (existing) {
+        SessionRegistry.set(sessionKey, existing);
+        doc = existing;
+      }
+    }
+
+    // ── Priority 4: latest numbered file on disk (e.g. -2.pgsql before -1.pgsql) ──
+    if (!doc) {
+      const latestUri = await getLatestNumberedUri(context.globalStorageUri, this.databaseName!, connName);
+      if (latestUri) {
+        const notebook = await vscode.workspace.openNotebookDocument(latestUri);
+        SessionRegistry.set(sessionKey, notebook);
+        doc = notebook;
+      }
+    }
+
+    // ── Priority 5: base scratch file ──
+    if (!doc) {
+      let fileExists = false;
+      try { await vscode.workspace.fs.stat(scratchUri); fileExists = true; } catch { /* not found */ }
+      if (fileExists) {
+        const notebook = await vscode.workspace.openNotebookDocument(scratchUri);
+        SessionRegistry.set(sessionKey, notebook);
+        doc = notebook;
+      }
+    }
+
+    if (doc) {
+      // Cell count guard: warn when the notebook is getting large
+      const CELL_LIMIT = 150;
+      if (doc.cellCount >= CELL_LIMIT) {
+        const choice = await vscode.window.showWarningMessage(
+          `The scratch notebook for ${this.databaseName} has ${doc.cellCount} cells and may be getting large.`,
+          { modal: false },
+          'Continue anyway',
+          'Open new notebook instead'
+        );
+        if (choice === 'Open new notebook instead') {
+          await this.showNew();
+          return;
+        }
+        if (!choice) { return; } // dismissed
+      }
+
+      // Capture insertion point before appending so we can scroll to the first new cell
+      const firstNewCellIndex = doc.cellCount;
+
+      // Add a visual separator when appending to an existing notebook with content
+      const cellsToInsert = [...this.cells];
+      if (firstNewCellIndex > 0) {
+        const timestamp = new Date().toLocaleString();
+        const separator = new vscode.NotebookCellData(
+          vscode.NotebookCellKind.Markup,
+          `---\n\n*Section added: ${timestamp}*`,
+          'markdown'
+        );
+        cellsToInsert.unshift(separator);
+      }
+
+      // Append cells to the already-open document (Req 2.1, 2.2, 4.2)
+      const edit = new vscode.WorkspaceEdit();
+      edit.set(doc.uri, [
+        vscode.NotebookEdit.insertCells(firstNewCellIndex, cellsToInsert)
+      ]);
+      await vscode.workspace.applyEdit(edit);
+
+      // Reveal the first of the newly appended cells so the user lands at the top of the new content
+      const notebookEditor = await vscode.window.showNotebookDocument(doc, { preserveFocus: false });
+      if (firstNewCellIndex < doc.cellCount) {
+        notebookEditor.revealRange(
+          new vscode.NotebookRange(firstNewCellIndex, firstNewCellIndex + 1),
+          vscode.NotebookEditorRevealType.AtTop
+        );
+      }
+    } else {
+      // No existing file found — create the base scratch file for this connection+db
+      // Ensure nested folder structure exists: {globalStorageUri}/{connectionName}/{databaseName}/
+      const scratchDir = vscode.Uri.joinPath(scratchUri, '..');
+      await vscode.workspace.fs.createDirectory(scratchDir);
+      const fileMetadata = {
+        connectionId: this.metadata?.connectionId,
+        host: this.metadata?.host,
+        port: this.metadata?.port,
+        username: this.metadata?.username,
+        database: this.databaseName,
+        databaseName: this.databaseName,
+        title: this._scratchTitle(),
+      };
+      await vscode.workspace.fs.writeFile(scratchUri, Buffer.from(JSON.stringify({ cells: [], metadata: fileMetadata })));
+      const notebook = await vscode.workspace.openNotebookDocument(scratchUri);
+      SessionRegistry.set(sessionKey, notebook);
+
+      const edit = new vscode.WorkspaceEdit();
+      edit.set(notebook.uri, [vscode.NotebookEdit.insertCells(0, this.cells)]);
+      await vscode.workspace.applyEdit(edit);
+
+      const notebookEditor = await vscode.window.showNotebookDocument(notebook, { preserveFocus: false });
+      if (notebook.cellCount > 0) {
+        notebookEditor.revealRange(new vscode.NotebookRange(0, 1), vscode.NotebookEditorRevealType.AtTop);
+      }
+    }
   }
 }
 /** Markdown formatting utilities */

@@ -18,12 +18,24 @@ export class SecretStorageService {
     return await this.context.secrets.get(`postgres-password-${connectionId}`);
   }
 
+  public async getAiApiKey(): Promise<string | undefined> {
+    return await this.context.secrets.get('postgresExplorer.aiApiKey');
+  }
+
   public async setPassword(connectionId: string, password: string): Promise<void> {
     await this.context.secrets.store(`postgres-password-${connectionId}`, password);
   }
 
+  public async setAiApiKey(apiKey: string): Promise<void> {
+    await this.context.secrets.store('postgresExplorer.aiApiKey', apiKey);
+  }
+
   public async deletePassword(connectionId: string): Promise<void> {
     await this.context.secrets.delete(`postgres-password-${connectionId}`);
+  }
+
+  public async deleteAiApiKey(): Promise<void> {
+    await this.context.secrets.delete('postgresExplorer.aiApiKey');
   }
 }
 

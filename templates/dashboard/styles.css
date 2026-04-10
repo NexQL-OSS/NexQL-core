@@ -5,37 +5,45 @@
   --border-color: var(--vscode-widget-border);
   --muted-color: var(--vscode-descriptionForeground);
   --accent-color: var(--vscode-textLink-foreground);
-  --success-color: #4ade80;
-  --warning-color: #facc15;
-  --danger-color: #f87171;
+  --success-color: var(--vscode-testing-iconPassed, #4ade80);
+  --warning-color: var(--vscode-editorWarning-foreground, #facc15);
+  --danger-color: var(--vscode-errorForeground, #f87171);
   --font-family: var(--vscode-font-family);
   --card-radius: 6px;
   --card-border: 1px solid var(--border-color);
+  /* 4px spacing tokens */
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-6: 24px; --sp-8: 32px;
 }
 
 body {
   background-color: var(--bg-color);
   color: var(--fg-color);
   font-family: var(--font-family);
+  font-size: 13px;
   margin: 0;
-  padding: 24px;
+  padding: var(--sp-6);
   display: flex;
   flex-direction: column;
-  gap: 32px;
+  gap: var(--sp-8);
 }
 
-/* --- Typography --- */
-h1,
-h2,
-h3 {
-  margin: 0;
-  font-weight: 500;
-}
+/* --- Typography scale --- */
+h1, h2, h3 { margin: 0; font-weight: 500; }
 
+/* Section headers: 12px/500 */
+.section-label,
 .label {
-  font-size: 0.75rem;
+  font-size: 12px;
+  font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+  color: var(--muted-color);
+}
+
+/* Meta/labels: 11px/400 muted */
+.meta, th {
+  font-size: 11px;
+  font-weight: 400;
   color: var(--muted-color);
 }
 
@@ -53,14 +61,14 @@ h3 {
 .grid-strip {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
-  gap: 16px;
+  gap: var(--sp-4);
 }
 
 .card {
   background: var(--card-bg);
   border: var(--card-border);
   border-radius: var(--card-radius);
-  padding: 16px;
+  padding: var(--sp-4);
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -82,17 +90,9 @@ h3 {
   margin-right: 6px;
 }
 
-.status-ok {
-  background-color: var(--success-color);
-}
-
-.status-warn {
-  background-color: var(--warning-color);
-}
-
-.status-crit {
-  background-color: var(--danger-color);
-}
+.status-ok   { background-color: var(--success-color); }
+.status-warn { background-color: var(--warning-color); }
+.status-crit { background-color: var(--danger-color); }
 
 /* --- Specific Sections --- */
 .header {
@@ -103,32 +103,30 @@ h3 {
 
 .header-info {
   display: flex;
-  gap: 24px;
+  gap: var(--sp-6);
   color: var(--muted-color);
-  font-size: 0.9rem;
+  font-size: 12px;
 }
 
 /* --- Tabs --- */
 .tabs-nav {
   display: flex;
   border-bottom: 2px solid var(--border-color);
-  margin-bottom: 20px;
+  margin-bottom: var(--sp-4);
 }
 
 .tab {
-  padding: 8px 16px;
+  padding: var(--sp-2) var(--sp-4);
   cursor: pointer;
   opacity: 0.6;
+  font-size: 12px;
   font-weight: 500;
   border-bottom: 2px solid transparent;
   margin-bottom: -2px;
   transition: all 0.2s;
 }
 
-.tab:hover {
-  opacity: 1;
-  color: var(--fg-color);
-}
+.tab:hover { opacity: 1; color: var(--fg-color); }
 
 .tab.active {
   opacity: 1;
@@ -136,25 +134,20 @@ h3 {
   color: var(--accent-color);
 }
 
-.tab-content {
-  display: none;
-}
-
-.tab-content.active {
-  display: block;
-}
+.tab-content { display: none; }
+.tab-content.active { display: block; }
 
 /* --- Charts Area --- */
 .charts-row {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 24px;
+  gap: var(--sp-6);
 }
 
 .chart-box {
   border: var(--card-border);
   border-radius: var(--card-radius);
-  padding: 16px;
+  padding: var(--sp-4);
   height: 200px;
 }
 
@@ -169,52 +162,114 @@ h3 {
 table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.9rem;
+  font-size: 13px;
 }
 
 th {
   text-align: left;
-  padding: 12px 16px;
+  padding: var(--sp-2) var(--sp-4);
   background: rgba(128, 128, 128, 0.05);
   font-weight: 500;
+  font-size: 11px;
   color: var(--muted-color);
-  font-size: 0.8rem;
   white-space: nowrap;
 }
 
 td {
-  padding: 12px 16px;
+  padding: var(--sp-2) var(--sp-4);
   border-top: 1px solid var(--border-color);
+  font-size: 13px;
 }
 
-tr.row-crit {
-  background: rgba(248, 113, 113, 0.15);
+/* Hover-reveal row actions */
+tr { position: relative; }
+tr .row-actions {
+  position: absolute;
+  right: var(--sp-2);
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  gap: var(--sp-1);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+}
+tr:hover .row-actions {
+  opacity: 1;
+  pointer-events: auto;
 }
 
-tr.row-warn {
-  background: rgba(250, 204, 21, 0.1);
+tr.row-crit { background: rgba(248, 113, 113, 0.15); }
+tr.row-warn { background: rgba(250, 204, 21, 0.1); }
+
+/* --- Skeleton loading shimmer --- */
+@keyframes skeleton-pulse {
+  0%   { opacity: 0.45; }
+  50%  { opacity: 0.9; }
+  100% { opacity: 0.45; }
+}
+.skeleton-cell {
+  height: 12px;
+  background: var(--border-color);
+  border-radius: 2px;
+  animation: skeleton-pulse 1.6s ease-in-out infinite;
+  display: inline-block;
+}
+
+/* --- Empty state --- */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-6) var(--sp-4);
+  color: var(--muted-color);
+  font-size: 12px;
+  text-align: center;
+}
+.empty-state .empty-cta {
+  margin-top: var(--sp-2);
+  padding: var(--sp-1) var(--sp-3);
+  font-size: 12px;
+  font-weight: 500;
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.empty-state .empty-cta:hover { background: var(--vscode-button-hoverBackground); }
+
+/* --- Destructive button --- */
+.btn-danger {
+  background: transparent;
+  color: var(--danger-color);
+  border: 1px solid var(--danger-color);
+  border-radius: 3px;
+  padding: var(--sp-1) var(--sp-3);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.btn-danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger-color) 12%, transparent);
 }
 
 /* --- Lock Tree Visualizer --- */
 .lock-node {
   border: 1px solid var(--border-color);
-  margin: 8px 0;
-  padding: 12px;
+  margin: var(--sp-2) 0;
+  padding: var(--sp-3);
   border-radius: 4px;
 }
 
 .lock-children {
-  margin-left: 24px;
+  margin-left: var(--sp-6);
   border-left: 2px solid var(--border-color);
-  padding-left: 12px;
+  padding-left: var(--sp-3);
 }
 
 /* --- Detail View --- */
-#detail-view {
-  display: none;
-  margin-top: 24px;
-}
-
-#main-view {
-  display: block;
-}
+#detail-view { display: none; margin-top: var(--sp-6); }
+#main-view   { display: block; }

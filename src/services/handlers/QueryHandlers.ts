@@ -5,6 +5,7 @@ import { ConnectionManager } from '../../services/ConnectionManager';
 import { ErrorHandlers } from '../../commands/helper';
 import { ConnectionUtils } from '../../utils/connectionUtils';
 import { SqlExecutor } from '../../providers/kernel/SqlExecutor';
+export { FkLookupHandler } from './FkLookupHandler';
 
 function quoteIdentifier(identifier: string): string {
   return `"${String(identifier).replace(/"/g, '""')}"`;
@@ -315,6 +316,10 @@ export class SaveChangesHandler implements IMessageHandler {
         }
       }
       vscode.window.showErrorMessage(`Failed to save changes: ${err.message}`);
+      // Notify renderer to restore the save button
+      if (context.postMessage) {
+        context.postMessage({ type: 'saveFailed' });
+      }
     } finally {
       if (client) client.release();
     }

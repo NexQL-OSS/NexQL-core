@@ -16,3 +16,7 @@ test_*
 mock_ai_server.js
 *.pgpass
 src/test/unit/PgPassSupport.test.ts
+.kiro/
+.nightly/
+CLAUDE.md
+.claude/

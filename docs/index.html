@@ -7,6 +7,21 @@
   <title>PgStudio - Professional Database Management for VS Code</title>
   <meta name="description"
     content="PgStudio is a comprehensive PostgreSQL database management extension featuring interactive SQL notebooks, real-time monitoring dashboard, AI-powered assistance, and advanced database operations - all within VS Code.">
+  <meta name="keywords"
+    content="postgresql vs code extension, sql notebook vs code, postgres database explorer vs code, ai sql assistant vs code, pgstudio, postgres explorer">
+  <link rel="canonical" href="https://pgstudio.astrx.dev/">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="PgStudio">
+  <meta property="og:title" content="PgStudio - PostgreSQL Database Management for VS Code">
+  <meta property="og:description"
+    content="Manage PostgreSQL inside VS Code with SQL notebooks, database explorer, AI SQL assistance, and live performance insights.">
+  <meta property="og:url" content="https://pgstudio.astrx.dev/">
+  <meta property="og:image" content="https://pgstudio.astrx.dev/assets/postgres-vsc-icon.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="PgStudio - PostgreSQL Database Management for VS Code">
+  <meta name="twitter:description"
+    content="PostgreSQL explorer, SQL notebooks, AI-powered query help, and dashboard monitoring inside VS Code.">
+  <meta name="twitter:image" content="https://pgstudio.astrx.dev/assets/postgres-vsc-icon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Fira+Code&display=swap"
@@ -17,6 +32,23 @@
   <link rel="shortcut icon" href="assets/postgres-vsc-icon.png">
   <link rel="apple-touch-icon" href="assets/postgres-vsc-icon.png">
   <meta name="theme-color" content="#0b5a3a">
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "PgStudio",
+      "applicationCategory": "DeveloperApplication",
+      "operatingSystem": "Windows, macOS, Linux",
+      "description": "PostgreSQL database management inside VS Code with SQL notebooks, AI-assisted querying, database explorer, and performance dashboards.",
+      "url": "https://pgstudio.astrx.dev/",
+      "downloadUrl": "https://marketplace.visualstudio.com/items?itemName=ric-v.postgres-explorer",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      }
+    }
+  </script>
 </head>
 
 <body>
@@ -37,7 +69,7 @@
           <a href="#features">Features</a>
           <a href="#workflow">Workflow</a>
           <a href="#ai-powered">AI</a>
-          <a href="https://github.com/dev-asterix/yape">GitHub</a>
+          <a href="https://github.com/dev-asterix/PgStudio">GitHub</a>
           <button id="theme-toggle" class="theme-toggle" aria-label="Toggle Theme">&#127769;</button>
           <a href="https://marketplace.visualstudio.com/items?itemName=ric-v.postgres-explorer" class="nav-cta">
             <span class="cta-text">Install</span>
@@ -54,7 +86,7 @@
       <div class="badge-row">
         <a href="https://marketplace.visualstudio.com/items?itemName=ric-v.postgres-explorer" class="badge">
           <span class="badge-label">VS Code Marketplace</span>
-          <span class="badge-value" id="badge-version">0.8.4</span>
+          <span class="badge-value" id="badge-version">0.9.5</span>
         </a>
       </div>
 
@@ -284,7 +316,7 @@
           <h3>Developer Tools</h3>
           <p>Built for speed with integrated workflow tools.</p>
           <ul class="feature-list">
-            <li>GitHub Copilot integration</li>
+            <li>GitHub Copilot & GitHub Models integration</li>
             <li>IntelliSense completions</li>
             <li>Keyboard shortcuts</li>
             <li>PSQL terminal access</li>
@@ -335,7 +367,7 @@
     <div class="container">
       <div class="ai-badge">✨ AI-Powered</div>
       <h2>Intelligent SQL Assistance</h2>
-      <p class="section-subtitle">Leverage multiple AI providers to write, optimize, and debug faster</p>
+      <p class="section-subtitle">Leverage multiple AI providers, including GitHub Models, to write, optimize, and debug faster</p>
 
       <div class="ai-capabilities">
         <div class="ai-capability">
@@ -373,6 +405,16 @@
           <div class="capability-icon">💬</div>
           <h4>Send to Chat</h4>
           <p>One-click button to send query results directly to AI chat for follow-up analysis</p>
+        </div>
+        <div class="ai-capability">
+          <div class="capability-icon">🔐</div>
+          <h4>GitHub Models Sign-In</h4>
+          <p>Connect with your GitHub account in AI Settings using the standard VS Code authentication flow</p>
+        </div>
+        <div class="ai-capability">
+          <div class="capability-icon">🖼️</div>
+          <h4>Vision AI</h4>
+          <p>Paste or upload images directly in the chat — sent to vision-capable models (OpenAI, Anthropic, Gemini)</p>
         </div>
         <div class="ai-capability">
           <div class="capability-icon">🛠️</div>
@@ -479,13 +521,13 @@
         <div class="footer-links-grid">
           <div class="footer-col">
             <h4>Resources</h4>
-            <a href="https://github.com/dev-asterix/yape#readme">Documentation</a>
-            <a href="https://github.com/dev-asterix/yape/blob/main/CHANGELOG.md">Changelog</a>
+            <a href="https://github.com/dev-asterix/PgStudio#readme">Documentation</a>
+            <a href="https://github.com/dev-asterix/PgStudio/blob/main/CHANGELOG.md">Changelog</a>
           </div>
           <div class="footer-col">
             <h4>Community</h4>
-            <a href="https://github.com/dev-asterix/yape">GitHub</a>
-            <a href="https://github.com/dev-asterix/yape/issues">Report Issues</a>
+            <a href="https://github.com/dev-asterix/PgStudio">GitHub</a>
+            <a href="https://github.com/dev-asterix/PgStudio/issues">Report Issues</a>
           </div>
           <div class="footer-col">
             <h4>Install</h4>

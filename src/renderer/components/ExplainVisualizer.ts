@@ -39,6 +39,39 @@ export class ExplainVisualizer {
     return max;
   }
 
+  public getTimeBadgeColor(actualTotalTime: number): 'green' | 'amber' | 'red' {
+    if (actualTotalTime < 10) return 'green';
+    if (actualTotalTime <= 100) return 'amber';
+    return 'red';
+  }
+
+  public findHottestNode(node: ExplainNode): ExplainNode {
+    let hottest = node;
+    let maxTime = node['Actual Total Time'] ?? -Infinity;
+
+    const traverse = (n: ExplainNode) => {
+      const t = n['Actual Total Time'];
+      if (t !== undefined && t > maxTime) {
+        maxTime = t;
+        hottest = n;
+      }
+      if (n.Plans) {
+        for (const child of n.Plans) {
+          traverse(child);
+        }
+      }
+    };
+
+    traverse(node);
+
+    // If no node had Actual Total Time defined, return root
+    if (maxTime === -Infinity) {
+      return node;
+    }
+
+    return hottest;
+  }
+
   public render() {
     this.container.innerHTML = '';
 
@@ -139,6 +172,64 @@ export class ExplainVisualizer {
         background: var(--vscode-badge-background);
         color: var(--vscode-badge-foreground);
       }
+      .time-badge {
+        padding: 2px 6px;
+        border-radius: 3px;
+        font-size: 0.85em;
+        font-weight: 600;
+      }
+      .time-badge-green {
+        background: rgba(0, 180, 0, 0.2);
+        color: #4caf50;
+      }
+      .time-badge-amber {
+        background: rgba(255, 165, 0, 0.2);
+        color: #ff9800;
+      }
+      .time-badge-red {
+        background: rgba(220, 0, 0, 0.2);
+        color: #f44336;
+      }
+      .seq-scan-warning {
+        display: inline-block;
+        margin-left: 8px;
+        font-size: 0.85em;
+        font-weight: 600;
+        color: #ff9800;
+      }
+      .explain-summary-card {
+        margin: 12px 20px 20px;
+        padding: 12px 16px;
+        border: 1px solid var(--vscode-widget-border);
+        border-radius: 4px;
+        background: var(--vscode-editor-background);
+        font-family: var(--vscode-editor-font-family);
+        font-size: 13px;
+      }
+      .explain-summary-card h4 {
+        margin: 0 0 8px;
+        font-size: 0.9em;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        opacity: 0.6;
+      }
+      .explain-summary-bottleneck {
+        margin-bottom: 8px;
+      }
+      .explain-summary-suggestion {
+        margin-top: 8px;
+        padding: 8px;
+        background: rgba(255, 165, 0, 0.1);
+        border-left: 3px solid #ff9800;
+        border-radius: 2px;
+      }
+      .explain-summary-suggestion code {
+        font-family: var(--vscode-editor-font-family);
+        font-size: 0.9em;
+        display: block;
+        margin-top: 4px;
+        opacity: 0.9;
+      }
     `;
     this.container.appendChild(style);
 
@@ -146,22 +237,79 @@ export class ExplainVisualizer {
     treeContainer.className = 'explain-tree';
 
     if (this.plan) {
-      treeContainer.appendChild(this.createNodeElement(this.plan));
+      const hottestNode = this.findHottestNode(this.plan);
+      treeContainer.appendChild(this.createNodeElement(this.plan, hottestNode));
+
+      // Append sequential scan warning to the hottest node element
+      if (
+        hottestNode['Node Type'] === 'Seq Scan' &&
+        (hottestNode['Actual Rows'] ?? 0) > 1000
+      ) {
+        const hottestEl = treeContainer.querySelector('[data-hottest="true"]');
+        if (hottestEl) {
+          const header = hottestEl.querySelector('.explain-node-header');
+          if (header) {
+            const warning = document.createElement('span');
+            warning.className = 'seq-scan-warning';
+            warning.textContent = `⚠ missing index on ${hottestNode['Relation Name'] ?? 'unknown'}`;
+            header.appendChild(warning);
+          }
+        }
+      }
     } else {
       treeContainer.textContent = 'No plan data available';
     }
 
     this.container.appendChild(treeContainer);
+
+    // Render summary card below the tree
+    if (this.plan) {
+      const hottestNodeForSummary = this.findHottestNode(this.plan);
+      this.container.appendChild(this.renderSummaryCard(hottestNodeForSummary));
+    }
   }
 
-  private createNodeElement(node: ExplainNode): HTMLElement {
+  public renderSummaryCard(hottestNode: ExplainNode): HTMLElement {
+    const card = document.createElement('div');
+    card.className = 'explain-summary-card';
+
+    const title = document.createElement('h4');
+    title.textContent = 'Performance Summary';
+    card.appendChild(title);
+
+    const bottleneck = document.createElement('div');
+    bottleneck.className = 'explain-summary-bottleneck';
+    const actualTime = hottestNode['Actual Total Time'];
+    const timeStr = actualTime !== undefined ? ` (${actualTime.toFixed(2)} ms)` : '';
+    bottleneck.textContent = `Primary bottleneck: ${hottestNode['Node Type']}${timeStr}`;
+    card.appendChild(bottleneck);
+
+    if (hottestNode['Node Type'] === 'Seq Scan') {
+      const suggestion = document.createElement('div');
+      suggestion.className = 'explain-summary-suggestion';
+
+      const label = document.createElement('span');
+      label.textContent = '💡 Consider adding an index to speed up this sequential scan:';
+      suggestion.appendChild(label);
+
+      const relationName = hottestNode['Relation Name'] ?? 'table_name';
+      const code = document.createElement('code');
+      code.textContent = `CREATE INDEX ON ${relationName} (...);`;
+      suggestion.appendChild(code);
+
+      card.appendChild(suggestion);
+    }
+
+    return card;
+  }
+
+  private createNodeElement(node: ExplainNode, hottestNode?: ExplainNode): HTMLElement {
     const el = document.createElement('div');
     el.className = 'explain-node';
 
-    // Heuristic for cost coloring
-    const costRatio = (node['Total Cost'] || 0) / (this.maxCost || 1);
-    if (costRatio > 0.5) el.classList.add('high-cost');
-    else if (costRatio > 0.2) el.classList.add('medium-cost');
+    if (hottestNode && node === hottestNode) {
+      el.dataset.hottest = 'true';
+    }
 
     // Header
     const header = document.createElement('div');
@@ -208,7 +356,8 @@ export class ExplainVisualizer {
     const totalCost = node['Total Cost'];
 
     if (actualTime !== undefined) {
-      stats.innerHTML = `<span>⏱️ ${actualTime.toFixed(2)}ms</span>`;
+      const color = this.getTimeBadgeColor(actualTime);
+      stats.innerHTML = `<span class="time-badge time-badge-${color}">⏱ ${actualTime.toFixed(2)}ms</span>`;
     }
     stats.innerHTML += `<span>💰 ${totalCost.toFixed(2)}</span>`;
 
@@ -228,10 +377,8 @@ export class ExplainVisualizer {
     // Cost Bar
     const bar = document.createElement('div');
     bar.className = 'cost-bar';
+    const costRatio = (node['Total Cost'] || 0) / (this.maxCost || 1);
     bar.style.width = `${Math.min(100, costRatio * 100)}%`;
-    // Color logic
-    if (costRatio > 0.5) bar.style.backgroundColor = 'var(--vscode-errorForeground)';
-    else if (costRatio > 0.2) bar.style.backgroundColor = 'var(--vscode-charts-yellow)';
     el.appendChild(bar);
 
     // Details Panel
@@ -268,7 +415,7 @@ export class ExplainVisualizer {
       const children = document.createElement('div');
       children.className = 'explain-children';
       node.Plans.forEach(child => {
-        children.appendChild(this.createNodeElement(child));
+        children.appendChild(this.createNodeElement(child, hottestNode));
       });
       el.appendChild(children);
     }

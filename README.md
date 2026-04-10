@@ -50,7 +50,9 @@
 - 🔍 **EXPLAIN CodeLens** — One-click query analysis directly in notebooks
 - 🛡️ **Auto-LIMIT** — Intelligent query protection (configurable, default 1000 rows)
 - 🌍 **Foreign Data Wrappers** — Manage foreign servers, user mappings & tables
-- 🤖 **AI-Powered** — Generate, Optimize, Explain & Analyze (OpenAI, Anthropic, Gemini)
+- 🤖 **AI-Powered** — Generate, Optimize, Explain & Analyze with guided follow-ups and next-step suggestions (GitHub Models, OpenAI, Anthropic, Gemini, VS Code LM)
+- 🖼️ **Vision AI** — Paste or upload images directly in the SQL Assistant; sent to vision-capable AI providers
+- 📎 **File Preview** — Click attached file chips to open them as preview tabs in the editor
 - 📤 **Export Data** — Export results to CSV, JSON, or Excel
 
 ---
@@ -130,7 +132,7 @@ Then: **PostgreSQL icon** → **Add Connection** → Enter details → **Connect
 - `SECURITY.md` - Security policy and vulnerability reporting guidance
 - `CHANGELOG.md` - Release notes and what changed across versions
 
-**v0.8.8 (latest) —** Sidebar puts **Connections** and **SQL Assistant** first; **Saved Queries** and **Query History** start collapsed for fresh view state; **What’s New** is command-palette only. Notebook inline edits use **parameterized SQL inside transactions**. **Table Designer** adds **create-mode column reorder** and improved **SQL preview** styling. Details: `CHANGELOG.md`.
+**v0.9.5 (latest) —** SQL Assistant now supports image paste/upload with thumbnail previews, vision AI (OpenAI, Anthropic, Gemini, VS Code LM), click-to-preview for attached files, and GitHub Models sign-in via standard VS Code GitHub auth. Details: `CHANGELOG.md`.
 
 ---
 
@@ -201,6 +203,12 @@ Organize, manage, and reuse your most important queries with intelligent tagging
 ## 🤖 AI-Powered Operations
 
 PgStudio integrates advanced AI capabilities directly into your workflow, but keeps **YOU** in control.
+
+### 🔐 GitHub Models via GitHub Sign-In
+Use GitHub Models without manually managing a PAT in normal VS Code authentication flows.
+- **Native Sign-In**: Connect with your GitHub account from AI Settings.
+- **Model Catalog Access**: List and select available GitHub-hosted models.
+- **Session-Based Auth**: Uses VS Code GitHub authentication sessions instead of storing provider tokens.
 
 ### 🪄 Generate Query (Natural Language → SQL)
 Describe what you need in plain English (e.g., "Show me top 10 users by order count"), and PgStudio will generate the SQL for you using your schema context.
@@ -400,6 +408,31 @@ npx vsce publish
 # Publish to Open VSX
 npx ovsx publish
 ```
+
+### Stable And Nightly Channels
+
+- Stable releases are published from version tags (`v*`) via `.github/workflows/publish.yml`.
+- Nightly releases are published on every merge to `main` via `.github/workflows/publish-nightly.yml`.
+
+VS Code Marketplace channel behavior:
+
+- Stable extension ID: `ric-v.postgres-explorer`
+- Nightly is published as a **pre-release** of the same extension ID.
+- Users can opt in/out directly from the extension page with:
+    - `Switch to Pre-Release Version`
+    - `Switch to Release Version`
+
+Open VSX channel behavior:
+
+- Stable extension ID: `ric-v.postgres-explorer`
+- Nightly companion extension ID: `ric-v.postgres-explorer-nightly`
+- To opt out of nightly on Open VSX-based editors, uninstall the nightly companion extension and install stable.
+
+Nightly versioning policy:
+
+- Nightly builds use an odd minor stream and CI run number as patch.
+- Example format: `0.9.<run_number>`
+- This keeps nightly versions monotonically increasing for reliable updates.
 
 ---
 

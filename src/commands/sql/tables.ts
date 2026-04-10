@@ -7,56 +7,67 @@ export const TableSQL = {
    * SELECT statement
    */
   select: (schema: string, table: string, limit: number = 100) =>
-    `SELECT * FROM ${schema}.${table} LIMIT ${limit};`,
+    `SELECT * FROM "${schema}"."${table}" LIMIT ${limit};`,
 
   /**
-   * DELETE statement template
+   * INSERT statement template
    */
-  delete: (schema: string, table: string) =>
-    `-- Delete rows
-DELETE FROM ${schema}.${table}
-WHERE condition; -- e.g., id = 1
+  insert: (schema: string, table: string) =>
+    `-- Insert a single row
+INSERT INTO "${schema}"."${table}" (
+    -- column1,
+    -- column2
+)
+VALUES (
+    -- value1,
+    -- value2
+)
+RETURNING *;
 
--- Delete with RETURNING
+-- Use multi-row syntax to insert multiple rows at once
 /*
-DELETE FROM ${schema}.${table}
-WHERE condition
+INSERT INTO "${schema}"."${table}" (
+    -- column1,
+    -- column2
+)
+VALUES
+    (-- value1, value2),
+    (-- value1, value2)
 RETURNING *;
 */`,
 
   /**
    * UPDATE statement template
    */
-  update: (schema: string, table: string, whereClause: string) =>
-    `-- Update data
-UPDATE ${schema}.${table}
+  update: (schema: string, table: string) =>
+    `-- Update rows matching a condition
+UPDATE "${schema}"."${table}"
 SET
-    -- List columns to update:
     column_name = new_value
-${whereClause}
-RETURNING *;`,
+WHERE condition; -- e.g., id = 1
+-- RETURNING *;
+
+-- Use RETURNING to see the updated rows
+/*
+UPDATE "${schema}"."${table}"
+SET
+    column_name = new_value
+WHERE condition
+RETURNING *;
+*/`,
 
   /**
-   * INSERT statement template
+   * DELETE statement template
    */
-  insert: (schema: string, table: string, columns: string[], placeholders: string[]) =>
-    `-- Insert single row
-INSERT INTO ${schema}.${table} (
-    ${columns.join(',\n    ')}
-)
-VALUES (
-    ${placeholders.join(',\n    ')}
-)
-RETURNING *;
+  delete: (schema: string, table: string) =>
+    `-- Delete rows matching a condition
+DELETE FROM "${schema}"."${table}"
+WHERE condition; -- e.g., id = 1
 
--- Insert multiple rows (example)
+-- Use RETURNING to see the deleted rows
 /*
-INSERT INTO ${schema}.${table} (
-    ${columns.join(',\n    ')}
-)
-VALUES
-    (${placeholders.join(', ')}),
-    (${placeholders.join(', ')})
+DELETE FROM "${schema}"."${table}"
+WHERE condition
 RETURNING *;
 */`,
 
@@ -64,128 +75,66 @@ RETURNING *;
    * TRUNCATE statement
    */
   truncate: (schema: string, table: string) =>
-    `-- Truncate table
-TRUNCATE TABLE ${schema}.${table};`,
+    `-- Remove all rows from the table (faster than DELETE, cannot be filtered)
+TRUNCATE TABLE "${schema}"."${table}";
+
+-- Use CASCADE to also truncate tables that reference this table via foreign keys
+-- TRUNCATE TABLE "${schema}"."${table}" CASCADE;`,
 
   /**
-   * DROP TABLE statement
+   * DROP TABLE statement — includes CASCADE as a commented variant
    */
   drop: (schema: string, table: string) =>
-    `-- Drop table
-DROP TABLE ${schema}.${table};`,
+    `-- Drop the table permanently
+DROP TABLE "${schema}"."${table}";
+
+-- Use CASCADE to also drop dependent objects (views, foreign keys, etc.)
+-- DROP TABLE "${schema}"."${table}" CASCADE;
+
+-- Use IF EXISTS to suppress error if the table does not exist
+-- DROP TABLE IF EXISTS "${schema}"."${table}";`,
 
   /**
-   * VACUUM statement with options
+   * VACUUM statement
    */
   vacuum: (schema: string, table: string) =>
-    `VACUUM (VERBOSE, ANALYZE) ${schema}.${table};`,
+    `-- Reclaim storage and update planner statistics
+VACUUM (VERBOSE, ANALYZE) "${schema}"."${table}";
+
+-- Use FULL to reclaim more space (locks the table — schedule during maintenance windows)
+-- VACUUM (FULL, VERBOSE, ANALYZE) "${schema}"."${table}";`,
 
   /**
    * ANALYZE statement
    */
   analyze: (schema: string, table: string) =>
-    `ANALYZE VERBOSE ${schema}.${table};`,
+    `-- Update planner statistics for the table
+ANALYZE VERBOSE "${schema}"."${table}";`,
 
   /**
    * REINDEX statement
    */
   reindex: (schema: string, table: string) =>
-    `REINDEX TABLE ${schema}.${table};`,
+    `-- Rebuild all indexes on the table (locks writes — schedule during maintenance windows)
+REINDEX TABLE "${schema}"."${table}";
+
+-- Use CONCURRENTLY to rebuild without locking writes (PostgreSQL 12+)
+-- REINDEX TABLE CONCURRENTLY "${schema}"."${table}";`,
 
   /**
-   * Table bloat and statistics query
+   * CREATE TABLE script template
    */
-  bloatStats: (schema: string, table: string) =>
-    `-- Table bloat and statistics
-SELECT 
-    schemaname,
-    relname,
-    n_live_tup,
-    n_dead_tup,
-    ROUND(100.0 * n_dead_tup / NULLIF(n_live_tup + n_dead_tup, 0), 2) as dead_tuple_percent,
-    last_vacuum,
-    last_autovacuum,
-    last_analyze,
-    last_autoanalyze
-FROM pg_stat_user_tables
-WHERE schemaname = '${schema}' AND relname = '${table}';
+  createScript: (schema: string, table: string) =>
+    `-- Create a new table in schema "${schema}"
+CREATE TABLE "${schema}"."${table}" (
+    id          bigserial       PRIMARY KEY,
+    name        varchar(255)    NOT NULL,
+    description text,
+    is_active   boolean         NOT NULL DEFAULT true,
+    created_at  timestamptz     NOT NULL DEFAULT now(),
+    updated_at  timestamptz     NOT NULL DEFAULT now()
+);
 
--- Column statistics
-SELECT 
-    attname as column_name,
-    n_distinct,
-    ROUND((null_frac * 100)::numeric, 2) as null_percentage,
-    avg_width,
-    correlation
-FROM pg_stats
-WHERE schemaname = '${schema}' AND tablename = '${table}'
-ORDER BY attname;`,
-
-  /**
-   * Table operations notebook templates
-   */
-  operations: {
-    queryData: (schema: string, table: string) =>
-      `-- Query data
-SELECT *
-FROM ${schema}.${table}
-LIMIT 100;`,
-
-    insertData: (schema: string, table: string) =>
-      `-- Insert data
-INSERT INTO ${schema}.${table} (
-    -- List columns here
-)
-VALUES (
-    -- List values here
-);`,
-
-    updateData: (schema: string, table: string) =>
-      `-- Update data
-UPDATE ${schema}.${table}
-SET column_name = new_value
-WHERE condition;`,
-
-    deleteData: (schema: string, table: string) =>
-      `-- Delete data
-DELETE FROM ${schema}.${table}
-WHERE condition;`,
-
-    truncateData: (schema: string, table: string) =>
-      `-- Truncate table (remove all data)
-TRUNCATE TABLE ${schema}.${table};`,
-
-    dropTable: (schema: string, table: string) =>
-      `-- Drop table
-DROP TABLE ${schema}.${table};`
-  },
-
-  /**
-   * DROP TABLE with options
-   */
-  dropWithOptions: (schema: string, table: string) =>
-    `-- Drop table (with dependencies)
-DROP TABLE IF EXISTS ${schema}.${table} CASCADE;
-
--- Drop table (without dependencies - will fail if referenced)
--- DROP TABLE IF EXISTS ${schema}.${table} RESTRICT;`,
-
-  /**
-   * Build Create Table Definition Body
-   */
-  buildCreateDefinition: (columns: any[], constraints: any[]) => {
-    const columnDefs = columns.map(col => {
-      let def = `    ${col.column_name} ${col.data_type}`;
-      if (col.character_maximum_length) def += `(${col.character_maximum_length})`;
-      else if (col.numeric_precision) def += `(${col.numeric_precision}${col.numeric_scale ? ',' + col.numeric_scale : ''})`;
-
-      if (col.is_nullable === 'NO') def += ' NOT NULL';
-      if (col.column_default) def += ` DEFAULT ${col.column_default}`;
-      return def;
-    }).join(',\n');
-
-    const constraintDefs = constraints.map(c => `    CONSTRAINT ${c.constraint_name} ${c.definition}`).join(',\n');
-
-    return `(\n${columnDefs}${constraintDefs ? ',\n' + constraintDefs : ''}\n);`;
-  }
+-- Add a comment describing the table
+-- COMMENT ON TABLE "${schema}"."${table}" IS 'Description of ${table}';`,
 };

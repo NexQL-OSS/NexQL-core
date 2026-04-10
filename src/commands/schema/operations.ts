@@ -1,4 +1,3 @@
-import { Client } from 'pg';
 import * as vscode from 'vscode';
 import { DatabaseTreeItem, DatabaseTreeProvider } from '../../providers/DatabaseTreeProvider';
 import {
@@ -26,43 +25,9 @@ export async function cmdCreateSchema(item: DatabaseTreeItem, context: vscode.Ex
 
     const databaseName = item.label;
 
-    const markdown = MarkdownUtils.header(`➕ Create New Schema in Database: \`${databaseName}\``) +
-      MarkdownUtils.infoBox('This notebook provides templates for creating schemas. Modify the templates below and execute to create schemas.') +
-      `\n\n#### 📋 Schema Design Guidelines\n\n` +
-      MarkdownUtils.operationsTable([
-        { operation: '<strong>Naming</strong>', description: 'Use lowercase names (e.g., app_data, analytics, reporting). Avoid reserved names like "public".' },
-        { operation: '<strong>Purpose</strong>', description: 'Organize database objects logically. Use schemas to separate applications, environments, or features' },
-        { operation: '<strong>Security</strong>', description: 'Control access with GRANT/REVOKE. Use schemas for multi-tenant applications' },
-        { operation: '<strong>Search Path</strong>', description: 'Set search_path to include schemas in order of preference' },
-        { operation: '<strong>Ownership</strong>', description: 'Assign appropriate owners. Owners can create objects and grant privileges' }
-      ]) +
-      `\n\n#### 🏷️ Common Schema Patterns\n\n` +
-      MarkdownUtils.propertiesTable({
-        'Application Schema': 'Separate schema per application (e.g., app1, app2)',
-        'Feature Schema': 'Schema per feature/module (e.g., billing, inventory)',
-        'Environment Schema': 'Schema per environment (e.g., dev, staging, prod)',
-        'Tenant Schema': 'Schema per tenant in multi-tenant applications',
-        'Archive Schema': 'Schema for historical/archived data',
-        'Reporting Schema': 'Schema for reporting views and materialized views'
-      }) +
-      MarkdownUtils.successBox('Schemas provide logical organization and security boundaries. Use them to organize large databases and control access.') +
-      `\n\n---`;
-
     await new NotebookBuilder(metadata)
-      .addMarkdown(markdown)
-      .addMarkdown('##### 📝 Basic Schema (Recommended Start)')
-      .addSql(SchemaSQL.create.basic())
-      .addMarkdown('##### 🔐 Schema with Permissions')
-      .addSql(SchemaSQL.create.withPermissions())
-      .addMarkdown('##### 🔄 Default Privileges Setup')
-      .addSql(SchemaSQL.create.defaultPrivileges())
-      .addMarkdown('##### 🏢 Multi-Tenant Schema Pattern')
-      .addSql(SchemaSQL.create.multiTenant())
-      .addMarkdown('##### 📊 Reporting Schema Pattern')
-      .addSql(SchemaSQL.create.reporting())
-      .addMarkdown('##### 🔍 Search Path Configuration')
-      .addSql(SchemaSQL.searchPath())
-      .addMarkdown(MarkdownUtils.warningBox('After creating a schema, remember to: 1) Grant appropriate permissions, 2) Set up default privileges for future objects, 3) Configure search_path if needed, 4) Document the schema purpose with comments.'))
+      .addMarkdown(`### ➕ Create New Schema in Database: \`${databaseName}\`\n\nCreate a new schema using the template below.`)
+      .addSql(SchemaSQL.create())
       .show();
   } catch (err: any) {
     await ErrorHandlers.handleCommandError(err, 'create schema notebook');
@@ -85,7 +50,7 @@ export async function cmdCreateObjectInSchema(item: DatabaseTreeItem, context: v
     const items = [
       { label: 'Table', detail: 'Create a new table in this schema', query: `CREATE TABLE ${item.schema}.table_name(\n    id serial PRIMARY KEY, \n    column_name data_type, \n    created_at timestamptz DEFAULT current_timestamp\n); ` },
       { label: 'View', detail: 'Create a new view in this schema', query: `CREATE VIEW ${item.schema}.view_name AS\nSELECT column1, column2\nFROM some_table\nWHERE condition; ` },
-      { label: 'Function', detail: 'Create a new function in this schema', query: `CREATE OR REPLACE FUNCTION ${item.schema}.function_name(\n    param1 data_type, \n    param2 data_type\n) RETURNS return_type AS $$\nBEGIN\n-- Function logic here\n    RETURN result; \nEND; \n$$ LANGUAGE plpgsql; ` },
+      { label: 'Function', detail: 'Create a new function in this schema', query: `CREATE OR REPLACE FUNCTION ${item.schema}.function_name(\n    param1 data_type, \n    param2 data_type\n) RETURNS return_type AS $\nBEGIN\n-- Function logic here\n    RETURN result; \nEND; \n$ LANGUAGE plpgsql; ` },
       { label: 'Materialized View', detail: 'Create a new materialized view in this schema', query: `CREATE MATERIALIZED VIEW ${item.schema}.matview_name AS\nSELECT column1, column2\nFROM source_table\nWHERE condition\nWITH DATA; ` },
       { label: 'Type', detail: 'Create a new composite type in this schema', query: `CREATE TYPE ${item.schema}.type_name AS(\n    field1 data_type, \n    field2 data_type\n); ` },
       { label: 'Foreign Table', detail: 'Create a new foreign table in this schema', query: `CREATE FOREIGN TABLE ${item.schema}.foreign_table_name(\n    column1 data_type, \n    column2 data_type\n) SERVER foreign_server_name\nOPTIONS(schema_name 'remote_schema', table_name 'remote_table'); ` }
@@ -114,44 +79,23 @@ export async function cmdCreateObjectInSchema(item: DatabaseTreeItem, context: v
 }
 
 /**
- * cmdAllSchemaOperations - Command to create a notebook with various schema operations
- * @param {DatabaseTreeItem} item - The selected schema item in the tree
- * @param {vscode.ExtensionContext} context - The extension context
+ * cmdSchemaOperations - Operations_Notebook for a schema.
+ * Cell order: read (listObjects) → write/modify (grant) → destructive (drop)
  */
 export async function cmdSchemaOperations(item: DatabaseTreeItem, context: vscode.ExtensionContext) {
   let dbConn;
   try {
     dbConn = await getDatabaseConnection(item);
-    const { client, metadata } = dbConn;
-
-    const schemaInfo = await client.query(QueryBuilder.schemaInfo(item.schema!));
-    const info = schemaInfo.rows[0];
-
-    const privileges = (info.privileges || []).filter((p: string | null) => p !== null);
-    const privilegesText = privileges.length > 0 ? privileges.join(', ') : 'No specific privileges found';
+    const { metadata } = dbConn;
 
     await new NotebookBuilder(metadata)
-      .addMarkdown(
-        MarkdownUtils.header(`🗂️ Schema Operations: \`${item.schema}\``) +
-        MarkdownUtils.infoBox('This notebook contains operations for managing the schema. Execute the cells below to perform operations.') +
-        `\n\n#### 📊 Schema Information\n\n` +
-        MarkdownUtils.propertiesTable({
-          'Owner': info.owner,
-          'Total Size': info.total_size,
-          'Objects': `${info.tables_count} tables, ${info.views_count} views, ${info.functions_count} functions`,
-          'Privileges': privilegesText
-        })
-      )
-      .addMarkdown('##### 📦 Schema Objects')
-      .addSql(`-- List all objects in schema with sizes\nSELECT \n    CASE c.relkind\n        WHEN 'r' THEN 'table'\n        WHEN 'v' THEN 'view'\n        WHEN 'm' THEN 'materialized view'\n        WHEN 'i' THEN 'index'\n        WHEN 'S' THEN 'sequence'\n        WHEN 's' THEN 'special'\n        WHEN 'f' THEN 'foreign table'\n        WHEN 'p' THEN 'partitioned table'\nEND as object_type,\n    c.relname as object_name,\n    pg_size_pretty(pg_total_relation_size(quote_ident('public') || '.' || quote_ident(c.relname))) as size,\n    CASE WHEN c.relkind = 'r' THEN\n        (SELECT reltuples:: bigint FROM pg_class WHERE oid = c.oid)\n    ELSE NULL END as estimated_row_count\nFROM pg_class c\nJOIN pg_namespace n ON n.oid = c.relnamespace\nWHERE n.nspname = 'public'\nAND c.relkind in ('r', 'v', 'm', 'S', 'f', 'p')\nORDER BY c.relkind, pg_total_relation_size(c.oid) DESC; `)
-      .addMarkdown('##### 🔐 Schema Privileges')
-      .addSql(`-- List schema privileges\nSELECT grantee, string_agg(privilege_type, ', ') as privileges\nFROM(\n    SELECT DISTINCT grantee, privilege_type\n    FROM information_schema.table_privileges\n    WHERE table_schema = '${item.schema}'\n    UNION\n    SELECT DISTINCT grantee, privilege_type\n    FROM information_schema.routine_privileges\n    WHERE routine_schema = '${item.schema}'\n    UNION\n    SELECT DISTINCT grantee, privilege_type\n    FROM information_schema.usage_privileges\n    WHERE object_schema = '${item.schema}'\n) p\nGROUP BY grantee\nORDER BY grantee; `)
+      .addMarkdown(`### 🗂️ Schema Operations: \`${item.schema}\`\n\nCommon operations for managing this PostgreSQL schema.`)
+      .addMarkdown('##### 📦 List Objects')
+      .addSql(SchemaSQL.listObjects(item.schema!))
       .addMarkdown('##### 🛡️ Grant Privileges')
-      .addSql(`-- Grant privileges(modify as needed)\nGRANT USAGE ON SCHEMA ${item.schema} TO role_name;\nGRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA ${item.schema} TO role_name;\nGRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA ${item.schema} TO role_name;\nGRANT SELECT, USAGE ON ALL SEQUENCES IN SCHEMA ${item.schema} TO role_name;\n\n--Set default privileges for future objects\nALTER DEFAULT PRIVILEGES IN SCHEMA ${item.schema}\n    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO role_name;\nALTER DEFAULT PRIVILEGES IN SCHEMA ${item.schema}\n    GRANT EXECUTE ON FUNCTIONS TO role_name;\nALTER DEFAULT PRIVILEGES IN SCHEMA ${item.schema}\n    GRANT SELECT, USAGE ON SEQUENCES TO role_name; `)
-      .addMarkdown('##### 🧹 Maintenance')
-      .addSql(`-- Schema maintenance\n\n--First analyze all tables(can be run within DO block)\nDO $$\nDECLARE\n    t record;\nBEGIN\n    FOR t IN \n        SELECT tablename \n        FROM pg_tables \n        WHERE pg_tables.schemaname = '${item.schema}'\nLOOP\n        EXECUTE 'ANALYZE VERBOSE ' || quote_ident('${item.schema}') || '.' || quote_ident(t.tablename);\n    END LOOP;\nEND $$;\n\n--Note: VACUUM commands must be run as separate statements\n--The following are example VACUUM commands for each table in the schema\nSELECT format('VACUUM ANALYZE %I.%I;', schemaname, tablename) as vacuum_command\nFROM pg_tables \nWHERE schemaname = '${item.schema}'\nORDER BY tablename;\n\n--To execute VACUUM on a specific table, uncomment and modify:\n--VACUUM ANALYZE ${item.schema}.table_name; `)
-      .addMarkdown('##### ❌ Drop Schema')
-      .addSql(`-- Drop schema(BE CAREFUL!)\nDROP SCHEMA ${item.schema}; --This will fail if schema is not empty\n\n--To force drop schema and all objects:\n--DROP SCHEMA ${item.schema} CASCADE; `)
+      .addSql(SchemaSQL.grant(item.schema!))
+      .addMarkdown('##### ❌ Drop Schema\n\n⚠️ **Warning:** Dropping this schema is permanent and will remove all contained objects if CASCADE is used.')
+      .addSql(SchemaSQL.drop(item.schema!))
       .show();
 
   } catch (err: any) {

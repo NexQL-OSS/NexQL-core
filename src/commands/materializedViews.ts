@@ -5,7 +5,6 @@ import {
   MarkdownUtils,
   FormatHelpers,
   ErrorHandlers,
-  SQL_TEMPLATES,
   ObjectUtils,
   getDatabaseConnection,
   NotebookBuilder,
@@ -15,6 +14,9 @@ import { MaterializedViewSQL } from './sql';
 
 
 
+/**
+ * cmdRefreshMatView - Single-operation notebook: REFRESH materialized view
+ */
 export async function cmdRefreshMatView(item: DatabaseTreeItem, context: vscode.ExtensionContext) {
   let dbConn;
   try {
@@ -22,11 +24,8 @@ export async function cmdRefreshMatView(item: DatabaseTreeItem, context: vscode.
     const { metadata } = dbConn;
 
     await new NotebookBuilder(metadata)
-      .addMarkdown(
-        MarkdownUtils.header(`🔄 Refresh Materialized View: \`${item.schema}.${item.label}\``) +
-        MarkdownUtils.infoBox('Execute the cell below to refresh the materialized view data.')
-      )
-      .addMarkdown('##### 🔄 Refresh Command')
+      .addMarkdown(`### 🔄 Refresh Materialized View: \`${item.schema}.${item.label}\`\n\nRefresh the materialized view data from underlying tables.`)
+      .addMarkdown('##### 🔄 REFRESH')
       .addSql(MaterializedViewSQL.refresh(item.schema!, item.label))
       .show();
   } catch (err: any) {
@@ -58,7 +57,7 @@ export async function cmdEditMatView(item: DatabaseTreeItem, context: vscode.Ext
           MarkdownUtils.warningBox('This will drop and recreate the materialized view.')
         )
         .addMarkdown('##### 📝 View Definition')
-        .addSql(`DROP MATERIALIZED VIEW IF EXISTS ${item.schema}.${item.label};\n\n${createMatViewStatement}\nWITH DATA;`)
+        .addSql(`DROP MATERIALIZED VIEW IF EXISTS ${item.schema}.${item.label};\n\n${createMatViewStatement}`)
         .show();
     } finally {
       // Connection is managed by ConnectionManager
@@ -70,6 +69,9 @@ export async function cmdEditMatView(item: DatabaseTreeItem, context: vscode.Ext
   }
 }
 
+/**
+ * cmdViewMatViewData - Single-operation notebook: SELECT from materialized view
+ */
 export async function cmdViewMatViewData(item: DatabaseTreeItem, context: vscode.ExtensionContext) {
   let dbConn;
   try {
@@ -77,12 +79,9 @@ export async function cmdViewMatViewData(item: DatabaseTreeItem, context: vscode
     const { metadata } = dbConn;
 
     await new NotebookBuilder(metadata)
-      .addMarkdown(
-        MarkdownUtils.header(`📖 View Data: \`${item.schema}.${item.label}\``) +
-        MarkdownUtils.infoBox('Modify the query below to filter or transform the data as needed.')
-      )
-      .addMarkdown('##### 📖 Query Data')
-      .addSql(MaterializedViewSQL.queryData(item.schema!, item.label))
+      .addMarkdown(`### 📖 View Data: \`${item.schema}.${item.label}\`\n\nQuery data from the materialized view.`)
+      .addMarkdown('##### 📖 SELECT')
+      .addSql(MaterializedViewSQL.select(item.schema!, item.label))
       .show();
   } catch (err: any) {
     await ErrorHandlers.handleCommandError(err, 'create view data notebook');
@@ -244,13 +243,13 @@ ${dependencyRows}
         .addMarkdown('##### 📝 CREATE MATERIALIZED VIEW Script')
         .addSql(`-- DROP MATERIALIZED VIEW IF EXISTS ${item.schema}.${item.label};\n\nCREATE MATERIALIZED VIEW ${item.schema}.${item.label} AS\n${viewDefinition}\nWITH DATA;\n\n-- Materialized view comment\n${matview.comment ? `COMMENT ON MATERIALIZED VIEW ${item.schema}.${item.label} IS '${matview.comment.replace(/'/g, "''")}';` : `-- COMMENT ON MATERIALIZED VIEW ${item.schema}.${item.label} IS 'view description';`}\n\n-- Indexes\n${indexes.map((idx: any) => idx.definition).join('\n')}`)
         .addMarkdown('##### 🔄 Refresh Materialized View')
-        .addSql(`-- Refresh materialized view (blocking)\nREFRESH MATERIALIZED VIEW ${item.schema}.${item.label};\n\n-- Refresh materialized view (concurrent, allows reads during refresh)\n-- REFRESH MATERIALIZED VIEW CONCURRENTLY ${item.schema}.${item.label};`)
-        .addMarkdown('##### 🗑️ DROP Materialized View Script')
-        .addSql(`${SQL_TEMPLATES.DROP.MATERIALIZED_VIEW(item.schema!, item.label)}\n\n-- Drop materialized view (with dependencies)\n-- DROP MATERIALIZED VIEW IF EXISTS ${item.schema}.${item.label} CASCADE;\n\n-- Drop materialized view (without dependencies - will fail if referenced)\n-- DROP MATERIALIZED VIEW IF EXISTS ${item.schema}.${item.label} RESTRICT;`)
-        .addMarkdown('##### 🔍 Query Materialized View Data')
-        .addSql(`-- Query materialized view data\nSELECT * FROM ${item.schema}.${item.label}\nLIMIT 100;`)
+        .addSql(MaterializedViewSQL.refresh(item.schema!, item.label))
+        .addMarkdown('##### 📖 Query Materialized View Data')
+        .addSql(MaterializedViewSQL.select(item.schema!, item.label))
         .addMarkdown('##### 📊 Statistics and Metadata')
         .addSql(`-- Get detailed statistics\nSELECT \n    schemaname,\n    matviewname,\n    matviewowner,\n    tablespace,\n    hasindexes,\n    ispopulated,\n    pg_size_pretty(pg_total_relation_size(schemaname||'.'||matviewname)) as total_size\nFROM pg_matviews\nWHERE schemaname = '${item.schema}' AND matviewname = '${item.label}';\n\n-- Check when it was last refreshed\nSELECT \n    schemaname,\n    relname,\n    last_vacuum,\n    last_autovacuum,\n    last_analyze,\n    last_autoanalyze,\n    n_live_tup,\n    n_dead_tup\nFROM pg_stat_user_tables\nWHERE schemaname = '${item.schema}' AND relname = '${item.label}';`)
+        .addMarkdown('##### ❌ DROP Materialized View Script — ⚠️ Warning: permanently deletes the materialized view')
+        .addSql(MaterializedViewSQL.drop(item.schema!, item.label))
         .show();
     } finally {
       // Do not close shared client
@@ -262,6 +261,9 @@ ${dependencyRows}
   }
 }
 
+/**
+ * cmdDropMatView - Single-operation notebook: DROP materialized view
+ */
 export async function cmdDropMatView(item: DatabaseTreeItem, context: vscode.ExtensionContext) {
   let dbConn;
   try {
@@ -269,12 +271,9 @@ export async function cmdDropMatView(item: DatabaseTreeItem, context: vscode.Ext
     const { metadata } = dbConn;
 
     await new NotebookBuilder(metadata)
-      .addMarkdown(
-        MarkdownUtils.header(`❌ Drop Materialized View: \`${item.schema}.${item.label}\``) +
-        MarkdownUtils.dangerBox('This action will permanently delete the materialized view. This operation cannot be undone.')
-      )
-      .addMarkdown('##### ❌ Drop Command')
-      .addSql(SQL_TEMPLATES.DROP.MATERIALIZED_VIEW(item.schema!, item.label))
+      .addMarkdown(`### ❌ Drop Materialized View: \`${item.schema}.${item.label}\`\n\n⚠️ **Warning:** This permanently deletes the materialized view and cannot be undone.`)
+      .addMarkdown('##### ❌ DROP — ⚠️ Warning: permanently deletes the materialized view')
+      .addSql(MaterializedViewSQL.drop(item.schema!, item.label))
       .show();
   } catch (err: any) {
     await ErrorHandlers.handleCommandError(err, 'create drop materialized view notebook');
@@ -283,6 +282,10 @@ export async function cmdDropMatView(item: DatabaseTreeItem, context: vscode.Ext
   }
 }
 
+/**
+ * cmdMatViewOperations - Operations_Notebook for a materialized view.
+ * Cell order: read (SELECT, ANALYZE) → write/modify (REFRESH, CREATE INDEX) → destructive (DROP)
+ */
 export async function cmdMatViewOperations(item: DatabaseTreeItem, context: vscode.ExtensionContext) {
   let dbConn;
   try {
@@ -290,34 +293,17 @@ export async function cmdMatViewOperations(item: DatabaseTreeItem, context: vsco
     const { metadata } = dbConn;
 
     await new NotebookBuilder(metadata)
-      .addMarkdown(
-        MarkdownUtils.header(`🔄 Materialized View Operations: \`${item.schema}.${item.label}\``) +
-        MarkdownUtils.infoBox('Materialized views store query results as physical tables that need periodic refreshing. They provide faster query performance at the cost of data freshness.') +
-        `\n\n#### 📋 Common Operations\n\n` +
-        MarkdownUtils.operationsTable([
-          { operation: '🔄 Refresh', description: 'Updates the materialized view with fresh data from underlying tables. Locks the view during refresh.', riskLevel: 'Standard data refresh' },
-          { operation: '⚡ Concurrent Refresh', description: 'Refreshes without locking (requires unique index). Allows reads during refresh.', riskLevel: 'High-availability scenarios' },
-          { operation: '🔍 Create Index', description: 'Adds indexes to improve query performance on the materialized view.', riskLevel: 'Query optimization' },
-          { operation: '📊 Analyze', description: 'Updates statistics for the query planner to optimize query execution.', riskLevel: 'After large refreshes' },
-          { operation: '🔍 Query Data', description: 'Query the materialized view data like a regular table.', riskLevel: 'Data analysis' },
-          { operation: '📈 Check Freshness', description: 'View when the materialized view was last refreshed.', riskLevel: 'Monitoring data staleness' }
-        ])
-      )
-      .addMarkdown(`##### 🔄 Standard Refresh\n\n${MarkdownUtils.warningBox('This operation locks the materialized view and prevents reads during refresh.')}`)
-      .addSql(MaterializedViewSQL.refreshWithOptions(item.schema!, item.label))
-      .addMarkdown(`##### ⚡ Concurrent Refresh\n\n${MarkdownUtils.infoBox('Requires a unique index. Allows queries during refresh but is slower than standard refresh.', 'Note')}`)
-      .addSql(MaterializedViewSQL.refreshConcurrently(item.schema!, item.label))
-      .addMarkdown(`##### 🔍 Create Indexes\n\n${MarkdownUtils.successBox('Indexes on materialized views improve query performance, just like on regular tables.')}`)
-      .addSql(MaterializedViewSQL.createIndexes(item.schema!, item.label))
-      .addMarkdown('##### 📊 Update Statistics')
+      .addMarkdown(`### 💾 Materialized View Operations: \`${item.schema}.${item.label}\`\n\nCommon operations for this PostgreSQL materialized view.`)
+      .addMarkdown('##### 📖 SELECT')
+      .addSql(MaterializedViewSQL.select(item.schema!, item.label))
+      .addMarkdown('##### 📊 ANALYZE')
       .addSql(MaterializedViewSQL.analyze(item.schema!, item.label))
-      .addMarkdown('##### 🔍 Query Data')
-      .addSql(`-- Query materialized view data\nSELECT * FROM ${item.schema}.${item.label}\nLIMIT 100;\n\n-- Count rows\nSELECT COUNT(*) as row_count\nFROM ${item.schema}.${item.label};\n\n-- Get column statistics\nSELECT column_name, data_type, is_nullable\nFROM information_schema.columns\nWHERE table_schema = '${item.schema}' \n  AND table_name = '${item.label}'\nORDER BY ordinal_position;`)
-      .addMarkdown('##### 📈 Monitor Freshness and Performance')
-      .addSql(MaterializedViewSQL.monitorFreshness(item.schema!, item.label))
-      .addMarkdown('##### 🔧 Advanced Operations')
-      .addSql(MaterializedViewSQL.advancedOperations(item.schema!, item.label))
-      .addMarkdown(`##### 📚 Best Practices\n\n${MarkdownUtils.infoBox(`<strong>✨ Refresh Strategy:</strong><br/>• Use <code>REFRESH MATERIALIZED VIEW CONCURRENTLY</code> for high-availability scenarios (requires unique index)<br/>• Schedule regular refreshes based on data freshness requirements<br/>• Run <code>ANALYZE</code> after large refreshes to update statistics<br/>• Monitor materialized view size and query performance<br/>• Consider partitioning for very large materialized views`, 'Best Practices')}`)
+      .addMarkdown('##### 🔄 REFRESH')
+      .addSql(MaterializedViewSQL.refresh(item.schema!, item.label))
+      .addMarkdown('##### 🔍 CREATE INDEX')
+      .addSql(MaterializedViewSQL.createIndex(item.schema!, item.label))
+      .addMarkdown('##### ❌ DROP — ⚠️ Warning: permanently deletes the materialized view')
+      .addSql(MaterializedViewSQL.drop(item.schema!, item.label))
       .show();
   } catch (err: any) {
     await ErrorHandlers.handleCommandError(err, 'show materialized view operations');
@@ -327,7 +313,7 @@ export async function cmdMatViewOperations(item: DatabaseTreeItem, context: vsco
 }
 
 /**
- * cmdCreateMaterializedView - Command to create a new materialized view in the database.
+ * cmdCreateMaterializedView - Single-cell notebook with CREATE MATERIALIZED VIEW template.
  */
 export async function cmdCreateMaterializedView(item: DatabaseTreeItem, context: vscode.ExtensionContext) {
   let dbConn;
@@ -338,42 +324,9 @@ export async function cmdCreateMaterializedView(item: DatabaseTreeItem, context:
     const schema = item.schema!;
 
     await new NotebookBuilder(metadata)
-      .addMarkdown(
-        MarkdownUtils.header(`➕ Create New Materialized View in Schema: \`${schema}\``) +
-        MarkdownUtils.infoBox('This notebook provides templates for creating materialized views. Modify the templates below and execute to create materialized views.') +
-        `\n\n#### 📋 Materialized View Design Guidelines\n\n` +
-        MarkdownUtils.operationsTable([
-          { operation: '<strong>Naming</strong>', description: 'Use snake_case for materialized view names (e.g., sales_summary, user_statistics)' },
-          { operation: '<strong>Purpose</strong>', description: 'Store pre-computed query results for faster access to expensive queries' },
-          { operation: '<strong>Refresh Strategy</strong>', description: 'Plan regular refreshes based on data freshness requirements' },
-          { operation: '<strong>Indexes</strong>', description: 'Create unique indexes to enable CONCURRENT refresh' },
-          { operation: '<strong>Performance</strong>', description: 'Trade data freshness for query speed - data is stored physically' }
-        ]) +
-        `\n\n#### 🏷️ Materialized View vs Regular View\n\n` +
-        MarkdownUtils.propertiesTable({
-          'Regular View': 'Virtual - queries underlying tables each time',
-          'Materialized View': 'Physical - stores data, requires refresh',
-          'Query Speed': 'Regular: Slower | Materialized: Faster',
-          'Data Freshness': 'Regular: Always current | Materialized: Stale until refresh',
-          'Storage': 'Regular: None | Materialized: Uses disk space',
-          'Refresh': 'Regular: Automatic | Materialized: Manual or scheduled'
-        }) +
-        MarkdownUtils.successBox('Use materialized views for expensive aggregations, complex joins, or frequently accessed query results. Create a unique index to enable CONCURRENT refresh.') +
-        `\n\n---`
-      )
-      .addMarkdown('##### 📝 Basic Materialized View (Recommended Start)')
-      .addSql(MaterializedViewSQL.create.basic(schema))
-      .addMarkdown('##### 📊 Aggregated Materialized View')
-      .addSql(MaterializedViewSQL.create.aggregated(schema))
-      .addMarkdown('##### 🔄 Materialized View with Refresh Strategy')
-      .addSql(`-- Create materialized view with refresh setup\nCREATE MATERIALIZED VIEW ${schema}.daily_stats AS\nSELECT \n    DATE(created_at) as stat_date,\n    COUNT(*) as total_records,\n    COUNT(DISTINCT user_id) as unique_users\nFROM ${schema}.events\nGROUP BY DATE(created_at)\nWITH DATA;\n\n-- Unique index for concurrent refresh\nCREATE UNIQUE INDEX idx_daily_stats_date ON ${schema}.daily_stats (stat_date);\n\n-- Schedule refresh (example using pg_cron extension)\n-- SELECT cron.schedule('refresh-daily-stats', '0 2 * * *', \n--     'REFRESH MATERIALIZED VIEW CONCURRENTLY ${schema}.daily_stats');`)
-      .addMarkdown('##### 🔗 Joined Materialized View')
-      .addSql(MaterializedViewSQL.create.joined(schema))
-      .addMarkdown('##### 📈 Time-Series Materialized View')
-      .addSql(MaterializedViewSQL.create.timeSeries(schema))
-      .addMarkdown('##### 🎯 Materialized View with Filtered Data')
-      .addSql(`-- Materialized view with WHERE clause filter\nCREATE MATERIALIZED VIEW ${schema}.active_users_summary AS\nSELECT \n    u.id,\n    u.name,\n    u.email,\n    COUNT(DISTINCT o.id) as active_orders,\n    SUM(o.total_amount) as active_total\nFROM ${schema}.users u\nJOIN ${schema}.orders o ON u.id = o.user_id\nWHERE o.status = 'active'\n    AND o.created_at >= NOW() - INTERVAL '30 days'\nGROUP BY u.id, u.name, u.email\nWITH DATA;\n\n-- Create unique index\nCREATE UNIQUE INDEX idx_active_users_summary_id \n    ON ${schema}.active_users_summary (id);`)
-      .addMarkdown(MarkdownUtils.warningBox('After creating a materialized view, remember to: 1) Create a unique index for concurrent refresh, 2) Set up a refresh schedule, 3) Monitor data freshness, 4) Run ANALYZE after refreshes, 5) Consider partitioning for very large materialized views.'))
+      .addMarkdown(`### ➕ Create New Materialized View in Schema: \`${schema}\`\n\nCreate a materialized view using the template below.`)
+      .addMarkdown('##### 📝 CREATE MATERIALIZED VIEW')
+      .addSql(MaterializedViewSQL.create(schema, 'new_matview'))
       .show();
   } catch (err: any) {
     await ErrorHandlers.handleCommandError(err, 'create materialized view notebook');
