@@ -1,7 +1,7 @@
 {
   "name": "postgres-explorer",
   "displayName": "PgStudio (PostgreSQL Explorer)",
-  "version": "0.9.5",
+  "version": "1.0.0",
   "description": "PostgreSQL database explorer for VS Code with notebook support [Nightly]",
   "publisher": "ric-v",
   "private": false,
@@ -1029,54 +1029,284 @@
         "icon": "$(symbol-keyword)",
         "category": "PgStudio"
       },
-      { "command": "postgres-explorer.listTriggers", "title": "List Triggers", "category": "PgStudio" },
-      { "command": "postgres-explorer.createTrigger", "title": "Create Trigger", "icon": "$(add)", "category": "PgStudio" },
-      { "command": "postgres-explorer.dropTrigger", "title": "Drop Trigger", "icon": "$(trash)", "category": "PgStudio" },
-      { "command": "postgres-explorer.enableTrigger", "title": "Enable Trigger", "icon": "$(play)", "category": "PgStudio" },
-      { "command": "postgres-explorer.disableTrigger", "title": "Disable Trigger", "icon": "$(debug-pause)", "category": "PgStudio" },
-      { "command": "postgres-explorer.showTriggerProperties", "title": "Trigger Properties", "icon": "$(info)", "category": "PgStudio" },
-      { "command": "postgres-explorer.triggerOperations", "title": "Trigger Operations", "icon": "$(notebook)", "category": "PgStudio" },
-      { "command": "postgres-explorer.listSequences", "title": "List Sequences", "category": "PgStudio" },
-      { "command": "postgres-explorer.createSequence", "title": "Create Sequence", "icon": "$(add)", "category": "PgStudio" },
-      { "command": "postgres-explorer.dropSequence", "title": "Drop Sequence", "icon": "$(trash)", "category": "PgStudio" },
-      { "command": "postgres-explorer.sequenceNextValue", "title": "Next Value", "icon": "$(arrow-right)", "category": "PgStudio" },
-      { "command": "postgres-explorer.showSequenceProperties", "title": "Sequence Properties", "icon": "$(info)", "category": "PgStudio" },
-      { "command": "postgres-explorer.sequenceOperations", "title": "Sequence Operations", "icon": "$(notebook)", "category": "PgStudio" },
-      { "command": "postgres-explorer.listPartitions", "title": "List Partitions", "category": "PgStudio" },
-      { "command": "postgres-explorer.detachPartition", "title": "Detach Partition", "icon": "$(debug-disconnect)", "category": "PgStudio" },
-      { "command": "postgres-explorer.showPartitionProperties", "title": "Partition Properties", "icon": "$(info)", "category": "PgStudio" },
-      { "command": "postgres-explorer.createPartition", "title": "Create Partition", "icon": "$(add)", "category": "PgStudio" },
-      { "command": "postgres-explorer.listDomains", "title": "List Domains", "category": "PgStudio" },
-      { "command": "postgres-explorer.createDomain", "title": "Create Domain", "icon": "$(add)", "category": "PgStudio" },
-      { "command": "postgres-explorer.dropDomain", "title": "Drop Domain", "icon": "$(trash)", "category": "PgStudio" },
-      { "command": "postgres-explorer.showDomainProperties", "title": "Domain Properties", "icon": "$(info)", "category": "PgStudio" },
-      { "command": "postgres-explorer.listAggregates", "title": "List Aggregates", "category": "PgStudio" },
-      { "command": "postgres-explorer.createAggregate", "title": "Create Aggregate", "icon": "$(add)", "category": "PgStudio" },
-      { "command": "postgres-explorer.dropAggregate", "title": "Drop Aggregate", "icon": "$(trash)", "category": "PgStudio" },
-      { "command": "postgres-explorer.showAggregateProperties", "title": "Aggregate Properties", "icon": "$(info)", "category": "PgStudio" },
-      { "command": "postgres-explorer.listEventTriggers", "title": "List Event Triggers", "category": "PgStudio" },
-      { "command": "postgres-explorer.createEventTrigger", "title": "Create Event Trigger", "icon": "$(add)", "category": "PgStudio" },
-      { "command": "postgres-explorer.dropEventTrigger", "title": "Drop Event Trigger", "icon": "$(trash)", "category": "PgStudio" },
-      { "command": "postgres-explorer.enableEventTrigger", "title": "Enable Event Trigger", "icon": "$(play)", "category": "PgStudio" },
-      { "command": "postgres-explorer.disableEventTrigger", "title": "Disable Event Trigger", "icon": "$(debug-pause)", "category": "PgStudio" },
-      { "command": "postgres-explorer.showEventTriggerProperties", "title": "Event Trigger Properties", "icon": "$(info)", "category": "PgStudio" },
-      { "command": "postgres-explorer.eventTriggerOperations", "title": "Event Trigger Operations", "icon": "$(notebook)", "category": "PgStudio" },
-      { "command": "postgres-explorer.listRules", "title": "List Rules", "category": "PgStudio" },
-      { "command": "postgres-explorer.dropRule", "title": "Drop Rule", "icon": "$(trash)", "category": "PgStudio" },
-      { "command": "postgres-explorer.showRuleProperties", "title": "Rule Properties", "icon": "$(info)", "category": "PgStudio" },
-      { "command": "postgres-explorer.ruleOperations", "title": "Rule Operations", "icon": "$(notebook)", "category": "PgStudio" },
-      { "command": "postgres-explorer.listTablespaces", "title": "List Tablespaces", "category": "PgStudio" },
-      { "command": "postgres-explorer.showTablespaceProperties", "title": "Tablespace Properties", "icon": "$(info)", "category": "PgStudio" },
-      { "command": "postgres-explorer.tablespaceOperations", "title": "Tablespace Operations", "icon": "$(notebook)", "category": "PgStudio" },
-      { "command": "postgres-explorer.listPublications", "title": "List Publications", "category": "PgStudio" },
-      { "command": "postgres-explorer.createPublication", "title": "Create Publication", "icon": "$(add)", "category": "PgStudio" },
-      { "command": "postgres-explorer.dropPublication", "title": "Drop Publication", "icon": "$(trash)", "category": "PgStudio" },
-      { "command": "postgres-explorer.showPublicationProperties", "title": "Publication Properties", "icon": "$(info)", "category": "PgStudio" },
-      { "command": "postgres-explorer.publicationOperations", "title": "Publication Operations", "icon": "$(notebook)", "category": "PgStudio" },
-      { "command": "postgres-explorer.listSubscriptions", "title": "List Subscriptions", "category": "PgStudio" },
-      { "command": "postgres-explorer.dropSubscription", "title": "Drop Subscription", "icon": "$(trash)", "category": "PgStudio" },
-      { "command": "postgres-explorer.showSubscriptionProperties", "title": "Subscription Properties", "icon": "$(info)", "category": "PgStudio" },
-      { "command": "postgres-explorer.searchSchema", "title": "Search Schema Objects", "icon": "$(search)", "category": "PgStudio" }
+      {
+        "command": "postgres-explorer.listTriggers",
+        "title": "List Triggers",
+        "category": "PgStudio"
+      },
+      {
+        "command": "postgres-explorer.createTrigger",
+        "title": "Create Trigger",
+        "icon": "$(add)",
+        "category": "PgStudio"
+      },
+      {
+        "command": "postgres-explorer.dropTrigger",
+        "title": "Drop Trigger",
+        "icon": "$(trash)",
+        "category": "PgStudio"
+      },
+      {
+        "command": "postgres-explorer.enableTrigger",
+        "title": "Enable Trigger",
+        "icon": "$(play)",
+        "category": "PgStudio"
+      },
+      {
+        "command": "postgres-explorer.disableTrigger",
+        "title": "Disable Trigger",
+        "icon": "$(debug-pause)",
+        "category": "PgStudio"
+      },
+      {
+        "command": "postgres-explorer.showTriggerProperties",
+        "title": "Trigger Properties",
+        "icon": "$(info)",
+        "category": "PgStudio"
+      },
+      {
+        "command": "postgres-explorer.triggerOperations",
+        "title": "Trigger Operations",
+        "icon": "$(notebook)",
+        "category": "PgStudio"
+      },
+      {
+        "command": "postgres-explorer.listSequences",
+        "title": "List Sequences",
+        "category": "PgStudio"
+      },
+      {
+        "command": "postgres-explorer.createSequence",
+        "title": "Create Sequence",
+        "icon": "$(add)",
+        "category": "PgStudio"
+      },
+      {
+        "command": "postgres-explorer.dropSequence",
+        "title": "Drop Sequence",
+        "icon": "$(trash)",
+        "category": "PgStudio"
+      },
+      {
+        "command": "postgres-explorer.sequenceNextValue",
+        "title": "Next Value",
+        "icon": "$(arrow-right)",
+        "category": "PgStudio"
+      },
+      {
+        "command": "postgres-explorer.showSequenceProperties",
+        "title": "Sequence Properties",
+        "icon": "$(info)",
+        "category": "PgStudio"
+      },
+      {
+        "command": "postgres-explorer.sequenceOperations",
+        "title": "Sequence Operations",
+        "icon": "$(notebook)",
+        "category": "PgStudio"
+      },
+      {
+        "command": "postgres-explorer.listPartitions",
+        "title": "List Partitions",
+        "category": "PgStudio"
+      },
+      {
+        "command": "postgres-explorer.detachPartition",
+        "title": "Detach Partition",
+        "icon": "$(debug-disconnect)",
+        "category": "PgStudio"
+      },
+      {
+        "command": "postgres-explorer.showPartitionProperties",
+        "title": "Partition Properties",
+        "icon": "$(info)",
+        "category": "PgStudio"
+      },
+      {
+        "command": "postgres-explorer.createPartition",
+        "title": "Create Partition",
+        "icon": "$(add)",
+        "category": "PgStudio"
+      },
+      {
+        "command": "postgres-explorer.listDomains",
+        "title": "List Domains",
+        "category": "PgStudio"
+      },
+      {
+        "command": "postgres-explorer.createDomain",
+        "title": "Create Domain",
+        "icon": "$(add)",
+        "category": "PgStudio"
+      },
+      {
+        "command": "postgres-explorer.dropDomain",
+        "title": "Drop Domain",
+        "icon": "$(trash)",
+        "category": "PgStudio"
+      },
+      {
+        "command": "postgres-explorer.showDomainProperties",
+        "title": "Domain Properties",
+        "icon": "$(info)",
+        "category": "PgStudio"
+      },
+      {
+        "command": "postgres-explorer.listAggregates",
+        "title": "List Aggregates",
+        "category": "PgStudio"
+      },
+      {
+        "command": "postgres-explorer.createAggregate",
+        "title": "Create Aggregate",
+        "icon": "$(add)",
+        "category": "PgStudio"
+      },
+      {
+        "command": "postgres-explorer.dropAggregate",
+        "title": "Drop Aggregate",
+        "icon": "$(trash)",
+        "category": "PgStudio"
+      },
+      {
+        "command": "postgres-explorer.showAggregateProperties",
+        "title": "Aggregate Properties",
+        "icon": "$(info)",
+        "category": "PgStudio"
+      },
+      {
+        "command": "postgres-explorer.listEventTriggers",
+        "title": "List Event Triggers",
+        "category": "PgStudio"
+      },
+      {
+        "command": "postgres-explorer.createEventTrigger",
+        "title": "Create Event Trigger",
+        "icon": "$(add)",
+        "category": "PgStudio"
+      },
+      {
+        "command": "postgres-explorer.dropEventTrigger",
+        "title": "Drop Event Trigger",
+        "icon": "$(trash)",
+        "category": "PgStudio"
+      },
+      {
+        "command": "postgres-explorer.enableEventTrigger",
+        "title": "Enable Event Trigger",
+        "icon": "$(play)",
+        "category": "PgStudio"
+      },
+      {
+        "command": "postgres-explorer.disableEventTrigger",
+        "title": "Disable Event Trigger",
+        "icon": "$(debug-pause)",
+        "category": "PgStudio"
+      },
+      {
+        "command": "postgres-explorer.showEventTriggerProperties",
+        "title": "Event Trigger Properties",
+        "icon": "$(info)",
+        "category": "PgStudio"
+      },
+      {
+        "command": "postgres-explorer.eventTriggerOperations",
+        "title": "Event Trigger Operations",
+        "icon": "$(notebook)",
+        "category": "PgStudio"
+      },
+      {
+        "command": "postgres-explorer.listRules",
+        "title": "List Rules",
+        "category": "PgStudio"
+      },
+      {
+        "command": "postgres-explorer.dropRule",
+        "title": "Drop Rule",
+        "icon": "$(trash)",
+        "category": "PgStudio"
+      },
+      {
+        "command": "postgres-explorer.showRuleProperties",
+        "title": "Rule Properties",
+        "icon": "$(info)",
+        "category": "PgStudio"
+      },
+      {
+        "command": "postgres-explorer.ruleOperations",
+        "title": "Rule Operations",
+        "icon": "$(notebook)",
+        "category": "PgStudio"
+      },
+      {
+        "command": "postgres-explorer.listTablespaces",
+        "title": "List Tablespaces",
+        "category": "PgStudio"
+      },
+      {
+        "command": "postgres-explorer.showTablespaceProperties",
+        "title": "Tablespace Properties",
+        "icon": "$(info)",
+        "category": "PgStudio"
+      },
+      {
+        "command": "postgres-explorer.tablespaceOperations",
+        "title": "Tablespace Operations",
+        "icon": "$(notebook)",
+        "category": "PgStudio"
+      },
+      {
+        "command": "postgres-explorer.listPublications",
+        "title": "List Publications",
+        "category": "PgStudio"
+      },
+      {
+        "command": "postgres-explorer.createPublication",
+        "title": "Create Publication",
+        "icon": "$(add)",
+        "category": "PgStudio"
+      },
+      {
+        "command": "postgres-explorer.dropPublication",
+        "title": "Drop Publication",
+        "icon": "$(trash)",
+        "category": "PgStudio"
+      },
+      {
+        "command": "postgres-explorer.showPublicationProperties",
+        "title": "Publication Properties",
+        "icon": "$(info)",
+        "category": "PgStudio"
+      },
+      {
+        "command": "postgres-explorer.publicationOperations",
+        "title": "Publication Operations",
+        "icon": "$(notebook)",
+        "category": "PgStudio"
+      },
+      {
+        "command": "postgres-explorer.listSubscriptions",
+        "title": "List Subscriptions",
+        "category": "PgStudio"
+      },
+      {
+        "command": "postgres-explorer.dropSubscription",
+        "title": "Drop Subscription",
+        "icon": "$(trash)",
+        "category": "PgStudio"
+      },
+      {
+        "command": "postgres-explorer.showSubscriptionProperties",
+        "title": "Subscription Properties",
+        "icon": "$(info)",
+        "category": "PgStudio"
+      },
+      {
+        "command": "postgres-explorer.searchSchema",
+        "title": "Search Schema Objects",
+        "icon": "$(search)",
+        "category": "PgStudio"
+      }
     ],
     "submenus": [
       {
@@ -1343,13 +1573,21 @@
         },
         "postgresExplorer.formatter.keywordCase": {
           "type": "string",
-          "enum": ["upper", "lower", "preserve"],
+          "enum": [
+            "upper",
+            "lower",
+            "preserve"
+          ],
           "default": "upper",
           "description": "Keyword case used by the SQL formatter."
         },
         "postgresExplorer.formatter.indentStyle": {
           "type": "string",
-          "enum": ["standard", "tabularLeft", "tabularRight"],
+          "enum": [
+            "standard",
+            "tabularLeft",
+            "tabularRight"
+          ],
           "default": "standard",
           "description": "Indent style used by the SQL formatter."
         },
@@ -2133,53 +2371,241 @@
           "when": "view == postgresExplorer && viewItem == schema",
           "group": "1_actions"
         },
-        { "command": "postgres-explorer.showTriggerProperties", "when": "view == postgresExplorer && viewItem == trigger", "group": "inline@1" },
-        { "command": "postgres-explorer.enableTrigger", "when": "view == postgresExplorer && viewItem == trigger", "group": "1_actions@1" },
-        { "command": "postgres-explorer.disableTrigger", "when": "view == postgresExplorer && viewItem == trigger", "group": "1_actions@2" },
-        { "command": "postgres-explorer.triggerOperations", "when": "view == postgresExplorer && viewItem == trigger", "group": "1_actions@3" },
-        { "command": "postgres-explorer.dropTrigger", "when": "view == postgresExplorer && viewItem == trigger", "group": "9_destructive" },
-        { "command": "postgres-explorer.createTrigger", "when": "view == postgresExplorer && viewItem == category-triggers", "group": "1_actions" },
-        { "command": "postgres-explorer.listTriggers", "when": "view == postgresExplorer && viewItem == category-triggers", "group": "1_actions" },
-        { "command": "postgres-explorer.showSequenceProperties", "when": "view == postgresExplorer && viewItem == sequence", "group": "inline@1" },
-        { "command": "postgres-explorer.sequenceNextValue", "when": "view == postgresExplorer && viewItem == sequence", "group": "1_actions@1" },
-        { "command": "postgres-explorer.sequenceOperations", "when": "view == postgresExplorer && viewItem == sequence", "group": "1_actions@2" },
-        { "command": "postgres-explorer.dropSequence", "when": "view == postgresExplorer && viewItem == sequence", "group": "9_destructive" },
-        { "command": "postgres-explorer.createSequence", "when": "view == postgresExplorer && viewItem == category-sequences", "group": "1_actions" },
-        { "command": "postgres-explorer.listSequences", "when": "view == postgresExplorer && viewItem == category-sequences", "group": "1_actions" },
-        { "command": "postgres-explorer.showPartitionProperties", "when": "view == postgresExplorer && viewItem == partition", "group": "inline@1" },
-        { "command": "postgres-explorer.detachPartition", "when": "view == postgresExplorer && viewItem == partition", "group": "1_actions" },
-        { "command": "postgres-explorer.createPartition", "when": "view == postgresExplorer && viewItem == category-partitions", "group": "1_actions" },
-        { "command": "postgres-explorer.listPartitions", "when": "view == postgresExplorer && viewItem == category-partitions", "group": "1_actions" },
-        { "command": "postgres-explorer.showDomainProperties", "when": "view == postgresExplorer && viewItem == domain", "group": "inline@1" },
-        { "command": "postgres-explorer.dropDomain", "when": "view == postgresExplorer && viewItem == domain", "group": "9_destructive" },
-        { "command": "postgres-explorer.createDomain", "when": "view == postgresExplorer && viewItem == category-domains", "group": "1_actions" },
-        { "command": "postgres-explorer.listDomains", "when": "view == postgresExplorer && viewItem == category-domains", "group": "1_actions" },
-        { "command": "postgres-explorer.showAggregateProperties", "when": "view == postgresExplorer && viewItem == aggregate", "group": "inline@1" },
-        { "command": "postgres-explorer.dropAggregate", "when": "view == postgresExplorer && viewItem == aggregate", "group": "9_destructive" },
-        { "command": "postgres-explorer.createAggregate", "when": "view == postgresExplorer && viewItem == category-aggregates", "group": "1_actions" },
-        { "command": "postgres-explorer.listAggregates", "when": "view == postgresExplorer && viewItem == category-aggregates", "group": "1_actions" },
-        { "command": "postgres-explorer.showEventTriggerProperties", "when": "view == postgresExplorer && viewItem == event-trigger", "group": "inline@1" },
-        { "command": "postgres-explorer.enableEventTrigger", "when": "view == postgresExplorer && viewItem == event-trigger", "group": "1_actions@1" },
-        { "command": "postgres-explorer.disableEventTrigger", "when": "view == postgresExplorer && viewItem == event-trigger", "group": "1_actions@2" },
-        { "command": "postgres-explorer.eventTriggerOperations", "when": "view == postgresExplorer && viewItem == event-trigger", "group": "1_actions@3" },
-        { "command": "postgres-explorer.dropEventTrigger", "when": "view == postgresExplorer && viewItem == event-trigger", "group": "9_destructive" },
-        { "command": "postgres-explorer.createEventTrigger", "when": "view == postgresExplorer && viewItem == category-event-triggers", "group": "1_actions" },
-        { "command": "postgres-explorer.listEventTriggers", "when": "view == postgresExplorer && viewItem == category-event-triggers", "group": "1_actions" },
-        { "command": "postgres-explorer.showRuleProperties", "when": "view == postgresExplorer && viewItem == rule", "group": "inline@1" },
-        { "command": "postgres-explorer.ruleOperations", "when": "view == postgresExplorer && viewItem == rule", "group": "1_actions" },
-        { "command": "postgres-explorer.dropRule", "when": "view == postgresExplorer && viewItem == rule", "group": "9_destructive" },
-        { "command": "postgres-explorer.listRules", "when": "view == postgresExplorer && viewItem == category-rules", "group": "1_actions" },
-        { "command": "postgres-explorer.showTablespaceProperties", "when": "view == postgresExplorer && viewItem == tablespace", "group": "inline@1" },
-        { "command": "postgres-explorer.tablespaceOperations", "when": "view == postgresExplorer && viewItem == tablespace", "group": "1_actions" },
-        { "command": "postgres-explorer.listTablespaces", "when": "view == postgresExplorer && viewItem == category-tablespaces", "group": "1_actions" },
-        { "command": "postgres-explorer.showPublicationProperties", "when": "view == postgresExplorer && viewItem == publication", "group": "inline@1" },
-        { "command": "postgres-explorer.publicationOperations", "when": "view == postgresExplorer && viewItem == publication", "group": "1_actions" },
-        { "command": "postgres-explorer.dropPublication", "when": "view == postgresExplorer && viewItem == publication", "group": "9_destructive" },
-        { "command": "postgres-explorer.createPublication", "when": "view == postgresExplorer && viewItem == category-publications", "group": "1_actions" },
-        { "command": "postgres-explorer.listPublications", "when": "view == postgresExplorer && viewItem == category-publications", "group": "1_actions" },
-        { "command": "postgres-explorer.showSubscriptionProperties", "when": "view == postgresExplorer && viewItem == subscription", "group": "inline@1" },
-        { "command": "postgres-explorer.dropSubscription", "when": "view == postgresExplorer && viewItem == subscription", "group": "9_destructive" },
-        { "command": "postgres-explorer.listSubscriptions", "when": "view == postgresExplorer && viewItem == category-subscriptions", "group": "1_actions" }
+        {
+          "command": "postgres-explorer.showTriggerProperties",
+          "when": "view == postgresExplorer && viewItem == trigger",
+          "group": "inline@1"
+        },
+        {
+          "command": "postgres-explorer.enableTrigger",
+          "when": "view == postgresExplorer && viewItem == trigger",
+          "group": "1_actions@1"
+        },
+        {
+          "command": "postgres-explorer.disableTrigger",
+          "when": "view == postgresExplorer && viewItem == trigger",
+          "group": "1_actions@2"
+        },
+        {
+          "command": "postgres-explorer.triggerOperations",
+          "when": "view == postgresExplorer && viewItem == trigger",
+          "group": "1_actions@3"
+        },
+        {
+          "command": "postgres-explorer.dropTrigger",
+          "when": "view == postgresExplorer && viewItem == trigger",
+          "group": "9_destructive"
+        },
+        {
+          "command": "postgres-explorer.createTrigger",
+          "when": "view == postgresExplorer && viewItem == category-triggers",
+          "group": "1_actions"
+        },
+        {
+          "command": "postgres-explorer.listTriggers",
+          "when": "view == postgresExplorer && viewItem == category-triggers",
+          "group": "1_actions"
+        },
+        {
+          "command": "postgres-explorer.showSequenceProperties",
+          "when": "view == postgresExplorer && viewItem == sequence",
+          "group": "inline@1"
+        },
+        {
+          "command": "postgres-explorer.sequenceNextValue",
+          "when": "view == postgresExplorer && viewItem == sequence",
+          "group": "1_actions@1"
+        },
+        {
+          "command": "postgres-explorer.sequenceOperations",
+          "when": "view == postgresExplorer && viewItem == sequence",
+          "group": "1_actions@2"
+        },
+        {
+          "command": "postgres-explorer.dropSequence",
+          "when": "view == postgresExplorer && viewItem == sequence",
+          "group": "9_destructive"
+        },
+        {
+          "command": "postgres-explorer.createSequence",
+          "when": "view == postgresExplorer && viewItem == category-sequences",
+          "group": "1_actions"
+        },
+        {
+          "command": "postgres-explorer.listSequences",
+          "when": "view == postgresExplorer && viewItem == category-sequences",
+          "group": "1_actions"
+        },
+        {
+          "command": "postgres-explorer.showPartitionProperties",
+          "when": "view == postgresExplorer && viewItem == partition",
+          "group": "inline@1"
+        },
+        {
+          "command": "postgres-explorer.detachPartition",
+          "when": "view == postgresExplorer && viewItem == partition",
+          "group": "1_actions"
+        },
+        {
+          "command": "postgres-explorer.createPartition",
+          "when": "view == postgresExplorer && viewItem == category-partitions",
+          "group": "1_actions"
+        },
+        {
+          "command": "postgres-explorer.listPartitions",
+          "when": "view == postgresExplorer && viewItem == category-partitions",
+          "group": "1_actions"
+        },
+        {
+          "command": "postgres-explorer.showDomainProperties",
+          "when": "view == postgresExplorer && viewItem == domain",
+          "group": "inline@1"
+        },
+        {
+          "command": "postgres-explorer.dropDomain",
+          "when": "view == postgresExplorer && viewItem == domain",
+          "group": "9_destructive"
+        },
+        {
+          "command": "postgres-explorer.createDomain",
+          "when": "view == postgresExplorer && viewItem == category-domains",
+          "group": "1_actions"
+        },
+        {
+          "command": "postgres-explorer.listDomains",
+          "when": "view == postgresExplorer && viewItem == category-domains",
+          "group": "1_actions"
+        },
+        {
+          "command": "postgres-explorer.showAggregateProperties",
+          "when": "view == postgresExplorer && viewItem == aggregate",
+          "group": "inline@1"
+        },
+        {
+          "command": "postgres-explorer.dropAggregate",
+          "when": "view == postgresExplorer && viewItem == aggregate",
+          "group": "9_destructive"
+        },
+        {
+          "command": "postgres-explorer.createAggregate",
+          "when": "view == postgresExplorer && viewItem == category-aggregates",
+          "group": "1_actions"
+        },
+        {
+          "command": "postgres-explorer.listAggregates",
+          "when": "view == postgresExplorer && viewItem == category-aggregates",
+          "group": "1_actions"
+        },
+        {
+          "command": "postgres-explorer.showEventTriggerProperties",
+          "when": "view == postgresExplorer && viewItem == event-trigger",
+          "group": "inline@1"
+        },
+        {
+          "command": "postgres-explorer.enableEventTrigger",
+          "when": "view == postgresExplorer && viewItem == event-trigger",
+          "group": "1_actions@1"
+        },
+        {
+          "command": "postgres-explorer.disableEventTrigger",
+          "when": "view == postgresExplorer && viewItem == event-trigger",
+          "group": "1_actions@2"
+        },
+        {
+          "command": "postgres-explorer.eventTriggerOperations",
+          "when": "view == postgresExplorer && viewItem == event-trigger",
+          "group": "1_actions@3"
+        },
+        {
+          "command": "postgres-explorer.dropEventTrigger",
+          "when": "view == postgresExplorer && viewItem == event-trigger",
+          "group": "9_destructive"
+        },
+        {
+          "command": "postgres-explorer.createEventTrigger",
+          "when": "view == postgresExplorer && viewItem == category-event-triggers",
+          "group": "1_actions"
+        },
+        {
+          "command": "postgres-explorer.listEventTriggers",
+          "when": "view == postgresExplorer && viewItem == category-event-triggers",
+          "group": "1_actions"
+        },
+        {
+          "command": "postgres-explorer.showRuleProperties",
+          "when": "view == postgresExplorer && viewItem == rule",
+          "group": "inline@1"
+        },
+        {
+          "command": "postgres-explorer.ruleOperations",
+          "when": "view == postgresExplorer && viewItem == rule",
+          "group": "1_actions"
+        },
+        {
+          "command": "postgres-explorer.dropRule",
+          "when": "view == postgresExplorer && viewItem == rule",
+          "group": "9_destructive"
+        },
+        {
+          "command": "postgres-explorer.listRules",
+          "when": "view == postgresExplorer && viewItem == category-rules",
+          "group": "1_actions"
+        },
+        {
+          "command": "postgres-explorer.showTablespaceProperties",
+          "when": "view == postgresExplorer && viewItem == tablespace",
+          "group": "inline@1"
+        },
+        {
+          "command": "postgres-explorer.tablespaceOperations",
+          "when": "view == postgresExplorer && viewItem == tablespace",
+          "group": "1_actions"
+        },
+        {
+          "command": "postgres-explorer.listTablespaces",
+          "when": "view == postgresExplorer && viewItem == category-tablespaces",
+          "group": "1_actions"
+        },
+        {
+          "command": "postgres-explorer.showPublicationProperties",
+          "when": "view == postgresExplorer && viewItem == publication",
+          "group": "inline@1"
+        },
+        {
+          "command": "postgres-explorer.publicationOperations",
+          "when": "view == postgresExplorer && viewItem == publication",
+          "group": "1_actions"
+        },
+        {
+          "command": "postgres-explorer.dropPublication",
+          "when": "view == postgresExplorer && viewItem == publication",
+          "group": "9_destructive"
+        },
+        {
+          "command": "postgres-explorer.createPublication",
+          "when": "view == postgresExplorer && viewItem == category-publications",
+          "group": "1_actions"
+        },
+        {
+          "command": "postgres-explorer.listPublications",
+          "when": "view == postgresExplorer && viewItem == category-publications",
+          "group": "1_actions"
+        },
+        {
+          "command": "postgres-explorer.showSubscriptionProperties",
+          "when": "view == postgresExplorer && viewItem == subscription",
+          "group": "inline@1"
+        },
+        {
+          "command": "postgres-explorer.dropSubscription",
+          "when": "view == postgresExplorer && viewItem == subscription",
+          "group": "9_destructive"
+        },
+        {
+          "command": "postgres-explorer.listSubscriptions",
+          "when": "view == postgresExplorer && viewItem == category-subscriptions",
+          "group": "1_actions"
+        }
       ],
       "postgres-explorer.columnScriptsMenu": [
         {
