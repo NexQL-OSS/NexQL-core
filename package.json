@@ -1,7 +1,7 @@
 {
   "name": "postgres-explorer",
   "displayName": "PgStudio (PostgreSQL Explorer)",
-  "version": "1.0.0",
+  "version": "1.0.0-nightly",
   "description": "PostgreSQL database explorer for VS Code with notebook support [Nightly]",
   "publisher": "ric-v",
   "private": false,
@@ -918,17 +918,25 @@
       {
         "command": "postgres-explorer.ddlViewer.openEditableCopy",
         "title": "DDL Viewer: Open as Editable Copy",
-        "category": "PgStudio"
+        "category": "PgStudio",
+        "icon": "$(edit)"
       },
       {
         "command": "postgres-explorer.ddlViewer.copyToClipboard",
         "title": "DDL Viewer: Copy to Clipboard",
-        "category": "PgStudio"
+        "category": "PgStudio",
+        "icon": "$(copy)"
       },
       {
         "command": "postgres-explorer.ddlViewer.executeRoutine",
         "title": "DDL Viewer: Execute Routine Scaffold",
         "category": "PgStudio"
+      },
+      {
+        "command": "postgres-explorer.ddlViewer.toggleEnabled",
+        "title": "DDL Viewer: Toggle SQL Preview",
+        "category": "PgStudio",
+        "icon": "$(file-code)"
       },
       {
         "command": "postgres-explorer.switchConnection",
@@ -1674,6 +1682,11 @@
           "type": "boolean",
           "default": true,
           "description": "Open the Definition Viewer automatically when selecting supported tree items."
+        },
+        "pgstudio.ddlViewer.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable SQL Preview (Definition Viewer) features and actions."
         }
       }
     },
@@ -1714,6 +1727,11 @@
           "group": "navigation"
         },
         {
+          "command": "postgres-explorer.ddlViewer.toggleEnabled",
+          "when": "view == postgresExplorer",
+          "group": "navigation"
+        },
+        {
           "command": "postgres-explorer.manageConnections",
           "when": "view == postgresExplorer",
           "group": "navigation"
@@ -1747,6 +1765,23 @@
           "command": "postgres-explorer.loadSavedQuery",
           "when": "view == postgresExplorer",
           "group": "2_phase7"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "postgres-explorer.ddlViewer.copyToClipboard",
+          "when": "resourceScheme == pgstudio-ddl",
+          "group": "navigation@1"
+        },
+        {
+          "command": "postgres-explorer.ddlViewer.toggleEnabled",
+          "when": "resourceScheme == pgstudio-ddl",
+          "group": "navigation@2"
+        },
+        {
+          "command": "postgres-explorer.ddlViewer.openEditableCopy",
+          "when": "resourceScheme == pgstudio-ddl",
+          "group": "navigation@3"
         }
       ],
       "view/item/context": [
