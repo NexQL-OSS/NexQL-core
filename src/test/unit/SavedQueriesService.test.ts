@@ -1,7 +1,7 @@
 import { expect } from 'chai';
 import * as sinon from 'sinon';
 
-import { SavedQueriesService, SavedQuery } from '../../services/SavedQueriesService';
+import { SavedQueriesService, SavedQuery } from '../../features/savedQueries/SavedQueriesService';
 
 function createContext(initialQueries: SavedQuery[] = []) {
   const state = new Map<string, any>([['postgres-explorer.savedQueries', initialQueries]]);

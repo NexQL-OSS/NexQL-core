@@ -1,15 +1,27 @@
 import * as vscode from 'vscode';
 import { ChatViewProvider } from '../providers/ChatViewProvider';
 import { DatabaseTreeProvider } from '../providers/DatabaseTreeProvider';
-import { PostgresNotebookProvider } from '../notebookProvider';
-import { PostgresNotebookSerializer } from '../postgresNotebook';
+import { PostgresNotebookProvider } from '../features/notebook/notebookProvider';
+import { PostgresNotebookSerializer } from '../features/notebook/postgresNotebook';
 
-import { QueryCodeLensProvider } from '../providers/QueryCodeLensProvider';
-import { QueryHistoryProvider } from '../providers/QueryHistoryProvider';
 import { ProfilesTreeProvider, SavedQueriesTreeProvider } from '../providers/Phase7TreeProviders';
 import { NotebooksTreeProvider } from '../providers/NotebooksTreeProvider';
 import { AutoRefreshService } from '../services/AutoRefreshService';
 import { DdlViewerService } from '../services/DdlViewerService';
+
+function runDeferredProviderTask(outputChannel: vscode.OutputChannel, taskName: string, task: () => Promise<void>) {
+  setTimeout(() => {
+    void (async () => {
+      const start = Date.now();
+      try {
+        await task();
+        outputChannel.appendLine(`[startup/deferred-provider] ${taskName} completed in ${Date.now() - start}ms`);
+      } catch (error) {
+        outputChannel.appendLine(`[startup/deferred-provider] ${taskName} failed: ${error}`);
+      }
+    })();
+  }, 0);
+}
 
 export function registerProviders(context: vscode.ExtensionContext, outputChannel: vscode.OutputChannel) {
   // Create database tree provider instance
@@ -51,47 +63,54 @@ export function registerProviders(context: vscode.ExtensionContext, outputChanne
     vscode.workspace.registerNotebookSerializer('postgres-query', new PostgresNotebookSerializer())
   );
 
-  // Register SQL completion provider
-  const { SqlCompletionProvider } = require('../providers/SqlCompletionProvider');
-  const sqlCompletionProvider = new SqlCompletionProvider();
-  context.subscriptions.push(
-    vscode.languages.registerCompletionItemProvider(
-      { language: 'sql' },
-      sqlCompletionProvider,
-      '.' // Trigger on dot for schema.table suggestions
-    ),
-    vscode.languages.registerCompletionItemProvider(
-      { scheme: 'vscode-notebook-cell', language: 'sql' },
-      sqlCompletionProvider,
-      '.'
-    )
-  );
+  // Register SQL completion provider, CodeLens, and query history lazily.
+  runDeferredProviderTask(outputChannel, 'registerSqlCompletionProvider', async () => {
+    const sqlCompletionModule = await import('../providers/SqlCompletionProvider');
+    const sqlCompletionProvider = new sqlCompletionModule.SqlCompletionProvider();
 
+    context.subscriptions.push(
+      vscode.languages.registerCompletionItemProvider(
+        { language: 'sql' },
+        sqlCompletionProvider,
+        '.' // Trigger on dot for schema.table suggestions
+      ),
+      vscode.languages.registerCompletionItemProvider(
+        { scheme: 'vscode-notebook-cell', language: 'sql' },
+        sqlCompletionProvider,
+        '.'
+      )
+    );
+  });
 
+  runDeferredProviderTask(outputChannel, 'registerQueryCodeLensProvider', async () => {
+    const queryCodeLensModule = await import('../providers/QueryCodeLensProvider');
+    const queryCodeLensProvider = new queryCodeLensModule.QueryCodeLensProvider();
+    queryCodeLensModule.QueryCodeLensProvider.setInstance(queryCodeLensProvider);
 
-  // Register Query CodeLens Provider for EXPLAIN actions
-  const queryCodeLensProvider = new QueryCodeLensProvider();
-  QueryCodeLensProvider.setInstance(queryCodeLensProvider);
-  context.subscriptions.push(
-    vscode.languages.registerCodeLensProvider(
-      { language: 'postgres', scheme: 'vscode-notebook-cell' },
-      queryCodeLensProvider
-    ),
-    vscode.languages.registerCodeLensProvider(
-      { language: 'sql', scheme: 'vscode-notebook-cell' },
-      queryCodeLensProvider
-    )
-  );
-  outputChannel.appendLine('QueryCodeLensProvider registered for EXPLAIN actions.');
+    context.subscriptions.push(
+      vscode.languages.registerCodeLensProvider(
+        { language: 'postgres', scheme: 'vscode-notebook-cell' },
+        queryCodeLensProvider
+      ),
+      vscode.languages.registerCodeLensProvider(
+        { language: 'sql', scheme: 'vscode-notebook-cell' },
+        queryCodeLensProvider
+      )
+    );
+    outputChannel.appendLine('QueryCodeLensProvider registered for EXPLAIN actions.');
+  });
 
-  // Register Query History Provider
-  const queryHistoryProvider = new QueryHistoryProvider();
-  context.subscriptions.push(
-    vscode.window.registerTreeDataProvider('postgresExplorer.history', queryHistoryProvider)
-  );
+  runDeferredProviderTask(outputChannel, 'registerQueryHistoryProvider', async () => {
+    const queryHistoryModule = await import('../providers/QueryHistoryProvider');
+    const queryHistoryProvider = new queryHistoryModule.QueryHistoryProvider();
 
-  // Store query history provider instance for command access
-  context.workspaceState.update('queryHistoryProviderInstance', queryHistoryProvider);
+    context.subscriptions.push(
+      vscode.window.registerTreeDataProvider('postgresExplorer.history', queryHistoryProvider)
+    );
+
+    // Store query history provider instance for command access
+    await context.workspaceState.update('queryHistoryProviderInstance', queryHistoryProvider);
+  });
 
   // Phase 7: Register Saved Queries Tree Provider
   const savedQueriesTreeProvider = new SavedQueriesTreeProvider();
@@ -122,7 +141,7 @@ export function registerProviders(context: vscode.ExtensionContext, outputChanne
     treeView,
     ddlViewerService,
     chatViewProviderInstance,
-    queryHistoryProvider,
+    queryHistoryProvider: undefined,
     savedQueriesTreeProvider,
     notebooksTreeProvider,
     autoRefreshService

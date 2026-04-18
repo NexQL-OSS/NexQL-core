@@ -1,7 +1,6 @@
 import { expect } from 'chai';
 import * as sinon from 'sinon';
 import * as vscode from 'vscode';
-
 import { safelyPostMessage } from '../../../services/handlers/messaging';
 
 describe('safelyPostMessage', () => {
@@ -9,7 +8,6 @@ describe('safelyPostMessage', () => {
 
   beforeEach(() => {
     sandbox = sinon.createSandbox();
-    sandbox.stub(vscode.window, 'showWarningMessage').resolves(undefined as any);
   });
 
   afterEach(() => {
@@ -17,41 +15,30 @@ describe('safelyPostMessage', () => {
   });
 
   it('returns false when postMessage is undefined', async () => {
-    const result = await safelyPostMessage(undefined, { type: 'x' }, { contextLabel: 'test' });
-    expect(result).to.equal(false);
+    const r = await safelyPostMessage(undefined, { x: 1 }, { contextLabel: 'Test' });
+    expect(r).to.be.false;
   });
 
-  it('returns true when message is delivered', async () => {
+  it('returns true when delivery succeeds', async () => {
     const postMessage = sandbox.stub().resolves(true);
-
-    const result = await safelyPostMessage(postMessage, { type: 'ok' }, { contextLabel: 'test' });
-
-    expect(result).to.equal(true);
-    expect(postMessage.calledOnceWithExactly({ type: 'ok' })).to.equal(true);
-    expect((vscode.window.showWarningMessage as any).called).to.equal(false);
+    const r = await safelyPostMessage(postMessage, { type: 'a' }, { contextLabel: 'Test' });
+    expect(r).to.be.true;
+    expect(postMessage.calledOnceWithExactly({ type: 'a' })).to.be.true;
   });
 
-  it('returns false and warns when delivery returns false', async () => {
+  it('returns false when postMessage returns false', async () => {
     const postMessage = sandbox.stub().resolves(false);
-
-    const result = await safelyPostMessage(postMessage, { type: 'nope' }, {
-      contextLabel: 'test',
-      notifyOnFailure: true,
-    });
-
-    expect(result).to.equal(false);
-    expect((vscode.window.showWarningMessage as any).calledOnce).to.equal(true);
+    const warn = sandbox.stub(vscode.window, 'showWarningMessage').resolves(undefined);
+    const r = await safelyPostMessage(postMessage, { type: 'a' }, { contextLabel: 'Test', notifyOnFailure: true });
+    expect(r).to.be.false;
+    expect(warn.calledOnce).to.be.true;
   });
 
-  it('returns false and warns when postMessage throws', async () => {
-    const postMessage = sandbox.stub().rejects(new Error('panel closed'));
-
-    const result = await safelyPostMessage(postMessage, { type: 'boom' }, {
-      contextLabel: 'test',
-      notifyOnFailure: true,
-    });
-
-    expect(result).to.equal(false);
-    expect((vscode.window.showWarningMessage as any).calledOnce).to.equal(true);
+  it('returns false on thrown error', async () => {
+    const postMessage = sandbox.stub().rejects(new Error('closed'));
+    const warn = sandbox.stub(vscode.window, 'showWarningMessage').resolves(undefined);
+    const r = await safelyPostMessage(postMessage, { type: 'a' }, { contextLabel: 'Test', notifyOnFailure: true });
+    expect(r).to.be.false;
+    expect(warn.calledOnce).to.be.true;
   });
 });

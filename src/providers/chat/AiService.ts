@@ -14,6 +14,9 @@ const GITHUB_MODELS_API_BASE = 'https://models.github.ai';
 const GITHUB_MODELS_API_VERSION = '2026-03-10';
 const DEFAULT_GITHUB_MODEL = 'openai/gpt-4.1';
 
+/** Heuristic for VS Code LM when the host does not report token usage (UI hint only). */
+const ROUGH_CHARS_PER_TOKEN = 4;
+
 export class AiService {
   private _messages: ChatMessage[] = [];
   private _cancellationTokenSource: vscode.CancellationTokenSource | null = null;
@@ -335,6 +338,7 @@ The UI will automatically parse this and show clickable suggestion bubbles.`;
         resultKeys: rawChatRequest?.result ? Object.keys(rawChatRequest.result) : []
       }));
 
+      let effectiveRequest: any = chatRequest;
       let responseText = await this._extractVsCodeLmResponseText(chatRequest as any);
       console.log('[AiService] Initial extraction result length:', responseText.length);
 
@@ -362,6 +366,7 @@ The UI will automatically parse this and show clickable suggestion bubbles.`;
 
         console.log('[AiService] sendRequest retry attempt started');
         const retryRequest = await model.sendRequest(retryMessages, {}, this._cancellationTokenSource.token);
+        effectiveRequest = retryRequest;
         const rawRetryRequest = retryRequest as any;
         console.log('[AiService] sendRequest retry attempt resolved:', JSON.stringify({
           hasStream: !!rawRetryRequest?.stream,
@@ -381,6 +386,7 @@ The UI will automatically parse this and show clickable suggestion bubbles.`;
         if (fallbackModel) {
           console.warn('[AiService] Selected model produced empty output. Trying alternate model:', fallbackModel.name || fallbackModel.id);
           const fallbackRequest = await fallbackModel.sendRequest(effectiveMessagesForFallback, {}, this._cancellationTokenSource.token);
+          effectiveRequest = fallbackRequest;
           responseText = await this._extractVsCodeLmResponseText(fallbackRequest as any);
           console.log('[AiService] Alternate model extraction result length:', responseText.length);
         }
@@ -390,7 +396,13 @@ The UI will automatically parse this and show clickable suggestion bubbles.`;
         throw new Error('AI model returned an empty response. Please retry or select a different model.');
       }
 
-      return { text: responseText };
+      const promptChars = AiService._approxCharsFromLmMessages(effectiveMessagesForFallback);
+      let usageStr = await AiService._extractVsCodeLmUsageAfterStream(effectiveRequest);
+      if (!usageStr) {
+        usageStr = AiService._roughTokenEstimateLabel(promptChars, responseText.length);
+      }
+
+      return { text: responseText, usage: usageStr };
     } finally {
       // Clean up cancellation token source
       if (this._cancellationTokenSource) {
@@ -398,6 +410,73 @@ The UI will automatically parse this and show clickable suggestion bubbles.`;
         this._cancellationTokenSource = null;
       }
     }
+  }
+
+  /** Best-effort token / usage string from a consumed VS Code LM response (shape varies by host). */
+  private static async _extractVsCodeLmUsageAfterStream(chatRequest: any): Promise<string | undefined> {
+    const direct = AiService._usageFromLmResponseObject(chatRequest);
+    if (direct) {
+      return direct;
+    }
+    const r = chatRequest?.result;
+    if (r && typeof r.then === 'function') {
+      try {
+        const resolved = await r;
+        return AiService._usageFromLmResponseObject(resolved);
+      } catch {
+        return undefined;
+      }
+    }
+    return undefined;
+  }
+
+  private static _usageFromLmResponseObject(obj: any): string | undefined {
+    if (!obj || typeof obj !== 'object') {
+      return undefined;
+    }
+    const u = obj.usage;
+    if (!u || typeof u !== 'object') {
+      return undefined;
+    }
+    if (typeof u.totalTokens === 'number') {
+      return `${u.totalTokens} tokens`;
+    }
+    if (typeof u.inputTokens === 'number' && typeof u.outputTokens === 'number') {
+      return `${u.inputTokens} in + ${u.outputTokens} out`;
+    }
+    if (typeof u.promptTokens === 'number' && typeof u.completionTokens === 'number') {
+      return `${u.promptTokens} in + ${u.completionTokens} out`;
+    }
+    return undefined;
+  }
+
+  private static _approxCharsFromLmMessages(lmMessages: any[]): number {
+    let n = 0;
+    for (const msg of lmMessages) {
+      const c = (msg as any)?.content;
+      if (typeof c === 'string') {
+        n += c.length;
+      } else if (Array.isArray(c)) {
+        for (const part of c) {
+          if (typeof part === 'string') {
+            n += part.length;
+          } else if (part && typeof (part as any).text === 'string') {
+            n += (part as any).text.length;
+          } else if (part && typeof (part as any).value === 'string') {
+            n += (part as any).value.length;
+          }
+        }
+      }
+    }
+    return n;
+  }
+
+  /** Rough token hint when the LM host does not report usage (not billing-grade). */
+  private static _roughTokenEstimateLabel(promptChars: number, completionChars: number): string {
+    const inTok = Math.max(1, Math.round(promptChars / ROUGH_CHARS_PER_TOKEN));
+    const outTok = Math.max(1, Math.round(completionChars / ROUGH_CHARS_PER_TOKEN));
+    const total = inTok + outTok;
+    return `~${total} tokens (est. · ${inTok} in + ${outTok} out)`;
   }
 
   private async _findAlternateModel(currentModelId: string): Promise<vscode.LanguageModelChat | undefined> {
@@ -914,6 +993,10 @@ The UI will automatically parse this and show clickable suggestion bubbles.`;
 
             if (!content && provider === 'custom') {
               content = JSON.stringify(response); // Fallback
+            }
+
+            if (usage && body?.model) {
+              usage = `${body.model} · ${usage}`;
             }
 
             resolve({ text: content, usage });

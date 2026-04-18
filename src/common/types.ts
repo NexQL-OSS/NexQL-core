@@ -109,6 +109,10 @@ export interface QueryResults {
     statementCount: number;     // Statements executed in current transaction
   };
   pendingCommit?: boolean;      // True when result was produced inside a transaction
+  /** True when SqlExecutor appended LIMIT (auto-limit / profile / read-only). */
+  autoLimitApplied?: boolean;
+  /** Effective LIMIT value when autoLimitApplied is true. */
+  autoLimitValue?: number;
 }
 
 export interface TableRenderOptions {

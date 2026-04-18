@@ -652,6 +652,20 @@ export class DatabaseTreeProvider implements vscode.TreeDataProvider<DatabaseTre
           );
 
           const extensionCountResult = await client.query('SELECT COUNT(*) FROM pg_available_extensions WHERE installed_version IS NOT NULL');
+
+          let cronJobCount = 0;
+          try {
+            const hasCron = await client.query(
+              `SELECT 1 FROM pg_catalog.pg_extension WHERE extname = 'pg_cron' LIMIT 1`,
+            );
+            if (hasCron.rows.length > 0) {
+              const cj = await client.query(`SELECT COUNT(*)::int AS n FROM cron.job`);
+              cronJobCount = Number(cj.rows[0].n);
+            }
+          } catch {
+            cronJobCount = 0;
+          }
+
           const fdwCountResult = await client.query('SELECT COUNT(*) FROM pg_foreign_data_wrapper');
           const eventTriggerCountResult = await client.query('SELECT COUNT(*) FROM pg_event_trigger');
           const publicationCountResult = await client.query('SELECT COUNT(*) FROM pg_publication');
@@ -667,6 +681,7 @@ export class DatabaseTreeProvider implements vscode.TreeDataProvider<DatabaseTre
           return [
             new DatabaseTreeItem('Schemas', vscode.TreeItemCollapsibleState.Collapsed, 'category', element.connectionId, element.databaseName, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, schemaCountResult.rows[0].count),
             new DatabaseTreeItem('Extensions', vscode.TreeItemCollapsibleState.Collapsed, 'category', element.connectionId, element.databaseName, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, extensionCountResult.rows[0].count),
+            new DatabaseTreeItem('Cron Jobs', vscode.TreeItemCollapsibleState.Collapsed, 'category', element.connectionId, element.databaseName, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, cronJobCount),
             new DatabaseTreeItem('Foreign Data Wrappers', vscode.TreeItemCollapsibleState.Collapsed, 'category', element.connectionId, element.databaseName, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, fdwCountResult.rows[0].count),
             new DatabaseTreeItem('Event Triggers', vscode.TreeItemCollapsibleState.Collapsed, 'category', element.connectionId, element.databaseName, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, eventTriggerCountResult.rows[0].count),
             new DatabaseTreeItem('Publications', vscode.TreeItemCollapsibleState.Collapsed, 'category', element.connectionId, element.databaseName, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, publicationCountResult.rows[0].count),
@@ -760,6 +775,46 @@ i.relname as index_name,
                   undefined,
                   `${row.action_timing} ${row.event_manipulation}`
                 ));
+
+              case 'RLS Policies': {
+                try {
+                  const polResult = await client.query(
+                    `SELECT policyname, cmd, permissive
+                     FROM pg_policies
+                     WHERE schemaname = $1 AND tablename = $2
+                     ORDER BY policyname`,
+                    [element.schema, element.tableName],
+                  );
+                  return polResult.rows.map(
+                    (row: { policyname: string; cmd: string; permissive: string }) =>
+                      new DatabaseTreeItem(
+                        row.policyname,
+                        vscode.TreeItemCollapsibleState.None,
+                        'policy',
+                        element.connectionId,
+                        element.databaseName,
+                        element.schema,
+                        element.tableName,
+                        undefined,
+                        `${row.cmd} · ${row.permissive === 'PERMISSIVE' ? 'permissive' : 'restrictive'}`,
+                      ),
+                  );
+                } catch {
+                  return [
+                    new DatabaseTreeItem(
+                      'Cannot read pg_policies (permissions?)',
+                      vscode.TreeItemCollapsibleState.None,
+                      'policy',
+                      element.connectionId,
+                      element.databaseName,
+                      element.schema,
+                      element.tableName,
+                      undefined,
+                      'Your role may lack SELECT on pg_policies.',
+                    ),
+                  ];
+                }
+              }
 
               case 'Rules':
                 const tableRuleResult = await client.query(
@@ -896,6 +951,110 @@ i.relname as index_name,
                 row.is_installed,
                 row.installed_version
               ));
+
+            case 'Cron Jobs': {
+              const hasCron = await client.query(
+                `SELECT 1 FROM pg_catalog.pg_extension WHERE extname = 'pg_cron' LIMIT 1`,
+              );
+              if (hasCron.rows.length === 0) {
+                return [
+                  new DatabaseTreeItem(
+                    'Install pg_cron extension',
+                    vscode.TreeItemCollapsibleState.None,
+                    'cron-job',
+                    element.connectionId,
+                    element.databaseName,
+                    undefined,
+                    undefined,
+                    undefined,
+                    'pg_cron is not installed in this database. Use List / Install commands or run CREATE EXTENSION pg_cron (may require superuser).',
+                    undefined,
+                    undefined,
+                    undefined,
+                    undefined,
+                    undefined,
+                    undefined,
+                    undefined,
+                    undefined,
+                    undefined,
+                    undefined,
+                    undefined,
+                    undefined,
+                    undefined,
+                  ),
+                ];
+              }
+              let cronResult: { rows: any[] };
+              try {
+                cronResult = await client.query(
+                  `SELECT jobid, jobname, schedule, command, active, database, username, nodename, nodeport
+                   FROM cron.job
+                   ORDER BY jobname NULLS LAST, jobid`,
+                );
+              } catch {
+                return [
+                  new DatabaseTreeItem(
+                    'Cannot read cron.job (permissions?)',
+                    vscode.TreeItemCollapsibleState.None,
+                    'cron-job',
+                    element.connectionId,
+                    element.databaseName,
+                    undefined,
+                    undefined,
+                    undefined,
+                    'Your role may lack USAGE on schema cron or SELECT on cron.job.',
+                    undefined,
+                    undefined,
+                    undefined,
+                    undefined,
+                    undefined,
+                    undefined,
+                    undefined,
+                    undefined,
+                    undefined,
+                    undefined,
+                    undefined,
+                  ),
+                ];
+              }
+              return cronResult.rows.map((row: any) => {
+                const name =
+                  row.jobname && String(row.jobname).trim() !== ''
+                    ? String(row.jobname)
+                    : `job ${row.jobid}`;
+                const comment = [
+                  `Schedule: ${row.schedule}`,
+                  row.active ? 'Status: active' : 'Status: paused',
+                  `Database: ${row.database}`,
+                  `Run as: ${row.username}`,
+                  `Command:\n${row.command}`,
+                ].join('\n');
+                return new DatabaseTreeItem(
+                  name,
+                  vscode.TreeItemCollapsibleState.None,
+                  'cron-job',
+                  element.connectionId,
+                  element.databaseName,
+                  'cron',
+                  undefined,
+                  undefined,
+                  comment,
+                  undefined,
+                  undefined,
+                  undefined,
+                  undefined,
+                  undefined,
+                  undefined,
+                  undefined,
+                  undefined,
+                  undefined,
+                  undefined,
+                  Number(row.jobid),
+                  String(row.schedule),
+                  Boolean(row.active),
+                );
+              });
+            }
 
             // Existing category cases for schema level items
             case 'Tables':
@@ -1380,16 +1539,44 @@ i.relname as index_name,
 
           return schemaItems;
 
-        case 'table':
-          // Show hierarchical structure for tables
+        case 'table': {
+          let rlsPolicyCount = 0;
+          try {
+            const pc = await client.query(
+              `SELECT COUNT(*)::int AS n FROM pg_policies WHERE schemaname = $1 AND tablename = $2`,
+              [element.schema, element.label],
+            );
+            rlsPolicyCount = Number(pc.rows[0]?.n ?? 0);
+          } catch {
+            rlsPolicyCount = 0;
+          }
           return [
             new DatabaseTreeItem('Columns', vscode.TreeItemCollapsibleState.Collapsed, 'category', element.connectionId, element.databaseName, element.schema, element.label),
             new DatabaseTreeItem('Constraints', vscode.TreeItemCollapsibleState.Collapsed, 'category', element.connectionId, element.databaseName, element.schema, element.label),
             new DatabaseTreeItem('Indexes', vscode.TreeItemCollapsibleState.Collapsed, 'category', element.connectionId, element.databaseName, element.schema, element.label),
             new DatabaseTreeItem('Triggers', vscode.TreeItemCollapsibleState.Collapsed, 'category', element.connectionId, element.databaseName, element.schema, element.label),
+            new DatabaseTreeItem(
+              'RLS Policies',
+              vscode.TreeItemCollapsibleState.Collapsed,
+              'category',
+              element.connectionId,
+              element.databaseName,
+              element.schema,
+              element.label,
+              undefined,
+              undefined,
+              undefined,
+              undefined,
+              undefined,
+              undefined,
+              undefined,
+              undefined,
+              rlsPolicyCount,
+            ),
             new DatabaseTreeItem('Rules', vscode.TreeItemCollapsibleState.Collapsed, 'category', element.connectionId, element.databaseName, element.schema, element.label),
-            new DatabaseTreeItem('Partitions', vscode.TreeItemCollapsibleState.Collapsed, 'category', element.connectionId, element.databaseName, element.schema, element.label)
+            new DatabaseTreeItem('Partitions', vscode.TreeItemCollapsibleState.Collapsed, 'category', element.connectionId, element.databaseName, element.schema, element.label),
           ];
+        }
 
         case 'view':
           // Views only have columns
@@ -1468,7 +1655,7 @@ export class DatabaseTreeItem extends vscode.TreeItem {
   constructor(
     public readonly label: string,
     public readonly collapsibleState: vscode.TreeItemCollapsibleState,
-    public readonly type: 'connection' | 'database' | 'schema' | 'table' | 'view' | 'function' | 'procedure' | 'column' | 'category' | 'materialized-view' | 'type' | 'foreign-table' | 'extension' | 'role' | 'databases-group' | 'system-databases-group' | 'favorites-group' | 'recent-group' | 'constraint' | 'index' | 'foreign-data-wrapper' | 'foreign-server' | 'user-mapping' | 'connection-group' | 'trigger' | 'sequence' | 'partition' | 'domain' | 'aggregate' | 'event-trigger' | 'rule' | 'tablespace' | 'publication' | 'subscription',
+    public readonly type: 'connection' | 'database' | 'schema' | 'table' | 'view' | 'function' | 'procedure' | 'column' | 'category' | 'materialized-view' | 'type' | 'foreign-table' | 'extension' | 'role' | 'databases-group' | 'system-databases-group' | 'favorites-group' | 'recent-group' | 'constraint' | 'index' | 'foreign-data-wrapper' | 'foreign-server' | 'user-mapping' | 'connection-group' | 'trigger' | 'sequence' | 'partition' | 'domain' | 'aggregate' | 'event-trigger' | 'rule' | 'tablespace' | 'publication' | 'subscription' | 'cron-job' | 'policy',
     public readonly connectionId?: string,
     public readonly databaseName?: string,
     public readonly schema?: string,
@@ -1484,7 +1671,10 @@ export class DatabaseTreeItem extends vscode.TreeItem {
     public readonly rowCount?: string | number, // Data row count
     public readonly size?: string,   // Data size
     public readonly environment?: 'production' | 'staging' | 'development',  // Environment tag
-    public readonly readOnlyMode?: boolean  // Read-only mode flag
+    public readonly readOnlyMode?: boolean,  // Read-only mode flag
+    public readonly cronJobId?: number,
+    public readonly cronSchedule?: string,
+    public readonly cronJobActive?: boolean,
   ) {
     super(label, collapsibleState);
     if (type === 'category' && label) {
@@ -1493,6 +1683,8 @@ export class DatabaseTreeItem extends vscode.TreeItem {
       this.contextValue = `category-${suffix}`;
     } else if (type === 'connection' && isDisconnected) {
       this.contextValue = 'connection-disconnected';
+    } else if (type === 'cron-job' && cronJobId === undefined) {
+      this.contextValue = 'cron-setup';
     } else {
       // Keep original contextValue - isFavorite flag is stored separately for star indicator
       // For favorites menu detection, we use description containing ★
@@ -1534,7 +1726,9 @@ export class DatabaseTreeItem extends vscode.TreeItem {
       'rule': new vscode.ThemeIcon('law', new vscode.ThemeColor('charts.yellow')),
       'tablespace': new vscode.ThemeIcon('folder-library', new vscode.ThemeColor('charts.blue')),
       'publication': new vscode.ThemeIcon('rss', new vscode.ThemeColor('charts.green')),
-      'subscription': new vscode.ThemeIcon('inbox', new vscode.ThemeColor('charts.purple'))
+      'subscription': new vscode.ThemeIcon('inbox', new vscode.ThemeColor('charts.purple')),
+      'cron-job': new vscode.ThemeIcon('clock', new vscode.ThemeColor('charts.orange')),
+      policy: new vscode.ThemeIcon('shield', new vscode.ThemeColor('charts.green')),
     }[type];
   }
 
@@ -1605,8 +1799,14 @@ export class DatabaseTreeItem extends vscode.TreeItem {
       desc = size;
     } else if (type === 'category' && count !== undefined && this.label === 'Extensions') {
       desc = `• ${count} installed`;
+    } else if (type === 'category' && count !== undefined && this.label === 'Cron Jobs') {
+      desc = `• ${count} job${Number(count) === 1 ? '' : 's'}`;
     } else if ((type === 'category' || type === 'databases-group') && count !== undefined) {
       desc = `• ${count}`;
+    } else if (type === 'cron-job' && this.cronSchedule) {
+      desc = `${this.cronSchedule} · ${this.cronJobActive === false ? 'paused' : 'active'}`;
+    } else if (type === 'cron-job' && !this.cronSchedule) {
+      desc = 'not installed';
     }
 
     // Append muted star for favorites (★ is more subtle than ⭐)

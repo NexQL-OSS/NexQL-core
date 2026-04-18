@@ -54,6 +54,7 @@
       <div class="tab active" data-tab="overview">Overview</div>
       <div class="tab" data-tab="activity">Activity</div>
       <div class="tab" data-tab="performance">Performance</div>
+      <div class="tab" data-tab="wal-replication">WAL &amp; Replication</div>
       <div class="tab" data-tab="locks">Locks & Blocking</div>
       <div class="tab" data-tab="settings" style="margin-left: auto; display: none;">Settings</div>
     </div>
@@ -246,6 +247,82 @@
           </div>
           <div id="perf-top-sql-list" class="top-sql-list"></div>
         </div>
+      </div>
+    </div>
+
+    <!-- TAB: WAL / REPLICATION -->
+    <div id="tab-wal-replication" class="tab-content">
+      <div class="signals-row" style="margin-bottom: 16px;">
+        <span class="signal-chip" id="wal-role-chip">—</span>
+        <span class="signal-chip" id="wal-lsn-summary">—</span>
+      </div>
+      <div class="signals-row" id="wal-settings-chips" style="flex-wrap: wrap; gap: 8px; margin-bottom: 20px;"></div>
+
+      <div class="charts-row">
+        <div class="chart-box" style="grid-column: 1 / -1;">
+          <div class="label">Streaming replicas (pg_stat_replication)</div>
+          <div class="chart-note">WAL sender connections to standbys. Empty on a standby or when no replicas connect.</div>
+          <div class="table-container">
+            <table id="wal-repl-table">
+              <thead>
+                <tr>
+                  <th>Application</th>
+                  <th>Client</th>
+                  <th>State</th>
+                  <th>Replay lag</th>
+                  <th>Sync</th>
+                  <th>Replay LSN</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="charts-row" style="margin-top: 16px;">
+        <div class="chart-box">
+          <div class="label">WAL receiver (standby)</div>
+          <div class="chart-note">From pg_stat_wal_receiver — primary shows no rows.</div>
+          <div class="table-container">
+            <table id="wal-receiver-table">
+              <thead>
+                <tr>
+                  <th>Status</th>
+                  <th>Received LSN</th>
+                  <th>Sender</th>
+                  <th>Last message</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="chart-box">
+          <div class="label">Replication slots</div>
+          <div class="chart-note">Logical decoding and physical replication slots.</div>
+          <div class="table-container">
+            <table id="wal-slots-table">
+              <thead>
+                <tr>
+                  <th>Slot</th>
+                  <th>Type</th>
+                  <th>Active</th>
+                  <th>WAL status</th>
+                  <th>Restart LSN</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="chart-box" style="margin-top: 16px;">
+        <div class="label">pg_stat_wal (PostgreSQL 15+)</div>
+        <div class="chart-note" id="wal-pgstat-note">Cluster-wide WAL activity since stats_reset.</div>
+        <pre id="wal-pgstat-pre" class="mono"
+          style="margin: 0; padding: 12px; background: rgba(128, 128, 128, 0.08); border-radius: 6px; font-size: 12px; white-space: pre-wrap;"></pre>
       </div>
     </div>
 

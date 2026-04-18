@@ -538,6 +538,7 @@ function updateDashboard(stats) {
   updateIdleInTransactionTable(stats.activeQueries || []);
   updateOverviewSignals(stats);
   updatePerformanceInsights(stats);
+  updateWalReplication(stats);
 
   updateKpiDelta('locks', (stats.blockingLocks || []).length, 'locks-delta');
 
@@ -730,6 +731,145 @@ function updateHealth(stats) {
 
   setCardSeverity('tile-health', severity);
   updateRecommendedAction(stats, hasBlocks);
+}
+
+function updateWalReplication(stats) {
+  const w = stats.walReplication;
+  const roleEl = document.getElementById('wal-role-chip');
+  const lsnEl = document.getElementById('wal-lsn-summary');
+  const chipBox = document.getElementById('wal-settings-chips');
+  const replBody = document.querySelector('#wal-repl-table tbody');
+  const recvBody = document.querySelector('#wal-receiver-table tbody');
+  const slotsBody = document.querySelector('#wal-slots-table tbody');
+  const pgNote = document.getElementById('wal-pgstat-note');
+  const pgPre = document.getElementById('wal-pgstat-pre');
+
+  if (!w) {
+    if (roleEl) roleEl.textContent = 'WAL: —';
+    return;
+  }
+
+  if (roleEl) {
+    roleEl.textContent = w.inRecovery ? 'Role: standby' : 'Role: primary';
+    roleEl.classList.toggle('warn', w.inRecovery);
+  }
+
+  if (lsnEl) {
+    if (!w.inRecovery && w.currentWalLsn) {
+      lsnEl.textContent = `Current WAL: ${w.currentWalLsn}`;
+    } else if (w.inRecovery) {
+      const lag =
+        w.replayLagBytes != null && Number.isFinite(w.replayLagBytes)
+          ? ` · replay delta ${bytesTick(w.replayLagBytes)}`
+          : '';
+      lsnEl.textContent = `Receive ${w.receiveLsn || '—'} · Replay ${w.replayLsn || '—'}${lag}`;
+    } else {
+      lsnEl.textContent = 'WAL LSN: —';
+    }
+  }
+
+  if (chipBox) {
+    chipBox.innerHTML = '';
+    ['wal_level', 'max_wal_size', 'min_wal_size', 'archive_mode', 'synchronous_standby_names'].forEach((k) => {
+      const val = w.settings && w.settings[k];
+      if (val === undefined || val === '') return;
+      const span = document.createElement('span');
+      span.className = 'signal-chip';
+      const display = String(val).length > 80 ? `${String(val).slice(0, 77)}…` : String(val);
+      span.textContent = `${k}: ${display}`;
+      span.title = `${k}: ${val}`;
+      chipBox.appendChild(span);
+    });
+  }
+
+  if (replBody) {
+    replBody.innerHTML = '';
+    const rows = Array.isArray(w.replicas) ? w.replicas : [];
+    if (rows.length === 0) {
+      const tr = document.createElement('tr');
+      const td = document.createElement('td');
+      td.colSpan = 6;
+      td.style.padding = '16px';
+      td.style.color = 'var(--muted-color)';
+      td.textContent = w.inRecovery
+        ? 'Not available on standby (pg_stat_replication is empty here).'
+        : 'No active replication connections.';
+      tr.appendChild(td);
+      replBody.appendChild(tr);
+    } else {
+      rows.forEach((r) => {
+        const tr = document.createElement('tr');
+        [r.application_name || '—', r.client_addr || '—', r.state || '—', r.replay_lag || '—', r.sync_state || '—', r.replay_lsn || '—'].forEach((cell) => {
+          const td = document.createElement('td');
+          td.textContent = cell;
+          tr.appendChild(td);
+        });
+        replBody.appendChild(tr);
+      });
+    }
+  }
+
+  if (recvBody) {
+    recvBody.innerHTML = '';
+    const wr = w.walReceiver;
+    if (!wr || (!wr.status && !wr.received_lsn)) {
+      const tr = document.createElement('tr');
+      const td = document.createElement('td');
+      td.colSpan = 4;
+      td.style.padding = '16px';
+      td.style.color = 'var(--muted-color)';
+      td.textContent = w.inRecovery ? 'No walreceiver row (check replication link).' : 'WAL receiver is only populated on standbys.';
+      tr.appendChild(td);
+      recvBody.appendChild(tr);
+    } else {
+      const tr = document.createElement('tr');
+      [wr.status || '—', wr.received_lsn || '—', `${wr.sender_host || '—'}:${wr.sender_port ?? '—'}`, wr.last_msg_receipt_time || '—'].forEach((cell) => {
+        const td = document.createElement('td');
+        td.textContent = cell;
+        tr.appendChild(td);
+      });
+      recvBody.appendChild(tr);
+    }
+  }
+
+  if (slotsBody) {
+    slotsBody.innerHTML = '';
+    const slots = Array.isArray(w.replicationSlots) ? w.replicationSlots : [];
+    if (slots.length === 0) {
+      const tr = document.createElement('tr');
+      const td = document.createElement('td');
+      td.colSpan = 5;
+      td.style.padding = '16px';
+      td.style.color = 'var(--muted-color)';
+      td.textContent = 'No replication slots.';
+      tr.appendChild(td);
+      slotsBody.appendChild(tr);
+    } else {
+      slots.forEach((s) => {
+        const tr = document.createElement('tr');
+        [s.slot_name, s.slot_type || '—', s.active ? 'yes' : 'no', s.wal_status || '—', s.restart_lsn || '—'].forEach((cell) => {
+          const td = document.createElement('td');
+          td.textContent = cell;
+          tr.appendChild(td);
+        });
+        slotsBody.appendChild(tr);
+      });
+    }
+  }
+
+  if (pgPre && pgNote) {
+    if (w.pgStatWal && typeof w.pgStatWal === 'object') {
+      pgNote.textContent = 'Cluster-wide WAL generator stats (since stats_reset).';
+      const o = w.pgStatWal;
+      const lines = Object.keys(o)
+        .sort()
+        .map((k) => `${k}: ${o[k]}`);
+      pgPre.textContent = lines.join('\n');
+    } else {
+      pgNote.textContent = 'pg_stat_wal not available (requires PostgreSQL 15+, or insufficient privileges).';
+      pgPre.textContent = '';
+    }
+  }
 }
 
 function updateOverviewSignals(stats) {

@@ -28,6 +28,8 @@ export interface SavedQuery {
   databaseName?: string;
   /** Schema name for context */
   schemaName?: string;
+  /** Set when the query uses `:name` placeholders (detected on save). */
+  isTemplate?: boolean;
 }
 
 /**

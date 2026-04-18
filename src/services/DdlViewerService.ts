@@ -101,6 +101,9 @@ function toObjectDisplayName(target: DdlViewerTarget): string {
   if (!target.objectName) {
     return '(selection)';
   }
+  if (target.objectType === 'policy' && target.tableName && target.schema) {
+    return `${target.schema}.${target.tableName}.${target.objectName}`;
+  }
   if (target.schema) {
     return `${target.schema}.${target.objectName}`;
   }
@@ -1651,7 +1654,8 @@ export class DdlViewerService implements vscode.Disposable {
       'foreign-table',
       'foreign-data-wrapper',
       'foreign-server',
-      'partition'
+      'partition',
+      'policy'
     ]);
 
     if (!supportedTypes.has(item.type as DdlObjectType)) {

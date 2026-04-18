@@ -3,7 +3,7 @@ import * as sinon from 'sinon';
 import * as vscode from 'vscode';
 
 import { NotebookStatusBar } from '../../activation/statusBar';
-import { ProfileManager } from '../../services/ProfileManager';
+import { ProfileManager } from '../../features/connections/ProfileManager';
 import * as TransactionModule from '../../services/TransactionManager';
 
 const extensionModule = require('../../extension');
@@ -52,6 +52,7 @@ describe('NotebookStatusBar', () => {
     sandbox = sinon.createSandbox();
     (ProfileManager as any).instance = undefined;
     (vscode.window as any).activeNotebookEditor = undefined;
+    sandbox.stub(vscode.workspace, 'workspaceFolders').value(undefined);
   });
 
   afterEach(() => {
@@ -97,13 +98,14 @@ describe('NotebookStatusBar', () => {
     (vscode.window as any).activeNotebookEditor = createNotebookEditor('postgres-query', {});
     statusBar.update();
 
-    const [connectionItem, databaseItem, riskItem, profileItem, transactionItem] = items;
+    const [connectionItem, databaseItem, riskItem, profileItem, transactionItem, workspaceItem] = items;
     expect(connectionItem.text).to.equal('$(plug) Click to Connect');
     expect(connectionItem.backgroundColor.id).to.equal('statusBarItem.warningBackground');
     expect(connectionItem.show.called).to.be.true;
     expect(databaseItem.hide.called).to.be.true;
     expect(riskItem.hide.called).to.be.true;
     expect(profileItem.hide.called).to.be.true;
+    expect(workspaceItem.hide.called).to.be.true;
 
     statusBar.updateTransactionState();
     expect(transactionItem.hide.called).to.be.true;
@@ -111,6 +113,7 @@ describe('NotebookStatusBar', () => {
     statusBar.dispose();
     expect(connectionItem.dispose.called).to.be.true;
     expect(databaseItem.dispose.called).to.be.true;
+    expect(workspaceItem.dispose.called).to.be.true;
   });
 
   it('shows connection, profile, risk, and transaction indicators for an active notebook', () => {
@@ -154,7 +157,7 @@ describe('NotebookStatusBar', () => {
     }, 'nb:active');
 
     const statusBar = new NotebookStatusBar();
-    const [connectionItem, databaseItem, riskItem, profileItem, transactionItem] = items;
+    const [connectionItem, databaseItem, riskItem, profileItem, transactionItem, workspaceItem] = items;
 
     expect(connectionItem.text).to.equal('$(server) Primary');
     expect(databaseItem.text).to.equal('$(database) appdb');
@@ -176,11 +179,14 @@ describe('NotebookStatusBar', () => {
     expect(transactionItem.backgroundColor.id).to.equal('statusBarItem.warningBackground');
     expect(transactionItem.show.called).to.be.true;
 
+    expect(workspaceItem.hide.called).to.be.true;
+
     statusBar.dispose();
     expect(connectionItem.dispose.called).to.be.true;
     expect(databaseItem.dispose.called).to.be.true;
     expect(riskItem.dispose.called).to.be.true;
     expect(profileItem.dispose.called).to.be.true;
     expect(transactionItem.dispose.called).to.be.true;
+    expect(workspaceItem.dispose.called).to.be.true;
   });
 });

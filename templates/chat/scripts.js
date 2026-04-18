@@ -1925,6 +1925,8 @@ function renderMessages(messages, animate = false) {
           if (msg.usage) {
             const usageDiv = document.createElement('div');
             usageDiv.className = 'message-usage';
+            usageDiv.setAttribute('role', 'status');
+            usageDiv.setAttribute('aria-live', 'polite');
             usageDiv.textContent = msg.usage;
             messageDiv.appendChild(usageDiv);
             messagesContainer.scrollTo({ top: messagesContainer.scrollHeight, behavior: 'smooth' });
@@ -1955,6 +1957,8 @@ function renderMessages(messages, animate = false) {
     if (msg.usage) {
       const usageDiv = document.createElement('div');
       usageDiv.className = 'message-usage';
+      usageDiv.setAttribute('role', 'status');
+      usageDiv.setAttribute('aria-live', 'polite');
       usageDiv.textContent = msg.usage;
       messageDiv.appendChild(usageDiv);
     }

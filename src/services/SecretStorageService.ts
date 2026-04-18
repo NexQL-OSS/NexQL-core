@@ -37,6 +37,19 @@ export class SecretStorageService {
   public async deleteAiApiKey(): Promise<void> {
     await this.context.secrets.delete('postgresExplorer.aiApiKey');
   }
+
+  /** GitHub PAT with `gist` scope — used only for “Publish notebook to Gist”. */
+  public async getGithubGistToken(): Promise<string | undefined> {
+    return await this.context.secrets.get('postgresExplorer.githubGistToken');
+  }
+
+  public async setGithubGistToken(token: string): Promise<void> {
+    await this.context.secrets.store('postgresExplorer.githubGistToken', token);
+  }
+
+  public async deleteGithubGistToken(): Promise<void> {
+    await this.context.secrets.delete('postgresExplorer.githubGistToken');
+  }
 }
 
 /**

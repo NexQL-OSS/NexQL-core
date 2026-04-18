@@ -1,12 +1,12 @@
 import { Client } from "pg";
 import * as vscode from "vscode";
 import * as fs from "fs";
-import { SSHService } from "./services/SSHService";
-import { ConnectionManager } from "./services/ConnectionManager";
+import { SSHService } from "../../services/SSHService";
+import { ConnectionManager } from "../../services/ConnectionManager";
 import {
   resolvePgPassPasswordAsync,
   pgPassFileDescription,
-} from "./utils/pgPassUtils";
+} from "../../utils/pgPassUtils";
 
 export interface ConnectionInfo {
   id: string;
@@ -42,6 +42,64 @@ export interface ConnectionInfo {
     username: string;
     privateKeyPath?: string;
   };
+}
+
+async function writeConnectionsToWorkspace(
+  extensionContext: vscode.ExtensionContext,
+  connections: ConnectionInfo[],
+): Promise<void> {
+  try {
+    const connectionsForSettings = connections.map(
+      ({ password, ...connWithoutPassword }) => connWithoutPassword,
+    );
+    await vscode.workspace
+      .getConfiguration()
+      .update(
+        "postgresExplorer.connections",
+        connectionsForSettings,
+        vscode.ConfigurationTarget.Global,
+      );
+
+    const secretsStorage = extensionContext.secrets;
+    for (const conn of connections) {
+      if (conn.password) {
+        await secretsStorage.store(
+          `postgres-password-${conn.id}`,
+          conn.password,
+        );
+      }
+    }
+  } catch (error) {
+    console.error("Failed to store connections:", error);
+    const existingConnections =
+      vscode.workspace
+        .getConfiguration()
+        .get<any[]>("postgresExplorer.connections") || [];
+    const sanitizedConnections = existingConnections.map(
+      ({ password, ...connWithoutPassword }) => connWithoutPassword,
+    );
+    await vscode.workspace
+      .getConfiguration()
+      .update(
+        "postgresExplorer.connections",
+        sanitizedConnections,
+        vscode.ConfigurationTarget.Global,
+      );
+    throw error;
+  }
+}
+
+/** Append or replace a connection by id (password stored in SecretStorage). */
+export async function appendWorkspaceConnection(
+  extensionContext: vscode.ExtensionContext,
+  connection: ConnectionInfo,
+): Promise<void> {
+  const existing =
+    vscode.workspace
+      .getConfiguration()
+      .get<ConnectionInfo[]>("postgresExplorer.connections") || [];
+  const merged = [...existing.filter((c) => c.id !== connection.id), connection];
+  await writeConnectionsToWorkspace(extensionContext, merged);
 }
 
 export class ConnectionFormPanel {
@@ -305,7 +363,7 @@ export class ConnectionFormPanel {
               )
             ) {
               const { pgPassFileDescription } =
-                await import("./utils/pgPassUtils");
+                await import("../../utils/pgPassUtils");
               const location = pgPassFileDescription();
               throw new Error(
                 `No password found for this connection.\n\n` +
@@ -580,49 +638,7 @@ export class ConnectionFormPanel {
   }
 
   private async storeConnections(connections: ConnectionInfo[]): Promise<void> {
-    try {
-      // First store the connections without passwords in settings
-      const connectionsForSettings = connections.map(
-        ({ password, ...connWithoutPassword }) => connWithoutPassword,
-      );
-      await vscode.workspace
-        .getConfiguration()
-        .update(
-          "postgresExplorer.connections",
-          connectionsForSettings,
-          vscode.ConfigurationTarget.Global,
-        );
-
-      // Then store passwords in SecretStorage
-      const secretsStorage = this._extensionContext.secrets;
-      for (const conn of connections) {
-        if (conn.password) {
-          // Removed logging of sensitive connection information for security.
-          await secretsStorage.store(
-            `postgres-password-${conn.id}`,
-            conn.password,
-          );
-        }
-      }
-    } catch (error) {
-      console.error("Failed to store connections:", error);
-      // If anything fails, make sure we don't leave passwords in settings
-      const existingConnections =
-        vscode.workspace
-          .getConfiguration()
-          .get<any[]>("postgresExplorer.connections") || [];
-      const sanitizedConnections = existingConnections.map(
-        ({ password, ...connWithoutPassword }) => connWithoutPassword,
-      );
-      await vscode.workspace
-        .getConfiguration()
-        .update(
-          "postgresExplorer.connections",
-          sanitizedConnections,
-          vscode.ConfigurationTarget.Global,
-        );
-      throw error;
-    }
+    await writeConnectionsToWorkspace(this._extensionContext, connections);
   }
 
   private dispose() {

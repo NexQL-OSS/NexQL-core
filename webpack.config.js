@@ -33,7 +33,7 @@ module.exports = [
   {
     name: 'renderer',
     target: 'web',
-    entry: './src/renderer_v2.ts',
+    entry: './src/ui/renderer/renderer_v2.ts',
     output: {
       path: path.resolve(__dirname, 'dist'),
       filename: 'renderer_v2.js',

@@ -19,6 +19,10 @@ export class SqlExecutor {
   private static readonly REVIEW_COUNT_KEY = 'postgresExplorer.reviewPrompt.successCount';
   private static readonly REVIEW_SHOWN_KEY = 'postgresExplorer.reviewPrompt.shown';
   private static readonly REVIEW_THRESHOLD = 3;
+  /** Workspace memento: last-used values for `:name` SQL parameters (keyed by parameter name). */
+  private static readonly NAMED_PARAM_DEFAULTS_KEY = 'pgstudio.namedParamDefaults.v1';
+  /** Workspace memento: last-used values for `$N` SQL parameters (keyed by sqlHash -> parameter index). */
+  private static readonly POSITIONAL_PARAM_DEFAULTS_KEY = 'pgstudio.positionalParamDefaults.v1';
 
   constructor(private readonly _controller: vscode.NotebookController) { }
 
@@ -53,6 +57,142 @@ export class SqlExecutor {
     if (selection === leaveReview) {
       await vscode.env.openExternal(vscode.Uri.parse('https://marketplace.visualstudio.com/items?itemName=ric-v.postgres-explorer&ssr=false#review-details'));
     }
+  }
+
+  /**
+   * Prompts for each `:name` value in order; persists last-used values per workspace.
+   * Returns `undefined` if the user cancels any prompt.
+   */
+  private async promptForNamedParameterValues(paramNames: string[]): Promise<unknown[] | undefined> {
+    const paramsConfig = vscode.workspace.getConfiguration('postgresExplorer.parameters');
+    const cacheLastValues = paramsConfig.get<boolean>('cacheLastValues', true);
+    const nullSentinel = paramsConfig.get<string>('nullSentinel', 'NULL');
+    const cache =
+      cacheLastValues
+        ? extensionContext?.workspaceState.get<Record<string, string>>(SqlExecutor.NAMED_PARAM_DEFAULTS_KEY, {}) ?? {}
+        : {};
+    const next: Record<string, string> = { ...cache };
+    const values: unknown[] = [];
+
+    for (const name of paramNames) {
+      const existing = next[name] ?? '';
+      const input = await vscode.window.showInputBox({
+        title: `SQL parameter :${name}`,
+        prompt: `Value for :${name} (${nullSentinel ? `type ${nullSentinel} to send SQL NULL` : 'sent to PostgreSQL as text; casts in SQL still apply'})`,
+        value: existing,
+        ignoreFocusOut: true
+      });
+      if (input === undefined) {
+        return undefined;
+      }
+      values.push(nullSentinel && input === nullSentinel ? null : input);
+      if (cacheLastValues) {
+        next[name] = input;
+      }
+    }
+
+    if (cacheLastValues && extensionContext) {
+      await extensionContext.workspaceState.update(SqlExecutor.NAMED_PARAM_DEFAULTS_KEY, next);
+    }
+    return values;
+  }
+
+  private getSqlParameterContextSnippet(sql: string, parameterIndex: number): string | undefined {
+    const token = `$${parameterIndex}`;
+    const pattern = new RegExp(`\\$${parameterIndex}(?!\\d)`);
+    const match = pattern.exec(sql);
+    if (!match || match.index < 0) {
+      return undefined;
+    }
+
+    const around = 20;
+    const start = Math.max(0, match.index - around);
+    const end = Math.min(sql.length, match.index + token.length + around);
+    const snippet = sql.slice(start, end).replace(/\s+/g, ' ').trim();
+    return snippet || undefined;
+  }
+
+  private async promptForPositionalParameterValues(
+    indices: number[],
+    sqlHash: string,
+    sql: string
+  ): Promise<unknown[] | undefined> {
+    const paramsConfig = vscode.workspace.getConfiguration('postgresExplorer.parameters');
+    const cacheLastValues = paramsConfig.get<boolean>('cacheLastValues', true);
+    const nullSentinel = paramsConfig.get<string>('nullSentinel', 'NULL');
+    const cache =
+      cacheLastValues
+        ? extensionContext?.workspaceState.get<Record<string, Record<string, string>>>(
+          SqlExecutor.POSITIONAL_PARAM_DEFAULTS_KEY,
+          {}
+        ) ?? {}
+        : {};
+
+    const statementDefaults = { ...(cache[sqlHash] ?? {}) };
+    const values: unknown[] = [];
+
+    for (const parameterIndex of indices) {
+      const key = String(parameterIndex);
+      const contextSnippet = this.getSqlParameterContextSnippet(sql, parameterIndex);
+      const input = await vscode.window.showInputBox({
+        title: `SQL parameter $${parameterIndex}`,
+        prompt: `Value for $${parameterIndex}${nullSentinel ? `  (type ${nullSentinel} to send SQL NULL)` : ''}`,
+        placeHolder: contextSnippet,
+        value: statementDefaults[key] ?? '',
+        ignoreFocusOut: true
+      });
+      if (input === undefined) {
+        return undefined;
+      }
+
+      values.push(nullSentinel && input === nullSentinel ? null : input);
+      if (cacheLastValues) {
+        statementDefaults[key] = input;
+      }
+    }
+
+    if (cacheLastValues && extensionContext) {
+      await extensionContext.workspaceState.update(SqlExecutor.POSITIONAL_PARAM_DEFAULTS_KEY, {
+        ...cache,
+        [sqlHash]: statementDefaults
+      });
+    }
+
+    return values;
+  }
+
+  private async promptForQuotedPsqlValues(
+    tokens: { name: string; kind: 'literal' | 'identifier' }[]
+  ): Promise<Record<string, string> | undefined> {
+    const cache =
+      extensionContext?.workspaceState.get<Record<string, string>>(SqlExecutor.NAMED_PARAM_DEFAULTS_KEY, {}) ?? {};
+    const next: Record<string, string> = { ...cache };
+    const values: Record<string, string> = {};
+
+    for (const token of tokens) {
+      if (Object.prototype.hasOwnProperty.call(values, token.name)) {
+        continue;
+      }
+      const tokenLabel = token.kind === 'literal' ? `:'${token.name}'` : `:"${token.name}"`;
+      const input = await vscode.window.showInputBox({
+        title: `SQL variable ${tokenLabel}`,
+        prompt: `Value for ${tokenLabel}`,
+        value: next[token.name] ?? '',
+        ignoreFocusOut: true
+      });
+      if (input === undefined) {
+        return undefined;
+      }
+
+      values[token.name] = input;
+      next[token.name] = input;
+    }
+
+    if (extensionContext) {
+      await extensionContext.workspaceState.update(SqlExecutor.NAMED_PARAM_DEFAULTS_KEY, next);
+    }
+
+    return values;
   }
 
   /**
@@ -220,6 +360,51 @@ export class SqlExecutor {
         let query = statements[stmtIndex];
         const stmtStartTime = Date.now();
 
+        const params = SqlParser.detectParameters(query);
+        const hasPositional = params.positional.length > 0;
+        const hasNamed = params.named.length > 0;
+
+        if (hasPositional && hasNamed) {
+          throw new Error('Mixing $N and :name parameters in the same statement is not supported. Use one style per query.');
+        }
+
+        let pgParamValues: unknown[] | undefined;
+
+        if (params.quoted.length > 0) {
+          const quotedVals = await this.promptForQuotedPsqlValues(params.quoted);
+          if (!quotedVals) {
+            client.removeListener('notice', noticeListener);
+            execution.end(false, Date.now());
+            return;
+          }
+          query = SqlParser.substituteQuotedPsqlVariables(query, quotedVals).text;
+        }
+
+        if (hasNamed) {
+          const named = SqlParser.substituteNamedParametersWithPgPlaceholders(query);
+          const vals = await this.promptForNamedParameterValues(named.paramNames);
+          if (vals === undefined) {
+            client.removeListener('notice', noticeListener);
+            execution.end(false, Date.now());
+            return;
+          }
+          query = named.text;
+          pgParamValues = vals;
+        } else if (hasPositional) {
+          const maxN = Math.max(...params.positional);
+          const vals = await this.promptForPositionalParameterValues(
+            Array.from({ length: maxN }, (_, i) => i + 1),
+            QueryAnalyzer.getInstance().getQueryHash(query),
+            query
+          );
+          if (vals === undefined) {
+            client.removeListener('notice', noticeListener);
+            execution.end(false, Date.now());
+            return;
+          }
+          pgParamValues = vals;
+        }
+
         // Apply auto-LIMIT if applicable (pass notebook metadata and profile context for settings)
         const originalQuery = query;
         query = this.applyAutoLimit(query, connection, metadata, activeProfileContext);
@@ -235,7 +420,8 @@ export class SqlExecutor {
             statementCount: statements.length
           });
 
-          result = await client.query(query);
+          result =
+            pgParamValues !== undefined ? await client.query(query, pgParamValues) : await client.query(query);
 
 
           const stmtEndTime = Date.now();
@@ -306,6 +492,12 @@ export class SqlExecutor {
 
           // Build output data
           const tableInfo = await this.getTableInfo(client, result, query);
+          let autoLimitValue: number | undefined;
+          if (autoLimitApplied) {
+            const lim = query.match(/\bLIMIT\s+(\d+)/i);
+            autoLimitValue = lim ? parseInt(lim[1], 10) : undefined;
+          }
+
           const outputData: QueryResults = {
             success,
             rowCount: result.rowCount,
@@ -325,6 +517,8 @@ export class SqlExecutor {
             explainPlan,
             performanceAnalysis, // Pass analysis to frontend
             slowQuery: isSlow,
+            autoLimitApplied,
+            autoLimitValue,
             breadcrumb: {
               connectionId: connection.id,
               connectionName: connection.name || connection.host,

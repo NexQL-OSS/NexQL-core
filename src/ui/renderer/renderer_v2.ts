@@ -5,23 +5,25 @@ import {
   createTab,
   createBreadcrumb,
   BreadcrumbSegment,
-} from './renderer/components/ui';
-import { createExportButton } from './renderer/features/export';
-import { TableRenderer, TableEvents } from './renderer/components/table/TableRenderer';
-import { ChartRenderer } from './renderer/components/chart/ChartRenderer';
-import { ChartControls } from './renderer/components/chart/ChartControls';
-import { ExplainVisualizer } from './renderer/components/ExplainVisualizer';
-import { createErrorPanel } from './renderer/components/ErrorPanel';
-import { createActionBar } from './renderer/components/ActionBar';
-import { showImportModal } from './renderer/features/import';
-import { createTransactionBanner } from './renderer/components/TransactionBanner';
-import { parseBreadcrumbFromSql } from './renderer/utils/sqlParsing';
+} from '../../renderer/components/ui';
+import { createExportButton } from '../../renderer/features/export';
+import { TableRenderer, TableEvents } from '../../renderer/components/table/TableRenderer';
+import { ChartRenderer } from '../../renderer/components/chart/ChartRenderer';
+import { ChartControls } from '../../renderer/components/chart/ChartControls';
+import { ExplainVisualizer } from '../../renderer/components/ExplainVisualizer';
+import { createErrorPanel } from '../../renderer/components/ErrorPanel';
+import { createActionBar } from '../../renderer/components/ActionBar';
+import { showImportModal } from '../../renderer/features/import';
+import { createTransactionBanner } from '../../renderer/components/TransactionBanner';
+import { parseBreadcrumbFromSql } from '../../renderer/utils/sqlParsing';
 import {
   addResultToHistory,
   getResultHistory,
   renderTabStrip,
-} from './renderer/components/ResultTabStrip';
-import { renderTransposeTable } from './renderer/components/TransposeView';
+} from '../../renderer/components/ResultTabStrip';
+import { renderTransposeTable } from '../../renderer/components/TransposeView';
+import { renderAnalystPanel } from '../../renderer/components/analyst/AnalystPanel';
+import { BRAND_ACCENT, BRAND_ACCENT_MUTED, SPINNER_FRAMES } from './rendererConstants';
 
 // Register Chart.js components
 Chart.register(...registerables);
@@ -29,10 +31,6 @@ Chart.register(...registerables);
 // Track renderer instances and their containers per output element for cleanup
 const chartInstances = new WeakMap<HTMLElement, ChartRenderer>();
 const tableInstances = new WeakMap<HTMLElement, TableRenderer>();
-const BRAND_ACCENT = 'var(--vscode-textLink-foreground)';
-const BRAND_ACCENT_MUTED = 'color-mix(in srgb, var(--vscode-textLink-foreground) 20%, transparent)';
-
-const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
 /**
  * Puts a button into a loading state with an animated braille spinner.
@@ -110,6 +108,8 @@ export const activate: ActivationFunction = (context) => {
         columnTypes,
         backendPid,
         breadcrumb,
+        autoLimitApplied,
+        autoLimitValue,
       } = json;
 
       // Transaction state from payload
@@ -196,6 +196,26 @@ export const activate: ActivationFunction = (context) => {
       header.appendChild(summary);
 
       // Pending commit badge — shown when result was produced inside an open transaction
+      if (autoLimitApplied) {
+        const limitBadge = document.createElement('span');
+        limitBadge.textContent =
+          autoLimitValue !== undefined ? `LIMIT ${autoLimitValue} applied` : 'LIMIT applied';
+        limitBadge.title = 'A row limit was appended to this SELECT by settings (auto-limit).';
+        limitBadge.style.cssText = `
+          font-size: 10px;
+          font-weight: 600;
+          padding: 2px 6px;
+          border-radius: 10px;
+          background: color-mix(in srgb, var(--vscode-textLink-foreground) 15%, transparent);
+          color: var(--vscode-textLink-foreground);
+          border: 1px solid color-mix(in srgb, var(--vscode-textLink-foreground) 40%, transparent);
+          margin-left: 8px;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+        `;
+        header.appendChild(limitBadge);
+      }
+
       if (pendingCommit) {
         const pendingBadge = document.createElement('span');
         pendingBadge.textContent = 'pending commit';
@@ -842,6 +862,7 @@ export const activate: ActivationFunction = (context) => {
 
       const tableTab = createTab('Table', 'table', true, () => switchTab('table'));
       const chartTab = createTab('Chart', 'chart', false, () => switchTab('chart'));
+      const analystTab = createTab('Analyst', 'analyst', false, () => switchTab('analyst'));
 
       let explainTab: HTMLElement | null = null;
       if (json.explainPlan) {
@@ -854,6 +875,7 @@ export const activate: ActivationFunction = (context) => {
 
       tabs.appendChild(tableTab);
       tabs.appendChild(chartTab);
+      tabs.appendChild(analystTab);
       if (explainTab) tabs.appendChild(explainTab);
       tabs.appendChild(transposeTab);
       if (!json.error) {
@@ -983,7 +1005,10 @@ export const activate: ActivationFunction = (context) => {
 
       // Switch Tab Logic
       let currentMode = 'table';
-      const allTabs = () => [tableTab, chartTab, transposeTab, ...(explainTab ? [explainTab] : [])];
+      const allTabs = () =>
+        explainTab
+          ? [tableTab, chartTab, analystTab, explainTab, transposeTab]
+          : [tableTab, chartTab, analystTab, transposeTab];
       const setActiveTab = (activeTab: HTMLElement) => {
         allTabs().forEach((t) => {
           t.style.borderBottom = '2px solid transparent';
@@ -1040,6 +1065,16 @@ export const activate: ActivationFunction = (context) => {
             explainWrapper.textContent =
               'No explain plan data available. Run EXPLAIN (ANALYZE, FORMAT JSON) to get a visual plan.';
           }
+        } else if (mode === 'analyst') {
+          setActiveTab(analystTab);
+          updateActionsVisibility();
+          viewContainer.appendChild(
+            renderAnalystPanel({
+              columns,
+              rows: currentRows,
+              columnTypes,
+            }),
+          );
         } else {
           setActiveTab(chartTab);
           updateActionsVisibility();

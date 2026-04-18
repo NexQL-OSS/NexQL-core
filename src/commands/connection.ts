@@ -300,6 +300,48 @@ export async function showConnectionSafety(): Promise<void> {
 }
 
 /**
+ * Clone a connection entry (new id, new name) and copy stored password when present.
+ */
+export async function cmdDuplicateConnection(
+  item: DatabaseTreeItem,
+  _context: vscode.ExtensionContext,
+  databaseTreeProvider: DatabaseTreeProvider
+): Promise<void> {
+  try {
+    if (!item?.connectionId) {
+      return;
+    }
+    const config = vscode.workspace.getConfiguration();
+    const connections = config.get<any[]>('postgresExplorer.connections') || [];
+    const conn = connections.find((c) => c.id === item.connectionId);
+    if (!conn) {
+      vscode.window.showErrorMessage('Connection not found');
+      return;
+    }
+    const newId = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    const dup = {
+      ...conn,
+      id: newId,
+      name: `${conn.name} (copy)`,
+    };
+    await config.update(
+      'postgresExplorer.connections',
+      [...connections, dup],
+      vscode.ConfigurationTarget.Global
+    );
+    const secrets = SecretStorageService.getInstance();
+    const pw = await secrets.getPassword(conn.id);
+    if (pw) {
+      await secrets.setPassword(newId, pw);
+    }
+    databaseTreeProvider.refresh();
+    vscode.window.showInformationMessage(`Duplicated connection as "${dup.name}"`);
+  } catch (err: unknown) {
+    await ErrorHandlers.handleCommandError(err, 'duplicate connection');
+  }
+}
+
+/**
  * Reveal connection in explorer - shows and selects the connection in the tree view
  */
 export async function revealInExplorer(databaseTreeProvider: DatabaseTreeProvider): Promise<void> {

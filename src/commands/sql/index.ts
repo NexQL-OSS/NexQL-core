@@ -15,6 +15,8 @@ export { ProcedureSQL } from './procedures';
 export { IndexSQL } from './indexes';
 export { MaterializedViewSQL } from './materializedViews';
 export { PartitionSQL } from './partitions';
+export { PolicySQL } from './policies';
+export { PgCronSQL } from './pgCron';
 export { SchemaSQL } from './schema';
 export { SequenceSQL } from './sequences';
 export { TableSQL } from './tables';

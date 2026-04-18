@@ -12,6 +12,8 @@ import {
   IndexSQL,
   MaintenanceTemplates,
   MaterializedViewSQL,
+  PgCronSQL,
+  PolicySQL,
   QueryBuilder,
   PartitionSQL,
   SQL_TEMPLATES,
@@ -124,6 +126,22 @@ describe('SQL template modules', () => {
     expect(MaintenanceTemplates.vacuumFull(schema, table)).to.contain('VACUUM FULL public.users;');
     expect(MaintenanceTemplates.vacuumAnalyzeDatabase()).to.contain('VACUUM (VERBOSE, ANALYZE);');
     expect(MaintenanceTemplates.reindexDatabase('app_db')).to.contain('REINDEX DATABASE "app_db";');
+  });
+
+  it('covers pg_cron SQL templates', () => {
+    expectSqlContains(PgCronSQL.listJobs(), ['FROM cron.job', 'jobid']);
+    expectSqlContains(PgCronSQL.installExtension(), ['CREATE EXTENSION IF NOT EXISTS pg_cron']);
+    expectSqlContains(PgCronSQL.jobDetail(3), ['FROM cron.job', 'WHERE jobid = 3']);
+    expectSqlContains(PgCronSQL.unschedule(9), ['cron.unschedule', '9']);
+    expectSqlContains(PgCronSQL.scheduleNewJob(), ['cron.schedule']);
+  });
+
+  it('covers RLS policy SQL templates', () => {
+    expectSqlContains(PolicySQL.drop('public', 'accounts', 'tenant_isolation'), [
+      'DROP POLICY IF EXISTS',
+      '"tenant_isolation"',
+      'ON "public"."accounts"',
+    ]);
   });
 
   it('covers aggregate, domain, partition, sequence and trigger SQL builders', () => {

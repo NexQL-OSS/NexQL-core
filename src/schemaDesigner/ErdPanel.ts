@@ -22,6 +22,8 @@ interface ErdForeignKey {
 interface ErdTable {
   name: string;
   schema: string;
+  /** Approximate row count from pg_class.reltuples (ANALYZE refreshes). */
+  estRows?: number;
   columns: ErdColumn[];
 }
 
@@ -114,7 +116,8 @@ export class ErdPanel {
 
   private static async _fetchTables(client: any, schema: string): Promise<ErdTable[]> {
     const tablesResult = await client.query(
-      `SELECT c.relname AS table_name
+      `SELECT c.relname AS table_name,
+              CASE WHEN c.reltuples < 0 THEN NULL ELSE c.reltuples::bigint END AS est_rows
        FROM pg_class c
        JOIN pg_namespace n ON n.oid = c.relnamespace
        WHERE n.nspname = $1 AND c.relkind = 'r'
@@ -159,6 +162,11 @@ export class ErdPanel {
     const tables: ErdTable[] = [];
     for (const tableRow of tablesResult.rows) {
       const tableName = tableRow.table_name;
+      const rawEst = tableRow.est_rows;
+      const estRows =
+        rawEst !== null && rawEst !== undefined && !Number.isNaN(Number(rawEst))
+          ? Number(rawEst)
+          : undefined;
       const colResult = await client.query(
         `SELECT a.attname AS column_name,
                 pg_catalog.format_type(a.atttypid, a.atttypmod) AS data_type,
@@ -176,6 +184,7 @@ export class ErdPanel {
       tables.push({
         name: tableName,
         schema,
+        ...(estRows !== undefined ? { estRows } : {}),
         columns: colResult.rows.map((r: any) => ({
           name: r.column_name,
           type: r.data_type,
@@ -318,15 +327,29 @@ export class ErdPanel {
     }
     .erd-table-header {
       display: flex;
-      align-items: center;
-      gap: 6px;
-      padding: 6px 10px;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 2px;
+      padding: 6px 10px 5px;
       background: var(--vscode-button-background);
       color: var(--vscode-button-foreground);
       font-weight: 600;
       font-size: 12px;
     }
+    .erd-table-header .hdr-top {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
     .erd-table-header .icon { font-size: 13px; }
+    .erd-table-header .hdr-meta {
+      font-size: 10px;
+      font-weight: 400;
+      opacity: 0.88;
+      padding-left: 19px;
+      line-height: 1.2;
+      color: var(--vscode-button-foreground);
+    }
     .erd-table-body { padding: 4px 0; }
     .erd-col {
       display: flex;
@@ -392,6 +415,15 @@ export class ErdPanel {
       gap: 8px;
     }
     #empty .icon { font-size: 48px; }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+      }
+    }
   </style>
 </head>
 <body>
@@ -436,7 +468,7 @@ export class ErdPanel {
   // ── State ─────────────────────────────────────────────────────────────────
   const TABLE_W = 210;
   const COL_H = 22;
-  const HEADER_H = 30;
+  const HEADER_H = 40;
 
   let scale = 1;
   let panX = 0, panY = 0;
@@ -500,7 +532,17 @@ export class ErdPanel {
 
       const header = document.createElement('div');
       header.className = 'erd-table-header';
-      header.innerHTML = '<span class="icon">▦</span><span>' + escHtml(t.name) + '</span>';
+      const meta =
+        t.estRows !== undefined && t.estRows !== null && !Number.isNaN(Number(t.estRows))
+          ? '<div class="hdr-meta" title="Approximate rows from pg_class.reltuples; run ANALYZE to refresh">' +
+            escHtml(formatEstRows(t.estRows)) +
+            '</div>'
+          : '';
+      header.innerHTML =
+        '<div class="hdr-top"><span class="icon">▦</span><span class="hdr-title">' +
+        escHtml(t.name) +
+        '</span></div>' +
+        meta;
       el.appendChild(header);
 
       const body = document.createElement('div');
@@ -770,7 +812,17 @@ export class ErdPanel {
       svg += '<rect x="' + tx + '" y="' + ty + '" width="' + TABLE_W + '" height="' + h + '" fill="#252526" stroke="#3c3c3c" rx="4"/>';
       svg += '<rect x="' + tx + '" y="' + ty + '" width="' + TABLE_W + '" height="' + HEADER_H + '" fill="#0e639c" rx="4"/>';
       svg += '<rect x="' + tx + '" y="' + (ty + HEADER_H - 4) + '" width="' + TABLE_W + '" height="4" fill="#0e639c"/>';
-      svg += '<text x="' + (tx + 10) + '" y="' + (ty + 19) + '" fill="#fff" font-weight="bold" font-size="12">' + escHtml(t.name) + '</text>';
+      svg += '<text x="' + (tx + 10) + '" y="' + (ty + 17) + '" fill="#fff" font-weight="bold" font-size="12">' + escHtml(t.name) + '</text>';
+      if (t.estRows !== undefined && t.estRows !== null && !Number.isNaN(Number(t.estRows))) {
+        svg +=
+          '<text x="' +
+          (tx + 10) +
+          '" y="' +
+          (ty + 30) +
+          '" fill="#cccccc" font-size="10">' +
+          escHtml(formatEstRows(t.estRows)) +
+          '</text>';
+      }
 
       t.columns.forEach((c, i) => {
         const cy2 = ty + HEADER_H + i * COL_H + 15;
@@ -785,6 +837,17 @@ export class ErdPanel {
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────
+  function formatEstRows(n) {
+    const x = Number(n);
+    if (!Number.isFinite(x) || x < 0) { return ''; }
+    if (x >= 1e9) { return '~' + trimTrailingZero((x / 1e9).toFixed(1)) + 'B rows (est.)'; }
+    if (x >= 1e6) { return '~' + trimTrailingZero((x / 1e6).toFixed(1)) + 'M rows (est.)'; }
+    if (x >= 1e3) { return '~' + trimTrailingZero((x / 1e3).toFixed(1)) + 'k rows (est.)'; }
+    return '~' + x + ' rows (est.)';
+  }
+  function trimTrailingZero(s) {
+    return s.replace(/\.0$/, '');
+  }
   function escHtml(s) {
     return String(s)
       .replace(/&/g, '&amp;')

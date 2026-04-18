@@ -64,6 +64,11 @@
         "icon": "$(add)"
       },
       {
+        "command": "postgres-explorer.importConnectionFromDatabaseUrl",
+        "title": "Import Connection from DATABASE_URL (.env)",
+        "icon": "$(file-symlink-file)"
+      },
+      {
         "command": "postgres-explorer.refreshConnections",
         "title": "Refresh Connections",
         "icon": "$(refresh)"
@@ -72,6 +77,11 @@
         "command": "postgres-explorer.editConnection",
         "title": "Edit Connection",
         "icon": "$(edit)"
+      },
+      {
+        "command": "postgres-explorer.duplicateConnection",
+        "title": "Duplicate Connection",
+        "icon": "$(copy)"
       },
       {
         "command": "postgres-explorer.addToFavorites",
@@ -108,6 +118,12 @@
         "title": "Jump to Section",
         "category": "PgStudio",
         "icon": "$(list-unordered)"
+      },
+      {
+        "command": "postgres-explorer.exportNotebook",
+        "title": "Export Notebook (HTML / Gist)",
+        "category": "PgStudio",
+        "icon": "$(export)"
       },
       {
         "command": "postgres-explorer.notebooks.open",
@@ -595,6 +611,16 @@
         "icon": "$(graph)"
       },
       {
+        "command": "postgres-explorer.openListenNotify",
+        "title": "LISTEN/NOTIFY Monitor",
+        "icon": "$(broadcast)"
+      },
+      {
+        "command": "postgres-explorer.openListenNotifyFromPalette",
+        "title": "LISTEN/NOTIFY Monitor: Choose Connection & Database…",
+        "icon": "$(broadcast)"
+      },
+      {
         "command": "postgres-explorer.showSchemaProperties",
         "title": "Properties",
         "icon": "$(settings)"
@@ -957,6 +983,12 @@
         "category": "PgStudio: Profiles"
       },
       {
+        "command": "postgres-explorer.switchWorkspaceDefaultConnection",
+        "title": "Set Workspace Default PostgreSQL Connection",
+        "icon": "$(root-folder)",
+        "category": "PgStudio"
+      },
+      {
         "command": "postgres-explorer.createConnectionProfile",
         "title": "Create Connection Profile",
         "icon": "$(add)",
@@ -1065,6 +1097,12 @@
         "category": "PgStudio: Schema"
       },
       {
+        "command": "postgres-explorer.openSchemaDiffFromPalette",
+        "title": "Schema Diff: Choose Connection & Schema…",
+        "icon": "$(diff)",
+        "category": "PgStudio: Schema"
+      },
+      {
         "command": "postgres-explorer.openErd",
         "title": "View ERD (Entity-Relationship Diagram)",
         "icon": "$(type-hierarchy)",
@@ -1108,6 +1146,12 @@
       {
         "command": "postgres-explorer.dropTrigger",
         "title": "Drop Trigger",
+        "icon": "$(trash)",
+        "category": "PgStudio"
+      },
+      {
+        "command": "postgres-explorer.dropPolicy",
+        "title": "Drop RLS Policy",
         "icon": "$(trash)",
         "category": "PgStudio"
       },
@@ -1278,6 +1322,36 @@
         "command": "postgres-explorer.eventTriggerOperations",
         "title": "Event Trigger Operations",
         "icon": "$(notebook)",
+        "category": "PgStudio"
+      },
+      {
+        "command": "postgres-explorer.listCronJobs",
+        "title": "List pg_cron Jobs",
+        "icon": "$(list-unordered)",
+        "category": "PgStudio"
+      },
+      {
+        "command": "postgres-explorer.installPgCron",
+        "title": "Install pg_cron Extension",
+        "icon": "$(cloud-download)",
+        "category": "PgStudio"
+      },
+      {
+        "command": "postgres-explorer.scheduleCronJob",
+        "title": "Schedule New pg_cron Job",
+        "icon": "$(add)",
+        "category": "PgStudio"
+      },
+      {
+        "command": "postgres-explorer.showCronJobProperties",
+        "title": "Cron Job Details",
+        "icon": "$(info)",
+        "category": "PgStudio"
+      },
+      {
+        "command": "postgres-explorer.unscheduleCronJob",
+        "title": "Unschedule Cron Job",
+        "icon": "$(trash)",
         "category": "PgStudio"
       },
       {
@@ -1461,6 +1535,51 @@
         }
       ]
     },
+    "walkthroughs": [
+      {
+        "id": "pgstudioWelcome",
+        "title": "PgStudio: PostgreSQL in VS Code",
+        "description": "Connect to a database, explore objects, and run SQL in notebooks.",
+        "steps": [
+          {
+            "id": "pgstudioWelcome.addConnection",
+            "title": "Add a database connection",
+            "description": "Save your server and credentials securely, then connect.\n[Add PostgreSQL Connection](command:postgres-explorer.addConnection)",
+            "media": {
+              "markdown": "walkthroughs/step-connection.md",
+              "altText": "Add a PostgreSQL connection"
+            },
+            "completionEvents": [
+              "onCommand:postgres-explorer.addConnection"
+            ]
+          },
+          {
+            "id": "pgstudioWelcome.openExplorer",
+            "title": "Open the PG Studio explorer",
+            "description": "Browse databases, schemas, and objects from the sidebar.\n[Show PG Studio](command:workbench.view.extension.postgres-explorer)",
+            "media": {
+              "markdown": "walkthroughs/step-explorer.md",
+              "altText": "Database explorer tree"
+            },
+            "completionEvents": [
+              "onView:postgresExplorer"
+            ]
+          },
+          {
+            "id": "pgstudioWelcome.newNotebook",
+            "title": "Create a SQL notebook",
+            "description": "Use interactive `.pgsql` notebooks for queries and results.\n[New SQL Notebook](command:postgres-explorer.newNotebook)",
+            "media": {
+              "markdown": "walkthroughs/step-notebook.md",
+              "altText": "PostgreSQL SQL notebook"
+            },
+            "completionEvents": [
+              "onCommand:postgres-explorer.newNotebook"
+            ]
+          }
+        ]
+      }
+    ],
     "notebooks": [
       {
         "type": "postgres-notebook",
@@ -1625,6 +1744,16 @@
           "default": true,
           "description": "Automatically append LIMIT clause to SELECT queries that don't have one. Always enabled in read-only mode."
         },
+        "postgresExplorer.parameters.cacheLastValues": {
+          "type": "boolean",
+          "default": true,
+          "description": "Remember the last entered SQL parameter values in this workspace."
+        },
+        "postgresExplorer.parameters.nullSentinel": {
+          "type": "string",
+          "default": "NULL",
+          "description": "Exact input text that is sent as SQL NULL for prompted parameters. Set empty string to disable."
+        },
         "postgresExplorer.autoRefresh.enabled": {
           "type": "boolean",
           "default": true,
@@ -1708,6 +1837,11 @@
           "command": "postgres-explorer.jumpToSection",
           "when": "notebookType == 'postgres-notebook'",
           "group": "navigation@99"
+        },
+        {
+          "command": "postgres-explorer.exportNotebook",
+          "when": "notebookType == 'postgres-notebook' || notebookType == 'postgres-query'",
+          "group": "navigation@98"
         }
       ],
       "view/title": [
@@ -1718,6 +1852,11 @@
         },
         {
           "command": "postgres-explorer.addConnection",
+          "when": "view == postgresExplorer",
+          "group": "navigation"
+        },
+        {
+          "command": "postgres-explorer.importConnectionFromDatabaseUrl",
           "when": "view == postgresExplorer",
           "group": "navigation"
         },
@@ -1827,7 +1966,7 @@
         },
         {
           "command": "postgres-explorer.openDefinition",
-          "when": "view == postgresExplorer && viewItem =~ /^(table|partition|view|function|procedure|index|materialized-view|sequence|type|trigger|extension|role|foreign-table|foreign-data-wrapper|foreign-server)$/",
+          "when": "view == postgresExplorer && viewItem =~ /^(table|partition|view|function|procedure|index|materialized-view|sequence|type|trigger|policy|extension|role|foreign-table|foreign-data-wrapper|foreign-server)$/",
           "group": "inline@1"
         },
         {
@@ -1869,6 +2008,11 @@
           "command": "postgres-explorer.editConnection",
           "when": "view == postgresExplorer && (viewItem == connection || viewItem == connection-disconnected)",
           "group": "inline@2"
+        },
+        {
+          "command": "postgres-explorer.duplicateConnection",
+          "when": "view == postgresExplorer && (viewItem == connection || viewItem == connection-disconnected)",
+          "group": "inline@3"
         },
         {
           "command": "postgres-explorer.createDatabase",
@@ -2299,6 +2443,11 @@
           "group": "1_operations@1"
         },
         {
+          "command": "postgres-explorer.openListenNotify",
+          "when": "view == postgresExplorer && viewItem == database",
+          "group": "1_operations@8"
+        },
+        {
           "command": "postgres-explorer.databaseOperations",
           "when": "view == postgresExplorer && viewItem == database",
           "group": "1_operations@3"
@@ -2534,6 +2683,11 @@
           "group": "9_destructive"
         },
         {
+          "command": "postgres-explorer.dropPolicy",
+          "when": "view == postgresExplorer && viewItem == policy",
+          "group": "9_destructive"
+        },
+        {
           "command": "postgres-explorer.createTrigger",
           "when": "view == postgresExplorer && viewItem == category-triggers",
           "group": "1_actions"
@@ -2667,6 +2821,41 @@
           "command": "postgres-explorer.listEventTriggers",
           "when": "view == postgresExplorer && viewItem == category-event-triggers",
           "group": "1_actions"
+        },
+        {
+          "command": "postgres-explorer.listCronJobs",
+          "when": "view == postgresExplorer && viewItem == category-cron-jobs",
+          "group": "1_actions"
+        },
+        {
+          "command": "postgres-explorer.installPgCron",
+          "when": "view == postgresExplorer && viewItem == category-cron-jobs",
+          "group": "1_actions@1"
+        },
+        {
+          "command": "postgres-explorer.scheduleCronJob",
+          "when": "view == postgresExplorer && viewItem == category-cron-jobs",
+          "group": "1_actions@2"
+        },
+        {
+          "command": "postgres-explorer.installPgCron",
+          "when": "view == postgresExplorer && viewItem == cron-setup",
+          "group": "inline@1"
+        },
+        {
+          "command": "postgres-explorer.listCronJobs",
+          "when": "view == postgresExplorer && viewItem == cron-setup",
+          "group": "1_actions@1"
+        },
+        {
+          "command": "postgres-explorer.showCronJobProperties",
+          "when": "view == postgresExplorer && viewItem == cron-job",
+          "group": "inline@1"
+        },
+        {
+          "command": "postgres-explorer.unscheduleCronJob",
+          "when": "view == postgresExplorer && viewItem == cron-job",
+          "group": "9_destructive"
         },
         {
           "command": "postgres-explorer.showRuleProperties",
@@ -2899,7 +3088,20 @@
     ]
   },
   "activationEvents": [
-    "onStartupFinished"
+    "onView:postgresExplorer",
+    "onView:postgresExplorer.notebooks",
+    "onView:postgresExplorer.savedQueries",
+    "onView:postgresExplorer.chatView",
+    "onNotebook:postgres-notebook",
+    "onNotebook:postgres-query",
+    "onCommand:postgres-explorer.connect",
+    "onCommand:postgres-explorer.newNotebook",
+    "onCommand:postgres-explorer.addConnection",
+    "onCommand:postgres-explorer.importConnectionFromDatabaseUrl",
+    "onCommand:postgres-explorer.switchWorkspaceDefaultConnection",
+    "onCommand:postgres-explorer.exportNotebook",
+    "onCommand:postgres-explorer.openListenNotify",
+    "onCommand:postgres-explorer.openListenNotifyFromPalette"
   ],
   "main": "./dist/extension.js",
   "scripts": {
@@ -2908,7 +3110,7 @@
     "package:prerelease": "npx @vscode/vsce package --pre-release",
     "package:openvsx:nightly": "npx @vscode/vsce package",
     "esbuild-base": "esbuild ./src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --external:ssh2 --external:pg --format=cjs --platform=node --main-fields=main",
-    "esbuild-renderer": "esbuild ./src/renderer_v2.ts --bundle --outfile=dist/renderer_v2.js --format=esm --platform=browser",
+    "esbuild-renderer": "esbuild ./src/ui/renderer/renderer_v2.ts --bundle --outfile=dist/renderer_v2.js --format=esm --platform=browser",
     "copy-templates": "cp -r templates dist/",
     "compile": "tsc -p ./ && npm run esbuild-renderer && npm run copy-templates",
     "watch": "tsc -watch -p ./",

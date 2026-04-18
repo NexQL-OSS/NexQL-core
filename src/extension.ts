@@ -1,36 +1,34 @@
-import { Client } from 'pg';
 import * as vscode from 'vscode';
-import { PostgresMetadata } from './common/types';
-import { PostgresKernel } from './providers/NotebookKernel';
 import { ConnectionManager } from './services/ConnectionManager';
 import { SecretStorageService } from './services/SecretStorageService';
-import { ProfileManager } from './services/ProfileManager';
-import { SavedQueriesService } from './services/SavedQueriesService';
-import { ErrorHandlers, NotebookBuilder } from './commands/helper';
+import { ProfileManager } from './features/connections/ProfileManager';
+import { SavedQueriesService } from './features/savedQueries/SavedQueriesService';
+import { NotebookBuilder } from './commands/helper';
 import { SessionRegistry } from './services/SessionRegistry';
-import { registerProviders } from './activation/providers';
-import { registerAllCommands } from './activation/commands';
-import { NotebookStatusBar } from './activation/statusBar';
-import { WhatsNewManager } from './activation/WhatsNewManager';
-import { ChatViewProvider } from './providers/ChatViewProvider';
+import type { NotebookStatusBar } from './activation/statusBar';
+import type { ChatViewProvider } from './providers/ChatViewProvider';
 import { QueryHistoryService } from './services/QueryHistoryService';
 import { QueryPerformanceService } from './services/QueryPerformanceService';
-import { ConnectionUtils } from './utils/connectionUtils';
-import { ExplainProvider } from './providers/ExplainProvider';
+import { WorkspaceStateService } from './services/WorkspaceStateService';
 import { MessageHandlerRegistry } from './services/MessageHandler';
-import {
-  ExplainErrorHandler, FixQueryHandler, AnalyzeDataHandler, OptimizeQueryHandler,
-  SendToChatHandler, ShowExplainPlanHandler, ConvertExplainHandler
-} from './services/handlers/ExplainHandlers';
-import { ShowConnectionSwitcherHandler, ShowDatabaseSwitcherHandler, ShowErrorMessageHandler, ExportRequestHandler, RetryCellHandler, ShowConnectionInfoHandler } from './services/handlers/CoreHandlers';
-import { ExecuteUpdateBackgroundHandler, ScriptDeleteHandler, SaveChangesHandler } from './services/handlers/QueryHandlers';
-import { formatSqlCommand, createFormatOnSaveListener } from './commands/formatSql';
 
 export let outputChannel: vscode.OutputChannel;
 export let extensionContext: vscode.ExtensionContext;
 export let statusBar: NotebookStatusBar;
 
 let chatViewProvider: ChatViewProvider | undefined;
+
+function runDeferredStartupTask(taskName: string, task: () => Promise<void>): void {
+  void (async () => {
+    const start = Date.now();
+    try {
+      await task();
+      outputChannel?.appendLine(`[startup/deferred] ${taskName} completed in ${Date.now() - start}ms`);
+    } catch (error) {
+      outputChannel?.appendLine(`[startup/deferred] ${taskName} failed: ${error}`);
+    }
+  })();
+}
 
 function isAzurePostgresHost(host?: string): boolean {
   if (!host) {
@@ -61,7 +59,47 @@ export function getChatViewProvider(): ChatViewProvider | undefined {
   return chatViewProvider;
 }
 
+async function ensureRendererMessageHandlers(
+  registry: MessageHandlerRegistry,
+  chatView: ChatViewProvider,
+  statusBarInstance: NotebookStatusBar,
+  context: vscode.ExtensionContext
+): Promise<void> {
+  const [
+    explainHandlersModule,
+    coreHandlersModule,
+    queryHandlersModule,
+  ] = await Promise.all([
+    import('./services/handlers/ExplainHandlers'),
+    import('./services/handlers/CoreHandlers'),
+    import('./services/handlers/QueryHandlers'),
+  ]);
+
+  // Explain & Chat Handlers
+  registry.register('explainError', new explainHandlersModule.ExplainErrorHandler(chatView));
+  registry.register('fixQuery', new explainHandlersModule.FixQueryHandler(chatView));
+  registry.register('analyzeData', new explainHandlersModule.AnalyzeDataHandler(chatView));
+  registry.register('optimizeQuery', new explainHandlersModule.OptimizeQueryHandler(chatView));
+  registry.register('sendToChat', new explainHandlersModule.SendToChatHandler(chatView));
+  registry.register('showExplainPlan', new explainHandlersModule.ShowExplainPlanHandler(context.extensionUri));
+  registry.register('convertExplainToJson', new explainHandlersModule.ConvertExplainHandler(context));
+
+  // Core Handlers
+  registry.register('showConnectionSwitcher', new coreHandlersModule.ShowConnectionSwitcherHandler(statusBarInstance));
+  registry.register('showDatabaseSwitcher', new coreHandlersModule.ShowDatabaseSwitcherHandler(statusBarInstance));
+  registry.register('showErrorMessage', new coreHandlersModule.ShowErrorMessageHandler());
+  registry.register('export_request', new coreHandlersModule.ExportRequestHandler());
+  registry.register('retryCell', new coreHandlersModule.RetryCellHandler());
+  registry.register('showConnectionInfo', new coreHandlersModule.ShowConnectionInfoHandler());
+
+  // Query Execution Handlers
+  registry.register('execute_update_background', new queryHandlersModule.ExecuteUpdateBackgroundHandler());
+  registry.register('script_delete', new queryHandlersModule.ScriptDeleteHandler());
+  registry.register('saveChanges', new queryHandlersModule.SaveChangesHandler());
+}
+
 export async function activate(context: vscode.ExtensionContext) {
+  const activationStart = Date.now();
   extensionContext = context;
 
   // Provide extension context to NotebookBuilder for persistent session support (Req 5.4)
@@ -87,6 +125,9 @@ export async function activate(context: vscode.ExtensionContext) {
   ConnectionManager.getInstance();
   QueryHistoryService.initialize(context.workspaceState);
   QueryPerformanceService.initialize(context.globalState);
+
+  WorkspaceStateService.getInstance().initialize(context);
+  context.subscriptions.push({ dispose: () => WorkspaceStateService.getInstance().dispose() });
 
   // Migration: Ensure all connections have an ID (legacy connections might not)
   const config = vscode.workspace.getConfiguration();
@@ -123,7 +164,11 @@ export async function activate(context: vscode.ExtensionContext) {
   // Phase 7: Initialize ProfileManager and SavedQueriesService
   ProfileManager.getInstance().initialize(context);
   SavedQueriesService.getInstance().initialize(context);
-  await ProfileManager.getInstance().initializeDefaultProfiles();
+
+  // Non-blocking startup: default profile seeding can happen after activation completes.
+  runDeferredStartupTask('initializeDefaultProfiles', async () => {
+    await ProfileManager.getInstance().initializeDefaultProfiles();
+  });
 
   // D3: Opt profile and favorites data into VS Code Settings Sync so users can
   // share their connection profiles and query library across machines.
@@ -132,36 +177,73 @@ export async function activate(context: vscode.ExtensionContext) {
     'postgresExplorer.favorites',
   ]);
 
-  const { databaseTreeProvider, treeView, chatViewProviderInstance: chatView, savedQueriesTreeProvider, notebooksTreeProvider, autoRefreshService } = registerProviders(context, outputChannel);
+  const [providersModule, commandsModule, notebookKernelModule, whatsNewModule, statusBarModule] = await Promise.all([
+    import('./activation/providers'),
+    import('./activation/commands'),
+    import('./providers/NotebookKernel'),
+    import('./activation/WhatsNewManager'),
+    import('./activation/statusBar'),
+  ]);
+
+  const { databaseTreeProvider, treeView, chatViewProviderInstance: chatView, savedQueriesTreeProvider, notebooksTreeProvider, autoRefreshService } = providersModule.registerProviders(context, outputChannel);
   context.subscriptions.push(autoRefreshService);
   chatViewProvider = chatView;
 
   // Store tree view instance for reveal functionality
   (databaseTreeProvider as any).setTreeView(treeView);
 
-  registerAllCommands(context, databaseTreeProvider, chatView, outputChannel, savedQueriesTreeProvider, notebooksTreeProvider);
+  commandsModule.registerAllCommands(context, databaseTreeProvider, chatView, outputChannel, savedQueriesTreeProvider, notebooksTreeProvider);
 
-  // Kernel initialization
   const rendererMessaging = vscode.notebooks.createRendererMessaging('postgres-query-renderer');
 
-  const kernel = new PostgresKernel(context, rendererMessaging, 'postgres-notebook', async (msg: { type: string; command: string; format?: string; content?: string; filename?: string }) => {
-    if (msg.type === 'custom' && msg.command === 'export') {
-      vscode.commands.executeCommand('postgres-explorer.exportData', {
-        format: msg.format,
-        content: msg.content,
-        filename: msg.filename
-      });
+  let kernelsInitialized = false;
+  const ensureNotebookKernels = () => {
+    if (kernelsInitialized) {
+      return;
     }
-  });
-  context.subscriptions.push(kernel);
+
+    const notebookKernel = new notebookKernelModule.PostgresKernel(context, rendererMessaging, 'postgres-notebook', async (msg: { type: string; command: string; format?: string; content?: string; filename?: string }) => {
+      if (msg.type === 'custom' && msg.command === 'export') {
+        vscode.commands.executeCommand('postgres-explorer.exportData', {
+          format: msg.format,
+          content: msg.content,
+          filename: msg.filename
+        });
+      }
+    });
+
+    const queryKernel = new notebookKernelModule.PostgresKernel(context, rendererMessaging, 'postgres-query');
+    context.subscriptions.push(notebookKernel, queryKernel);
+    kernelsInitialized = true;
+    outputChannel.appendLine('[startup] notebook kernels initialized lazily');
+  };
+
+  context.subscriptions.push(
+    vscode.workspace.onDidOpenNotebookDocument((notebook) => {
+      if (notebook.notebookType === 'postgres-notebook' || notebook.notebookType === 'postgres-query') {
+        ensureNotebookKernels();
+      }
+    })
+  );
+
+  if (vscode.workspace.notebookDocuments.some((notebook) => notebook.notebookType === 'postgres-notebook' || notebook.notebookType === 'postgres-query')) {
+    ensureNotebookKernels();
+  }
 
   // What's New / Welcome Screen
-  const whatsNewManager = new WhatsNewManager(context, context.extensionUri);
+  const whatsNewManager = new whatsNewModule.WhatsNewManager(context, context.extensionUri);
   // SQL Formatter command + format-on-save listener
   context.subscriptions.push(
-    vscode.commands.registerCommand('postgres-explorer.formatSql', formatSqlCommand)
+    vscode.commands.registerCommand('postgres-explorer.formatSql', async () => {
+      const { formatSqlCommand } = await import('./commands/formatSql');
+      await formatSqlCommand();
+    })
   );
-  context.subscriptions.push(createFormatOnSaveListener());
+
+  runDeferredStartupTask('registerFormatOnSaveListener', async () => {
+    const { createFormatOnSaveListener } = await import('./commands/formatSql');
+    context.subscriptions.push(createFormatOnSaveListener());
+  });
 
   context.subscriptions.push(
     vscode.commands.registerCommand('postgres-explorer.showWhatsNew', () => {
@@ -169,40 +251,24 @@ export async function activate(context: vscode.ExtensionContext) {
     })
   );
   // Auto-open once on install/update; manager tracks the last shown version in global state.
-  void whatsNewManager.checkAndShow(false);
-
-  const queryKernel = new PostgresKernel(context, rendererMessaging, 'postgres-query');
+  runDeferredStartupTask('showWhatsNew', async () => {
+    await whatsNewManager.checkAndShow(false);
+  });
 
   // Status bar for connection/database display
-  statusBar = new NotebookStatusBar();
+  statusBar = new statusBarModule.NotebookStatusBar();
   context.subscriptions.push(statusBar);
 
   // Register Message Handlers
   const registry = MessageHandlerRegistry.getInstance();
-
-  // Explain & Chat Handlers
-  registry.register('explainError', new ExplainErrorHandler(chatView));
-  registry.register('fixQuery', new FixQueryHandler(chatView));
-  registry.register('analyzeData', new AnalyzeDataHandler(chatView));
-  registry.register('optimizeQuery', new OptimizeQueryHandler(chatView));
-  registry.register('sendToChat', new SendToChatHandler(chatView));
-  registry.register('showExplainPlan', new ShowExplainPlanHandler(context.extensionUri));
-  registry.register('convertExplainToJson', new ConvertExplainHandler(context));
-
-  // Core Handlers
-  registry.register('showConnectionSwitcher', new ShowConnectionSwitcherHandler(statusBar));
-  registry.register('showDatabaseSwitcher', new ShowDatabaseSwitcherHandler(statusBar));
-  registry.register('showErrorMessage', new ShowErrorMessageHandler());
-  registry.register('export_request', new ExportRequestHandler());
-  registry.register('retryCell', new RetryCellHandler());
-  registry.register('showConnectionInfo', new ShowConnectionInfoHandler());
-
-  // Query Execution Handlers
-  registry.register('execute_update_background', new ExecuteUpdateBackgroundHandler());
-  registry.register('script_delete', new ScriptDeleteHandler());
-  registry.register('saveChanges', new SaveChangesHandler());
+  let handlersInitialized = false;
 
   rendererMessaging.onDidReceiveMessage(async (event) => {
+    if (!handlersInitialized) {
+      await ensureRendererMessageHandlers(registry, chatView, statusBar!, context);
+      handlersInitialized = true;
+    }
+
     await registry.handleMessage(event.message, {
       editor: event.editor,
       postMessage: (msg) => rendererMessaging.postMessage(msg, event.editor)
@@ -210,17 +276,23 @@ export async function activate(context: vscode.ExtensionContext) {
   });
 
   // Auto-generate notebook title on open
-  const { updateNotebookTitle } = await import('./utils/notebookTitle');
-  context.subscriptions.push(
-    vscode.workspace.onDidOpenNotebookDocument(async (notebook) => {
-      if (notebook.notebookType === 'postgres-notebook' || notebook.notebookType === 'postgres-query') {
-        await updateNotebookTitle(notebook);
-      }
-    })
-  );
+  runDeferredStartupTask('registerNotebookTitleUpdater', async () => {
+    const { updateNotebookTitle } = await import('./utils/notebookTitle');
+    context.subscriptions.push(
+      vscode.workspace.onDidOpenNotebookDocument(async (notebook) => {
+        if (notebook.notebookType === 'postgres-notebook' || notebook.notebookType === 'postgres-query') {
+          await updateNotebookTitle(notebook);
+        }
+      })
+    );
+  });
 
-  const { migrateExistingPasswords } = await import('./services/SecretStorageService');
-  await migrateExistingPasswords(context);
+  runDeferredStartupTask('migrateExistingPasswords', async () => {
+    const { migrateExistingPasswords } = await import('./services/SecretStorageService');
+    await migrateExistingPasswords(context);
+  });
+
+  outputChannel.appendLine(`PgStudio activation completed in ${Date.now() - activationStart}ms`);
 }
 
 export async function deactivate() {

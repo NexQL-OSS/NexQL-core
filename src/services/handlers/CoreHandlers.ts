@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { IMessageHandler } from '../MessageHandler';
 import { ConnectionUtils } from '../../utils/connectionUtils';
+import { WorkspaceStateService } from '../WorkspaceStateService';
 import { PostgresMetadata } from '../../common/types';
 import { DatabaseTreeItem } from '../../providers/DatabaseTreeProvider';
 
@@ -24,6 +25,7 @@ export class ShowConnectionSwitcherHandler implements IMessageHandler {
         port: selected.port,
         username: selected.username
       });
+      await WorkspaceStateService.getInstance().recordConnectionSwitch(selected.id, selected.database);
       vscode.window.showInformationMessage(`Switched to: ${selected.name || selected.host}`);
       this.statusBar.update();
     }
@@ -46,6 +48,10 @@ export class ShowDatabaseSwitcherHandler implements IMessageHandler {
 
     if (selectedDb && selectedDb !== message.currentDatabase) {
       await ConnectionUtils.updateNotebookMetadata(context.editor.notebook, { databaseName: selectedDb });
+      const connectionId = (context.editor.notebook.metadata as PostgresMetadata | undefined)?.connectionId;
+      if (connectionId) {
+        await WorkspaceStateService.getInstance().recordDatabaseSwitch(connectionId, selectedDb);
+      }
       vscode.window.showInformationMessage(`Switched to database: ${selectedDb}`);
       this.statusBar.update();
     }
