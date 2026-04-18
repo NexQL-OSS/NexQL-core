@@ -5,6 +5,11 @@ import { ConnectionManager } from './ConnectionManager';
 import { createMetadata, getConnectionWithPassword } from '../commands/connection';
 
 const DDL_VIEWER_SCHEME = 'pgstudio-ddl';
+const DDL_VIEWER_ENABLED_CONFIG = 'pgstudio.ddlViewer.enabled';
+
+function isDdlViewerEnabled(): boolean {
+  return vscode.workspace.getConfiguration().get<boolean>(DDL_VIEWER_ENABLED_CONFIG, true);
+}
 
 type DdlObjectType =
   | 'database'
@@ -131,6 +136,13 @@ class DdlViewerCodeLensProvider implements vscode.CodeLensProvider {
 
     const codeLenses: vscode.CodeLens[] = [];
     const range = new vscode.Range(0, 0, 0, 0);
+    const isEnabled = isDdlViewerEnabled();
+
+    codeLenses.push(new vscode.CodeLens(range, {
+      title: isEnabled ? 'Disable SQL Preview' : 'Enable SQL Preview',
+      command: 'postgres-explorer.ddlViewer.toggleEnabled',
+      arguments: [!isEnabled]
+    }));
 
     codeLenses.push(new vscode.CodeLens(range, {
       title: 'Open as Editable Copy',
@@ -169,6 +181,14 @@ class DdlContentProvider implements vscode.TextDocumentContentProvider {
 
   public refresh(uri: vscode.Uri): void {
     this._onDidChange.fire(uri);
+  }
+
+  public refreshAllOpenDdlDocuments(): void {
+    for (const doc of vscode.workspace.textDocuments) {
+      if (doc.uri.scheme === DDL_VIEWER_SCHEME) {
+        this._onDidChange.fire(doc.uri);
+      }
+    }
   }
 
   public getCachedContent(uri: vscode.Uri): string | undefined {
@@ -1475,8 +1495,7 @@ export class DdlViewerService implements vscode.Disposable {
   private readonly provider = new DdlContentProvider();
   private readonly codeLensProvider = new DdlViewerCodeLensProvider();
   private readonly disposables: vscode.Disposable[] = [];
-  private ddlViewColumn: vscode.ViewColumn | undefined;
-  private initialized = false;
+  private lastPreviewTarget: DdlViewerTarget | undefined;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -1485,7 +1504,17 @@ export class DdlViewerService implements vscode.Disposable {
     this.disposables.push(
       vscode.workspace.registerTextDocumentContentProvider(DDL_VIEWER_SCHEME, this.provider),
       vscode.languages.registerCodeLensProvider({ scheme: DDL_VIEWER_SCHEME }, this.codeLensProvider),
+      vscode.workspace.onDidChangeConfiguration((event) => {
+        if (event.affectsConfiguration(DDL_VIEWER_ENABLED_CONFIG)) {
+          this.codeLensProvider.refresh();
+          this.refreshOpenPreviewDocuments();
+        }
+      }),
       this.treeView.onDidChangeSelection(async (event) => {
+        if (!isDdlViewerEnabled()) {
+          return;
+        }
+
         if (!vscode.workspace.getConfiguration().get<boolean>('pgstudio.ddlViewer.openOnSelection', true)) {
           return;
         }
@@ -1505,51 +1534,61 @@ export class DdlViewerService implements vscode.Disposable {
         }
         await this.openForItem(selected, false);
       }),
-      vscode.commands.registerCommand('postgres-explorer.ddlViewer.openEditableCopy', async (uri: vscode.Uri) => {
-        await this.openEditableCopy(uri);
+      vscode.commands.registerCommand('postgres-explorer.ddlViewer.openEditableCopy', async (uri?: vscode.Uri) => {
+        const targetUri = this.resolveDdlUri(uri);
+        if (!targetUri) {
+          vscode.window.showInformationMessage('Open a SQL Preview tab first.');
+          return;
+        }
+        await this.openEditableCopy(targetUri);
       }),
-      vscode.commands.registerCommand('postgres-explorer.ddlViewer.copyToClipboard', async (uri: vscode.Uri) => {
-        await this.copyToClipboard(uri);
+      vscode.commands.registerCommand('postgres-explorer.ddlViewer.copyToClipboard', async (uri?: vscode.Uri) => {
+        const targetUri = this.resolveDdlUri(uri);
+        if (!targetUri) {
+          vscode.window.showInformationMessage('Open a SQL Preview tab first.');
+          return;
+        }
+        await this.copyToClipboard(targetUri);
       }),
       vscode.commands.registerCommand('postgres-explorer.ddlViewer.executeRoutine', async (uri: vscode.Uri) => {
         await this.openRoutineExecuteScaffold(uri);
+      }),
+      vscode.commands.registerCommand('postgres-explorer.ddlViewer.toggleEnabled', async (forceState?: boolean) => {
+        const current = isDdlViewerEnabled();
+        const nextState = typeof forceState === 'boolean' ? forceState : !current;
+        await vscode.workspace.getConfiguration().update(DDL_VIEWER_ENABLED_CONFIG, nextState, vscode.ConfigurationTarget.Global);
+        this.codeLensProvider.refresh();
+        this.refreshOpenPreviewDocuments();
+        vscode.window.showInformationMessage(`SQL Preview ${nextState ? 'enabled' : 'disabled'}.`);
       })
     );
   }
 
   public async openForItem(item: DatabaseTreeItem, fromSelection: boolean): Promise<void> {
+    if (!isDdlViewerEnabled()) {
+      if (!fromSelection) {
+        vscode.window.showInformationMessage('SQL Preview is disabled. Enable it from settings or from a preview tab action.');
+      }
+      return;
+    }
+
     const target = this.toTarget(item);
     const uri = this.createUri(target);
-    this.provider.refresh(uri);
-    this.codeLensProvider.refresh();
+    this.lastPreviewTarget = target;
 
-    const openOptions: vscode.TextDocumentShowOptions = {
-      preserveFocus: true,
-      preview: true,
-      viewColumn: this.initialized ? this.ddlViewColumn ?? vscode.ViewColumn.Beside : vscode.ViewColumn.Beside
-    };
+    await this.provider.provideTextDocumentContent(uri);
+    this.provider.refresh(uri);
 
     const doc = await vscode.workspace.openTextDocument(uri);
-    const editor = await vscode.window.showTextDocument(doc, openOptions);
-
-    if (editor.document.languageId !== 'sql') {
-      await vscode.languages.setTextDocumentLanguage(editor.document, 'sql');
+    if (doc.languageId !== 'sql') {
+      await vscode.languages.setTextDocumentLanguage(doc, 'sql');
     }
 
-    if (!this.initialized) {
-      this.initialized = true;
-      this.ddlViewColumn = editor.viewColumn;
-    } else if (editor.viewColumn) {
-      this.ddlViewColumn = editor.viewColumn;
-    }
-
-    if (!fromSelection) {
-      await vscode.window.showTextDocument(doc, {
-        preserveFocus: true,
-        preview: true,
-        viewColumn: this.ddlViewColumn
-      });
-    }
+    await vscode.window.showTextDocument(doc, {
+      viewColumn: vscode.ViewColumn.Beside,
+      preserveFocus: fromSelection,
+      preview: fromSelection
+    });
   }
 
   public dispose(): void {
@@ -1557,6 +1596,23 @@ export class DdlViewerService implements vscode.Disposable {
       const disposable = this.disposables.pop();
       disposable?.dispose();
     }
+  }
+
+  private refreshOpenPreviewDocuments(): void {
+    this.provider.refreshAllOpenDdlDocuments();
+  }
+
+  private resolveDdlUri(uri?: vscode.Uri): vscode.Uri | undefined {
+    if (uri?.scheme === DDL_VIEWER_SCHEME) {
+      return uri;
+    }
+
+    const activeUri = vscode.window.activeTextEditor?.document.uri;
+    if (activeUri?.scheme === DDL_VIEWER_SCHEME) {
+      return activeUri;
+    }
+
+    return undefined;
   }
 
   private createUri(target: DdlViewerTarget): vscode.Uri {
