@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
-import { ConnectionConfig } from '../common/types';
-import { ConnectionManager } from './ConnectionManager';
+import { ConnectionConfig } from '../../common/types';
+import { ConnectionManager } from '../../services/ConnectionManager';
 
 /**
  * Connection profile with preset safety and performance settings.

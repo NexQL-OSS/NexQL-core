@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
-import { SavedQueriesService, SavedQuery } from './services/SavedQueriesService';
-import { QueryAnalyzer } from './services/QueryAnalyzer';
-import { AiService } from './providers/chat/AiService';
+import { SqlParser } from '../../providers/kernel/SqlParser';
+import { SavedQueriesService, SavedQuery } from './SavedQueriesService';
+import { QueryAnalyzer } from '../../services/QueryAnalyzer';
+import { AiService } from '../../providers/chat/AiService';
 
 export class SaveQueryPanel {
   public static currentPanel: SaveQueryPanel | undefined;
@@ -288,7 +289,8 @@ export class SaveQueryPanel {
         lastUsed: Date.now(),
         connectionId,
         databaseName,
-        schemaName
+        schemaName,
+        isTemplate: SqlParser.hasNamedParameters(query)
       };
 
       await service.updateQuery(updatedQuery);
@@ -307,7 +309,8 @@ export class SaveQueryPanel {
         lastUsed: now,
         connectionId,
         databaseName,
-        schemaName
+        schemaName,
+        isTemplate: SqlParser.hasNamedParameters(query)
       };
 
       await service.saveQuery(savedQuery);

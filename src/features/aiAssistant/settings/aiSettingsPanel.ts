@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as https from 'https';
 import * as http from 'http';
-import { getChatViewProvider } from './extension';
+import { getChatViewProvider } from '../../../extension';
 
 export interface AiSettings {
   provider: string;

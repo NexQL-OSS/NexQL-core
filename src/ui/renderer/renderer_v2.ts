@@ -5,23 +5,32 @@ import {
   createTab,
   createBreadcrumb,
   BreadcrumbSegment,
-} from './renderer/components/ui';
-import { createExportButton } from './renderer/features/export';
-import { TableRenderer, TableEvents } from './renderer/components/table/TableRenderer';
-import { ChartRenderer } from './renderer/components/chart/ChartRenderer';
-import { ChartControls } from './renderer/components/chart/ChartControls';
-import { ExplainVisualizer } from './renderer/components/ExplainVisualizer';
-import { createErrorPanel } from './renderer/components/ErrorPanel';
-import { createActionBar } from './renderer/components/ActionBar';
-import { showImportModal } from './renderer/features/import';
-import { createTransactionBanner } from './renderer/components/TransactionBanner';
-import { parseBreadcrumbFromSql } from './renderer/utils/sqlParsing';
+} from '../../renderer/components/ui';
+import { createExportButton } from '../../renderer/features/export';
+import { TableRenderer, TableEvents } from '../../renderer/components/table/TableRenderer';
+import { ChartRenderer } from '../../renderer/components/chart/ChartRenderer';
+import { ChartControls } from '../../renderer/components/chart/ChartControls';
+import { ExplainVisualizer } from '../../renderer/components/ExplainVisualizer';
+import { createErrorPanel } from '../../renderer/components/ErrorPanel';
+import { createActionBar } from '../../renderer/components/ActionBar';
+import { showImportModal } from '../../renderer/features/import';
+import { createTransactionBanner } from '../../renderer/components/TransactionBanner';
+import { parseBreadcrumbFromSql } from '../../renderer/utils/sqlParsing';
 import {
   addResultToHistory,
   getResultHistory,
   renderTabStrip,
-} from './renderer/components/ResultTabStrip';
-import { renderTransposeTable } from './renderer/components/TransposeView';
+} from '../../renderer/components/ResultTabStrip';
+import { renderTransposeTable } from '../../renderer/components/TransposeView';
+import { renderAnalystPanel } from '../../renderer/components/analyst/AnalystPanel';
+import type { NoticeLogEntry } from '../../common/types';
+import {
+  normalizeNoticesPayload,
+  renderNoticesLiveStream,
+  renderNoticesPanel,
+} from '../../renderer/components/notices/NoticesPanel';
+import { BRAND_ACCENT, BRAND_ACCENT_MUTED, SPINNER_FRAMES } from './rendererConstants';
+import { prefersReducedMotion } from '../theme/motion';
 
 // Register Chart.js components
 Chart.register(...registerables);
@@ -29,13 +38,10 @@ Chart.register(...registerables);
 // Track renderer instances and their containers per output element for cleanup
 const chartInstances = new WeakMap<HTMLElement, ChartRenderer>();
 const tableInstances = new WeakMap<HTMLElement, TableRenderer>();
-const BRAND_ACCENT = 'var(--vscode-textLink-foreground)';
-const BRAND_ACCENT_MUTED = 'color-mix(in srgb, var(--vscode-textLink-foreground) 20%, transparent)';
-
-const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
 /**
  * Puts a button into a loading state with an animated braille spinner.
+ * When `prefers-reduced-motion` is set, uses a static label instead of animation.
  * Returns a cleanup function that restores the original label and re-enables the button.
  */
 function startButtonLoading(btn: HTMLElement, loadingLabel: string): () => void {
@@ -44,6 +50,18 @@ function startButtonLoading(btn: HTMLElement, loadingLabel: string): () => void 
   (btn as HTMLButtonElement).disabled = true;
   btn.style.opacity = '0.7';
   btn.style.cursor = 'not-allowed';
+
+  const restore = () => {
+    btn.innerText = originalText;
+    (btn as HTMLButtonElement).disabled = originalDisabled;
+    btn.style.opacity = '';
+    btn.style.cursor = '';
+  };
+
+  if (prefersReducedMotion()) {
+    btn.innerText = `… ${loadingLabel}`;
+    return restore;
+  }
 
   let frame = 0;
   btn.innerText = `${SPINNER_FRAMES[frame]} ${loadingLabel}`;
@@ -54,10 +72,7 @@ function startButtonLoading(btn: HTMLElement, loadingLabel: string): () => void 
 
   return () => {
     clearInterval(interval);
-    btn.innerText = originalText;
-    (btn as HTMLButtonElement).disabled = originalDisabled;
-    btn.style.opacity = '';
-    btn.style.cursor = '';
+    restore();
   };
 }
 
@@ -90,6 +105,13 @@ export const activate: ActivationFunction = (context) => {
         return;
       }
 
+      if (data.mime === 'application/vnd.postgres-notebook.notices-live') {
+        const live = data.json() as { notices?: NoticeLogEntry[] };
+        const entries = Array.isArray(live?.notices) ? live.notices : [];
+        element.replaceChildren(renderNoticesLiveStream(entries));
+        return;
+      }
+
       const json = data.json();
 
       if (!json) {
@@ -110,7 +132,11 @@ export const activate: ActivationFunction = (context) => {
         columnTypes,
         backendPid,
         breadcrumb,
+        autoLimitApplied,
+        autoLimitValue,
       } = json;
+
+      const noticeItems = normalizeNoticesPayload(notices);
 
       // Transaction state from payload
       const transactionState: { isActive: boolean; statementCount: number } | undefined =
@@ -137,6 +163,7 @@ export const activate: ActivationFunction = (context) => {
         rowCount,
         executionTime,
         query,
+        notices: noticeItems.length ? [...noticeItems] : undefined,
         timestamp: Date.now(),
       };
       const resultHistory = addResultToHistory(element, historyEntry);
@@ -169,7 +196,10 @@ export const activate: ActivationFunction = (context) => {
 
       const chevron = document.createElement('span');
       chevron.textContent = '▼';
-      chevron.style.cssText = 'font-size: 10px; transition: transform 0.2s; display: inline-block;';
+      const chevronBase = 'font-size: 10px; display: inline-block;';
+      chevron.style.cssText = prefersReducedMotion()
+        ? chevronBase
+        : `${chevronBase} transition: transform 0.2s;`;
 
       const title = document.createElement('span');
       title.textContent = command || 'QUERY';
@@ -182,8 +212,10 @@ export const activate: ActivationFunction = (context) => {
 
       let summaryText = '';
       if (rowCount !== undefined && rowCount !== null) summaryText += `${rowCount} rows`;
-      if (notices?.length)
-        summaryText += summaryText ? `, ${notices.length} messages` : `${notices.length} messages`;
+      if (noticeItems.length)
+        summaryText += summaryText
+          ? `, ${noticeItems.length} notices`
+          : `${noticeItems.length} notices`;
       if (executionTime !== undefined)
         summaryText += summaryText
           ? `, ${executionTime.toFixed(3)}s`
@@ -196,6 +228,26 @@ export const activate: ActivationFunction = (context) => {
       header.appendChild(summary);
 
       // Pending commit badge — shown when result was produced inside an open transaction
+      if (autoLimitApplied) {
+        const limitBadge = document.createElement('span');
+        limitBadge.textContent =
+          autoLimitValue !== undefined ? `LIMIT ${autoLimitValue} applied` : 'LIMIT applied';
+        limitBadge.title = 'A row limit was appended to this SELECT by settings (auto-limit).';
+        limitBadge.style.cssText = `
+          font-size: 10px;
+          font-weight: 600;
+          padding: 2px 6px;
+          border-radius: 10px;
+          background: color-mix(in srgb, var(--vscode-textLink-foreground) 15%, transparent);
+          color: var(--vscode-textLink-foreground);
+          border: 1px solid color-mix(in srgb, var(--vscode-textLink-foreground) 40%, transparent);
+          margin-left: 8px;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+        `;
+        header.appendChild(limitBadge);
+      }
+
       if (pendingCommit) {
         const pendingBadge = document.createElement('span');
         pendingBadge.textContent = 'pending commit';
@@ -347,28 +399,6 @@ export const activate: ActivationFunction = (context) => {
           },
         });
         contentContainer.appendChild(errorPanel);
-      }
-
-      // Messages Section
-      if (notices?.length) {
-        const msgContainer = document.createElement('div');
-        msgContainer.style.cssText = `
-            padding: 8px 12px; background: var(--vscode-textBlockQuote-background);
-            border-left: 4px solid var(--vscode-textBlockQuote-border); margin: 8px 12px 0 12px;
-            font-family: var(--vscode-editor-font-family); white-space: pre-wrap; font-size: 12px;
-          `;
-        const msgTitle = document.createElement('div');
-        msgTitle.textContent = 'Messages';
-        msgTitle.style.cssText = 'font-weight: 600; margin-bottom: 4px; opacity: 0.8;';
-        msgContainer.appendChild(msgTitle);
-
-        notices.forEach((msg: string) => {
-          const d = document.createElement('div');
-          d.textContent = msg;
-          d.style.marginBottom = '2px';
-          msgContainer.appendChild(d);
-        });
-        contentContainer.appendChild(msgContainer);
       }
 
       // Build the hidden export button to reuse its existing dropdown flow
@@ -663,12 +693,170 @@ export const activate: ActivationFunction = (context) => {
       }
 
       // Save Changes Logic
+      const parseCellKey = (key: string): { rowIndex: number; colName: string } | null => {
+        const sep = key.indexOf('-');
+        if (sep === -1) return null;
+        const rowIndex = Number.parseInt(key.slice(0, sep), 10);
+        if (Number.isNaN(rowIndex)) return null;
+        return { rowIndex, colName: key.slice(sep + 1) };
+      };
+
+      const formatDiffValue = (value: any): string => {
+        if (value === null || value === undefined) return 'NULL';
+        if (typeof value === 'object') {
+          try {
+            return JSON.stringify(value);
+          } catch {
+            return String(value);
+          }
+        }
+        return String(value);
+      };
+
+      const buildEditDiffRows = (): Array<{
+        rowIndex: number;
+        rowLabel: string;
+        colName: string;
+        oldValue: string;
+        newValue: string;
+      }> => {
+        const rowsForDiff: Array<{
+          rowIndex: number;
+          rowLabel: string;
+          colName: string;
+          oldValue: string;
+          newValue: string;
+        }> = [];
+
+        modifiedCells.forEach((diff, key) => {
+          const parsed = parseCellKey(key);
+          if (!parsed) return;
+
+          const { rowIndex, colName } = parsed;
+          const pkLabel = tableInfo?.primaryKeys?.length
+            ? tableInfo.primaryKeys
+                .map((pk: string) => `${pk}=${formatDiffValue(originalRows[rowIndex]?.[pk])}`)
+                .join(', ')
+            : `row #${rowIndex + 1}`;
+
+          rowsForDiff.push({
+            rowIndex,
+            rowLabel: pkLabel,
+            colName,
+            oldValue: formatDiffValue(diff.originalValue),
+            newValue: formatDiffValue(diff.newValue),
+          });
+        });
+
+        rowsForDiff.sort((a, b) => {
+          if (a.rowIndex !== b.rowIndex) return a.rowIndex - b.rowIndex;
+          return a.colName.localeCompare(b.colName);
+        });
+        return rowsForDiff;
+      };
+
+      const renderReviewChangesView = (): HTMLElement => {
+        const diffRows = buildEditDiffRows();
+        const wrap = document.createElement('div');
+        wrap.style.cssText = 'height:100%;overflow:auto;';
+
+        const header = document.createElement('div');
+        header.style.cssText =
+          'padding:10px 12px;border-bottom:1px solid var(--vscode-widget-border);display:flex;flex-direction:column;gap:2px;';
+        const titleEl = document.createElement('div');
+        titleEl.textContent = 'Review Changes';
+        titleEl.style.cssText = 'font-size:13px;font-weight:700;';
+        const subtitleEl = document.createElement('div');
+        const editedRowCount = new Set(diffRows.map((r) => r.rowIndex)).size;
+        subtitleEl.textContent = `${editedRowCount} row${editedRowCount !== 1 ? 's' : ''}, ${diffRows.length} edited cell${diffRows.length !== 1 ? 's' : ''}`;
+        subtitleEl.style.cssText = 'font-size:11px;color:var(--vscode-descriptionForeground);';
+        header.appendChild(titleEl);
+        header.appendChild(subtitleEl);
+        wrap.appendChild(header);
+
+        if (diffRows.length === 0) {
+          const empty = document.createElement('div');
+          empty.style.cssText =
+            'padding:20px 16px;color:var(--vscode-descriptionForeground);font-size:12px;';
+          empty.textContent = 'No edited cells to review yet.';
+          wrap.appendChild(empty);
+          return wrap;
+        }
+
+        const table = document.createElement('table');
+        table.style.cssText =
+          'width:100%;border-collapse:separate;border-spacing:0;font-size:12px;line-height:1.45;';
+
+        const thead = document.createElement('thead');
+        const htr = document.createElement('tr');
+        ['Row', 'Column', 'Old Value', 'New Value'].forEach((label) => {
+          const th = document.createElement('th');
+          th.textContent = label;
+          th.style.cssText =
+            'position:sticky;top:0;z-index:1;text-align:left;padding:8px 10px;background:var(--vscode-editor-background);border-bottom:1px solid var(--vscode-widget-border);font-weight:600;';
+          htr.appendChild(th);
+        });
+        thead.appendChild(htr);
+        table.appendChild(thead);
+
+        const tbody = document.createElement('tbody');
+        diffRows.forEach((row, idx) => {
+          const tr = document.createElement('tr');
+          const stripe = idx % 2 === 0 ? 'transparent' : 'var(--vscode-keybindingTable-rowsBackground)';
+          tr.style.background = stripe;
+
+          const rowTd = document.createElement('td');
+          rowTd.textContent = row.rowLabel;
+          rowTd.style.cssText =
+            'padding:7px 10px;border-bottom:1px solid var(--vscode-widget-border);font-family:var(--vscode-editor-font-family),monospace;white-space:nowrap;';
+
+          const colTd = document.createElement('td');
+          colTd.textContent = row.colName;
+          colTd.style.cssText =
+            'padding:7px 10px;border-bottom:1px solid var(--vscode-widget-border);font-family:var(--vscode-editor-font-family),monospace;';
+
+          const oldTd = document.createElement('td');
+          oldTd.textContent = row.oldValue;
+          oldTd.style.cssText =
+            'padding:7px 10px;border-bottom:1px solid var(--vscode-widget-border);font-family:var(--vscode-editor-font-family),monospace;max-width:360px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+          oldTd.title = row.oldValue;
+
+          const newTd = document.createElement('td');
+          newTd.textContent = row.newValue;
+          newTd.style.cssText =
+            'padding:7px 10px;border-bottom:1px solid var(--vscode-widget-border);font-family:var(--vscode-editor-font-family),monospace;max-width:360px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:color-mix(in srgb, #f59e0b 12%, transparent);';
+          newTd.title = row.newValue;
+
+          tr.appendChild(rowTd);
+          tr.appendChild(colTd);
+          tr.appendChild(oldTd);
+          tr.appendChild(newTd);
+          tbody.appendChild(tr);
+        });
+
+        table.appendChild(tbody);
+        wrap.appendChild(table);
+        return wrap;
+      };
+
       const saveBtn = createButton('Save Changes', true, 'success');
       saveBtn.style.marginRight = '8px';
+
+      let reviewTab: HTMLElement | null = null;
+      const updateReviewTabLabel = () => {
+        if (!reviewTab) return;
+        const editedRows = new Set(
+          Array.from(modifiedCells.keys())
+            .map((key) => parseCellKey(key)?.rowIndex)
+            .filter((idx): idx is number => typeof idx === 'number'),
+        ).size;
+        reviewTab.textContent = editedRows > 0 ? `Review Changes (${editedRows})` : 'Review Changes';
+      };
 
       const updateSaveButtonVisibility = () => {
         // Show save button if there are edits OR deletions
         const hasChanges = modifiedCells.size > 0 || rowsMarkedForDeletion.size > 0;
+        updateReviewTabLabel();
 
         if (hasChanges) {
           if (!rightActions.contains(saveBtn)) rightActions.prepend(saveBtn);
@@ -694,8 +882,9 @@ export const activate: ActivationFunction = (context) => {
 
         const updates: any[] = [];
         modifiedCells.forEach((diff, key) => {
-          const [rowIndexStr, colName] = key.split('-');
-          const rowIndex = parseInt(rowIndexStr);
+          const parsed = parseCellKey(key);
+          if (!parsed) return;
+          const { rowIndex, colName } = parsed;
 
           console.log(`Renderer: Processing diff for row ${rowIndex}, col ${colName}`);
 
@@ -793,8 +982,9 @@ export const activate: ActivationFunction = (context) => {
           // The renderer now tracks edits by stable source index, so applying
           // edits first keeps those indices aligned for the remaining rows.
           modifiedCells.forEach((diff, key) => {
-            const [rowIndexStr, colName] = key.split('-');
-            const rowIndex = parseInt(rowIndexStr);
+            const parsed = parseCellKey(key);
+            if (!parsed) return;
+            const { rowIndex, colName } = parsed;
             if (rowIndex >= 0 && rowIndex < originalRows.length) {
               originalRows[rowIndex][colName] = diff.newValue;
             }
@@ -842,6 +1032,13 @@ export const activate: ActivationFunction = (context) => {
 
       const tableTab = createTab('Table', 'table', true, () => switchTab('table'));
       const chartTab = createTab('Chart', 'chart', false, () => switchTab('chart'));
+      const analystTab = createTab('Analyst', 'analyst', false, () => switchTab('analyst'));
+
+      const noticesTabLabel =
+        noticeItems.length > 0 ? `Notices (${noticeItems.length})` : 'Notices';
+      const noticesTab = createTab(noticesTabLabel, 'notices', false, () => switchTab('notices'));
+      reviewTab = createTab('Review Changes', 'review', false, () => switchTab('review'));
+      updateReviewTabLabel();
 
       let explainTab: HTMLElement | null = null;
       if (json.explainPlan) {
@@ -854,6 +1051,9 @@ export const activate: ActivationFunction = (context) => {
 
       tabs.appendChild(tableTab);
       tabs.appendChild(chartTab);
+      tabs.appendChild(analystTab);
+      tabs.appendChild(noticesTab);
+      tabs.appendChild(reviewTab);
       if (explainTab) tabs.appendChild(explainTab);
       tabs.appendChild(transposeTab);
       if (!json.error) {
@@ -878,6 +1078,9 @@ export const activate: ActivationFunction = (context) => {
         onDataChange: (_rowIndex, _col, _newVal, _originalVal) => {
           updateSaveButtonVisibility();
           updateActionsVisibility();
+          if (currentMode === 'review') {
+            switchTab('review');
+          }
         },
         onInsertRow: (values, tempId) => {
           context.postMessage?.({ type: 'insertRow', tableInfo, values, tempId });
@@ -941,6 +1144,8 @@ export const activate: ActivationFunction = (context) => {
           } else {
             deleteBtn.style.display = 'none';
           }
+        } else {
+          deleteBtn.style.display = 'none';
         }
       };
 
@@ -983,7 +1188,10 @@ export const activate: ActivationFunction = (context) => {
 
       // Switch Tab Logic
       let currentMode = 'table';
-      const allTabs = () => [tableTab, chartTab, transposeTab, ...(explainTab ? [explainTab] : [])];
+      const allTabs = () =>
+        explainTab
+          ? [tableTab, chartTab, analystTab, noticesTab, reviewTab!, explainTab, transposeTab]
+          : [tableTab, chartTab, analystTab, noticesTab, reviewTab!, transposeTab];
       const setActiveTab = (activeTab: HTMLElement) => {
         allTabs().forEach((t) => {
           t.style.borderBottom = '2px solid transparent';
@@ -1010,6 +1218,24 @@ export const activate: ActivationFunction = (context) => {
             initialSelectedIndices: selectedIndices,
             modifiedCells,
           });
+        } else if (mode === 'notices') {
+          setActiveTab(noticesTab);
+          updateActionsVisibility();
+          viewContainer.appendChild(
+            renderNoticesPanel(noticeItems, {
+              onAskAssistant: () => {
+                context.postMessage?.({
+                  type: 'sendToChat',
+                  data: {
+                    query: query || '',
+                    message:
+                      'I ran this query and received the following PostgreSQL notices (RAISE NOTICE / server messages). Please help me interpret them or suggest improvements.',
+                    notices: noticeItems,
+                  },
+                });
+              },
+            }),
+          );
         } else if (mode === 'transpose') {
           setActiveTab(transposeTab);
           updateActionsVisibility();
@@ -1019,6 +1245,10 @@ export const activate: ActivationFunction = (context) => {
             return String(v);
           });
           viewContainer.appendChild(transposeEl);
+        } else if (mode === 'review') {
+          setActiveTab(reviewTab || tableTab);
+          updateActionsVisibility();
+          viewContainer.appendChild(renderReviewChangesView());
         } else if (mode === 'explain') {
           // Explain Mode
           setActiveTab(explainTab || tableTab);
@@ -1040,6 +1270,16 @@ export const activate: ActivationFunction = (context) => {
             explainWrapper.textContent =
               'No explain plan data available. Run EXPLAIN (ANALYZE, FORMAT JSON) to get a visual plan.';
           }
+        } else if (mode === 'analyst') {
+          setActiveTab(analystTab);
+          updateActionsVisibility();
+          viewContainer.appendChild(
+            renderAnalystPanel({
+              columns,
+              rows: currentRows,
+              columnTypes,
+            }),
+          );
         } else {
           setActiveTab(chartTab);
           updateActionsVisibility();
@@ -1078,9 +1318,17 @@ export const activate: ActivationFunction = (context) => {
       // Initial Render
       if (columns.length > 0) {
         switchTab('table');
+      } else if (noticeItems.length > 0) {
+        switchTab('notices');
       } else {
-        if (rowCount === 0)
-          mainContainer.innerHTML += '<div style="padding:12px">Query returned no data</div>';
+        const filler = document.createElement('div');
+        filler.style.cssText =
+          'padding:12px;color:var(--vscode-descriptionForeground);font-size:12px;';
+        filler.textContent =
+          (rowCount ?? 0) === 0 && (currentRows?.length ?? 0) === 0
+            ? 'Query returned no data'
+            : 'Unable to display this result (no column metadata). Re-run the query after updating the extension.';
+        viewContainer.appendChild(filler);
       }
 
       // Result history tab strip — rendered above mainContainer when >1 result exists

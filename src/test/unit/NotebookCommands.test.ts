@@ -5,6 +5,7 @@ import * as vscode from 'vscode';
 import * as helper from '../../commands/helper';
 import * as notebookCommands from '../../commands/notebook';
 import { NotebookBuilder } from '../../commands/helper';
+import { ConnectionUtils } from '../../utils/connectionUtils';
 
 function createBuilderStub(sandbox: sinon.SinonSandbox) {
   const builder: any = {};
@@ -58,11 +59,33 @@ describe('notebook commands', () => {
       release
     } as any);
 
-    const item = { connectionId: 'c1', schema: 'public', label: 'users' } as any;
+    const item = { connectionId: 'c1', databaseName: 'appdb', schema: 'public', label: 'users' } as any;
     await notebookCommands.cmdNewNotebook(item);
 
     expect(builder.addMarkdown.calledOnce).to.be.true;
     expect(builder.addSql.calledOnce).to.be.true;
+    expect(builder.showNew.calledOnce).to.be.true;
+    expect(release.calledOnce).to.be.true;
+  });
+
+  it('prompts for connection and database when invoked without tree context', async () => {
+    const builder = createBuilderStub(sandbox);
+    const release = sandbox.stub();
+    const getDb = sandbox.stub(helper, 'getDatabaseConnection').resolves({
+      metadata: { connectionId: 'c1', databaseName: 'appdb' },
+      release
+    } as any);
+    sandbox.stub(ConnectionUtils, 'showConnectionPicker').resolves({ id: 'c1', name: 'Local', host: 'h', port: 5432 });
+    sandbox.stub(ConnectionUtils, 'showDatabasePicker').resolves('appdb');
+
+    await notebookCommands.cmdNewNotebook(undefined as any);
+
+    expect(ConnectionUtils.showConnectionPicker.calledOnce).to.be.true;
+    expect(ConnectionUtils.showDatabasePicker.calledOnce).to.be.true;
+    expect(getDb.calledOnce).to.be.true;
+    const firstArg = getDb.firstCall.args[0];
+    expect(firstArg.connectionId).to.equal('c1');
+    expect(firstArg.databaseName).to.equal('appdb');
     expect(builder.showNew.calledOnce).to.be.true;
     expect(release.calledOnce).to.be.true;
   });

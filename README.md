@@ -17,6 +17,13 @@
 
 ---
 
+## 🆕 Since v1.0.0
+
+- 🧩 **SQL Assistant in Editor Tabs** — Open SQL Assistant directly in the main editor area using `SQL Assistant: Open in Editor Tab`.
+- 🗂️ **Multiple SQL Assistant Tabs** — Run parallel assistant conversations in separate tabs and switch context faster.
+
+---
+
 ## 📺 Video Guides
 
 ### 1. Setup
@@ -56,6 +63,7 @@
 - 🛡️ **Auto-LIMIT** — Intelligent query protection (configurable, default 1000 rows)
 - 🌍 **Foreign Data Wrappers** — Manage foreign servers, user mappings & tables
 - 🤖 **AI-Powered** — Generate, Optimize, Explain & Analyze with guided follow-ups and next-step suggestions (GitHub Models, OpenAI, Anthropic, Gemini, VS Code LM)
+- 🧩 **Flexible SQL Assistant Layout** — Open SQL Assistant in editor tabs and keep multiple assistant tabs open simultaneously
 - 🖼️ **Vision AI** — Paste or upload images directly in the SQL Assistant; sent to vision-capable AI providers
 - 📎 **File Preview** — Click attached file chips to open them as preview tabs in the editor
 - 📤 **Export Data** — Export results to CSV, JSON, or Excel
@@ -241,6 +249,11 @@ Use GitHub Models without manually managing a PAT in normal VS Code authenticati
 - **Native Sign-In**: Connect with your GitHub account from AI Settings.
 - **Model Catalog Access**: List and select available GitHub-hosted models.
 - **Session-Based Auth**: Uses VS Code GitHub authentication sessions instead of storing provider tokens.
+
+### 🧩 SQL Assistant Tabs
+Use SQL Assistant where you work, not only in the sidebar.
+- **Open in Editor Tab**: Run `SQL Assistant: Open in Editor Tab` from Command Palette.
+- **Parallel Assistants**: Open multiple SQL Assistant tabs for separate tasks (e.g., optimization, migration, and schema exploration).
 
 ### 🪄 Generate Query (Natural Language → SQL)
 Describe what you need in plain English (e.g., "Show me top 10 users by order count"), and PgStudio will generate the SQL for you using your schema context.

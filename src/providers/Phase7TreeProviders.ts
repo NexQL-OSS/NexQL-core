@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
-import { ProfileManager } from '../services/ProfileManager';
-import { SavedQueriesService } from '../services/SavedQueriesService';
+import { ProfileManager } from '../features/connections/ProfileManager';
+import { SavedQueriesService } from '../features/savedQueries/SavedQueriesService';
 import { extensionContext } from '../extension';
 
 /**

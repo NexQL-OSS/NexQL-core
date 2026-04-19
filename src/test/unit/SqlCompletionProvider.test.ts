@@ -132,4 +132,38 @@ describe('SqlCompletionProvider', () => {
     expect(fallbackItems.length).to.be.greaterThan(0);
     expect(getPooledClientStub.calledOnce).to.be.true;
   });
+
+  it('deduplicates repeated database objects before returning completions', async () => {
+    (getConfigurationStub as sinon.SinonStub).returns({
+      get: (key: string) => (key === 'postgresExplorer.connections'
+        ? [{ id: 'conn-1', name: 'Main', host: 'localhost', port: 5432, username: 'postgres' }]
+        : undefined)
+    } as any);
+
+    queryStub.onFirstCall().resolves({
+      rows: [
+        { schema: 'public', table_name: 'users' },
+        { schema: 'public', table_name: 'users' },
+        { schema: 'sales', table_name: 'orders' }
+      ]
+    });
+    queryStub.onSecondCall().resolves({
+      rows: [
+        { schema: 'public', table_name: 'users', column_name: 'email', data_type: 'text' },
+        { schema: 'public', table_name: 'users', column_name: 'email', data_type: 'text' },
+        { schema: 'sales', table_name: 'orders', column_name: 'order_total', data_type: 'numeric' }
+      ]
+    });
+
+    const provider = new SqlCompletionProvider();
+    const document = createNotebookCellDocument('SELECT * FROM public.users;');
+    attachNotebook(document, { connectionId: 'conn-1', databaseName: 'appdb' });
+
+    const items = await provider.provideCompletionItems(document, new vscode.Position(0, document.text.length), {} as any, {} as any);
+    const labels = items.map(item => item.label);
+
+    expect(labels.filter(label => label === 'users')).to.have.length(1);
+    expect(labels.filter(label => label === 'email')).to.have.length(1);
+    expect(labels.filter(label => label === 'orders')).to.have.length(1);
+  });
 });

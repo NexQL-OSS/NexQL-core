@@ -7,6 +7,7 @@
   <meta http-equiv="Content-Security-Policy" content="{{CSP}}">
   <title>Dashboard</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <style>
     {{INLINE_STYLES}}
   </style>
@@ -46,6 +47,7 @@
           <option value="60">Last 1h</option>
         </select>
         <button class="btn-action" data-action="refresh">Refresh</button>
+        <button class="btn-action btn-ai" id="ai-toggle-btn" title="Open AI Insights panel">&#129504; Ask AI</button>
       </div>
     </div>
 
@@ -54,7 +56,9 @@
       <div class="tab active" data-tab="overview">Overview</div>
       <div class="tab" data-tab="activity">Activity</div>
       <div class="tab" data-tab="performance">Performance</div>
-      <div class="tab" data-tab="locks">Locks & Blocking</div>
+      <div class="tab" data-tab="wal-replication">WAL &amp; Replication</div>
+      <div class="tab" data-tab="locks">Locks &amp; Blocking</div>
+      <div class="tab" data-tab="schema-health">Schema Health</div>
       <div class="tab" data-tab="settings" style="margin-left: auto; display: none;">Settings</div>
     </div>
 
@@ -64,7 +68,7 @@
       <div class="grid-strip">
         <!-- Health Tile -->
         <div class="card sev-ok" id="tile-health">
-          <span class="label">DB Health</span>
+          <span class="label">DB Health <button class="card-ai-btn" data-metric="db-health" title="Ask AI about DB Health">&#129504;</button></span>
           <div class="value" style="display: flex; align-items: center;">
             <span id="health-dot" class="status-dot status-ok"></span>
             <span id="health-text">Healthy</span>
@@ -78,7 +82,7 @@
 
         <!-- Active Load -->
         <div class="card interactive sev-ok" id="tile-active-load" data-action="jumpToQueries">
-          <span class="label">Active Load</span>
+          <span class="label">Active Load <button class="card-ai-btn" data-metric="active-load" title="Ask AI about Active Load">&#129504;</button></span>
           <div class="value" id="active-load-value">
             ...
           </div>
@@ -90,7 +94,7 @@
 
         <!-- Locks (Tile) -->
         <div class="card interactive sev-ok" id="tile-locks" onclick="document.querySelector('[data-tab=locks]').click()">
-          <span class="label">Blocking Locks</span>
+          <span class="label">Blocking Locks <button class="card-ai-btn" data-metric="blocking-locks" title="Ask AI about Blocking Locks">&#129504;</button></span>
           <div class="value">
             <span id="locks-tile-value">0</span>
             <span id="locks-delta" class="delta-badge"></span>
@@ -112,7 +116,7 @@
 
         <!-- Issues / Events -->
         <div class="card sev-ok" id="tile-issues">
-          <span class="label" id="issues-label">Issues</span>
+          <span class="label" id="issues-label">Issues <button class="card-ai-btn" data-metric="wait-events" title="Ask AI about Wait Events">&#129504;</button></span>
           <div><span id="issues-delta" class="delta-badge"></span></div>
           <div id="issues-card-content">
             <!-- dynamic content -->
@@ -135,6 +139,29 @@
           </div>
           <div class="chart-note" id="connections-note">Capacity and waiting events over time.</div>
           <canvas id="connectionsHistoryChart"></canvas>
+        </div>
+      </div>
+
+      <!-- 3. Connection Analytics by Application -->
+      <div style="margin-top: 20px;">
+        <h3 style="font-size: 1.05rem; margin-bottom: 6px;">Connections by Application</h3>
+        <div class="chart-note" style="margin-bottom: 10px;">Breakdown of active sessions by client application name and state.</div>
+        <div id="connections-by-app-container">
+          <div class="table-container">
+            <table id="connections-by-app-table">
+              <thead>
+                <tr>
+                  <th>Application</th>
+                  <th style="width: 80px; text-align: right;">Active</th>
+                  <th style="width: 80px; text-align: right;">Idle</th>
+                  <th style="width: 80px; text-align: right;">Waiting</th>
+                  <th style="width: 80px; text-align: right;">Total</th>
+                  <th>Distribution</th>
+                </tr>
+              </thead>
+              <tbody><!-- Populated by JS --></tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>
@@ -209,10 +236,10 @@
 
     <!-- TAB: PERFORMANCE -->
     <div id="tab-performance" class="tab-content">
-      <div class="charts-row">
+      <div class="charts-row performance-charts-grid">
         <div class="chart-box">
-          <div class="label">Cache Hit Ratio</div>
-          <div class="chart-note">Good: >95%. 90-95% is warning. Below 90% may indicate memory pressure.</div>
+          <div class="label">Shared Buffer Hit Ratio</div>
+          <div class="chart-note">From pg_stat_database: blks_hit / (blks_hit + blks_read). Good: >95%. 90-95% is warning.</div>
           <canvas id="cacheHitChart"></canvas>
         </div>
         <div class="chart-box">
@@ -234,7 +261,7 @@
 
       <div class="performance-insights-row">
         <div class="chart-box performance-insight-card">
-          <div class="label">Index Hit Ratio (Context)</div>
+          <div class="label">Index Block Hit Ratio (Context)</div>
           <div class="chart-note" id="perf-index-hit-note">Awaiting telemetry...</div>
           <div class="value" id="perf-index-hit-value">-</div>
         </div>
@@ -246,6 +273,82 @@
           </div>
           <div id="perf-top-sql-list" class="top-sql-list"></div>
         </div>
+      </div>
+    </div>
+
+    <!-- TAB: WAL / REPLICATION -->
+    <div id="tab-wal-replication" class="tab-content">
+      <div class="signals-row" style="margin-bottom: 16px;">
+        <span class="signal-chip" id="wal-role-chip">—</span>
+        <span class="signal-chip" id="wal-lsn-summary">—</span>
+      </div>
+      <div class="signals-row" id="wal-settings-chips" style="flex-wrap: wrap; gap: 8px; margin-bottom: 20px;"></div>
+
+      <div class="charts-row">
+        <div class="chart-box" style="grid-column: 1 / -1;">
+          <div class="label">Streaming replicas (pg_stat_replication)</div>
+          <div class="chart-note">WAL sender connections to standbys. Empty on a standby or when no replicas connect.</div>
+          <div class="table-container">
+            <table id="wal-repl-table">
+              <thead>
+                <tr>
+                  <th>Application</th>
+                  <th>Client</th>
+                  <th>State</th>
+                  <th>Replay lag</th>
+                  <th>Sync</th>
+                  <th>Replay LSN</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="charts-row" style="margin-top: 16px;">
+        <div class="chart-box">
+          <div class="label">WAL receiver (standby)</div>
+          <div class="chart-note">From pg_stat_wal_receiver — primary shows no rows.</div>
+          <div class="table-container">
+            <table id="wal-receiver-table">
+              <thead>
+                <tr>
+                  <th>Status</th>
+                  <th>Received LSN</th>
+                  <th>Sender</th>
+                  <th>Last message</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="chart-box">
+          <div class="label">Replication slots</div>
+          <div class="chart-note">Logical decoding and physical replication slots.</div>
+          <div class="table-container">
+            <table id="wal-slots-table">
+              <thead>
+                <tr>
+                  <th>Slot</th>
+                  <th>Type</th>
+                  <th>Active</th>
+                  <th>WAL status</th>
+                  <th>Restart LSN</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="chart-box" style="margin-top: 16px;">
+        <div class="label">pg_stat_wal (PostgreSQL 15+)</div>
+        <div class="chart-note" id="wal-pgstat-note">Cluster-wide WAL activity since stats_reset.</div>
+        <pre id="wal-pgstat-pre" class="mono"
+          style="margin: 0; padding: 12px; background: rgba(128, 128, 128, 0.08); border-radius: 6px; font-size: 12px; white-space: pre-wrap;"></pre>
       </div>
     </div>
 
@@ -262,6 +365,154 @@
         <div id="locks-tree-container" class="tree-view">
           <!-- D3 or custom tree goes here -->
         </div>
+      </div>
+    </div>
+
+    <!-- TAB: SCHEMA HEALTH -->
+    <div id="tab-schema-health" class="tab-content">
+      <div class="chart-note" id="schema-health-note" style="margin-bottom: 12px;">Tracking schema-health risk signals over time.</div>
+
+      <!-- Index Health -->
+      <h3 style="font-size: 1.1rem; margin-bottom: 4px;">Index Health</h3>
+
+      <div class="charts-row" style="margin-bottom: 0;">
+        <div class="chart-box">
+          <div class="label">Unused Indexes <button class="card-ai-btn" data-metric="unused-indexes" title="Ask AI about unused indexes">&#129504;</button></div>
+          <div class="chart-note">Indexes with zero scans excluding PK/UNIQUE/constraint-backed indexes. Review before dropping.</div>
+          <div class="table-container">
+            <table id="unused-indexes-table">
+              <thead>
+                <tr>
+                  <th>Index</th>
+                  <th>Table</th>
+                  <th style="width: 100px; text-align: right;">Size</th>
+                  <th style="width: 80px; text-align: center;">Severity</th>
+                </tr>
+              </thead>
+              <tbody><!-- Populated by JS --></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="chart-box">
+          <div class="label">High Sequential Scan Tables <button class="card-ai-btn" data-metric="high-seq-scan" title="Ask AI about high sequential scan tables">&#129504;</button></div>
+          <div class="chart-note">Tables where most reads use sequential scans. A high seq% with many rows may indicate a missing index.</div>
+          <div class="table-container">
+            <table id="high-seq-scan-table">
+              <thead>
+                <tr>
+                  <th>Table</th>
+                  <th style="width: 90px; text-align: right;">Seq Scans</th>
+                  <th style="width: 90px; text-align: right;">Idx Scans</th>
+                  <th style="width: 70px; text-align: right;">Seq%</th>
+                  <th style="width: 90px; text-align: right;">Rows</th>
+                </tr>
+              </thead>
+              <tbody><!-- Populated by JS --></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Dead Tuple Pressure -->
+      <h3 style="font-size: 1.1rem; margin-top: 24px; margin-bottom: 4px;">Dead Tuple Pressure</h3>
+
+      <div class="charts-row" style="margin-bottom: 0;">
+        <div class="chart-box" style="grid-column: 1 / -1;">
+          <div class="label">Dead Tuple Ratio (Proxy) <button class="card-ai-btn" data-metric="table-bloat" title="Ask AI about dead tuple pressure">&#129504;</button></div>
+          <div class="chart-note">Dead tuple ratio is a vacuum pressure proxy, not a physical storage-bloat measurement.</div>
+          <div class="table-container">
+            <table id="table-bloat-table">
+              <thead>
+                <tr>
+                  <th>Table</th>
+                  <th style="width: 100px; text-align: right;">Live Rows</th>
+                  <th style="width: 100px; text-align: right;">Dead Rows</th>
+                  <th style="width: 80px; text-align: right;">Dead%</th>
+                  <th style="width: 90px; text-align: right;">Size</th>
+                  <th style="width: 100px; text-align: center;">Action</th>
+                </tr>
+              </thead>
+              <tbody><!-- Populated by JS --></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Autovacuum Status -->
+      <h3 style="font-size: 1.1rem; margin-top: 24px; margin-bottom: 4px;">Autovacuum Status <button class="card-ai-btn" data-metric="autovacuum" title="Ask AI about autovacuum">&#129504;</button></h3>
+
+      <div class="charts-row">
+        <div class="chart-box">
+          <div class="label">Running Vacuums</div>
+          <div class="chart-note">Currently active autovacuum workers from pg_stat_progress_vacuum.</div>
+          <div class="table-container">
+            <table id="autovacuum-progress-table">
+              <thead>
+                <tr>
+                  <th style="width: 70px;">PID</th>
+                  <th>Table</th>
+                  <th style="width: 140px;">Phase</th>
+                  <th style="width: 180px;">Progress</th>
+                </tr>
+              </thead>
+              <tbody><!-- Populated by JS --></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="chart-box">
+          <div class="label">Tables Needing Vacuum</div>
+          <div class="chart-note">Tables where dead tuples exceed effective autovacuum thresholds (table options + global settings).</div>
+          <div class="table-container">
+            <table id="tables-needing-vacuum-table">
+              <thead>
+                <tr>
+                  <th>Table</th>
+                  <th style="width: 90px; text-align: right;">Dead Tuples</th>
+                  <th style="width: 100px; text-align: right;">Threshold</th>
+                  <th style="width: 130px;">Last Autovacuum</th>
+                  <th style="width: 130px;">Last Autoanalyze</th>
+                </tr>
+              </thead>
+              <tbody><!-- Populated by JS --></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- AI INSIGHTS PANEL (slide-in drawer) -->
+    <div id="ai-panel" class="ai-panel" aria-label="AI Insights">
+      <div class="ai-panel-header">
+        <span class="ai-panel-title">&#129504; AI Insights</span>
+        <label class="ai-auto-label" title="Automatically analyze when health degrades">
+          <input type="checkbox" id="ai-auto-notify">
+          <span>Auto on degradation</span>
+        </label>
+        <button id="ai-clear-btn" class="ai-panel-clear" title="Clear conversation">&#10227;</button>
+        <button id="ai-panel-close" class="ai-panel-close" title="Close AI panel">&#10005;</button>
+      </div>
+      <div class="ai-quick-chips">
+        <button class="ai-chip" data-prompt="analyze-health">Analyze health</button>
+        <button class="ai-chip" data-prompt="explain-locks">Explain locks</button>
+        <button class="ai-chip" data-prompt="slow-queries">Slow queries</button>
+        <button class="ai-chip" data-prompt="top-sql">Optimize top SQL</button>
+        <button class="ai-chip" data-prompt="schema-health">Schema health</button>
+        <button class="ai-chip" data-prompt="vacuum-advice">Vacuum advice</button>
+        <button class="ai-chip" data-prompt="connection-triage">Connection triage</button>
+        <button class="ai-chip" data-prompt="index-recommendations">Index advice</button>
+      </div>
+      <div id="ai-response-area" class="ai-response-area">
+        <div class="ai-welcome">
+          <p>Ask about any metric, or click a quick-action above.</p>
+          <p style="font-size: 0.8rem; color: var(--muted-color);">Context from the current dashboard snapshot is sent with each question. The AI will suggest follow-up questions after each response.</p>
+        </div>
+      </div>
+      <div class="ai-input-row">
+        <textarea id="ai-question" class="ai-question-input" placeholder="Ask about any metric, or type a number to select a follow-up question..." rows="2"></textarea>
+        <button id="ai-send-btn" class="btn-action">Send</button>
       </div>
     </div>
 

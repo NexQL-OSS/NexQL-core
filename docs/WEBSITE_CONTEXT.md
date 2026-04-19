@@ -1,6 +1,6 @@
 # Docs Website Context
 
-Last updated: 2026-04-16
+Last updated: 2026-04-19
 Primary entry: docs/index.html
 
 ## What This Website Is
@@ -80,6 +80,7 @@ The page positions PgStudio around five practical outcomes:
 - Explorer-driven schema navigation
 - Notebook-first SQL workflows
 - AI-assisted SQL reasoning and optimization
+- Flexible SQL Assistant placement (sidebar or editor tabs) with multi-tab workflows
 - Performance tooling and explainability
 
 The assistant panel is designed as a guided onboarding surface, not a full chatbot backend. Responses are curated to demonstrate capabilities and funnel to installation.

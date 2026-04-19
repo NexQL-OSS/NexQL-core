@@ -1,3 +1,5 @@
+import type { CloudAuthContext } from '../core/connection/cloudAuth/types';
+
 export interface ConnectionConfig {
   id: string;
   name?: string;
@@ -25,6 +27,8 @@ export interface ConnectionConfig {
     username: string;
     privateKeyPath?: string;
   };
+  /** Optional tag for future IAM token auth (password/pgpass still used until implemented). */
+  cloudAuth?: CloudAuthContext;
 }
 
 export interface PostgresMetadata {
@@ -86,13 +90,20 @@ export interface BreadcrumbContext {
   };
 }
 
+/** PostgreSQL notice with client receive time (log-style UI) */
+export interface NoticeLogEntry {
+  message: string;
+  /** ISO 8601 when the client received the notice */
+  receivedAt: string;
+}
+
 export interface QueryResults {
   rows: any[];
   columns: string[];
   rowCount?: number | null;
   command?: string;
   query?: string;
-  notices?: string[];
+  notices?: NoticeLogEntry[];
   executionTime?: number;
   tableInfo?: TableInfo;
   columnTypes?: Record<string, string>;
@@ -109,6 +120,10 @@ export interface QueryResults {
     statementCount: number;     // Statements executed in current transaction
   };
   pendingCommit?: boolean;      // True when result was produced inside a transaction
+  /** True when SqlExecutor appended LIMIT (auto-limit / profile / read-only). */
+  autoLimitApplied?: boolean;
+  /** Effective LIMIT value when autoLimitApplied is true. */
+  autoLimitValue?: number;
 }
 
 export interface TableRenderOptions {
@@ -278,5 +293,7 @@ export interface ResultHistoryEntry {
   rowCount?: number | null;
   executionTime?: number;
   query?: string;
+  /** PostgreSQL notices (RAISE NOTICE, etc.) for this result */
+  notices?: NoticeLogEntry[];
   timestamp: number;
 }

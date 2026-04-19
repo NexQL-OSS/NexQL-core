@@ -22,11 +22,15 @@ import {
   getWebviewHtml
 } from './chat';
 import { ErrorService } from '../services/ErrorService';
+import type { NoticeLogEntry } from '../common/types';
 
 export class ChatViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'postgresExplorer.chatView';
+  public static readonly panelViewType = 'postgresExplorer.chatViewPanel';
 
   private _view?: vscode.WebviewView;
+  private _panels = new Set<vscode.WebviewPanel>();
+  private _activeWebview?: vscode.Webview;
   private _messages: ChatMessage[] = [];
   private _isProcessing = false;
 
@@ -60,170 +64,67 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     this._updateModelInfo();
   }
 
-  /**
-   * Attach a database object to the chat
-   * Called from the @ inline button on tree items
-   */
-  public async attachDbObject(obj: DbObject): Promise<void> {
-    // Focus the chat view
-    if (this._view) {
-      this._view.show(true);
-    }
+  public async openInEditor(column: vscode.ViewColumn = vscode.ViewColumn.Beside): Promise<void> {
+    const panel = vscode.window.createWebviewPanel(
+      ChatViewProvider.panelViewType,
+      'SQL Assistant',
+      column,
+      {
+        enableScripts: true,
+        retainContextWhenHidden: true,
+        localResourceRoots: [this._extensionUri],
+      }
+    );
 
-    // Wait a bit for the view to be ready
-    await new Promise(resolve => setTimeout(resolve, 200));
+    this._panels.add(panel);
+    this._activeWebview = panel.webview;
 
-    if (!this._view) {
-      vscode.window.showWarningMessage('Chat view not available');
-      return;
-    }
+    panel.onDidDispose(() => {
+      this._panels.delete(panel);
+      if (this._activeWebview === panel.webview) {
+        this._activeWebview = this._view?.webview;
+      }
+    });
 
-    try {
-      // Fetch schema details
-      const details = await this._dbObjectService.getObjectSchema(obj);
-      const objWithDetails = { ...obj, details };
+    await this._initializeWebview(panel.webview);
+    this._registerWebviewMessageHandler(panel.webview);
 
-      // Send to webview
-      this._view.webview.postMessage({
-        type: 'addMentionFromTree',
-        object: objWithDetails
-      });
-
-    } catch (error) {
-      console.error('[ChatViewProvider] Failed to attach object:', error);
-      ErrorService.getInstance().showError('Failed to attach object to chat');
-    }
+    this._sendHistoryToWebview();
+    this._updateChatHistory();
+    this._sendContextUpdate();
+    await this._updateModelInfo();
   }
 
-  /**
-   * Send a query and results to the chat as attachments
-   * Called from the "Chat" CodeLens button or "Send to Chat" result button
-   * Does NOT auto-send - waits for user to add their context
-   */
-  public async sendToChat(data: { query: string; results?: string; message: string }): Promise<void> {
-    // Wait a bit for the view to be ready after focus
-    await new Promise(resolve => setTimeout(resolve, 300));
-
-    if (!this._view) {
-      vscode.window.showWarningMessage('Chat view not available. Please open the SQL Assistant panel first.');
-      return;
-    }
-
-    console.log('[ChatViewProvider] Sending file attachments to webview');
-
-    try {
-      const tempDir = os.tmpdir();
-
-      // Create query file
-      if (data.query) {
-        const queryFileName = `query_${Date.now()}.sql`;
-        const queryFilePath = path.join(tempDir, queryFileName);
-        await fs.promises.writeFile(queryFilePath, data.query, 'utf8');
-
-        this._view.webview.postMessage({
-          type: 'fileAttached',
-          file: {
-            name: queryFileName,
-            content: data.query,
-            type: 'sql',
-            path: queryFilePath
-          }
-        });
-      }
-
-      // Create results file if we have results - convert to CSV like Analyze Data does
-      if (data.results) {
-        try {
-          const resultsData = JSON.parse(data.results);
-          const columns: string[] = resultsData.columns || [];
-          const rows: any[] = resultsData.rows || [];
-
-          // Build CSV content
-          let csvContent = '';
-
-          // Header row
-          if (columns.length > 0) {
-            csvContent = columns.map((col: string) => `"${col}"`).join(',') + '\n';
-          }
-
-          // Data rows
-          for (const row of rows) {
-            const csvRow = columns.map((col: string) => {
-              const val = row[col];
-              if (val === null || val === undefined) return '';
-              if (typeof val === 'string') return `"${val.replace(/"/g, '""')}"`;
-              if (typeof val === 'object') return `"${JSON.stringify(val).replace(/"/g, '""')}"`;
-              return String(val);
-            }).join(',');
-            csvContent += csvRow + '\n';
-          }
-
-          const resultsFileName = `results_${Date.now()}.csv`;
-          const resultsFilePath = path.join(tempDir, resultsFileName);
-          await fs.promises.writeFile(resultsFilePath, csvContent, 'utf8');
-
-          this._view.webview.postMessage({
-            type: 'fileAttached',
-            file: {
-              name: resultsFileName,
-              content: csvContent,
-              type: 'csv',
-              path: resultsFilePath
-            }
-          });
-        } catch (parseError) {
-          // Fallback: attach as JSON if parsing fails
-          const resultsFileName = `results_${Date.now()}.json`;
-          const resultsFilePath = path.join(tempDir, resultsFileName);
-          await fs.promises.writeFile(resultsFilePath, data.results, 'utf8');
-
-          this._view.webview.postMessage({
-            type: 'fileAttached',
-            file: {
-              name: resultsFileName,
-              content: data.results,
-              type: 'json',
-              path: resultsFilePath
-            }
-          });
-        }
-      }
-
-      // Show toast in chat to let user know files are attached
-      vscode.window.showInformationMessage('Query and results attached to chat. Add your question and send!');
-
-    } catch (error) {
-      console.error('[ChatViewProvider] Failed to create temp files:', error);
-      ErrorService.getInstance().showError('Failed to attach files to chat');
-    }
+  private _getTargetWebview(): vscode.Webview | undefined {
+    return this._activeWebview ?? this._view?.webview;
   }
 
-  public async resolveWebviewView(
-    webviewView: vscode.WebviewView,
-    context: vscode.WebviewViewResolveContext,
-    _token: vscode.CancellationToken
-  ): Promise<void> {
-    this._view = webviewView;
+  private async _ensureChatWebview(): Promise<vscode.Webview | undefined> {
+    const target = this._getTargetWebview();
+    if (target) {
+      return target;
+    }
 
-    webviewView.webview.options = {
+    await this.openInEditor(vscode.ViewColumn.Beside);
+    return this._getTargetWebview();
+  }
+
+  private async _initializeWebview(webview: vscode.Webview): Promise<void> {
+    webview.options = {
       enableScripts: true,
       localResourceRoots: [this._extensionUri]
     };
 
-    // Send URI for marked.js and highlight.js
-    const markedUri = webviewView.webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'resources', 'marked.min.js'));
-    const highlightJsUri = webviewView.webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'resources', 'highlight.min.js'));
-    const highlightCssUri = webviewView.webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'resources', 'highlight.css'));
+    const markedUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'resources', 'marked.min.js'));
+    const highlightJsUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'resources', 'highlight.min.js'));
+    const highlightCssUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'resources', 'highlight.css'));
 
-    webviewView.webview.html = await getWebviewHtml(webviewView.webview, markedUri, highlightJsUri, highlightCssUri, this._extensionUri);
+    webview.html = await getWebviewHtml(webview, markedUri, highlightJsUri, highlightCssUri, this._extensionUri);
+  }
 
-    // Send initial history and model info
-    setTimeout(() => {
-      this._sendHistoryToWebview();
-      this._updateModelInfo();
-    }, 100);
-
-    webviewView.webview.onDidReceiveMessage(async (data) => {
+  private _registerWebviewMessageHandler(webview: vscode.Webview): void {
+    webview.onDidReceiveMessage(async (data) => {
+      this._activeWebview = webview;
       switch (data.type) {
         case 'sendMessage':
           await this._handleUserMessage(data.message, data.attachments, data.mentions);
@@ -268,7 +169,6 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           this._isProcessing = false;
           vscode.window.showInformationMessage('AI request cancelled.');
           break;
-
         case 'getHistory':
           this._sendHistoryToWebview();
           break;
@@ -295,6 +195,211 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           break;
       }
     });
+  }
+
+  /**
+   * Attach a database object to the chat
+   * Called from the @ inline button on tree items
+   */
+  public async attachDbObject(obj: DbObject): Promise<void> {
+    const targetWebview = await this._ensureChatWebview();
+
+    // Wait a bit for the view to be ready
+    await new Promise(resolve => setTimeout(resolve, 200));
+
+    if (!targetWebview) {
+      vscode.window.showWarningMessage('Chat view not available');
+      return;
+    }
+
+    try {
+      // Fetch schema details
+      const details = await this._dbObjectService.getObjectSchema(obj);
+      const objWithDetails = { ...obj, details };
+
+      // Send to webview
+      targetWebview.postMessage({
+        type: 'addMentionFromTree',
+        object: objWithDetails
+      });
+
+    } catch (error) {
+      console.error('[ChatViewProvider] Failed to attach object:', error);
+      ErrorService.getInstance().showError('Failed to attach object to chat');
+    }
+  }
+
+  /**
+   * Send a query and results to the chat as attachments
+   * Called from the "Chat" CodeLens button or "Send to Chat" result button
+   * Does NOT auto-send - waits for user to add their context
+   */
+  public async sendToChat(data: {
+    query: string;
+    results?: string;
+    message: string;
+    /** PostgreSQL RAISE NOTICE / server messages — attached as a .txt file */
+    notices?: Array<string | NoticeLogEntry>;
+  }): Promise<void> {
+    const targetWebview = await this._ensureChatWebview();
+
+    // Wait a bit for the view to be ready after focus
+    await new Promise(resolve => setTimeout(resolve, 300));
+
+    if (!targetWebview) {
+      vscode.window.showWarningMessage('Chat view not available. Please open the SQL Assistant panel first.');
+      return;
+    }
+
+    console.log('[ChatViewProvider] Sending file attachments to webview');
+
+    try {
+      const tempDir = os.tmpdir();
+
+      // Create query file
+      if (data.query) {
+        const queryFileName = `query_${Date.now()}.sql`;
+        const queryFilePath = path.join(tempDir, queryFileName);
+        await fs.promises.writeFile(queryFilePath, data.query, 'utf8');
+
+        targetWebview.postMessage({
+          type: 'fileAttached',
+          file: {
+            name: queryFileName,
+            content: data.query,
+            type: 'sql',
+            path: queryFilePath
+          }
+        });
+      }
+
+      // Optional notices file (numbered, execution order)
+      if (data.notices && data.notices.length > 0) {
+        const noticeLines = data.notices
+          .map((n, i) => {
+            if (typeof n === 'string') {
+              return `${i + 1}. ${n}`;
+            }
+            const msg = n.message ?? '';
+            const iso = n.receivedAt?.trim();
+            if (iso) {
+              return `${i + 1}. [${iso}] ${msg}`;
+            }
+            return `${i + 1}. ${msg}`;
+          })
+          .join('\n\n');
+        const noticeFileName = `notices_${Date.now()}.txt`;
+        const noticeFilePath = path.join(tempDir, noticeFileName);
+        await fs.promises.writeFile(noticeFilePath, noticeLines, 'utf8');
+
+        targetWebview.postMessage({
+          type: 'fileAttached',
+          file: {
+            name: noticeFileName,
+            content: noticeLines,
+            type: 'txt',
+            path: noticeFilePath,
+          },
+        });
+      }
+
+      // Create results file if we have results - convert to CSV like Analyze Data does
+      if (data.results) {
+        try {
+          const resultsData = JSON.parse(data.results);
+          const columns: string[] = resultsData.columns || [];
+          const rows: any[] = resultsData.rows || [];
+
+          // Build CSV content
+          let csvContent = '';
+
+          // Header row
+          if (columns.length > 0) {
+            csvContent = columns.map((col: string) => `"${col}"`).join(',') + '\n';
+          }
+
+          // Data rows
+          for (const row of rows) {
+            const csvRow = columns.map((col: string) => {
+              const val = row[col];
+              if (val === null || val === undefined) return '';
+              if (typeof val === 'string') return `"${val.replace(/"/g, '""')}"`;
+              if (typeof val === 'object') return `"${JSON.stringify(val).replace(/"/g, '""')}"`;
+              return String(val);
+            }).join(',');
+            csvContent += csvRow + '\n';
+          }
+
+          const resultsFileName = `results_${Date.now()}.csv`;
+          const resultsFilePath = path.join(tempDir, resultsFileName);
+          await fs.promises.writeFile(resultsFilePath, csvContent, 'utf8');
+
+          targetWebview.postMessage({
+            type: 'fileAttached',
+            file: {
+              name: resultsFileName,
+              content: csvContent,
+              type: 'csv',
+              path: resultsFilePath
+            }
+          });
+        } catch (parseError) {
+          // Fallback: attach as JSON if parsing fails
+          const resultsFileName = `results_${Date.now()}.json`;
+          const resultsFilePath = path.join(tempDir, resultsFileName);
+          await fs.promises.writeFile(resultsFilePath, data.results, 'utf8');
+
+          targetWebview.postMessage({
+            type: 'fileAttached',
+            file: {
+              name: resultsFileName,
+              content: data.results,
+              type: 'json',
+              path: resultsFilePath
+            }
+          });
+        }
+      }
+
+      const attached: string[] = [];
+      if (data.query?.trim()) {
+        attached.push('query');
+      }
+      if (data.results) {
+        attached.push('results');
+      }
+      if (data.notices?.length) {
+        attached.push('notices');
+      }
+      const summary = attached.length ? attached.join(' & ') : 'Content';
+      vscode.window.showInformationMessage(
+        `${summary} attached to SQL Assistant. Add your question and send!`,
+      );
+
+    } catch (error) {
+      console.error('[ChatViewProvider] Failed to create temp files:', error);
+      ErrorService.getInstance().showError('Failed to attach files to chat');
+    }
+  }
+
+  public async resolveWebviewView(
+    webviewView: vscode.WebviewView,
+    context: vscode.WebviewViewResolveContext,
+    _token: vscode.CancellationToken
+  ): Promise<void> {
+    this._view = webviewView;
+    this._activeWebview = webviewView.webview;
+
+    await this._initializeWebview(webviewView.webview);
+    this._registerWebviewMessageHandler(webviewView.webview);
+
+    // Send initial history and model info
+    setTimeout(() => {
+      this._sendHistoryToWebview();
+      this._updateChatHistory();
+      this._sendContextUpdate();
+      this._updateModelInfo();
+    }, 100);
   }
 
   // ==================== Message Handling ====================
@@ -401,7 +506,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           console.error('[ChatView] Failed to get schema for mention:', mention.name, e);
 
           // Notify user about the error
-          this._view?.webview.postMessage({
+          this._getTargetWebview()?.postMessage({
             type: 'schemaError',
             object: `${mention.schema}.${mention.name}`,
             error: errorMsg
@@ -511,12 +616,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     try {
       const filtered = await this._dbObjectService.searchObjectsAsync(query);
 
-      this._view?.webview.postMessage({
+      this._getTargetWebview()?.postMessage({
         type: 'dbObjectsResult',
         objects: filtered
       });
     } catch (error) {
-      this._view?.webview.postMessage({
+      this._getTargetWebview()?.postMessage({
         type: 'dbObjectsResult',
         objects: [],
         error: 'Failed to fetch database objects'
@@ -528,7 +633,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     try {
       const details = await this._dbObjectService.getObjectSchema(object);
       const objWithDetails = { ...object, details };
-      this._view?.webview.postMessage({
+      this._getTargetWebview()?.postMessage({
         type: 'dbObjectDetails',
         object: objWithDetails
       });
@@ -541,12 +646,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private async _handleGetAllDbObjects(): Promise<void> {
     try {
       const objects = await this._dbObjectService.getInitialObjects();
-      this._view?.webview.postMessage({
+      this._getTargetWebview()?.postMessage({
         type: 'dbObjectsResult',
         objects: objects
       });
     } catch (error) {
-      this._view?.webview.postMessage({
+      this._getTargetWebview()?.postMessage({
         type: 'dbObjectsResult',
         objects: [],
         error: 'No database connections available'
@@ -568,7 +673,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         items = await this._dbObjectService.getSchemaObjects(path.connectionId, path.database, path.schema);
       }
 
-      this._view?.webview.postMessage({
+      this._getTargetWebview()?.postMessage({
         type: 'dbHierarchyData',
         path: path,
         items: items
@@ -576,7 +681,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
     } catch (error) {
       console.error('Error fetching hierarchy:', error);
-      this._view?.webview.postMessage({
+      this._getTargetWebview()?.postMessage({
         type: 'dbHierarchyData',
         path: path,
         items: [],
@@ -609,7 +714,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           ? content.substring(0, maxSize) + '\n... (truncated)'
           : content;
 
-        this._view?.webview.postMessage({
+        this._getTargetWebview()?.postMessage({
           type: 'fileAttached',
           file: {
             name: fileName,
@@ -667,13 +772,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         await vscode.workspace.applyEdit(edit);
 
         // Send success back to webview
-        this._view?.webview.postMessage({
+        this._getTargetWebview()?.postMessage({
           type: 'notebookResult',
           success: true
         });
       } else {
         // No active notebook - send error back to webview
-        this._view?.webview.postMessage({
+        this._getTargetWebview()?.postMessage({
           type: 'notebookResult',
           success: false,
           error: 'Open notebook first'
@@ -681,7 +786,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      this._view?.webview.postMessage({
+      this._getTargetWebview()?.postMessage({
         type: 'notebookResult',
         success: false,
         error: errorMessage
@@ -730,58 +835,53 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   }
 
   private _sendHistoryToWebview(): void {
-    if (this._view) {
-      this._view.webview.postMessage({
-        type: 'updateHistory',
-        sessions: this._sessionService.getSessionSummaries()
-      });
-    }
+    this._getTargetWebview()?.postMessage({
+      type: 'updateHistory',
+      sessions: this._sessionService.getSessionSummaries()
+    });
   }
 
   // Phase C: Send context bar update to webview
   private _sendContextUpdate(): void {
-    if (this._view) {
-      this._view.webview.postMessage({
-        type: 'contextUpdate',
-        connectionName: this._currentConnectionName || null,
-        database: this._currentDatabase || null,
-        environment: this._currentEnvironment || null,
-        readOnlyMode: this._currentReadOnlyMode || false
-      });
-    }
+    this._getTargetWebview()?.postMessage({
+      type: 'contextUpdate',
+      connectionName: this._currentConnectionName || null,
+      database: this._currentDatabase || null,
+      environment: this._currentEnvironment || null,
+      readOnlyMode: this._currentReadOnlyMode || false
+    });
   }
 
   // ==================== UI Helpers ====================
 
   private _updateChatHistory(): void {
-    if (this._view) {
-      this._view.webview.postMessage({
-        type: 'updateMessages',
-        messages: this._messages
-      });
-    }
+    this._getTargetWebview()?.postMessage({
+      type: 'updateMessages',
+      messages: this._messages
+    });
   }
 
   private _setTypingIndicator(isTyping: boolean): void {
-    if (this._view) {
-      this._view.webview.postMessage({
-        type: 'setTyping',
-        isTyping
-      });
-    }
+    this._getTargetWebview()?.postMessage({
+      type: 'setTyping',
+      isTyping
+    });
   }
 
   private async _updateModelInfo(): Promise<void> {
-    if (this._view) {
-      const config = vscode.workspace.getConfiguration('postgresExplorer');
-      const provider = config.get<string>('aiProvider') || 'vscode-lm';
-      const modelInfo = await this._aiService.getModelInfo(provider, config);
-
-      this._view.webview.postMessage({
-        type: 'updateModelInfo',
-        modelName: modelInfo
-      });
+    const webview = this._getTargetWebview();
+    if (!webview) {
+      return;
     }
+
+    const config = vscode.workspace.getConfiguration('postgresExplorer');
+    const provider = config.get<string>('aiProvider') || 'vscode-lm';
+    const modelInfo = await this._aiService.getModelInfo(provider, config);
+
+    webview.postMessage({
+      type: 'updateModelInfo',
+      modelName: modelInfo
+    });
   }
 
   public async handleExplainError(error: string, query: string): Promise<void> {

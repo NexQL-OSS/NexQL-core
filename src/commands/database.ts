@@ -1,6 +1,7 @@
 import { Client } from 'pg';
 import * as vscode from 'vscode';
 import { createMetadata, getConnectionWithPassword } from '../commands/connection';
+import { ConnectionConfig } from '../common/types';
 import { DashboardPanel } from '../dashboard/DashboardPanel';
 import { DatabaseTreeItem, DatabaseTreeProvider } from '../providers/DatabaseTreeProvider';
 import { ConnectionManager } from '../services/ConnectionManager';
@@ -41,6 +42,90 @@ export async function cmdDatabaseDashboard(item: DatabaseTreeItem, context: vsco
 
     await DashboardPanel.show(context.extensionUri, connection, item.databaseName!, connection.id);
   } catch (err: any) {
+    await ErrorHandlers.handleCommandError(err, 'show dashboard');
+  }
+}
+
+/**
+ * Command Palette: pick saved connection → database, then open the live dashboard webview.
+ */
+export async function cmdDatabaseDashboardFromPalette(
+  context: vscode.ExtensionContext,
+): Promise<void> {
+  const connections =
+    vscode.workspace
+      .getConfiguration()
+      .get<Array<Record<string, unknown>>>('postgresExplorer.connections') || [];
+  if (connections.length === 0) {
+    await vscode.window.showErrorMessage(
+      'No saved connections. Add a connection first.',
+    );
+    return;
+  }
+
+  const connPick = await vscode.window.showQuickPick(
+    connections.map((c: Record<string, unknown>) => ({
+      label: (c.name as string) || `${c.host}:${c.port}`,
+      description: (c.database as string) || 'postgres',
+      conn: c,
+    })),
+    {
+      title: 'Live Dashboard: Connection',
+      placeHolder: 'Select a saved connection',
+    },
+  );
+  if (!connPick) {
+    return;
+  }
+
+  const connection = connPick.conn as Record<string, unknown> & {
+    id: string;
+    host: string;
+    port: number;
+    database?: string;
+  };
+  const bootstrapDb = connection.database || 'postgres';
+
+  let tempClient;
+  try {
+    tempClient = await ConnectionManager.getInstance().getPooledClient({
+      ...(connection as ConnectionConfig),
+      database: bootstrapDb,
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    await vscode.window.showErrorMessage(`Could not connect: ${msg}`);
+    return;
+  }
+
+  let dbName: string;
+  try {
+    const dbsResult = await tempClient.query(`
+      SELECT datname FROM pg_database
+      WHERE datallowconn = true AND datistemplate = false
+      ORDER BY datname
+    `);
+    const databases = dbsResult.rows.map((r: { datname: string }) => r.datname);
+    const dbChoice = await vscode.window.showQuickPick(databases, {
+      title: 'Live Dashboard: Database',
+      placeHolder: 'Database to open the dashboard for',
+    });
+    if (!dbChoice) {
+      return;
+    }
+    dbName = dbChoice;
+  } finally {
+    tempClient.release();
+  }
+
+  try {
+    await DashboardPanel.show(
+      context.extensionUri,
+      connection as ConnectionConfig,
+      dbName,
+      connection.id,
+    );
+  } catch (err: unknown) {
     await ErrorHandlers.handleCommandError(err, 'show dashboard');
   }
 }

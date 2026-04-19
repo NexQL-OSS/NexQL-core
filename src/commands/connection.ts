@@ -72,6 +72,16 @@ export function validateCategoryItem(item: DatabaseTreeItem): asserts item is Da
 }
 
 /**
+ * Validates tree context for SQL notebook commands that only need a pooled DB connection
+ * (e.g. new notebook from a database node or after picking connection + database from the palette).
+ */
+export function validateNotebookContextItem(item: DatabaseTreeItem): asserts item is DatabaseTreeItem & { connectionId: string; databaseName: string } {
+    if (!item?.connectionId || !item?.databaseName) {
+        throw new Error('Invalid selection');
+    }
+}
+
+/**
  * getConnectionWithPassword - Retrieves the connection details and password for the specified connection ID.
  */
 export async function getConnectionWithPassword(connectionId: string, databaseName?: string): Promise<any> {
@@ -297,6 +307,48 @@ export async function showConnectionSafety(): Promise<void> {
     } catch (err: any) {
         await ErrorHandlers.handleCommandError(err, 'show connection safety');
     }
+}
+
+/**
+ * Clone a connection entry (new id, new name) and copy stored password when present.
+ */
+export async function cmdDuplicateConnection(
+  item: DatabaseTreeItem,
+  _context: vscode.ExtensionContext,
+  databaseTreeProvider: DatabaseTreeProvider
+): Promise<void> {
+  try {
+    if (!item?.connectionId) {
+      return;
+    }
+    const config = vscode.workspace.getConfiguration();
+    const connections = config.get<any[]>('postgresExplorer.connections') || [];
+    const conn = connections.find((c) => c.id === item.connectionId);
+    if (!conn) {
+      vscode.window.showErrorMessage('Connection not found');
+      return;
+    }
+    const newId = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    const dup = {
+      ...conn,
+      id: newId,
+      name: `${conn.name} (copy)`,
+    };
+    await config.update(
+      'postgresExplorer.connections',
+      [...connections, dup],
+      vscode.ConfigurationTarget.Global
+    );
+    const secrets = SecretStorageService.getInstance();
+    const pw = await secrets.getPassword(conn.id);
+    if (pw) {
+      await secrets.setPassword(newId, pw);
+    }
+    databaseTreeProvider.refresh();
+    vscode.window.showInformationMessage(`Duplicated connection as "${dup.name}"`);
+  } catch (err: unknown) {
+    await ErrorHandlers.handleCommandError(err, 'duplicate connection');
+  }
 }
 
 /**

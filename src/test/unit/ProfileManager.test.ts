@@ -1,7 +1,7 @@
 import { expect } from 'chai';
 import * as sinon from 'sinon';
 
-import { ProfileManager } from '../../services/ProfileManager';
+import { ProfileManager } from '../../features/connections/ProfileManager';
 
 function createContext(initialProfiles: any[] = []) {
   let profiles = [...initialProfiles];

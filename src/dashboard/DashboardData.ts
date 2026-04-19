@@ -64,16 +64,150 @@ export interface DashboardStats {
   }[];
   waitEvents: { type: string; count: number }[];
   longRunningQueries: number;
+  sharedCacheHitRatio: number | null;
   indexHitRatio: number;
   oldestTransactionAgeSeconds: number;
   vacuumTablesNeedingAttention: number;
+
+  /** WAL / replication (may be partially empty if views are inaccessible). */
+  walReplication: WalReplicationStats;
+
+  /** Schema health: indexes that have never been scanned. */
+  unusedIndexes: { index_name: string; table_name: string; index_size: string; raw_size: number }[];
+  /** Tables where sequential scans dominate over index scans. */
+  highSeqScanTables: { table_name: string; seq_scan: number; idx_scan: number; seq_scan_pct: number; row_count: number }[];
+  /** Tables with significant dead-tuple bloat. */
+  tableBloat: { table_name: string; n_live_tup: number; n_dead_tup: number; bloat_pct: number; table_size: string }[];
+  /** Currently running autovacuum workers. */
+  autovacuumProgress: { pid: number; table_name: string; phase: string; heap_blks_scanned: number; heap_blks_total: number }[];
+  /** Tables with notable dead tuples that need vacuum. */
+  tablesNeedingVacuum: { table_name: string; n_dead_tup: number; n_live_tup: number; dead_tuple_threshold: number; last_autovacuum: string | null; last_autoanalyze: string | null }[];
+  /** Active connections grouped by application_name and state. */
+  connectionsByApp: { application_name: string; state: string; waiting: boolean; count: number }[];
+}
+
+export interface WalReplicationStats {
+  inRecovery: boolean;
+  currentWalLsn: string | null;
+  receiveLsn: string | null;
+  replayLsn: string | null;
+  /** Bytes standby is behind receive on replay (standby only). */
+  replayLagBytes: number | null;
+  replicas: Array<{
+    application_name: string | null;
+    client_addr: string | null;
+    state: string | null;
+    sent_lsn: string | null;
+    write_lsn: string | null;
+    flush_lsn: string | null;
+    replay_lsn: string | null;
+    write_lag: string | null;
+    flush_lag: string | null;
+    replay_lag: string | null;
+    sync_state: string | null;
+    backend_start: string | null;
+  }>;
+  walReceiver: {
+    status: string | null;
+    received_lsn: string | null;
+    latest_end_lsn: string | null;
+    slot_name: string | null;
+    sender_host: string | null;
+    sender_port: number | null;
+    last_msg_receipt_time: string | null;
+  } | null;
+  settings: Record<string, string>;
+  pgStatWal: Record<string, string | number> | null;
+  replicationSlots: Array<{
+    slot_name: string;
+    plugin: string | null;
+    slot_type: string | null;
+    active: boolean;
+    wal_status: string | null;
+    restart_lsn: string | null;
+    confirmed_flush_lsn: string | null;
+  }>;
 }
 
 import { Client, PoolClient } from 'pg';
 
 export async function fetchStats(client: Client | PoolClient, dbName: string): Promise<DashboardStats> {
+  // Resolve version-specific stats source for checkpoints.
+  let serverVersionNum = 0;
+  try {
+    const versionRes = await client.query(`SHOW server_version_num`);
+    serverVersionNum = Number(versionRes.rows?.[0]?.server_version_num || 0);
+  } catch {
+    serverVersionNum = 0;
+  }
+
+  const checkpointStatsView = serverVersionNum >= 170000
+    ? 'pg_stat_checkpointer'
+    : 'pg_stat_bgwriter';
+
+  // Resolve pg_stat_statements timing column across PostgreSQL versions.
+  let pgStatStatementsTimeExpr = 'total_time';
+  let pgStatStatementsMeanExpr = 'mean_time';
+  try {
+    const pgStatStatementsColumnRes = await client.query(`
+      SELECT
+        EXISTS (
+          SELECT 1
+          FROM pg_attribute
+          WHERE attrelid = to_regclass('pg_stat_statements')
+            AND attname = 'total_exec_time'
+            AND NOT attisdropped
+        ) AS has_total_exec_time,
+        EXISTS (
+          SELECT 1
+          FROM pg_attribute
+          WHERE attrelid = to_regclass('pg_stat_statements')
+            AND attname = 'mean_exec_time'
+            AND NOT attisdropped
+        ) AS has_mean_exec_time
+    `);
+    if (Boolean(pgStatStatementsColumnRes.rows?.[0]?.has_total_exec_time)) {
+      pgStatStatementsTimeExpr = 'total_exec_time';
+    }
+    if (Boolean(pgStatStatementsColumnRes.rows?.[0]?.has_mean_exec_time)) {
+      pgStatStatementsMeanExpr = 'mean_exec_time';
+    }
+  } catch {
+    pgStatStatementsTimeExpr = 'total_time';
+    pgStatStatementsMeanExpr = 'mean_time';
+  }
+
   // Fetch data with error handling for each query to prevent one failure from breaking the entire dashboard
-  const [dbInfoRes, connRes, tableRes, extRes, countsRes, activeQueriesRes, locksRes, metricsRes, settingsRes, pgStatRes, waitsRes, longQueriesRes, indexHitRes, oldestTxRes, vacuumHealthRes] = await Promise.allSettled([
+  const [
+    dbInfoRes,
+    connRes,
+    tableRes,
+    extRes,
+    countsRes,
+    activeQueriesRes,
+    locksRes,
+    metricsRes,
+    settingsRes,
+    checkpointMetricsRes,
+    pgStatRes,
+    waitsRes,
+    longQueriesRes,
+    indexHitRes,
+    oldestTxRes,
+    vacuumHealthRes,
+    walSnapshotRes,
+    walReplRes,
+    walSettingsRes,
+    walReceiverRes,
+    pgStatWalRes,
+    replSlotsRes,
+    unusedIndexesRes,
+    highSeqScanRes,
+    tableBloatRes,
+    autovacuumProgressRes,
+    tablesNeedingVacuumRes,
+    connectionsByAppRes,
+  ] = await Promise.allSettled([
     // DB Info
     client.query(`
             SELECT pg_catalog.pg_get_userbyid(d.datdba) as owner,
@@ -158,13 +292,23 @@ export async function fetchStats(client: Client | PoolClient, dbName: string): P
             JOIN pg_catalog.pg_stat_activity blocking_activity ON blocking_activity.pid = blocking_locks.pid
             LEFT JOIN pg_catalog.pg_class c ON c.oid = blocked_locks.relation
             WHERE NOT blocked_locks.granted
+            AND blocked_activity.datname = $1
             AND blocking_activity.datname = $1
         `, [dbName]),
 
-    // Database Metrics (Throughput & I/O & Conflicts/Deadlocks)
-    // Select all columns to be robust against version differences (e.g. checkpoints_timed removed in PG 17)
+    // Database metrics scoped to the selected database.
     client.query(`
-            SELECT *
+            SELECT
+              xact_commit,
+              xact_rollback,
+              blks_read,
+              blks_hit,
+              deadlocks,
+              conflicts,
+              temp_bytes,
+              temp_files,
+              tup_fetched,
+              tup_returned
             FROM pg_stat_database 
             WHERE datname = $1
         `, [dbName]),
@@ -172,13 +316,22 @@ export async function fetchStats(client: Client | PoolClient, dbName: string): P
     // Settings (Max Connections)
     client.query(`SHOW max_connections`),
 
+    // Checkpoint counters are cluster-level and moved from pg_stat_bgwriter to pg_stat_checkpointer in PG 17.
+    client.query(`
+            SELECT
+              COALESCE(checkpoints_timed, 0) AS checkpoints_timed,
+              COALESCE(checkpoints_req, 0) AS checkpoints_req
+            FROM ${checkpointStatsView}
+            LIMIT 1
+        `),
+
     // pg_stat_statements (Top Queries) - Safe selection that returns empty if extension missing
     // We use a check to avoid error log spam if possible, or just let it fail gracefully via allSettled
-    client.query(`
-            SELECT query, calls, total_time, mean_time, rows
+        client.query(`
+              SELECT query, calls, ${pgStatStatementsTimeExpr} AS total_time, ${pgStatStatementsMeanExpr} AS mean_time, rows
             FROM pg_stat_statements
             WHERE dbid = (SELECT oid FROM pg_database WHERE datname = $1)
-            ORDER BY total_time DESC
+          ORDER BY ${pgStatStatementsTimeExpr} DESC
             LIMIT 10
     `, [dbName]),
 
@@ -228,7 +381,208 @@ export async function fetchStats(client: Client | PoolClient, dbName: string): P
           SELECT COUNT(*)::int AS tables_needing_attention
           FROM pg_stat_user_tables
           WHERE n_dead_tup > GREATEST((n_live_tup * 0.2)::bigint, 1000)
-        `)
+        `),
+
+    // WAL / replication snapshot (safe on primary and standby)
+    client.query(`
+      SELECT
+        pg_is_in_recovery() AS in_recovery,
+        CASE WHEN NOT pg_is_in_recovery() THEN pg_current_wal_lsn()::text ELSE NULL END AS current_wal_lsn,
+        CASE WHEN pg_is_in_recovery() THEN pg_last_wal_receive_lsn()::text ELSE NULL END AS receive_lsn,
+        CASE WHEN pg_is_in_recovery() THEN pg_last_wal_replay_lsn()::text ELSE NULL END AS replay_lsn,
+        CASE
+          WHEN pg_is_in_recovery()
+            AND pg_last_wal_receive_lsn() IS NOT NULL
+            AND pg_last_wal_replay_lsn() IS NOT NULL
+          THEN pg_wal_lsn_diff(pg_last_wal_receive_lsn(), pg_last_wal_replay_lsn())
+          ELSE NULL
+        END AS replay_lag_bytes
+    `),
+
+    client.query(`
+      SELECT
+        application_name,
+        client_addr::text AS client_addr,
+        state,
+        sent_lsn::text AS sent_lsn,
+        write_lsn::text AS write_lsn,
+        flush_lsn::text AS flush_lsn,
+        replay_lsn::text AS replay_lsn,
+        write_lag::text AS write_lag,
+        flush_lag::text AS flush_lag,
+        replay_lag::text AS replay_lag,
+        sync_state,
+        backend_start::text AS backend_start
+      FROM pg_stat_replication
+      ORDER BY application_name NULLS LAST, pid
+    `),
+
+    client.query(`
+      SELECT name, setting, unit
+      FROM pg_settings
+      WHERE name IN (
+        'wal_level',
+        'max_wal_size',
+        'min_wal_size',
+        'archive_mode',
+        'synchronous_standby_names',
+        'archive_command'
+      )
+    `),
+
+    client.query(`
+      SELECT
+        status,
+        received_lsn::text AS received_lsn,
+        latest_end_lsn::text AS latest_end_lsn,
+        slot_name,
+        sender_host::text AS sender_host,
+        sender_port,
+        last_msg_receipt_time::text AS last_msg_receipt_time
+      FROM pg_stat_wal_receiver
+      LIMIT 1
+    `),
+
+    client.query(`
+      SELECT
+        wal_records,
+        wal_fpi,
+        wal_bytes,
+        wal_buffers_full,
+        wal_write,
+        wal_sync,
+        wal_write_time,
+        wal_sync_time,
+        stats_reset::text AS stats_reset
+      FROM pg_stat_wal
+    `),
+
+    client.query(`
+      SELECT
+        slot_name,
+        plugin::text AS plugin,
+        slot_type,
+        active,
+        wal_status::text AS wal_status,
+        restart_lsn::text AS restart_lsn,
+        confirmed_flush_lsn::text AS confirmed_flush_lsn
+      FROM pg_replication_slots
+      ORDER BY slot_name
+    `),
+
+    // Unused indexes (never scanned), excluding PK/UNIQUE/constraint-backed indexes.
+    client.query(`
+      SELECT s.schemaname || '.' || s.indexrelname AS index_name,
+             s.tablename AS table_name,
+             pg_size_pretty(pg_relation_size(s.indexrelid)) AS index_size,
+             pg_relation_size(s.indexrelid) AS raw_size
+      FROM pg_stat_user_indexes s
+      JOIN pg_index i
+        ON i.indexrelid = s.indexrelid
+      LEFT JOIN pg_constraint c
+        ON c.conindid = s.indexrelid
+      WHERE s.idx_scan = 0
+        AND s.schemaname NOT IN ('pg_catalog', 'information_schema')
+        AND c.oid IS NULL
+        AND NOT i.indisprimary
+        AND NOT i.indisunique
+      ORDER BY raw_size DESC
+      LIMIT 20
+    `),
+
+    // Tables with high sequential scan ratio
+    client.query(`
+      SELECT schemaname || '.' || relname AS table_name,
+             seq_scan,
+             COALESCE(idx_scan, 0) AS idx_scan,
+             CASE WHEN seq_scan + COALESCE(idx_scan, 0) > 0
+                  THEN ROUND(100.0 * seq_scan / (seq_scan + COALESCE(idx_scan, 0)), 1)
+                  ELSE 0 END AS seq_scan_pct,
+             n_live_tup AS row_count
+      FROM pg_stat_user_tables
+      WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
+        AND seq_scan + COALESCE(idx_scan, 0) > 100
+      ORDER BY seq_scan_pct DESC, seq_scan DESC
+      LIMIT 20
+    `),
+
+    // Dead-tuple pressure proxy (not a physical bloat estimate).
+    client.query(`
+      SELECT schemaname || '.' || relname AS table_name,
+             n_live_tup,
+             n_dead_tup,
+             CASE WHEN n_live_tup + n_dead_tup > 0
+                  THEN ROUND(100.0 * n_dead_tup / (n_live_tup + n_dead_tup), 1)
+                  ELSE 0 END AS bloat_pct,
+             pg_size_pretty(pg_relation_size(relid)) AS table_size
+      FROM pg_stat_user_tables
+      WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
+        AND n_dead_tup > 1000
+      ORDER BY bloat_pct DESC
+      LIMIT 20
+    `),
+
+    // Currently running autovacuum workers
+    client.query(`
+      SELECT pid,
+             datname,
+             relid::regclass::text AS table_name,
+             phase,
+             COALESCE(heap_blks_scanned, 0) AS heap_blks_scanned,
+             COALESCE(heap_blks_total, 0) AS heap_blks_total
+      FROM pg_stat_progress_vacuum
+      WHERE datname = $1
+    `, [dbName]),
+
+    // Tables needing vacuum based on effective autovacuum thresholds.
+    client.query(`
+      SELECT st.schemaname || '.' || st.relname AS table_name,
+             st.n_dead_tup,
+             st.n_live_tup,
+             ROUND(
+               COALESCE(opts.vacuum_threshold, current_setting('autovacuum_vacuum_threshold')::numeric)
+               + COALESCE(opts.vacuum_scale_factor, current_setting('autovacuum_vacuum_scale_factor')::numeric)
+                 * GREATEST(st.n_live_tup, 0),
+               0
+             )::bigint AS dead_tuple_threshold,
+             st.last_autovacuum::text,
+             st.last_autoanalyze::text
+      FROM pg_stat_user_tables st
+      JOIN pg_class c ON c.oid = st.relid
+      LEFT JOIN LATERAL (
+        SELECT
+          MAX(CASE WHEN option_name = 'autovacuum_vacuum_threshold' THEN option_value::numeric END) AS vacuum_threshold,
+          MAX(CASE WHEN option_name = 'autovacuum_vacuum_scale_factor' THEN option_value::numeric END) AS vacuum_scale_factor
+        FROM pg_options_to_table(c.reloptions)
+      ) opts ON TRUE
+      WHERE st.schemaname NOT IN ('pg_catalog', 'information_schema')
+        AND st.n_dead_tup > (
+          COALESCE(opts.vacuum_threshold, current_setting('autovacuum_vacuum_threshold')::numeric)
+          + COALESCE(opts.vacuum_scale_factor, current_setting('autovacuum_vacuum_scale_factor')::numeric)
+            * GREATEST(st.n_live_tup, 0)
+        )
+      ORDER BY (st.n_dead_tup - ROUND(
+        COALESCE(opts.vacuum_threshold, current_setting('autovacuum_vacuum_threshold')::numeric)
+        + COALESCE(opts.vacuum_scale_factor, current_setting('autovacuum_vacuum_scale_factor')::numeric)
+          * GREATEST(st.n_live_tup, 0),
+        0
+      )) DESC
+      LIMIT 20
+    `),
+
+    // Connections grouped by application_name and state
+    client.query(`
+      SELECT COALESCE(NULLIF(application_name, ''), 'unknown') AS application_name,
+             COALESCE(state, 'unknown') AS state,
+             (wait_event_type IS NOT NULL) AS waiting,
+             COUNT(*)::int AS count
+      FROM pg_stat_activity
+      WHERE pid <> pg_backend_pid()
+        AND datname = $1
+      GROUP BY application_name, state, waiting
+      ORDER BY count DESC
+      LIMIT 20
+    `, [dbName]),
   ]);
 
   // Helper to safely extract result or return empty default
@@ -250,16 +604,101 @@ export async function fetchStats(client: Client | PoolClient, dbName: string): P
   const locksRows = getResult(locksRes).rows;
   const metricsRow = getResult(metricsRes).rows[0] || {
     xact_commit: 0, xact_rollback: 0, blks_read: 0, blks_hit: 0, deadlocks: 0, conflicts: 0,
-    temp_bytes: 0, temp_files: 0, checkpoints_timed: 0, checkpoints_req: 0,
+    temp_bytes: 0, temp_files: 0,
     tup_fetched: 0, tup_returned: 0
   };
   const maxConnRow = getResult(settingsRes).rows[0] || { max_connections: '100' };
+  const checkpointMetricsRow = getResult(checkpointMetricsRes).rows[0] || { checkpoints_timed: 0, checkpoints_req: 0 };
   const pgStatRows = getResult(pgStatRes).rows || [];
   const waitEventsRows = getResult(waitsRes).rows;
   const longQueriesRow = getResult(longQueriesRes).rows[0] || { count: 0 };
   const indexHitRow = getResult(indexHitRes).rows[0] || { index_hit_ratio: 100 };
   const oldestTxRow = getResult(oldestTxRes).rows[0] || { oldest_tx_age_seconds: 0 };
   const vacuumHealthRow = getResult(vacuumHealthRes).rows[0] || { tables_needing_attention: 0 };
+
+  const walSnapRow = getResult(walSnapshotRes).rows[0];
+  const replRows = getResult(walReplRes).rows;
+  const walSettingRows = getResult(walSettingsRes).rows;
+  const walRecvRow = getResult(walReceiverRes).rows[0];
+  const pgWalRow = getResult(pgStatWalRes).rows[0];
+  const slotRows = getResult(replSlotsRes).rows;
+
+  const unusedIndexRows = getResult(unusedIndexesRes).rows;
+  const highSeqScanRows = getResult(highSeqScanRes).rows;
+  const tableBloatRows = getResult(tableBloatRes).rows;
+  const autovacuumProgressRows = getResult(autovacuumProgressRes).rows;
+  const tablesNeedingVacuumRows = getResult(tablesNeedingVacuumRes).rows;
+  const connectionsByAppRows = getResult(connectionsByAppRes).rows;
+
+  const walSettingsMap: Record<string, string> = {};
+  for (const r of walSettingRows) {
+    const u = r.unit && String(r.unit).trim() !== '' ? ` ${r.unit}` : '';
+    walSettingsMap[r.name] = `${r.setting ?? ''}${u}`;
+  }
+
+  const walReceiver: WalReplicationStats['walReceiver'] = walRecvRow
+    ? {
+        status: walRecvRow.status ?? null,
+        received_lsn: walRecvRow.received_lsn ?? null,
+        latest_end_lsn: walRecvRow.latest_end_lsn ?? null,
+        slot_name: walRecvRow.slot_name ?? null,
+        sender_host: walRecvRow.sender_host ?? null,
+        sender_port: walRecvRow.sender_port != null ? Number(walRecvRow.sender_port) : null,
+        last_msg_receipt_time: walRecvRow.last_msg_receipt_time ?? null,
+      }
+    : null;
+
+  let pgStatWalOut: WalReplicationStats['pgStatWal'] = null;
+  if (pgWalRow) {
+    pgStatWalOut = {
+      wal_records: Number(pgWalRow.wal_records || 0),
+      wal_fpi: Number(pgWalRow.wal_fpi || 0),
+      wal_bytes: Number(pgWalRow.wal_bytes || 0),
+      wal_buffers_full: Number(pgWalRow.wal_buffers_full || 0),
+      wal_write: Number(pgWalRow.wal_write || 0),
+      wal_sync: Number(pgWalRow.wal_sync || 0),
+      wal_write_time: Number(pgWalRow.wal_write_time || 0),
+      wal_sync_time: Number(pgWalRow.wal_sync_time || 0),
+      stats_reset: String(pgWalRow.stats_reset || ''),
+    };
+  }
+
+  const walReplication: WalReplicationStats = {
+    inRecovery: Boolean(walSnapRow?.in_recovery),
+    currentWalLsn: walSnapRow?.current_wal_lsn ?? null,
+    receiveLsn: walSnapRow?.receive_lsn ?? null,
+    replayLsn: walSnapRow?.replay_lsn ?? null,
+    replayLagBytes:
+      walSnapRow?.replay_lag_bytes != null && walSnapRow.replay_lag_bytes !== ''
+        ? Number(walSnapRow.replay_lag_bytes)
+        : null,
+    replicas: replRows.map((r: any) => ({
+      application_name: r.application_name ?? null,
+      client_addr: r.client_addr ?? null,
+      state: r.state ?? null,
+      sent_lsn: r.sent_lsn ?? null,
+      write_lsn: r.write_lsn ?? null,
+      flush_lsn: r.flush_lsn ?? null,
+      replay_lsn: r.replay_lsn ?? null,
+      write_lag: r.write_lag ?? null,
+      flush_lag: r.flush_lag ?? null,
+      replay_lag: r.replay_lag ?? null,
+      sync_state: r.sync_state ?? null,
+      backend_start: r.backend_start ?? null,
+    })),
+    walReceiver,
+    settings: walSettingsMap,
+    pgStatWal: pgStatWalOut,
+    replicationSlots: slotRows.map((r: any) => ({
+      slot_name: String(r.slot_name ?? ''),
+      plugin: r.plugin ?? null,
+      slot_type: r.slot_type ?? null,
+      active: Boolean(r.active),
+      wal_status: r.wal_status ?? null,
+      restart_lsn: r.restart_lsn ?? null,
+      confirmed_flush_lsn: r.confirmed_flush_lsn ?? null,
+    })),
+  };
 
   let active = 0;
   let idle = 0;
@@ -275,6 +714,13 @@ export async function fetchStats(client: Client | PoolClient, dbName: string): P
     if (row.waiting) waiting += count;
     connectionStates.push({ state: row.state || 'unknown', count });
   });
+
+  const metricsBlksRead = parseInt(metricsRow.blks_read || '0');
+  const metricsBlksHit = parseInt(metricsRow.blks_hit || '0');
+  const totalBlockAccesses = metricsBlksRead + metricsBlksHit;
+  const sharedCacheHitRatio = totalBlockAccesses > 0
+    ? (100.0 * metricsBlksHit) / totalBlockAccesses
+    : null;
 
   return {
     dbName: dbName,
@@ -325,14 +771,14 @@ export async function fetchStats(client: Client | PoolClient, dbName: string): P
     metrics: {
       xact_commit: parseInt(metricsRow.xact_commit || '0'),
       xact_rollback: parseInt(metricsRow.xact_rollback || '0'),
-      blks_read: parseInt(metricsRow.blks_read || '0'),
-      blks_hit: parseInt(metricsRow.blks_hit || '0'),
+      blks_read: metricsBlksRead,
+      blks_hit: metricsBlksHit,
       deadlocks: parseInt(metricsRow.deadlocks || '0'),
       conflicts: parseInt(metricsRow.conflicts || '0'),
       temp_bytes: parseInt(metricsRow.temp_bytes || '0'),
       temp_files: parseInt(metricsRow.temp_files || '0'),
-      checkpoints_timed: parseInt(metricsRow.checkpoints_timed || '0'),
-      checkpoints_req: parseInt(metricsRow.checkpoints_req || '0'),
+      checkpoints_timed: parseInt(checkpointMetricsRow.checkpoints_timed || '0'),
+      checkpoints_req: parseInt(checkpointMetricsRow.checkpoints_req || '0'),
       tuples_fetched: parseInt(metricsRow.tup_fetched || '0'),
       tuples_returned: parseInt(metricsRow.tup_returned || '0')
     },
@@ -348,9 +794,52 @@ export async function fetchStats(client: Client | PoolClient, dbName: string): P
       count: parseInt(r.count)
     })),
     longRunningQueries: parseInt(longQueriesRow.count),
+    sharedCacheHitRatio,
     indexHitRatio: Math.max(0, Math.min(100, Number(indexHitRow.index_hit_ratio || 100))),
     oldestTransactionAgeSeconds: parseInt(oldestTxRow.oldest_tx_age_seconds || '0'),
-    vacuumTablesNeedingAttention: parseInt(vacuumHealthRow.tables_needing_attention || '0')
+    vacuumTablesNeedingAttention: parseInt(vacuumHealthRow.tables_needing_attention || '0'),
+    walReplication,
+    unusedIndexes: unusedIndexRows.map((r: any) => ({
+      index_name: r.index_name,
+      table_name: r.table_name,
+      index_size: r.index_size,
+      raw_size: parseInt(r.raw_size || '0'),
+    })),
+    highSeqScanTables: highSeqScanRows.map((r: any) => ({
+      table_name: r.table_name,
+      seq_scan: parseInt(r.seq_scan || '0'),
+      idx_scan: parseInt(r.idx_scan || '0'),
+      seq_scan_pct: parseFloat(r.seq_scan_pct || '0'),
+      row_count: parseInt(r.row_count || '0'),
+    })),
+    tableBloat: tableBloatRows.map((r: any) => ({
+      table_name: r.table_name,
+      n_live_tup: parseInt(r.n_live_tup || '0'),
+      n_dead_tup: parseInt(r.n_dead_tup || '0'),
+      bloat_pct: parseFloat(r.bloat_pct || '0'),
+      table_size: r.table_size,
+    })),
+    autovacuumProgress: autovacuumProgressRows.map((r: any) => ({
+      pid: parseInt(r.pid || '0'),
+      table_name: r.table_name,
+      phase: r.phase,
+      heap_blks_scanned: parseInt(r.heap_blks_scanned || '0'),
+      heap_blks_total: parseInt(r.heap_blks_total || '0'),
+    })),
+    tablesNeedingVacuum: tablesNeedingVacuumRows.map((r: any) => ({
+      table_name: r.table_name,
+      n_dead_tup: parseInt(r.n_dead_tup || '0'),
+      n_live_tup: parseInt(r.n_live_tup || '0'),
+      dead_tuple_threshold: parseInt(r.dead_tuple_threshold || '0'),
+      last_autovacuum: r.last_autovacuum ?? null,
+      last_autoanalyze: r.last_autoanalyze ?? null,
+    })),
+    connectionsByApp: connectionsByAppRows.map((r: any) => ({
+      application_name: r.application_name,
+      state: r.state,
+      waiting: r.waiting === true || r.waiting === 't' || r.waiting === 'true',
+      count: parseInt(r.count || '0'),
+    })),
   };
 }
 

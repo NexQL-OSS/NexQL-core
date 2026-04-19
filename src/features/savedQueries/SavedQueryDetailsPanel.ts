@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { SavedQueriesService } from './services/SavedQueriesService';
+import { SavedQueriesService } from './SavedQueriesService';
 
 export class SavedQueryDetailsPanel {
   public static currentPanel: SavedQueryDetailsPanel | undefined;

@@ -82,6 +82,17 @@
             <span class="label-hint">Stored securely in VS Code secret storage</span>
             <input type="password" id="password" name="password" placeholder="••••••••">
           </div>
+
+          <div class="form-group full-width">
+            <label for="cloudAuthKind">Cloud authentication (optional)</label>
+            <span class="label-hint">Tag for AWS RDS IAM, Entra ID, or GCP IAM. PgStudio still uses password or pgpass; token-based IAM is planned.</span>
+            <select id="cloudAuthKind" name="cloudAuthKind">
+              <option value="none">Password / standard PostgreSQL</option>
+              <option value="aws-iam">AWS IAM (RDS) — planned</option>
+              <option value="azure-ad">Microsoft Entra ID (Azure) — planned</option>
+              <option value="gcp-iam">GCP Cloud SQL IAM — planned</option>
+            </select>
+          </div>
         </div>
 
         <!-- Safety & Security -->

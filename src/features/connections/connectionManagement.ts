@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { ConnectionInfo, ConnectionFormPanel } from './connectionForm';
-import { SecretStorageService } from './services/SecretStorageService';
+import { SecretStorageService } from '../../services/SecretStorageService';
 
 export class ConnectionManagementPanel {
     public static currentPanel: ConnectionManagementPanel | undefined;

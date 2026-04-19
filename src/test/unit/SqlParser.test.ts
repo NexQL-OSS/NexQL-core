@@ -95,4 +95,146 @@ describe('SqlParser', () => {
       expect(statements[0]).to.equal('SELECT 1');
     });
   });
+
+  describe('substituteNamedParametersWithPgPlaceholders', () => {
+    it('rewrites :name to $n in first-seen order', () => {
+      const { text, paramNames } = SqlParser.substituteNamedParametersWithPgPlaceholders(
+        'SELECT * FROM t WHERE a = :b AND c = :a'
+      );
+      expect(paramNames).to.deep.equal(['b', 'a']);
+      expect(text).to.equal('SELECT * FROM t WHERE a = $1 AND c = $2');
+    });
+
+    it('reuses the same $n when the same name appears twice', () => {
+      const { text, paramNames } = SqlParser.substituteNamedParametersWithPgPlaceholders(
+        'SELECT * FROM t WHERE id = :id OR parent_id = :id'
+      );
+      expect(paramNames).to.deep.equal(['id']);
+      expect(text).to.equal('SELECT * FROM t WHERE id = $1 OR parent_id = $1');
+    });
+
+    it('does not treat PostgreSQL ::type casts as parameters', () => {
+      const { text, paramNames } = SqlParser.substituteNamedParametersWithPgPlaceholders(
+        "SELECT '2020-01-01'::date, col::text FROM t WHERE x = :x"
+      );
+      expect(paramNames).to.deep.equal(['x']);
+      expect(text).to.equal("SELECT '2020-01-01'::date, col::text FROM t WHERE x = $1");
+    });
+
+    it('ignores :name inside single-quoted literals', () => {
+      const { text, paramNames } = SqlParser.substituteNamedParametersWithPgPlaceholders(
+        "SELECT ':foo', :bar FROM t"
+      );
+      expect(paramNames).to.deep.equal(['bar']);
+      expect(text).to.equal("SELECT ':foo', $1 FROM t");
+    });
+
+    it('ignores :name in line comments', () => {
+      const { text, paramNames } = SqlParser.substituteNamedParametersWithPgPlaceholders(
+        'SELECT 1 -- :nope\n, :yes'
+      );
+      expect(paramNames).to.deep.equal(['yes']);
+      expect(text).to.include('-- :nope');
+      expect(text).to.include('$1');
+    });
+
+    it('ignores :name in block comments', () => {
+      const { text, paramNames } = SqlParser.substituteNamedParametersWithPgPlaceholders(
+        'SELECT /* :nope */ :yes'
+      );
+      expect(paramNames).to.deep.equal(['yes']);
+      expect(text).to.equal('SELECT /* :nope */ $1');
+    });
+  });
+
+  describe('detectPositionalParameters', () => {
+    it('detects simple positional placeholders', () => {
+      const found = SqlParser.detectPositionalParameters('SELECT $1, $2, $3');
+      expect(found).to.deep.equal([1, 2, 3]);
+    });
+
+    it('keeps gaps and deduplicates placeholders', () => {
+      const found = SqlParser.detectPositionalParameters('SELECT $1, $3, $1');
+      expect(found).to.deep.equal([1, 3]);
+    });
+
+    it('ignores placeholders inside single-quoted strings', () => {
+      const found = SqlParser.detectPositionalParameters("SELECT '$1 unread'");
+      expect(found).to.deep.equal([]);
+    });
+
+    it('ignores placeholders inside dollar-quoted blocks', () => {
+      const sql = 'CREATE FUNCTION f(a int) RETURNS int AS $$ BEGIN RETURN $1; END $$ LANGUAGE plpgsql';
+      const found = SqlParser.detectPositionalParameters(sql);
+      expect(found).to.deep.equal([]);
+    });
+
+    it('ignores placeholders in comments and dollar quote markers', () => {
+      const sql = 'SELECT $$not a $1 placeholder$$, $tag$abc$tag$, 1 -- $4\n/* $5 */\n, $2';
+      const found = SqlParser.detectPositionalParameters(sql);
+      expect(found).to.deep.equal([2]);
+    });
+  });
+
+  describe('substituteQuotedPsqlVariables', () => {
+    it('substitutes literal and identifier variables with proper escaping', () => {
+      const { text, paramNames } = SqlParser.substituteQuotedPsqlVariables(
+        "SELECT :'name' AS n, :\"col\" FROM :\"tbl\"",
+        { name: "O'Brien", col: 'my"col', tbl: 'my"tbl' }
+      );
+
+      expect(paramNames).to.deep.equal(['name', 'col', 'tbl']);
+      expect(text).to.equal("SELECT 'O''Brien' AS n, \"my\"\"col\" FROM \"my\"\"tbl\"");
+    });
+
+    it('ignores quoted psql variables inside strings, comments, and dollar quotes', () => {
+      const { text, paramNames } = SqlParser.substituteQuotedPsqlVariables(
+        "SELECT ':\"ignored\"', :'ok' -- :'ignored'\n, $$ :'ignored' $$, /* :'ignored' */ :'ok'",
+        { ok: 'x' }
+      );
+
+      expect(paramNames).to.deep.equal(['ok']);
+      expect(text).to.equal("SELECT ':\"ignored\"', 'x' -- :'ignored'\n, $$ :'ignored' $$, /* :'ignored' */ 'x'");
+    });
+
+    it('uses one prompted name for repeated tokens', () => {
+      const { text, paramNames } = SqlParser.substituteQuotedPsqlVariables(
+        "SELECT :'v', :'v'",
+        { v: 'a' }
+      );
+      expect(paramNames).to.deep.equal(['v']);
+      expect(text).to.equal("SELECT 'a', 'a'");
+    });
+  });
+
+  describe('detectParameters', () => {
+    it('returns positional, named, and quoted buckets', () => {
+      const params = SqlParser.detectParameters(
+        "SELECT $1, :name, :'literalVar', :\"identifierVar\", col::text"
+      );
+
+      expect(params.positional).to.deep.equal([1]);
+      expect(params.named).to.deep.equal(['name']);
+      expect(params.quoted).to.deep.equal([
+        { name: 'literalVar', kind: 'literal' },
+        { name: 'identifierVar', kind: 'identifier' }
+      ]);
+    });
+
+    it('keeps casts out of named parameters', () => {
+      const params = SqlParser.detectParameters("SELECT '2020-01-01'::date, col::text");
+      expect(params.named).to.deep.equal([]);
+    });
+  });
+
+  describe('hasNamedParameters', () => {
+    it('is true when a bind placeholder exists outside literals', () => {
+      expect(SqlParser.hasNamedParameters('SELECT :a')).to.be.true;
+    });
+
+    it('is false when only casts or literals contain colons', () => {
+      expect(SqlParser.hasNamedParameters("SELECT '::'::text")).to.be.false;
+      expect(SqlParser.hasNamedParameters('SELECT 1::int')).to.be.false;
+    });
+  });
 });

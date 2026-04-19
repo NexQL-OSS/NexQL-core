@@ -5,6 +5,22 @@ All notable changes to the PostgreSQL Explorer extension will be documented in t
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-04-19
+
+### Added
+- **SQL Assistant editor tabs**: Added `postgres-explorer.openSqlAssistantTab` so users can open SQL Assistant in the main editor area, not only in the sidebar container.
+- **Multi-tab SQL Assistant workflow**: SQL Assistant now supports opening multiple editor tabs for parallel AI conversations and context switching.
+- **AI Insights dashboard panel**: Added a richer dashboard assistant surface with schema-health metrics, connection analytics, vacuum progress, and direct Ask AI actions.
+
+### Fixed
+- **SQL completion deduplication**: Table and column completion items are now deduplicated before caching, preventing repeated suggestions in notebook SQL autocomplete.
+- **Assistant routing consistency**: Chat attachments and assistant updates now route to the active SQL Assistant webview (sidebar view or editor tab), which keeps multi-tab conversations in sync.
+- **Review changes UI stability**: The result review / compare UI now renders more consistently and keeps action visibility aligned with the active table state.
+
+### Changed
+- **Dashboard telemetry expansion**: Dashboard stats now include unused indexes, high sequential-scan tables, table bloat, autovacuum progress, tables needing vacuum, and connections grouped by application name.
+- **Dashboard AI interactions**: AI prompts can be launched from dashboard context, queries can be executed for analysis, CSV can be downloaded from AI-assisted query results, and health degradation can trigger auto-notify behavior.
+
 ## [1.0.0] - 2026-04-14
 
 ### Production Stable Release

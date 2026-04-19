@@ -594,6 +594,12 @@ export class ListenNotifyPanel {
   }
 
   .error-bar.visible { display: block; }
+
+  .error-bar.toast-success {
+    background: color-mix(in srgb, var(--vscode-testing-iconPassed, #73c991) 16%, var(--vscode-editor-background));
+    border-top-color: var(--vscode-testing-iconPassed, #73c991);
+    color: var(--vscode-editor-foreground);
+  }
 </style>
 </head>
 <body>
@@ -787,8 +793,16 @@ export class ListenNotifyPanel {
     // ---------- Error bar ----------
     function showError(msg) {
       errorBar.textContent = msg;
+      errorBar.classList.remove('toast-success');
       errorBar.classList.add('visible');
       setTimeout(() => errorBar.classList.remove('visible'), 5000);
+    }
+
+    function showSuccess(msg) {
+      errorBar.textContent = msg;
+      errorBar.classList.remove('toast-success');
+      errorBar.classList.add('visible', 'toast-success');
+      setTimeout(() => errorBar.classList.remove('visible', 'toast-success'), 3200);
     }
 
     // ---------- Button handlers ----------
@@ -837,9 +851,14 @@ export class ListenNotifyPanel {
         case 'error':
           showError(msg.message);
           break;
-        case 'notifySent':
-          // Optional: could show a brief confirmation
+        case 'notifySent': {
+          const ch = (msg.channel || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+          const pl = msg.payload != null && String(msg.payload).length > 0
+            ? ' · ' + String(msg.payload).slice(0, 120).replace(/</g, '&lt;')
+            : '';
+          showSuccess('NOTIFY sent: ' + ch + pl);
           break;
+        }
       }
     });
 

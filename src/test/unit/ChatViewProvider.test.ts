@@ -401,5 +401,25 @@ describe('ChatViewProvider', () => {
         content: '{not valid json'
       }
     })).to.be.true;
+
+    const noticesSendPromise = provider.sendToChat({
+      query: 'DO $$ BEGIN RAISE NOTICE \'a\'; RAISE NOTICE \'b\'; END $$;',
+      message: 'Notices help',
+      notices: [
+        { message: 'first notice', receivedAt: '2020-01-01T00:00:00.000Z' },
+        { message: 'second notice', receivedAt: '2020-01-01T00:00:01.000Z' },
+      ],
+    });
+    await clock.tickAsync(300);
+    await noticesSendPromise;
+
+    expect(postMessage.calledWithMatch({
+      type: 'fileAttached',
+      file: {
+        type: 'txt',
+        content:
+          '1. [2020-01-01T00:00:00.000Z] first notice\n\n2. [2020-01-01T00:00:01.000Z] second notice',
+      },
+    })).to.be.true;
   });
 });

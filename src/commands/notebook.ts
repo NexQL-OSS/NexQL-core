@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
 import { DatabaseTreeItem } from '../providers/DatabaseTreeProvider';
-import { getDatabaseConnection, NotebookBuilder, MarkdownUtils, ErrorHandlers } from './helper';
+import { getDatabaseConnection, NotebookBuilder, MarkdownUtils, ErrorHandlers, validateNotebookContextItem } from './helper';
 import { PostgresMetadata } from '../common/types';
+import { ConnectionUtils } from '../utils/connectionUtils';
 
 type NotebookCellSeed = {
   kind: 'markdown' | 'sql';
@@ -279,9 +280,49 @@ async function createAndOpenRandomNotebook(metadata: any, cells: NotebookCellSee
   await builder.showNew();
 }
 
+function hasNotebookDbContext(item: DatabaseTreeItem | undefined): boolean {
+  return item !== undefined && !!item.connectionId && !!item.databaseName;
+}
+
+/**
+ * When the command runs from a keybinding there is no tree selection; some tree nodes
+ * also omit connectionId/databaseName. Prompt for connection and database in that case.
+ */
+async function resolveNotebookTreeItem(item: DatabaseTreeItem | undefined): Promise<DatabaseTreeItem | undefined> {
+  if (hasNotebookDbContext(item)) {
+    return item;
+  }
+  const connection = await ConnectionUtils.showConnectionPicker(undefined, {
+    title: 'New SQL Notebook',
+    placeHolder: 'Select a connection for this notebook',
+  });
+  if (!connection) {
+    return undefined;
+  }
+  const databaseName = await ConnectionUtils.showDatabasePicker(connection, undefined, {
+    title: 'New SQL Notebook',
+    placeHolder: 'Select a database to connect the notebook to',
+  });
+  if (!databaseName) {
+    return undefined;
+  }
+  return new DatabaseTreeItem(
+    databaseName,
+    vscode.TreeItemCollapsibleState.None,
+    'database',
+    connection.id,
+    databaseName
+  );
+}
+
 export async function cmdNewNotebook(item: DatabaseTreeItem, context?: vscode.ExtensionContext) {
   try {
-    const dbConn = await getDatabaseConnection(item);
+    const treeItem = await resolveNotebookTreeItem(item);
+    if (!treeItem) {
+      return;
+    }
+
+    const dbConn = await getDatabaseConnection(treeItem, validateNotebookContextItem);
     const { metadata } = dbConn;
     if (dbConn.release) dbConn.release();
 
@@ -296,7 +337,7 @@ export async function cmdNewNotebook(item: DatabaseTreeItem, context?: vscode.Ex
         kind: 'sql',
         value: `-- Connected to database: ${metadata.databaseName}
 -- Write your SQL query here
-SELECT * FROM ${item.schema ? `${item.schema}.${item.label}` : 'your_table'}
+SELECT * FROM ${treeItem.schema ? `${treeItem.schema}.${treeItem.label}` : 'your_table'}
 LIMIT 100;`,
       },
     ];

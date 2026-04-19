@@ -14,6 +14,25 @@ const GITHUB_MODELS_API_BASE = 'https://models.github.ai';
 const GITHUB_MODELS_API_VERSION = '2026-03-10';
 const DEFAULT_GITHUB_MODEL = 'openai/gpt-4.1';
 
+/** Heuristic for VS Code LM when the host does not report token usage (UI hint only). */
+const ROUGH_CHARS_PER_TOKEN = 4;
+
+/** Transient HTTP failures for direct API providers (OpenAI-compatible, Anthropic, etc.). */
+const HTTP_RETRY_MAX_ATTEMPTS = 3;
+const HTTP_RETRY_BASE_MS = 400;
+const HTTP_RETRY_CAP_MS = 8000;
+
+/** Carries HTTP status for non-200 / parse failures so retries can target 5xx and 429. */
+class AiProviderHttpError extends Error {
+  constructor(
+    message: string,
+    readonly httpStatus?: number,
+  ) {
+    super(message);
+    this.name = 'AiProviderHttpError';
+  }
+}
+
 export class AiService {
   private _messages: ChatMessage[] = [];
   private _cancellationTokenSource: vscode.CancellationTokenSource | null = null;
@@ -335,6 +354,7 @@ The UI will automatically parse this and show clickable suggestion bubbles.`;
         resultKeys: rawChatRequest?.result ? Object.keys(rawChatRequest.result) : []
       }));
 
+      let effectiveRequest: any = chatRequest;
       let responseText = await this._extractVsCodeLmResponseText(chatRequest as any);
       console.log('[AiService] Initial extraction result length:', responseText.length);
 
@@ -362,6 +382,7 @@ The UI will automatically parse this and show clickable suggestion bubbles.`;
 
         console.log('[AiService] sendRequest retry attempt started');
         const retryRequest = await model.sendRequest(retryMessages, {}, this._cancellationTokenSource.token);
+        effectiveRequest = retryRequest;
         const rawRetryRequest = retryRequest as any;
         console.log('[AiService] sendRequest retry attempt resolved:', JSON.stringify({
           hasStream: !!rawRetryRequest?.stream,
@@ -381,6 +402,7 @@ The UI will automatically parse this and show clickable suggestion bubbles.`;
         if (fallbackModel) {
           console.warn('[AiService] Selected model produced empty output. Trying alternate model:', fallbackModel.name || fallbackModel.id);
           const fallbackRequest = await fallbackModel.sendRequest(effectiveMessagesForFallback, {}, this._cancellationTokenSource.token);
+          effectiveRequest = fallbackRequest;
           responseText = await this._extractVsCodeLmResponseText(fallbackRequest as any);
           console.log('[AiService] Alternate model extraction result length:', responseText.length);
         }
@@ -390,7 +412,13 @@ The UI will automatically parse this and show clickable suggestion bubbles.`;
         throw new Error('AI model returned an empty response. Please retry or select a different model.');
       }
 
-      return { text: responseText };
+      const promptChars = AiService._approxCharsFromLmMessages(effectiveMessagesForFallback);
+      let usageStr = await AiService._extractVsCodeLmUsageAfterStream(effectiveRequest);
+      if (!usageStr) {
+        usageStr = AiService._roughTokenEstimateLabel(promptChars, responseText.length);
+      }
+
+      return { text: responseText, usage: usageStr };
     } finally {
       // Clean up cancellation token source
       if (this._cancellationTokenSource) {
@@ -398,6 +426,73 @@ The UI will automatically parse this and show clickable suggestion bubbles.`;
         this._cancellationTokenSource = null;
       }
     }
+  }
+
+  /** Best-effort token / usage string from a consumed VS Code LM response (shape varies by host). */
+  private static async _extractVsCodeLmUsageAfterStream(chatRequest: any): Promise<string | undefined> {
+    const direct = AiService._usageFromLmResponseObject(chatRequest);
+    if (direct) {
+      return direct;
+    }
+    const r = chatRequest?.result;
+    if (r && typeof r.then === 'function') {
+      try {
+        const resolved = await r;
+        return AiService._usageFromLmResponseObject(resolved);
+      } catch {
+        return undefined;
+      }
+    }
+    return undefined;
+  }
+
+  private static _usageFromLmResponseObject(obj: any): string | undefined {
+    if (!obj || typeof obj !== 'object') {
+      return undefined;
+    }
+    const u = obj.usage;
+    if (!u || typeof u !== 'object') {
+      return undefined;
+    }
+    if (typeof u.totalTokens === 'number') {
+      return `${u.totalTokens} tokens`;
+    }
+    if (typeof u.inputTokens === 'number' && typeof u.outputTokens === 'number') {
+      return `${u.inputTokens} in + ${u.outputTokens} out`;
+    }
+    if (typeof u.promptTokens === 'number' && typeof u.completionTokens === 'number') {
+      return `${u.promptTokens} in + ${u.completionTokens} out`;
+    }
+    return undefined;
+  }
+
+  private static _approxCharsFromLmMessages(lmMessages: any[]): number {
+    let n = 0;
+    for (const msg of lmMessages) {
+      const c = (msg as any)?.content;
+      if (typeof c === 'string') {
+        n += c.length;
+      } else if (Array.isArray(c)) {
+        for (const part of c) {
+          if (typeof part === 'string') {
+            n += part.length;
+          } else if (part && typeof (part as any).text === 'string') {
+            n += (part as any).text.length;
+          } else if (part && typeof (part as any).value === 'string') {
+            n += (part as any).value.length;
+          }
+        }
+      }
+    }
+    return n;
+  }
+
+  /** Rough token hint when the LM host does not report usage (not billing-grade). */
+  private static _roughTokenEstimateLabel(promptChars: number, completionChars: number): string {
+    const inTok = Math.max(1, Math.round(promptChars / ROUGH_CHARS_PER_TOKEN));
+    const outTok = Math.max(1, Math.round(completionChars / ROUGH_CHARS_PER_TOKEN));
+    const total = inTok + outTok;
+    return `~${total} tokens (est. · ${inTok} in + ${outTok} out)`;
   }
 
   private async _findAlternateModel(currentModelId: string): Promise<vscode.LanguageModelChat | undefined> {
@@ -839,7 +934,81 @@ The UI will automatically parse this and show clickable suggestion bubbles.`;
       throw new Error(`Unsupported provider: ${provider}`);
     }
 
-    return this._makeHttpRequest(endpoint, headers, body, provider);
+    return this._makeHttpRequestWithRetry(endpoint, headers, body, provider);
+  }
+
+  private async _makeHttpRequestWithRetry(
+    endpoint: string,
+    headers: any,
+    body: any,
+    provider: string,
+  ): Promise<{ text: string; usage?: string }> {
+    let lastErr: unknown;
+    for (let attempt = 0; attempt < HTTP_RETRY_MAX_ATTEMPTS; attempt++) {
+      try {
+        return await this._makeHttpRequest(endpoint, headers, body, provider);
+      } catch (err) {
+        lastErr = err;
+        if (
+          attempt === HTTP_RETRY_MAX_ATTEMPTS - 1 ||
+          !this._isTransientProviderHttpError(err) ||
+          this._shouldSkipRetryForLocalConnectionRefused(endpoint, err)
+        ) {
+          throw err;
+        }
+        const delay = Math.min(
+          HTTP_RETRY_BASE_MS * 2 ** attempt,
+          HTTP_RETRY_CAP_MS,
+        );
+        await new Promise((r) => setTimeout(r, delay));
+      }
+    }
+    throw lastErr;
+  }
+
+  /**
+   * Ollama/LM Studio on localhost: ECONNREFUSED means the daemon is not running.
+   * Retrying does not help and only adds latency.
+   */
+  private _shouldSkipRetryForLocalConnectionRefused(
+    endpoint: string,
+    err: unknown,
+  ): boolean {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (!/ECONNREFUSED/i.test(msg)) {
+      return false;
+    }
+    try {
+      const host = new URL(endpoint).hostname.toLowerCase();
+      return (
+        host === 'localhost' ||
+        host === '127.0.0.1' ||
+        host === '::1' ||
+        host === '[::1]'
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  private _isTransientProviderHttpError(err: unknown): boolean {
+    if (err instanceof AiProviderHttpError && err.httpStatus !== undefined) {
+      const s = err.httpStatus;
+      if (s === 429) {
+        return true;
+      }
+      if (s >= 500 && s < 600) {
+        return true;
+      }
+      return false;
+    }
+    const msg = err instanceof Error ? err.message : String(err);
+    if (/status (429|502|503|504)\b/.test(msg)) {
+      return true;
+    }
+    return /ECONNRESET|ETIMEDOUT|EAI_AGAIN|ECONNREFUSED|socket hang up|ENOTFOUND/i.test(
+      msg,
+    );
   }
 
   private async _getDirectApiKey(config: vscode.WorkspaceConfiguration): Promise<string> {
@@ -883,44 +1052,79 @@ The UI will automatically parse this and show clickable suggestion bubbles.`;
         let data = '';
         res.on('data', chunk => data += chunk);
         res.on('end', () => {
-          try {
-            const response = JSON.parse(data);
+          const statusCode = res.statusCode ?? 0;
 
-            if (res.statusCode !== 200) {
-              reject(new Error(response.error?.message || `API request failed with status ${res.statusCode}`));
-              return;
-            }
-
-            let content = '';
-            let usage = '';
-
-            if (provider === 'anthropic') {
-              content = response.content?.[0]?.text || '';
-              if (response.usage) {
-                 usage = `${response.usage.input_tokens} input, ${response.usage.output_tokens} output`;
+          if (statusCode !== 200) {
+            let detail = `API request failed with status ${statusCode}`;
+            try {
+              const errBody = JSON.parse(data) as { error?: { message?: string } };
+              if (errBody.error?.message) {
+                detail = String(errBody.error.message);
               }
-            } else if (provider === 'gemini') {
-              content = response.candidates?.[0]?.content?.parts?.[0]?.text || '';
-              if (response.usageMetadata) {
-                 usage = `${response.usageMetadata.totalTokenCount} tokens`;
-              }
-            } else {
-              // OpenAI or compatible
-              content = response.choices?.[0]?.message?.content || '';
-              if (response.usage) {
-                 usage = `${response.usage.total_tokens} tokens (P:${response.usage.prompt_tokens}, C:${response.usage.completion_tokens})`;
+            } catch {
+              const snippet = data.replace(/\s+/g, ' ').trim().slice(0, 200);
+              if (snippet) {
+                detail = `${detail} — ${snippet}`;
               }
             }
-
-            if (!content && provider === 'custom') {
-              content = JSON.stringify(response); // Fallback
-            }
-
-            resolve({ text: content, usage });
-          } catch (e) {
-            // If response is not JSON, we might want to log it
-            reject(new Error(`Failed to parse API response: ${e instanceof Error ? e.message : String(e)}`));
+            reject(new AiProviderHttpError(detail, statusCode));
+            return;
           }
+
+          let response: Record<string, unknown>;
+          try {
+            response = JSON.parse(data) as Record<string, unknown>;
+          } catch (e) {
+            reject(
+              new AiProviderHttpError(
+                `Failed to parse API response: ${e instanceof Error ? e.message : String(e)}`,
+                statusCode,
+              ),
+            );
+            return;
+          }
+
+          let content = '';
+          let usage = '';
+
+          if (provider === 'anthropic') {
+            const contentArr = response.content as Array<{ text?: string }> | undefined;
+            content = contentArr?.[0]?.text || '';
+            const usageObj = response.usage as { input_tokens?: number; output_tokens?: number } | undefined;
+            if (usageObj) {
+              usage = `${usageObj.input_tokens} input, ${usageObj.output_tokens} output`;
+            }
+          } else if (provider === 'gemini') {
+            const candidates = response.candidates as Array<{
+              content?: { parts?: Array<{ text?: string }> };
+            }> | undefined;
+            content = candidates?.[0]?.content?.parts?.[0]?.text || '';
+            const usageObj = response.usageMetadata as { totalTokenCount?: number } | undefined;
+            if (usageObj) {
+              usage = `${usageObj.totalTokenCount} tokens`;
+            }
+          } else {
+            const choices = response.choices as Array<{ message?: { content?: string } }> | undefined;
+            content = choices?.[0]?.message?.content || '';
+            const usageObj = response.usage as {
+              total_tokens?: number;
+              prompt_tokens?: number;
+              completion_tokens?: number;
+            } | undefined;
+            if (usageObj) {
+              usage = `${usageObj.total_tokens} tokens (P:${usageObj.prompt_tokens}, C:${usageObj.completion_tokens})`;
+            }
+          }
+
+          if (!content && provider === 'custom') {
+            content = JSON.stringify(response);
+          }
+
+          if (usage && body?.model) {
+            usage = `${body.model} · ${usage}`;
+          }
+
+          resolve({ text: content, usage });
         });
       });
 

@@ -70,6 +70,21 @@ export class TableRenderer {
   private readonly CHUNK_SIZE = 50;
   private currentlyEditingCell: HTMLElement | null = null;
 
+  /** Below this many combined data + pending rows, use chunk + IntersectionObserver (legacy). */
+  private static readonly VIRTUAL_ROW_THRESHOLD = 100;
+  /** Minimum rows to keep in the virtual window (avoids tiny first paint when clientHeight is still small). */
+  private static readonly VIRTUAL_MIN_VIEWPORT_ROWS = 50;
+  /** Extra rows above/below viewport as a multiple of measured viewport rows (2× viewport buffer). */
+  private static readonly VIRTUAL_VIEWPORT_BUFFER_MULTIPLIER = 2;
+  private static readonly DEFAULT_DATA_ROW_HEIGHT_PX = 30;
+  private static readonly DEFAULT_PENDING_ROW_HEIGHT_PX = 40;
+
+  private virtualScrollEnabled = false;
+  private scrollListenerAttached = false;
+  private virtualScrollRaf: number | null = null;
+  private dataRowHeightEstimate = TableRenderer.DEFAULT_DATA_ROW_HEIGHT_PX;
+  private lastVirtualRange: { start: number; end: number } | null = null;
+
   // Events
   private events: TableEvents = {};
 
@@ -91,6 +106,9 @@ export class TableRenderer {
     if (!this.mainContainer.contains(this.tableContainer)) {
       this.mainContainer.appendChild(this.tableContainer);
     }
+
+    // Remove any leftover inline editor panels from previous edits
+    this.cleanupInlineEditors();
 
     this.columns = options.columns;
     this.rows = options.rows;
@@ -115,6 +133,9 @@ export class TableRenderer {
 
     // Apply sort + filter to produce displayRows
     this.applyTransforms();
+
+    this.teardownVirtualScroll();
+    this.dataRowHeightEstimate = TableRenderer.DEFAULT_DATA_ROW_HEIGHT_PX;
 
     // Reset DOM
     this.tableContainer.innerHTML = '';
@@ -159,13 +180,19 @@ export class TableRenderer {
     this.mainContainer.insertBefore(this.filterBar.getElement(), this.tableContainer);
 
     if (this.displayRows.length === 0 && this.rows.length === 0) {
-      this.renderEmptyState();
+      this.renderEmptyState(this.columns.length === 0 ? 'no-columns' : 'no-rows');
       return;
     }
 
     this.createTableStructure();
-    this.renderNextChunk();
-    this.setupInfiniteScroll();
+    if (this.shouldVirtualize()) {
+      this.virtualScrollEnabled = true;
+      this.renderVirtualInitial();
+    } else {
+      this.renderNextChunk();
+      this.setupInfiniteScroll();
+    }
+    this.maybeAppendFilterEmptyHint();
   }
 
   private addPendingRow() {
@@ -201,6 +228,8 @@ export class TableRenderer {
   }
 
   private refreshTableContent() {
+    this.teardownVirtualScroll();
+    this.dataRowHeightEstimate = TableRenderer.DEFAULT_DATA_ROW_HEIGHT_PX;
     this.tableContainer.innerHTML = '';
     this.renderedCount = 0;
     this.tableBody = null;
@@ -217,8 +246,14 @@ export class TableRenderer {
 
     this.statsTooltip = new ColumnStatsTooltip();
     this.createTableStructure();
-    this.renderNextChunk();
-    this.setupInfiniteScroll();
+    if (this.shouldVirtualize()) {
+      this.virtualScrollEnabled = true;
+      this.renderVirtualInitial();
+    } else {
+      this.renderNextChunk();
+      this.setupInfiniteScroll();
+    }
+    this.maybeAppendFilterEmptyHint();
   }
 
   /** Apply current sort + filter, storing result in displayRows */
@@ -277,14 +312,60 @@ export class TableRenderer {
     }
   }
 
-  private renderEmptyState() {
-    const empty = document.createElement('div');
-    empty.textContent = 'No results found';
-    empty.style.fontStyle = 'italic';
-    empty.style.opacity = '0.7';
-    empty.style.padding = '20px';
-    empty.style.textAlign = 'center';
-    this.tableContainer.appendChild(empty);
+  private renderEmptyState(kind: 'no-rows' | 'no-columns') {
+    const wrap = document.createElement('div');
+    wrap.setAttribute('role', 'status');
+    wrap.setAttribute('aria-live', 'polite');
+    wrap.style.cssText =
+      'display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:32px 24px;text-align:center;max-width:440px;margin:0 auto;';
+
+    const title = document.createElement('div');
+    title.style.cssText =
+      'font-weight:600;font-size:14px;color:var(--vscode-editor-foreground);letter-spacing:0.02em;';
+    title.textContent = kind === 'no-rows' ? 'No rows returned' : 'No columns in result';
+
+    const sub = document.createElement('div');
+    sub.style.cssText =
+      'font-size:12px;line-height:1.5;color:var(--vscode-descriptionForeground);';
+    sub.textContent =
+      kind === 'no-rows'
+        ? 'Empty result set. Adjust the query or filters if unexpected.'
+        : 'No column metadata. Check Messages for errors.';
+
+    wrap.appendChild(title);
+    wrap.appendChild(sub);
+    this.tableContainer.appendChild(wrap);
+  }
+
+  /** When filters hide every row but data exists, show a single hint row (headers stay visible). */
+  private maybeAppendFilterEmptyHint() {
+    if (!this.tableBody) {
+      return;
+    }
+    if (this.pendingInserts.length > 0) {
+      return;
+    }
+    if (this.displayRows.length !== 0 || this.rows.length === 0) {
+      return;
+    }
+    const tr = document.createElement('tr');
+    tr.setAttribute('data-filter-empty', '1');
+    const td = document.createElement('td');
+    td.colSpan = Math.max(1, this.columns.length + 1);
+    td.style.cssText =
+      'padding:28px 16px;text-align:center;color:var(--vscode-descriptionForeground);font-size:13px;border-top:1px solid var(--vscode-widget-border);';
+    td.setAttribute('role', 'status');
+    td.setAttribute('aria-live', 'polite');
+    const strong = document.createElement('div');
+    strong.style.cssText = 'font-weight:600;color:var(--vscode-editor-foreground);margin-bottom:6px;';
+    strong.textContent = 'No rows match the current filter';
+    const hint = document.createElement('div');
+    hint.style.fontSize = '12px';
+    hint.textContent = 'Clear the search box or column filters to see data again.';
+    td.appendChild(strong);
+    td.appendChild(hint);
+    tr.appendChild(td);
+    this.tableBody.appendChild(tr);
   }
 
   private createTableStructure() {
@@ -300,6 +381,8 @@ export class TableRenderer {
     // Row number header
     const selectTh = document.createElement('th');
     selectTh.textContent = '#';
+    selectTh.setAttribute('scope', 'col');
+    selectTh.setAttribute('aria-label', 'Row number');
     selectTh.style.cssText = `
       width:32px;min-width:32px;position:sticky;top:0;left:0;
       background:var(--vscode-editor-background);
@@ -322,6 +405,8 @@ export class TableRenderer {
 
   private createHeaderCell(col: string): HTMLElement {
     const th = document.createElement('th');
+    th.setAttribute('data-sortable', 'true');
+    th.setAttribute('scope', 'col');
     th.style.cssText = `
       text-align:left;padding:8px 12px;
       border-bottom:1px solid var(--vscode-widget-border);
@@ -449,6 +534,12 @@ export class TableRenderer {
       attachColumnStatsTooltip(th, col, () => this.displayRows, this.statsTooltip, 600);
     }
 
+    if (this.sortColumn === col && this.sortDirection !== 'none') {
+      th.setAttribute('aria-sort', this.sortDirection === 'asc' ? 'ascending' : 'descending');
+    } else {
+      th.setAttribute('aria-sort', 'none');
+    }
+
     this.addResizeHandle(th);
     return th;
   }
@@ -544,6 +635,17 @@ export class TableRenderer {
     cell.style.opacity = '';
     cell.style.borderLeft = '';
     cell.style.cssText = `${cell.style.cssText};${style}`;
+  }
+
+  private applyModifiedCellDecoration(cell: HTMLElement, sourceIndex: number, col: string): void {
+    const cellKey = `${sourceIndex}-${col}`;
+    if (!this.modifiedCells.has(cellKey)) {
+      return;
+    }
+
+    cell.style.backgroundColor = 'rgba(245,158,11,0.15)';
+    cell.style.borderLeft = '3px solid #f59e0b';
+    cell.title = 'Unsaved edit — double-click to edit';
   }
 
   private createRow(row: any, displayIndex: number, sourceIndex: number): HTMLElement {
@@ -728,17 +830,14 @@ export class TableRenderer {
       // DOUBLE-CLICK to edit (not single-click)
       td.addEventListener('dblclick', (e) => {
         e.stopPropagation();
-        this.handleCellEdit(e, td, sourceIndex, col, type);
+        // Pass PostgreSQL type for editors — not formatValue()'s semantic type (e.g. "object").
+        this.handleCellEdit(e, td, sourceIndex, col);
       });
     }
 
-    const cellKey = `${sourceIndex}-${col}`;
-    if (this.modifiedCells.has(cellKey)) {
-      td.style.backgroundColor = 'rgba(245,158,11,0.15)';
-      td.style.borderLeft = '3px solid #f59e0b';
-    }
-
     this.applyCellStyle(td, sourceIndex, displayIndex, 'data');
+
+    this.applyModifiedCellDecoration(td, sourceIndex, col);
 
     if (val === null || val === undefined) {
       const nullSpan = document.createElement('span');
@@ -793,18 +892,18 @@ export class TableRenderer {
         rowCells.forEach((cell, cellIndex) => {
           const cellKind: 'row-number' | 'data' = cellIndex === 0 ? 'row-number' : 'data';
           this.applyCellStyle(cell, sourceIndex, isNaN(displayIndex) ? sourceIndex : displayIndex, cellKind);
+          if (cellKind === 'data') {
+            const col = this.columns[cellIndex - 1];
+            if (col) {
+              this.applyModifiedCellDecoration(cell, sourceIndex, col);
+            }
+          }
         });
       }
     });
   }
 
-  private handleCellEdit(
-    e: MouseEvent,
-    td: HTMLElement,
-    sourceIndex: number,
-    col: string,
-    type: string,
-  ) {
+  private handleCellEdit(e: MouseEvent, td: HTMLElement, sourceIndex: number, col: string) {
     if (this.currentlyEditingCell === td) return;
 
     // Blur any existing editor
@@ -814,9 +913,10 @@ export class TableRenderer {
     }
 
     this.currentlyEditingCell = td;
+    td.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     const currentValue = this.rows[sourceIndex]?.[col];
     const originalValue = this.originalRows[sourceIndex]?.[col] ?? currentValue;
-    const colType = this.columnTypes[col] || type;
+    const colType = this.columnTypes[col] ?? '';
     const cellKey = `${sourceIndex}-${col}`;
 
     // Find FK info for this column
@@ -867,6 +967,7 @@ export class TableRenderer {
       onFkLookup,
       onSave,
       onCancel,
+      anchorEl: td,
     });
 
     td.appendChild(editorEl);
@@ -887,6 +988,166 @@ export class TableRenderer {
     );
 
     this.loadMoreObserver.observe(this.loadMoreSentinel);
+  }
+
+  private shouldVirtualize(): boolean {
+    return (
+      this.displayRows.length + this.pendingInserts.length >
+      TableRenderer.VIRTUAL_ROW_THRESHOLD
+    );
+  }
+
+  private createSpacerRow(heightPx: number): HTMLTableRowElement {
+    const tr = document.createElement('tr');
+    tr.setAttribute('data-virtual-spacer', '1');
+    tr.setAttribute('aria-hidden', 'true');
+    const td = document.createElement('td');
+    td.colSpan = Math.max(1, this.columns.length + 1);
+    td.style.padding = '0';
+    td.style.border = 'none';
+    td.style.height = `${heightPx}px`;
+    td.style.lineHeight = '0';
+    td.style.fontSize = '0';
+    tr.appendChild(td);
+    return tr;
+  }
+
+  private getPendingBlockHeight(): number {
+    if (!this.tableBody) return 0;
+    const pendingCount = this.pendingInserts.length;
+    let h = 0;
+    for (let i = 0; i < pendingCount; i++) {
+      const row = this.tableBody.children[i] as HTMLElement | undefined;
+      if (row) {
+        const oh = row.offsetHeight;
+        h += oh > 0 ? oh : TableRenderer.DEFAULT_PENDING_ROW_HEIGHT_PX;
+      } else {
+        h += TableRenderer.DEFAULT_PENDING_ROW_HEIGHT_PX;
+      }
+    }
+    return h;
+  }
+
+  private renderVirtualInitial() {
+    if (!this.tableBody) return;
+    const pendingCount = this.pendingInserts.length;
+    for (let i = 0; i < pendingCount; i++) {
+      const pending = this.pendingInserts[i];
+      if (pending) {
+        this.tableBody.appendChild(this.createPendingInsertRow(pending));
+      }
+    }
+    this.lastVirtualRange = null;
+    this.syncVirtualWindow();
+    this.attachVirtualScrollListener();
+  }
+
+  private onVirtualScroll = () => {
+    if (!this.virtualScrollEnabled) return;
+    if (this.virtualScrollRaf !== null) {
+      cancelAnimationFrame(this.virtualScrollRaf);
+    }
+    this.virtualScrollRaf = requestAnimationFrame(() => {
+      this.virtualScrollRaf = null;
+      this.syncVirtualWindow();
+    });
+  };
+
+  private attachVirtualScrollListener() {
+    if (this.scrollListenerAttached) return;
+    this.tableContainer.addEventListener('scroll', this.onVirtualScroll, { passive: true });
+    this.scrollListenerAttached = true;
+  }
+
+  private teardownVirtualScroll() {
+    if (this.scrollListenerAttached) {
+      this.tableContainer.removeEventListener('scroll', this.onVirtualScroll);
+      this.scrollListenerAttached = false;
+    }
+    if (this.virtualScrollRaf !== null) {
+      cancelAnimationFrame(this.virtualScrollRaf);
+      this.virtualScrollRaf = null;
+    }
+    this.virtualScrollEnabled = false;
+    this.lastVirtualRange = null;
+  }
+
+  private syncVirtualWindow() {
+    if (!this.tableBody || !this.virtualScrollEnabled) return;
+
+    const totalDisplay = this.displayRows.length;
+    if (totalDisplay === 0) {
+      this.lastVirtualRange = null;
+      return;
+    }
+
+    const pendingCount = this.pendingInserts.length;
+    const pendingHeight = this.getPendingBlockHeight();
+
+    const scrollTop = this.tableContainer.scrollTop;
+    const clientH = this.tableContainer.clientHeight;
+    const rowH = Math.max(12, this.dataRowHeightEstimate);
+
+    const scrollPastPending = Math.max(0, scrollTop - pendingHeight);
+    const firstIdx = Math.min(
+      totalDisplay - 1,
+      Math.max(0, Math.floor(scrollPastPending / rowH)),
+    );
+    const viewportRows = Math.max(1, Math.ceil(clientH / rowH));
+    const visibleCount = Math.max(
+      TableRenderer.VIRTUAL_MIN_VIEWPORT_ROWS,
+      viewportRows,
+    );
+    const bufferRows = Math.ceil(
+      viewportRows * TableRenderer.VIRTUAL_VIEWPORT_BUFFER_MULTIPLIER,
+    );
+    const start = Math.max(0, firstIdx - bufferRows);
+    const end = Math.min(totalDisplay, firstIdx + visibleCount + bufferRows);
+
+    if (
+      this.lastVirtualRange &&
+      this.lastVirtualRange.start === start &&
+      this.lastVirtualRange.end === end
+    ) {
+      return;
+    }
+    this.lastVirtualRange = { start, end };
+
+    while (this.tableBody.children.length > pendingCount) {
+      this.tableBody.removeChild(this.tableBody.lastChild!);
+    }
+
+    const topSpacerHeight = start * rowH;
+    const bottomSpacerHeight = (totalDisplay - end) * rowH;
+
+    if (topSpacerHeight > 0) {
+      this.tableBody.appendChild(this.createSpacerRow(topSpacerHeight));
+    }
+    for (let i = start; i < end; i++) {
+      const displayIndex = i;
+      const sourceIndex = this.displayRowSourceIndices[displayIndex] ?? displayIndex;
+      const tr = this.createRow(this.displayRows[displayIndex], displayIndex, sourceIndex);
+      this.tableBody.appendChild(tr);
+    }
+    if (bottomSpacerHeight > 0) {
+      this.tableBody.appendChild(this.createSpacerRow(bottomSpacerHeight));
+    }
+
+    const firstDataTr = this.tableBody.querySelector(
+      'tr[data-source-index]:not([data-virtual-spacer])',
+    ) as HTMLElement | null;
+    if (firstDataTr && firstDataTr.offsetHeight > 0) {
+      this.dataRowHeightEstimate = firstDataTr.offsetHeight;
+    }
+  }
+
+  /** Remove inline editor panels injected by the cell editor into ancestor containers. */
+  private cleanupInlineEditors() {
+    let el: HTMLElement | null = this.mainContainer;
+    while (el && el !== document.body) {
+      el.querySelectorAll('[data-inline-editor]').forEach((e) => e.remove());
+      el = el.parentElement;
+    }
   }
 
   private rerenderTable() {
@@ -966,6 +1227,7 @@ export class TableRenderer {
   }
 
   public dispose() {
+    this.teardownVirtualScroll();
     if (this.loadMoreObserver) {
       this.loadMoreObserver.disconnect();
       this.loadMoreObserver = null;

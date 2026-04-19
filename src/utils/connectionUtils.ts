@@ -64,7 +64,10 @@ export class ConnectionUtils {
   }
 
   /** Show connection quick pick and return selected connection */
-  static async showConnectionPicker(currentConnectionId?: string): Promise<any | undefined> {
+  static async showConnectionPicker(
+    currentConnectionId?: string,
+    quickPick?: { title?: string; placeHolder?: string }
+  ): Promise<any | undefined> {
     const connections = this.getConnections();
 
     if (connections.length === 0) {
@@ -80,15 +83,19 @@ export class ConnectionUtils {
     }));
 
     const selected = await vscode.window.showQuickPick(items, {
-      placeHolder: 'Select connection',
-      title: 'Switch Database Connection'
+      placeHolder: quickPick?.placeHolder ?? 'Select connection',
+      title: quickPick?.title ?? 'Switch Database Connection'
     });
 
     return selected?.connection;
   }
 
   /** Show database quick pick and return selected database name */
-  static async showDatabasePicker(connection: any, currentDatabase?: string): Promise<string | undefined> {
+  static async showDatabasePicker(
+    connection: any,
+    currentDatabase?: string,
+    quickPick?: { title?: string; placeHolder?: string }
+  ): Promise<string | undefined> {
     try {
       const databases = await this.listDatabases(connection);
 
@@ -99,8 +106,8 @@ export class ConnectionUtils {
       }));
 
       const selected = await vscode.window.showQuickPick(items, {
-        placeHolder: 'Select database',
-        title: 'Switch Database'
+        placeHolder: quickPick?.placeHolder ?? 'Select database',
+        title: quickPick?.title ?? 'Switch Database'
       });
 
       return selected?.database;

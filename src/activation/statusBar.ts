@@ -1,8 +1,10 @@
 import * as vscode from 'vscode';
 import { PostgresMetadata } from '../common/types';
 import { extensionContext } from '../extension';
-import { ProfileManager } from '../services/ProfileManager';
+import { ProfileManager } from '../features/connections/ProfileManager';
 import { getTransactionManager } from '../services/TransactionManager';
+import { ConnectionUtils } from '../utils/connectionUtils';
+import { WorkspaceStateService } from '../services/WorkspaceStateService';
 
 /**
  * Manages the notebook status bar items that display connection and database info.
@@ -14,6 +16,8 @@ export class NotebookStatusBar implements vscode.Disposable {
   private readonly riskIndicatorItem: vscode.StatusBarItem;
   private readonly profileItem: vscode.StatusBarItem;
   private readonly transactionItem: vscode.StatusBarItem;
+  /** Shown when no PostgreSQL notebook is active: workspace default connection (per-folder state). */
+  private readonly workspaceDefaultItem: vscode.StatusBarItem;
   private readonly disposables: vscode.Disposable[] = [];
 
   constructor() {
@@ -36,12 +40,16 @@ export class NotebookStatusBar implements vscode.Disposable {
     this.transactionItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 96);
     this.transactionItem.tooltip = 'Transaction is open — click to view transaction details';
 
+    this.workspaceDefaultItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 95);
+    this.workspaceDefaultItem.command = 'postgres-explorer.switchWorkspaceDefaultConnection';
+
     this.disposables.push(
       this.connectionItem,
       this.databaseItem,
       this.riskIndicatorItem,
       this.profileItem,
       this.transactionItem,
+      this.workspaceDefaultItem,
       vscode.window.onDidChangeActiveNotebookEditor(() => this.update()),
       vscode.workspace.onDidChangeNotebookDocument((e) => {
         if (vscode.window.activeNotebookEditor?.notebook === e.notebook) {
@@ -58,9 +66,12 @@ export class NotebookStatusBar implements vscode.Disposable {
     const editor = vscode.window.activeNotebookEditor;
 
     if (!this.isPostgresNotebook(editor)) {
-      this.hide();
+      this.hideNotebookItems();
+      this.updateWorkspaceDefaultItem();
       return;
     }
+
+    this.workspaceDefaultItem.hide();
 
     const metadata = editor!.notebook.metadata as PostgresMetadata;
     const connection = this.getConnection(metadata?.connectionId);
@@ -86,12 +97,47 @@ export class NotebookStatusBar implements vscode.Disposable {
     return connections.find(c => c.id === connectionId);
   }
 
-  private hide(): void {
+  private hideNotebookItems(): void {
     this.connectionItem.hide();
     this.databaseItem.hide();
     this.riskIndicatorItem.hide();
     this.profileItem.hide();
     this.transactionItem.hide();
+  }
+
+  private hide(): void {
+    this.hideNotebookItems();
+    this.workspaceDefaultItem.hide();
+  }
+
+  private updateWorkspaceDefaultItem(): void {
+    if (!vscode.workspace.workspaceFolders?.length) {
+      this.workspaceDefaultItem.hide();
+      return;
+    }
+
+    const defaults = WorkspaceStateService.getInstance().getDefaults();
+    const conn = defaults.lastConnectionId
+      ? ConnectionUtils.findConnection(defaults.lastConnectionId)
+      : undefined;
+    const connLabel = conn?.name || conn?.host;
+    const dbLabel = defaults.lastDatabaseName || conn?.database;
+
+    if (!connLabel && !dbLabel) {
+      this.workspaceDefaultItem.text = '$(folder) PgStudio: set workspace DB';
+      this.workspaceDefaultItem.tooltip =
+        'Choose a default PostgreSQL connection for this workspace (used when no .pgsql notebook is focused).';
+      this.workspaceDefaultItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
+      this.workspaceDefaultItem.show();
+      return;
+    }
+
+    const hostPart = conn ? `${conn.name || conn.host}` : 'Unknown connection';
+    const dbPart = dbLabel || '—';
+    this.workspaceDefaultItem.text = `$(root-folder) ${hostPart} · $(database) ${dbPart}`;
+    this.workspaceDefaultItem.tooltip = 'Workspace default connection. Click to change.';
+    this.workspaceDefaultItem.backgroundColor = new vscode.ThemeColor('statusBarItem.prominentBackground');
+    this.workspaceDefaultItem.show();
   }
 
   private showNoConnection(): void {

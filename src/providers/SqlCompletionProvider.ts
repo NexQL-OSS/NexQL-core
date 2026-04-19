@@ -127,10 +127,10 @@ export class SqlCompletionProvider implements vscode.CompletionItemProvider {
                     ORDER BY schemaname, tablename
                 `;
         const tablesResult = await client.query(tablesQuery);
-        const tables: TableInfo[] = tablesResult.rows.map(row => ({
+        const tables: TableInfo[] = this._dedupeTables(tablesResult.rows.map(row => ({
           schema: row.schema,
           tableName: row.table_name
-        }));
+        })));
 
         // Fetch columns
         const columnsQuery = `
@@ -144,12 +144,12 @@ export class SqlCompletionProvider implements vscode.CompletionItemProvider {
                     ORDER BY table_schema, table_name, ordinal_position
                 `;
         const columnsResult = await client.query(columnsQuery);
-        const columns: ColumnInfo[] = columnsResult.rows.map(row => ({
+        const columns: ColumnInfo[] = this._dedupeColumns(columnsResult.rows.map(row => ({
           schema: row.schema,
           tableName: row.table_name,
           columnName: row.column_name,
           dataType: row.data_type
-        }));
+        })));
 
         this.tableCache.set(cacheKey, tables);
         this.columnCache.set(cacheKey, columns);
@@ -266,5 +266,33 @@ export class SqlCompletionProvider implements vscode.CompletionItemProvider {
     }
 
     return completions;
+  }
+
+  private _dedupeTables(tables: TableInfo[]): TableInfo[] {
+    const seen = new Set<string>();
+
+    return tables.filter(table => {
+      const key = `${table.schema}.${table.tableName}`;
+      if (seen.has(key)) {
+        return false;
+      }
+
+      seen.add(key);
+      return true;
+    });
+  }
+
+  private _dedupeColumns(columns: ColumnInfo[]): ColumnInfo[] {
+    const seen = new Set<string>();
+
+    return columns.filter(column => {
+      const key = `${column.schema}.${column.tableName}.${column.columnName}`;
+      if (seen.has(key)) {
+        return false;
+      }
+
+      seen.add(key);
+      return true;
+    });
   }
 }

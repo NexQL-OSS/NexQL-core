@@ -27,8 +27,27 @@ module.exports = [
     },
     rules: {
       ...prettierConfig.rules,
-      '@typescript-eslint/no-empty-function': 'off',
+      'no-debugger': 'error',
+      '@typescript-eslint/no-empty-function': 'warn',
+      '@typescript-eslint/no-explicit-any': 'warn',
+      'no-unused-expressions': 'off',
+    },
+  },
+  {
+    files: ['src/test/**/*.ts'],
+    languageOptions: {
+      parser: tsParser,
+      ecmaVersion: 'latest',
+      sourceType: 'module',
+    },
+    plugins: {
+      '@typescript-eslint': tsPlugin,
+    },
+    rules: {
+      ...prettierConfig.rules,
+      'no-debugger': 'error',
       '@typescript-eslint/no-explicit-any': 'off',
+      '@typescript-eslint/no-empty-function': 'off',
       'no-unused-expressions': 'off',
     },
   },

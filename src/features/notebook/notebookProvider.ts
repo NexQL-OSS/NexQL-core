@@ -1,5 +1,6 @@
 import { Client } from 'pg';
 import * as vscode from 'vscode';
+import { getPgDataTypeName } from '../../common/pgDataTypeNames';
 
 interface PostgresCell {
   kind: 'query';
@@ -155,10 +156,14 @@ export class PostgresNotebookController {
 
         // Create a JSON output for the custom renderer
         const outputData = {
-          columns: result.fields.map(field => field.name),
+          columns: result.fields.map((field) => field.name),
           rows: result.rows,
           rowCount: result.rowCount,
-          command: result.command
+          command: result.command,
+          columnTypes: result.fields.reduce<Record<string, string>>((acc, f) => {
+            acc[f.name] = getPgDataTypeName(f.dataTypeID);
+            return acc;
+          }, {}),
         };
 
         execution.replaceOutput([

@@ -94,4 +94,43 @@ describe('TableRenderer', () => {
     expect(modifiedCells.has('1-name')).to.be.true;
     expect(modifiedCells.has('0-name')).to.be.false;
   });
+
+  it('virtualizes large result sets so most rows are not in the DOM', () => {
+    const rows = Array.from({ length: 120 }, (_, i) => ({ id: i, v: `row-${i}` }));
+    const originalRows = JSON.parse(JSON.stringify(rows));
+
+    const renderer = new TableRenderer(container, {});
+    renderer.render({
+      columns: ['id', 'v'],
+      rows,
+      originalRows,
+      columnTypes: { id: 'int4', v: 'text' },
+      tableInfo: { schema: 'public', table: 't', primaryKeys: ['id'] } as any,
+      foreignKeys: [],
+    });
+
+    const dataRows = container.querySelectorAll('tbody tr[data-source-index]');
+    expect(dataRows.length).to.be.lessThan(rows.length);
+    expect(dataRows.length).to.be.at.least(1);
+
+    renderer.dispose();
+  });
+
+  it('sets aria-sort on the active sort column header', () => {
+    const rows = [{ id: 1, n: 'a' }];
+    const renderer = new TableRenderer(container, {});
+    renderer.render({
+      columns: ['id', 'n'],
+      rows,
+      originalRows: JSON.parse(JSON.stringify(rows)),
+      columnTypes: { id: 'int4', n: 'text' },
+      sortState: { column: 'n', direction: 'asc' },
+      foreignKeys: [],
+    });
+
+    const sortedHeader = container.querySelector('thead th[aria-sort="ascending"]');
+    expect(sortedHeader?.textContent).to.include('n');
+
+    renderer.dispose();
+  });
 });

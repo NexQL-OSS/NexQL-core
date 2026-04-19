@@ -13,14 +13,120 @@ export interface CellEditorOptions {
   onCancel: () => void;
   onFkLookup?: (searchText: string, callback: (rows: any[], columns: string[]) => void) => void;
   isFkColumn?: boolean;
+  /** Ignored — kept for interface compat; inline editor finds its own mount point. */
+  modalMount?: HTMLElement;
+  /** The table cell element — used to locate the output container for inline editor injection. */
+  anchorEl?: HTMLElement;
 }
 
 export type EditorType = 'text' | 'number' | 'boolean' | 'date' | 'time' | 'datetime' | 'json' | 'array' | 'fk' | 'longtext';
 
 /**
+ * Types where a one-line input is a poor fit; use the same anchored modal as long-text / JSON (without JSON validation).
+ * Names are lowercase PostgreSQL typnames / common aliases (see pg_catalog / pg-types builtins).
+ */
+const PG_TYPES_WITH_MODAL_TEXT_EDITOR = new Set([
+  'text',
+  'varchar',
+  'character varying',
+  'bpchar',
+  'char',
+  'character',
+  'name',
+  'xml',
+  'interval',
+  'point',
+  'line',
+  'lseg',
+  'box',
+  'path',
+  'polygon',
+  'circle',
+  'bit',
+  'varbit',
+  'bit varying',
+  'tsvector',
+  'tsquery',
+  'inet',
+  'cidr',
+  'macaddr',
+  'macaddr8',
+  'geometry',
+  'geography',
+  'bytea',
+  'uuid',
+  'money',
+  'int4range',
+  'int8range',
+  'numrange',
+  'daterange',
+  'tsrange',
+  'tstzrange',
+  'int4multirange',
+  'int8multirange',
+  'nummultirange',
+  'datemultirange',
+  'tsmultirange',
+  'tstzmultirange',
+]);
+
+function pgTypeUsesModalTextEditor(columnType: string): boolean {
+  const t = columnType.trim().toLowerCase();
+  if (!t) {
+    return false;
+  }
+  if (t.startsWith('oid:')) {
+    return true;
+  }
+  if (PG_TYPES_WITH_MODAL_TEXT_EDITOR.has(t)) {
+    return true;
+  }
+  if (/^(varchar|bpchar|char|bit|varbit|numeric|decimal)\s*\(/.test(t)) {
+    return true;
+  }
+  return false;
+}
+
+/** String for inline inputs — never use String(object) (yields "[object Object]"). */
+function cellValueToEditString(val: any): string {
+  if (val === null || val === undefined) return '';
+  // node-pg bytea → Buffer; JSON round-trip uses { type: "Buffer", data: [...] }
+  if (typeof val === 'object' && val !== null && (val as { type?: string }).type === 'Buffer' && Array.isArray((val as { data?: number[] }).data)) {
+    const bytes = new Uint8Array((val as { data: number[] }).data);
+    return '\\x' + Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+  }
+  if (typeof Buffer !== 'undefined' && Buffer.isBuffer(val)) {
+    return '\\x' + (val as Buffer).toString('hex');
+  }
+  if (typeof val === 'object' && !(val instanceof Date)) {
+    try {
+      return JSON.stringify(val);
+    } catch {
+      return String(val);
+    }
+  }
+  return String(val);
+}
+
+/**
+ * node-pg parses json/jsonb to JS objects; if OID mapping is missing or legacy "string" slipped through,
+ * still open the JSON editor when the cell value is structured data.
+ */
+function coercedColumnTypeForEditor(columnType: string, currentValue: any): string {
+  const t = (columnType || '').trim().toLowerCase();
+  if (t === '' || t === 'string') {
+    if (currentValue !== null && typeof currentValue === 'object' && !(currentValue instanceof Date)) {
+      return 'jsonb';
+    }
+  }
+  return columnType;
+}
+
+/**
  * Determine editor type from PostgreSQL type string
  */
 export function getEditorType(columnType: string, currentValue: any): EditorType {
+  columnType = coercedColumnTypeForEditor(columnType, currentValue);
   const type = (columnType || '').toLowerCase();
 
   // Array types start with underscore in pg OID naming
@@ -29,15 +135,18 @@ export function getEditorType(columnType: string, currentValue: any): EditorType
   // Boolean
   if (type === 'bool' || type === 'boolean') { return 'boolean'; }
 
-  // Numeric
-  if (['int2', 'int4', 'int8', 'float4', 'float8', 'numeric', 'decimal', 'money',
+  // Numeric (money uses modal text — locale/formatting is easier in the expanded editor)
+  if (['int2', 'int4', 'int8', 'float4', 'float8', 'numeric', 'decimal',
        'smallint', 'integer', 'bigint', 'real', 'double precision'].includes(type)) {
     return 'number';
   }
 
   // Date/time
   if (type === 'date') { return 'date'; }
-  if (type === 'time' || type === 'timetz') { return 'time'; }
+  if (type === 'time' || type === 'timetz' ||
+      type === 'time without time zone' || type === 'time with time zone') {
+    return 'time';
+  }
   if (type === 'timestamp' || type === 'timestamptz' ||
       type === 'timestamp without time zone' || type === 'timestamp with time zone') {
     return 'datetime';
@@ -46,7 +155,12 @@ export function getEditorType(columnType: string, currentValue: any): EditorType
   // JSON
   if (type === 'json' || type === 'jsonb') { return 'json'; }
 
-  // Long text detection
+  // XML, interval, geometry, full-width text types, etc. — anchored modal (same UX as long text)
+  if (pgTypeUsesModalTextEditor(type)) {
+    return 'longtext';
+  }
+
+  // Long text detection (unknown OID label or legacy "string" + very long value)
   if (typeof currentValue === 'string' && currentValue.length > 200) { return 'longtext'; }
 
   return 'text';
@@ -158,8 +272,10 @@ function createNumberEditor(opts: CellEditorOptions): HTMLElement {
 function createTextEditor(opts: CellEditorOptions): HTMLElement {
   const input = document.createElement('input');
   input.type = 'text';
-  input.value = opts.currentValue !== null && opts.currentValue !== undefined
-    ? String(opts.currentValue) : '';
+  input.value =
+    opts.currentValue !== null && opts.currentValue !== undefined
+      ? cellValueToEditString(opts.currentValue)
+      : '';
   applyEditorBaseStyle(input);
 
   const save = () => opts.onSave(input.value === '' && opts.isNullable ? null : input.value);
@@ -171,14 +287,24 @@ function createTextEditor(opts: CellEditorOptions): HTMLElement {
 
 // ─── Long Text (modal overlay) ───────────────────────────────────────
 
+function modalPlainEditorTitle(opts: CellEditorOptions): string {
+  const t = (opts.columnType || '').trim();
+  if (!t) {
+    return opts.columnName;
+  }
+  return `${opts.columnName} (${t})`;
+}
+
 function createLongTextEditor(opts: CellEditorOptions): HTMLElement {
   return createModalEditor({
-    title: opts.columnName,
-    initialContent: opts.currentValue != null ? String(opts.currentValue) : '',
+    title: modalPlainEditorTitle(opts),
+    initialContent: opts.currentValue != null ? cellValueToEditString(opts.currentValue) : '',
     isCode: false,
     validate: () => null,
     onSave: opts.onSave,
     onCancel: opts.onCancel,
+    modalMount: opts.modalMount,
+    anchorEl: opts.anchorEl,
   });
 }
 
@@ -282,7 +408,7 @@ function createJsonEditor(opts: CellEditorOptions): HTMLElement {
       : opts.currentValue;
     formatted = JSON.stringify(parsed, null, 2);
   } catch {
-    formatted = opts.currentValue != null ? String(opts.currentValue) : '';
+    formatted = opts.currentValue != null ? cellValueToEditString(opts.currentValue) : '';
   }
 
   return createModalEditor({
@@ -298,6 +424,8 @@ function createJsonEditor(opts: CellEditorOptions): HTMLElement {
       catch { opts.onSave(content); } // fallback: save as string
     },
     onCancel: opts.onCancel,
+    modalMount: opts.modalMount,
+    anchorEl: opts.anchorEl,
   });
 }
 
@@ -526,7 +654,12 @@ function createFkEditor(opts: CellEditorOptions): HTMLElement {
   return wrapper;
 }
 
-// ─── Modal Editor (shared by JSON and LongText) ───────────────────────
+// ─── Inline Expanding Editor (replaces clipped fixed-position modal) ──
+//
+// Notebook output runs inside an iframe whose ancestors apply overflow:hidden.
+// No fixed/absolute overlay can escape this clipping.  Instead we inject an
+// inline panel into the output's own DOM flow — it pushes the table down,
+// stays fully visible, and scrolls into view automatically.
 
 interface ModalEditorOptions {
   title: string;
@@ -535,10 +668,32 @@ interface ModalEditorOptions {
   validate: (content: string) => string | null;
   onSave: (content: string) => void;
   onCancel: () => void;
+  /** Ignored (kept for interface compat). */
+  modalMount?: HTMLElement;
+  /** The cell <td> — used to find the output container and scroll into view. */
+  anchorEl?: HTMLElement;
+}
+
+/**
+ * Walk up from `start` looking for the output-level container that the
+ * TableRenderer lives in (the `viewContainer` created in renderer_v2).
+ * Falls back to the closest scrollable ancestor or document.body.
+ */
+function findOutputContainer(start: HTMLElement): HTMLElement {
+  let el: HTMLElement | null = start;
+  while (el) {
+    if (el.style.position === 'relative' && el.style.overflow === 'hidden') {
+      return el.parentElement ?? el;
+    }
+    const tag = el.tagName.toLowerCase();
+    if (tag === 'body' || tag === 'html') break;
+    el = el.parentElement;
+  }
+  return document.body;
 }
 
 function createModalEditor(opts: ModalEditorOptions): HTMLElement {
-  // The inline placeholder that triggers the modal
+  // The inline placeholder returned to the caller (sits inside the <td>)
   const placeholder = document.createElement('div');
   placeholder.style.cssText = `
     padding:2px 6px;
@@ -557,34 +712,41 @@ function createModalEditor(opts: ModalEditorOptions): HTMLElement {
   placeholder.textContent = preview || '(empty)';
   placeholder.title = 'Click to open editor';
 
-  // Create and show the modal immediately
-  const showModal = () => {
-    const overlay = document.createElement('div');
-    overlay.style.cssText = `
-      position:fixed;inset:0;
-      background:rgba(0,0,0,0.6);
-      z-index:10000;
-      display:flex;align-items:center;justify-content:center;
-    `;
+  const showEditor = () => {
+    const container = opts.anchorEl ? findOutputContainer(opts.anchorEl) : document.body;
 
-    const modal = document.createElement('div');
-    modal.style.cssText = `
+    // ── Wrapper: inline block in normal DOM flow ──
+    const wrapper = document.createElement('div');
+    wrapper.setAttribute('data-inline-editor', 'true');
+    wrapper.style.cssText = `
+      position:relative;
+      z-index:100;
+      width:100%;
+      box-sizing:border-box;
+      padding:12px;
+      margin:0;
       background:var(--vscode-editor-background);
-      border:1px solid var(--vscode-focusBorder);
+      border:2px solid var(--vscode-focusBorder);
       border-radius:4px;
-      padding:16px;
-      width:600px;max-width:90vw;
-      display:flex;flex-direction:column;gap:10px;
-      box-shadow:0 8px 32px rgba(0,0,0,0.5);
+      box-shadow:0 4px 16px rgba(0,0,0,0.35);
+      display:flex;
+      flex-direction:column;
+      gap:8px;
     `;
 
+    // ── Title bar ──
     const titleBar = document.createElement('div');
-    titleBar.style.cssText = 'display:flex;justify-content:space-between;align-items:center;';
-    titleBar.innerHTML = `
-      <span style="font-size:13px;font-weight:600;color:var(--vscode-editor-foreground);">${opts.title}</span>
-      <span style="font-size:11px;color:var(--vscode-descriptionForeground);">Ctrl+Enter to save • Escape to cancel</span>
-    `;
+    titleBar.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:8px;flex-shrink:0;';
+    const titleMain = document.createElement('span');
+    titleMain.style.cssText = 'font-size:13px;font-weight:600;color:var(--vscode-editor-foreground);';
+    titleMain.textContent = opts.title;
+    const titleHint = document.createElement('span');
+    titleHint.style.cssText = 'font-size:11px;color:var(--vscode-descriptionForeground);white-space:nowrap;';
+    titleHint.textContent = 'Ctrl+Enter to save · Escape to cancel';
+    titleBar.appendChild(titleMain);
+    titleBar.appendChild(titleHint);
 
+    // ── Textarea ──
     const textarea = document.createElement('textarea');
     textarea.value = opts.initialContent;
     textarea.style.cssText = `
@@ -596,21 +758,23 @@ function createModalEditor(opts: ModalEditorOptions): HTMLElement {
       font-family:var(--vscode-editor-font-family,monospace);
       font-size:12px;
       resize:vertical;
-      min-height:200px;
-      max-height:60vh;
+      min-height:120px;
+      max-height:300px;
       outline:none;
       width:100%;
       box-sizing:border-box;
     `;
 
+    // ── Error display ──
     const errorDiv = document.createElement('div');
-    errorDiv.style.cssText = 'color:var(--vscode-errorForeground);font-size:11px;min-height:16px;';
+    errorDiv.style.cssText = 'color:var(--vscode-errorForeground);font-size:11px;min-height:14px;flex-shrink:0;';
 
+    // ── Button row ──
     const btnRow = document.createElement('div');
-    btnRow.style.cssText = 'display:flex;gap:6px;justify-content:flex-end;';
+    btnRow.style.cssText = 'display:flex;gap:6px;justify-content:flex-end;flex-shrink:0;';
 
-    const formatBtn = opts.isCode ? document.createElement('button') : null;
-    if (formatBtn) {
+    if (opts.isCode) {
+      const formatBtn = document.createElement('button');
       formatBtn.textContent = 'Format JSON';
       formatBtn.style.cssText = `
         background:none;border:1px solid var(--vscode-button-border,#555);
@@ -643,41 +807,68 @@ function createModalEditor(opts: ModalEditorOptions): HTMLElement {
       padding:4px 10px;cursor:pointer;font-size:12px;
     `;
 
+    btnRow.appendChild(saveBtn);
+    btnRow.appendChild(cancelBtn);
+
+    // ── Lifecycle ──
+    const keyboardTrapAbort = new AbortController();
+    const { signal } = keyboardTrapAbort;
+
+    const stopKeysEscaping = (e: Event) => { e.stopPropagation(); };
+
+    const teardown = () => {
+      keyboardTrapAbort.abort();
+      if (wrapper.parentNode) {
+        wrapper.parentNode.removeChild(wrapper);
+      }
+    };
+
     const doSave = () => {
       const err = opts.validate(textarea.value);
       if (err) { errorDiv.textContent = err; return; }
-      document.body.removeChild(overlay);
+      teardown();
       opts.onSave(textarea.value);
     };
 
     const doCancel = () => {
-      document.body.removeChild(overlay);
+      teardown();
       opts.onCancel();
     };
 
-    textarea.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && e.ctrlKey) { doSave(); }
-      if (e.key === 'Escape') { doCancel(); }
-    });
+    // Keyboard trap: stop host keybindings from stealing focus
+    wrapper.addEventListener(
+      'keydown',
+      (e: KeyboardEvent) => {
+        if (e.key === 'Enter' && e.ctrlKey) {
+          e.preventDefault(); e.stopPropagation(); doSave(); return;
+        }
+        if (e.key === 'Escape') {
+          e.preventDefault(); e.stopPropagation(); doCancel(); return;
+        }
+        e.stopPropagation();
+      },
+      { signal },
+    );
+    wrapper.addEventListener('keyup', stopKeysEscaping, { signal });
+    wrapper.addEventListener('beforeinput', stopKeysEscaping, { signal });
+    wrapper.addEventListener('compositionend', stopKeysEscaping, { signal });
 
     saveBtn.addEventListener('click', doSave);
     cancelBtn.addEventListener('click', doCancel);
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) { doCancel(); } });
 
-    btnRow.appendChild(saveBtn);
-    btnRow.appendChild(cancelBtn);
+    // ── Assemble & mount ──
+    wrapper.appendChild(titleBar);
+    wrapper.appendChild(textarea);
+    wrapper.appendChild(errorDiv);
+    wrapper.appendChild(btnRow);
 
-    modal.appendChild(titleBar);
-    modal.appendChild(textarea);
-    modal.appendChild(errorDiv);
-    modal.appendChild(btnRow);
-    overlay.appendChild(modal);
-    document.body.appendChild(overlay);
+    // Insert at the top of the output container (above the table) so the
+    // editor is always visible and never hidden beneath scrolled-away rows.
+    container.insertBefore(wrapper, container.firstChild);
+    wrapper.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     setTimeout(() => { textarea.focus(); textarea.setSelectionRange(0, 0); }, 0);
   };
 
-  // Show immediately since we're creating this in response to a user action
-  showModal();
-
+  showEditor();
   return placeholder;
 }

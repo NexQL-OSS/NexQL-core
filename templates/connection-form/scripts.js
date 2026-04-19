@@ -12,7 +12,7 @@ const testBtn = document.getElementById('testConnection');
 const addBtn = document.getElementById('addConnection');
 const addBtnLabel = addBtn.querySelector('span:last-child').textContent;
 const form = document.getElementById('connectionForm');
-const inputs = form.querySelectorAll('input');
+const inputs = form.querySelectorAll('input, select');
 
 // Injected connection data (replaced at runtime by the extension)
 const connectionData = {{ CONNECTION_DATA }};
@@ -41,6 +41,9 @@ if (connectionData) {
   if (connectionData.options)         { document.getElementById('options').value = connectionData.options; }
   if (connectionData.environment)     { document.getElementById('environment').value = connectionData.environment; }
   if (connectionData.readOnlyMode)    { document.getElementById('readOnlyMode').checked = connectionData.readOnlyMode; }
+  if (connectionData.cloudAuth && connectionData.cloudAuth.kind) {
+    document.getElementById('cloudAuthKind').value = connectionData.cloudAuth.kind;
+  }
 
   const hasAdvancedOptions = connectionData.sslmode || connectionData.statementTimeout ||
     connectionData.connectTimeout || connectionData.applicationName || connectionData.options;
@@ -175,6 +178,11 @@ function getFormData() {
     applicationName: document.getElementById('applicationName').value || undefined,
     options: document.getElementById('options').value || undefined
   };
+
+  const authKind = document.getElementById('cloudAuthKind').value;
+  if (authKind && authKind !== 'none') {
+    data.cloudAuth = { kind: authKind };
+  }
 
   if (sshEnabled) {
     data.ssh = {

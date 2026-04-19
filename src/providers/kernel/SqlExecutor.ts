@@ -3,7 +3,8 @@ import * as vscode from 'vscode';
 import { NotebookCellOutput, NotebookCellOutputItem } from 'vscode';
 import { ConnectionManager } from '../../services/ConnectionManager';
 import { TelemetryService, SpanNames } from '../../services/TelemetryService';
-import { PostgresMetadata, QueryResults } from '../../common/types';
+import { NoticeLogEntry, PostgresMetadata, QueryResults } from '../../common/types';
+import { getPgDataTypeName } from '../../common/pgDataTypeNames';
 import { SqlParser } from './SqlParser';
 import { SecretStorageService } from '../../services/SecretStorageService';
 import { ErrorService, getErrorExplanation } from '../../services/ErrorService';
@@ -15,10 +16,17 @@ import { extensionContext } from '../../extension';
 import { QueryCodeLensProvider } from '../QueryCodeLensProvider';
 import { updateNotebookTitle } from '../../utils/notebookTitle';
 
+/** Streaming NOTICE feed during a single-statement cell run (replaced by final result output). */
+const MIME_NOTICES_LIVE = 'application/vnd.postgres-notebook.notices-live';
+
 export class SqlExecutor {
   private static readonly REVIEW_COUNT_KEY = 'postgresExplorer.reviewPrompt.successCount';
   private static readonly REVIEW_SHOWN_KEY = 'postgresExplorer.reviewPrompt.shown';
   private static readonly REVIEW_THRESHOLD = 3;
+  /** Workspace memento: last-used values for `:name` SQL parameters (keyed by parameter name). */
+  private static readonly NAMED_PARAM_DEFAULTS_KEY = 'pgstudio.namedParamDefaults.v1';
+  /** Workspace memento: last-used values for `$N` SQL parameters (keyed by sqlHash -> parameter index). */
+  private static readonly POSITIONAL_PARAM_DEFAULTS_KEY = 'pgstudio.positionalParamDefaults.v1';
 
   constructor(private readonly _controller: vscode.NotebookController) { }
 
@@ -53,6 +61,142 @@ export class SqlExecutor {
     if (selection === leaveReview) {
       await vscode.env.openExternal(vscode.Uri.parse('https://marketplace.visualstudio.com/items?itemName=ric-v.postgres-explorer&ssr=false#review-details'));
     }
+  }
+
+  /**
+   * Prompts for each `:name` value in order; persists last-used values per workspace.
+   * Returns `undefined` if the user cancels any prompt.
+   */
+  private async promptForNamedParameterValues(paramNames: string[]): Promise<unknown[] | undefined> {
+    const paramsConfig = vscode.workspace.getConfiguration('postgresExplorer.parameters');
+    const cacheLastValues = paramsConfig.get<boolean>('cacheLastValues', true);
+    const nullSentinel = paramsConfig.get<string>('nullSentinel', 'NULL');
+    const cache =
+      cacheLastValues
+        ? extensionContext?.workspaceState.get<Record<string, string>>(SqlExecutor.NAMED_PARAM_DEFAULTS_KEY, {}) ?? {}
+        : {};
+    const next: Record<string, string> = { ...cache };
+    const values: unknown[] = [];
+
+    for (const name of paramNames) {
+      const existing = next[name] ?? '';
+      const input = await vscode.window.showInputBox({
+        title: `SQL parameter :${name}`,
+        prompt: `Value for :${name} (${nullSentinel ? `type ${nullSentinel} to send SQL NULL` : 'sent to PostgreSQL as text; casts in SQL still apply'})`,
+        value: existing,
+        ignoreFocusOut: true
+      });
+      if (input === undefined) {
+        return undefined;
+      }
+      values.push(nullSentinel && input === nullSentinel ? null : input);
+      if (cacheLastValues) {
+        next[name] = input;
+      }
+    }
+
+    if (cacheLastValues && extensionContext) {
+      await extensionContext.workspaceState.update(SqlExecutor.NAMED_PARAM_DEFAULTS_KEY, next);
+    }
+    return values;
+  }
+
+  private getSqlParameterContextSnippet(sql: string, parameterIndex: number): string | undefined {
+    const token = `$${parameterIndex}`;
+    const pattern = new RegExp(`\\$${parameterIndex}(?!\\d)`);
+    const match = pattern.exec(sql);
+    if (!match || match.index < 0) {
+      return undefined;
+    }
+
+    const around = 20;
+    const start = Math.max(0, match.index - around);
+    const end = Math.min(sql.length, match.index + token.length + around);
+    const snippet = sql.slice(start, end).replace(/\s+/g, ' ').trim();
+    return snippet || undefined;
+  }
+
+  private async promptForPositionalParameterValues(
+    indices: number[],
+    sqlHash: string,
+    sql: string
+  ): Promise<unknown[] | undefined> {
+    const paramsConfig = vscode.workspace.getConfiguration('postgresExplorer.parameters');
+    const cacheLastValues = paramsConfig.get<boolean>('cacheLastValues', true);
+    const nullSentinel = paramsConfig.get<string>('nullSentinel', 'NULL');
+    const cache =
+      cacheLastValues
+        ? extensionContext?.workspaceState.get<Record<string, Record<string, string>>>(
+          SqlExecutor.POSITIONAL_PARAM_DEFAULTS_KEY,
+          {}
+        ) ?? {}
+        : {};
+
+    const statementDefaults = { ...(cache[sqlHash] ?? {}) };
+    const values: unknown[] = [];
+
+    for (const parameterIndex of indices) {
+      const key = String(parameterIndex);
+      const contextSnippet = this.getSqlParameterContextSnippet(sql, parameterIndex);
+      const input = await vscode.window.showInputBox({
+        title: `SQL parameter $${parameterIndex}`,
+        prompt: `Value for $${parameterIndex}${nullSentinel ? `  (type ${nullSentinel} to send SQL NULL)` : ''}`,
+        placeHolder: contextSnippet,
+        value: statementDefaults[key] ?? '',
+        ignoreFocusOut: true
+      });
+      if (input === undefined) {
+        return undefined;
+      }
+
+      values.push(nullSentinel && input === nullSentinel ? null : input);
+      if (cacheLastValues) {
+        statementDefaults[key] = input;
+      }
+    }
+
+    if (cacheLastValues && extensionContext) {
+      await extensionContext.workspaceState.update(SqlExecutor.POSITIONAL_PARAM_DEFAULTS_KEY, {
+        ...cache,
+        [sqlHash]: statementDefaults
+      });
+    }
+
+    return values;
+  }
+
+  private async promptForQuotedPsqlValues(
+    tokens: { name: string; kind: 'literal' | 'identifier' }[]
+  ): Promise<Record<string, string> | undefined> {
+    const cache =
+      extensionContext?.workspaceState.get<Record<string, string>>(SqlExecutor.NAMED_PARAM_DEFAULTS_KEY, {}) ?? {};
+    const next: Record<string, string> = { ...cache };
+    const values: Record<string, string> = {};
+
+    for (const token of tokens) {
+      if (Object.prototype.hasOwnProperty.call(values, token.name)) {
+        continue;
+      }
+      const tokenLabel = token.kind === 'literal' ? `:'${token.name}'` : `:"${token.name}"`;
+      const input = await vscode.window.showInputBox({
+        title: `SQL variable ${tokenLabel}`,
+        prompt: `Value for ${tokenLabel}`,
+        value: next[token.name] ?? '',
+        ignoreFocusOut: true
+      });
+      if (input === undefined) {
+        return undefined;
+      }
+
+      values[token.name] = input;
+      next[token.name] = input;
+    }
+
+    if (extensionContext) {
+      await extensionContext.workspaceState.update(SqlExecutor.NAMED_PARAM_DEFAULTS_KEY, next);
+    }
+
+    return values;
   }
 
   /**
@@ -165,16 +309,43 @@ export class SqlExecutor {
         console.warn('Failed to get backend PID:', err);
       }
 
-      // Capture PostgreSQL NOTICE messages
-      const notices: string[] = [];
-      const noticeListener = (msg: any) => {
-        const message = msg.message || msg.toString();
-        notices.push(message);
-      };
-      client.on('notice', noticeListener);
-
       const queryText = cell.document.getText();
       const statements = SqlParser.splitSqlStatements(queryText);
+      const allowLiveNotices = statements.length === 1;
+
+      // Capture PostgreSQL NOTICE messages (timestamp = client receive time, log-style)
+      const notices: NoticeLogEntry[] = [];
+      let liveNoticesActive = false;
+      const pushNotice = (message: string) => {
+        notices.push({ message, receivedAt: new Date().toISOString() });
+      };
+      const emitLiveNoticesIfNeeded = () => {
+        if (!allowLiveNotices || notices.length === 0) {
+          return;
+        }
+        liveNoticesActive = true;
+        void (async () => {
+          try {
+            const payload = { streaming: true as const, notices: [...notices] };
+            await execution.replaceOutput([
+              new NotebookCellOutput([
+                new NotebookCellOutputItem(
+                  Buffer.from(JSON.stringify(payload), 'utf8'),
+                  MIME_NOTICES_LIVE,
+                ),
+              ]),
+            ]);
+          } catch (e) {
+            console.error('SqlExecutor: live notice output failed', e);
+          }
+        })();
+      };
+      const noticeListener = (msg: any) => {
+        const message = msg.message || msg.toString();
+        pushNotice(message);
+        emitLiveNoticesIfNeeded();
+      };
+      client.on('notice', noticeListener);
 
       console.log('SqlExecutor: Executing', statements.length, 'statement(s)');
 
@@ -209,7 +380,10 @@ export class SqlExecutor {
               if (!txInfo) {
                 txManager.initializeSession(sessionId, true);
               }
-              notices.push('Transaction started automatically for safety. Run COMMIT or ROLLBACK when done.');
+              pushNotice(
+                'Transaction started automatically for safety. Run COMMIT or ROLLBACK when done.',
+              );
+              emitLiveNoticesIfNeeded();
             }
           }
         }
@@ -217,8 +391,54 @@ export class SqlExecutor {
 
       // Execute each statement
       for (let stmtIndex = 0; stmtIndex < statements.length; stmtIndex++) {
+        liveNoticesActive = false;
         let query = statements[stmtIndex];
         const stmtStartTime = Date.now();
+
+        const params = SqlParser.detectParameters(query);
+        const hasPositional = params.positional.length > 0;
+        const hasNamed = params.named.length > 0;
+
+        if (hasPositional && hasNamed) {
+          throw new Error('Mixing $N and :name parameters in the same statement is not supported. Use one style per query.');
+        }
+
+        let pgParamValues: unknown[] | undefined;
+
+        if (params.quoted.length > 0) {
+          const quotedVals = await this.promptForQuotedPsqlValues(params.quoted);
+          if (!quotedVals) {
+            client.removeListener('notice', noticeListener);
+            execution.end(false, Date.now());
+            return;
+          }
+          query = SqlParser.substituteQuotedPsqlVariables(query, quotedVals).text;
+        }
+
+        if (hasNamed) {
+          const named = SqlParser.substituteNamedParametersWithPgPlaceholders(query);
+          const vals = await this.promptForNamedParameterValues(named.paramNames);
+          if (vals === undefined) {
+            client.removeListener('notice', noticeListener);
+            execution.end(false, Date.now());
+            return;
+          }
+          query = named.text;
+          pgParamValues = vals;
+        } else if (hasPositional) {
+          const maxN = Math.max(...params.positional);
+          const vals = await this.promptForPositionalParameterValues(
+            Array.from({ length: maxN }, (_, i) => i + 1),
+            QueryAnalyzer.getInstance().getQueryHash(query),
+            query
+          );
+          if (vals === undefined) {
+            client.removeListener('notice', noticeListener);
+            execution.end(false, Date.now());
+            return;
+          }
+          pgParamValues = vals;
+        }
 
         // Apply auto-LIMIT if applicable (pass notebook metadata and profile context for settings)
         const originalQuery = query;
@@ -235,7 +455,8 @@ export class SqlExecutor {
             statementCount: statements.length
           });
 
-          result = await client.query(query);
+          result =
+            pgParamValues !== undefined ? await client.query(query, pgParamValues) : await client.query(query);
 
 
           const stmtEndTime = Date.now();
@@ -306,16 +527,35 @@ export class SqlExecutor {
 
           // Build output data
           const tableInfo = await this.getTableInfo(client, result, query);
+          let autoLimitValue: number | undefined;
+          if (autoLimitApplied) {
+            const lim = query.match(/\bLIMIT\s+(\d+)/i);
+            autoLimitValue = lim ? parseInt(lim[1], 10) : undefined;
+          }
+
+          const rows = result.rows || [];
+          let columns = result.fields?.map((f: any) => f.name) || [];
+          if (columns.length === 0 && rows.length > 0) {
+            columns = Object.keys(rows[0]);
+          }
+          const columnTypes: Record<string, string> = {
+            ...(result.fields?.reduce((acc: any, f: any) => {
+              acc[f.name] = getPgDataTypeName(f.dataTypeID);
+              return acc;
+            }, {}) || {}),
+          };
+          for (const c of columns) {
+            if (columnTypes[c] === undefined) {
+              columnTypes[c] = 'text';
+            }
+          }
+
           const outputData: QueryResults = {
             success,
             rowCount: result.rowCount,
-            rows: result.rows,
-            columns: result.fields?.map((f: any) => f.name) || [],
-            columnTypes: result.fields?.reduce((acc: any, f: any) => {
-              // Approximate type mapping or use OID if available
-              acc[f.name] = this.getTypeName(f.dataTypeID);
-              return acc;
-            }, {}),
+            rows,
+            columns,
+            columnTypes,
             command: result.command,
             query: query,
             notices: [...notices], // Copy current notices
@@ -325,6 +565,8 @@ export class SqlExecutor {
             explainPlan,
             performanceAnalysis, // Pass analysis to frontend
             slowQuery: isSlow,
+            autoLimitApplied,
+            autoLimitValue,
             breadcrumb: {
               connectionId: connection.id,
               connectionName: connection.name || connection.host,
@@ -339,9 +581,17 @@ export class SqlExecutor {
           // Clear notices for next statement
           notices.length = 0;
 
-          await execution.appendOutput(new NotebookCellOutput([
-            new NotebookCellOutputItem(Buffer.from(JSON.stringify(outputData), 'utf8'), 'application/vnd.postgres-notebook.result')
-          ]));
+          const successOutput = new NotebookCellOutput([
+            new NotebookCellOutputItem(
+              Buffer.from(JSON.stringify(outputData), 'utf8'),
+              'application/vnd.postgres-notebook.result',
+            ),
+          ]);
+          if (allowLiveNotices && liveNoticesActive) {
+            await execution.replaceOutput(successOutput);
+          } else {
+            await execution.appendOutput(successOutput);
+          }
 
           // Update execution time pill in CodeLens bar
           QueryCodeLensProvider.getInstance()?.updatePill(cell.document.uri.toString(), {
@@ -394,9 +644,17 @@ export class SqlExecutor {
             errorExplanation: pgErrorCode ? getErrorExplanation(pgErrorCode) : undefined
           };
 
-          await execution.appendOutput(new NotebookCellOutput([
-            new NotebookCellOutputItem(Buffer.from(JSON.stringify(errorData), 'utf8'), 'application/vnd.postgres-notebook.error')
-          ]));
+          const errorOutput = new NotebookCellOutput([
+            new NotebookCellOutputItem(
+              Buffer.from(JSON.stringify(errorData), 'utf8'),
+              'application/vnd.postgres-notebook.error',
+            ),
+          ]);
+          if (allowLiveNotices && liveNoticesActive) {
+            await execution.replaceOutput(errorOutput);
+          } else {
+            await execution.appendOutput(errorOutput);
+          }
 
           // Update execution time pill in CodeLens bar (failure)
           QueryCodeLensProvider.getInstance()?.updatePill(cell.document.uri.toString(), {
@@ -435,25 +693,6 @@ export class SqlExecutor {
   }
 
   // --- Helpers ---
-
-  private getTypeName(oid: number): string {
-    // Basic mapping, in a real app this would use a proper TypeRegistry
-    const types: Record<number, string> = {
-      16: 'bool',
-      17: 'bytea',
-      20: 'int8',
-      21: 'int2',
-      23: 'int4',
-      25: 'text',
-      114: 'json',
-      1043: 'varchar',
-      1082: 'date',
-      1114: 'timestamp',
-      1184: 'timestamptz',
-      1700: 'numeric'
-    };
-    return types[oid] || 'string'; // Default to string
-  }
 
   private async getTableInfo(client: any, result: any, query: string): Promise<any> {
     // Attempt to deduce table from query for basic primary key support

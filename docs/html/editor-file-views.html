@@ -1,4 +1,16 @@
-<article class="file-view" id="file-readme">
+<article class="file-view" id="file-readme" itemscope itemtype="https://schema.org/SoftwareApplication">
+  <meta itemprop="name" content="PgStudio">
+  <meta itemprop="applicationCategory" content="DeveloperApplication">
+  <meta itemprop="operatingSystem" content="Windows, macOS, Linux">
+  <meta itemprop="keywords" content="postgresql vscode extension, sql notebooks, postgres explorer, ai sql assistant, query optimization, schema designer, erd diagram, dbeaver alternative, pgadmin alternative">
+  <meta itemprop="softwareVersion" content="1.2.x">
+  <meta itemprop="screenshot" content="https://pgstudio.astrx.dev/assets/03-explorer.gif">
+  <link itemprop="downloadUrl" href="https://marketplace.visualstudio.com/items?itemName=ric-v.postgres-explorer">
+  <div itemprop="offers" itemscope itemtype="https://schema.org/Offer" style="display:none">
+    <meta itemprop="price" content="0">
+    <meta itemprop="priceCurrency" content="USD">
+    <meta itemprop="availability" content="https://schema.org/InStock">
+  </div>
   <div class="markdown">
     <div class="pill-row">
       <a class="pill" href="https://marketplace.visualstudio.com/items?itemName=ric-v.postgres-explorer">Marketplace</a>
@@ -7,8 +19,9 @@
       <span class="pill">Notebook + Explorer</span>
     </div>
     <h2>🐘 PgStudio</h2>
-    <p>Run your full PostgreSQL workflow inside VS Code: connect to environments safely, inspect objects,
+    <p itemprop="description">Run your full PostgreSQL workflow inside VS Code: connect to environments safely, inspect objects,
       execute SQL notebooks, explain plans, and ship faster with AI-guided optimization.</p>
+    <p style="display:none">PgStudio is a VS Code PostgreSQL extension for SQL editing, query execution, query optimization, database exploration, schema design, ERD visualization, and AI-assisted PostgreSQL analysis.</p>
     <div class="metrics">
       <div class="metric">
         <strong id="stat-downloads">--</strong>
@@ -208,6 +221,7 @@
         <div class="fig-item"><span class="fig-icon">📖</span><strong>Explain</strong><p>Plain-English breakdown of any query</p></div>
         <div class="fig-item"><span class="fig-icon">🚀</span><strong>Optimize</strong><p>Index recommendations + rewrite suggestions</p></div>
         <div class="fig-item"><span class="fig-icon">🛠️</span><strong>Debug</strong><p>Paste an error — get root cause and fix</p></div>
+        <div class="fig-item"><span class="fig-icon">🧩</span><strong>Editor + Multi Tabs</strong><p>Open SQL Assistant in editor tabs and run parallel chats</p></div>
       </div>
     </div>
 
@@ -229,6 +243,69 @@
         <div class="fig-item"><span class="fig-icon">⚠️</span><strong>Risk Scoring</strong><p>Flags DELETE without WHERE, TRUNCATE, DROP before execution</p></div>
         <div class="fig-item"><span class="fig-icon">📈</span><strong>Live Dashboard</strong><p>Real-time metrics — active connections, query throughput</p></div>
         <div class="fig-item"><span class="fig-icon">🔬</span><strong>EXPLAIN Analysis</strong><p>Query plan breakdown with specific optimization guidance</p></div>
+      </div>
+    </div>
+
+    <div class="features-section" itemscope itemtype="https://schema.org/FAQPage">
+      <div class="features-section-title"><span>💬</span> Common Questions</div>
+      <div class="feature-icon-grid">
+
+        <div class="fig-item" itemscope itemprop="mainEntity" itemtype="https://schema.org/Question">
+          <span class="fig-icon">?</span>
+          <strong itemprop="name">Is PgStudio free?</strong>
+          <div itemscope itemprop="acceptedAnswer" itemtype="https://schema.org/Answer">
+            <p itemprop="text">Yes — completely free, no subscription or account required. Install directly from the VS Code Marketplace or Open VSX Registry in under a minute.</p>
+          </div>
+        </div>
+
+        <div class="fig-item" itemscope itemprop="mainEntity" itemtype="https://schema.org/Question">
+          <span class="fig-icon">?</span>
+          <strong itemprop="name">Which AI providers are supported?</strong>
+          <div itemscope itemprop="acceptedAnswer" itemtype="https://schema.org/Answer">
+            <p itemprop="text">OpenAI (GPT-4o), Anthropic Claude, Google Gemini, GitHub Models (free, no API key needed), and VS Code Language Model API. GitHub Models requires no configuration.</p>
+          </div>
+        </div>
+
+        <div class="fig-item" itemscope itemprop="mainEntity" itemtype="https://schema.org/Question">
+          <span class="fig-icon">?</span>
+          <strong itemprop="name">How is PgStudio different from pgAdmin or DBeaver?</strong>
+          <div itemscope itemprop="acceptedAnswer" itemtype="https://schema.org/Answer">
+            <p itemprop="text">PgStudio runs inside VS Code — no separate app to install or context-switch to. Your SQL notebooks, schema explorer, and AI assistant stay in the same window as your code.</p>
+          </div>
+        </div>
+
+        <div class="fig-item" itemscope itemprop="mainEntity" itemtype="https://schema.org/Question">
+          <span class="fig-icon">?</span>
+          <strong itemprop="name">What PostgreSQL versions are supported?</strong>
+          <div itemscope itemprop="acceptedAnswer" itemtype="https://schema.org/Answer">
+            <p itemprop="text">PostgreSQL 12 through 17, plus compatible managed services like Amazon RDS PostgreSQL, Supabase, Neon, and other pg-compatible databases.</p>
+          </div>
+        </div>
+
+        <div class="fig-item" itemscope itemprop="mainEntity" itemtype="https://schema.org/Question">
+          <span class="fig-icon">?</span>
+          <strong itemprop="name">Does PgStudio support SSH tunnels?</strong>
+          <div itemscope itemprop="acceptedAnswer" itemtype="https://schema.org/Answer">
+            <p itemprop="text">Yes — built-in SSH tunnel support lets you connect to databases on private networks or behind firewalls with no extra tooling required.</p>
+          </div>
+        </div>
+
+        <div class="fig-item" itemscope itemprop="mainEntity" itemtype="https://schema.org/Question">
+          <span class="fig-icon">?</span>
+          <strong itemprop="name">Can I share SQL notebooks with my team?</strong>
+          <div itemscope itemprop="acceptedAnswer" itemtype="https://schema.org/Answer">
+            <p itemprop="text">.pgsql notebooks are plain files that commit to git like any source file. Your team can replay the same queries against their own connections — no export needed.</p>
+          </div>
+        </div>
+
+        <div class="fig-item" itemscope itemprop="mainEntity" itemtype="https://schema.org/Question">
+          <span class="fig-icon">?</span>
+          <strong itemprop="name">Does PgStudio work on Windows, macOS, and Linux?</strong>
+          <div itemscope itemprop="acceptedAnswer" itemtype="https://schema.org/Answer">
+            <p itemprop="text">Yes. PgStudio works anywhere VS Code runs, including Windows, macOS, and Linux distributions used for PostgreSQL development.</p>
+          </div>
+        </div>
+
       </div>
     </div>
 
@@ -470,11 +547,17 @@ GROUP BY day ORDER BY day;</code></pre>
       questions, writes the right SQL.</p>
 
     <div class="stat-row">
-      <div class="stat-card"><span class="stat-val">4</span><span class="stat-label">AI providers</span></div>
+      <div class="stat-card"><span class="stat-val">5</span><span class="stat-label">AI providers</span></div>
       <div class="stat-card"><span class="stat-val">&lt;80ms</span><span class="stat-label">after index fix</span></div>
       <div class="stat-card"><span class="stat-val">0 keys</span><span class="stat-label">needed with GitHub
           Models</span></div>
     </div>
+
+    <div class="info-banner info-banner-green" style="margin-bottom:12px">
+      <span class="banner-icon">🤖</span>
+      <div><strong>Supported AI providers:</strong> OpenAI (GPT-4o, GPT-4-turbo), Anthropic Claude (claude-3-5-sonnet, claude-3-opus), Google Gemini (gemini-1.5-pro), GitHub Models (free, zero config), and VS Code Language Model API for Copilot users.</div>
+    </div>
+    <p style="display:none">AI SQL assistant features include text to SQL generation, SQL explanation, EXPLAIN plan analysis, index recommendations, and PostgreSQL query tuning suggestions.</p>
 
     <div class="code-spotlight">
       <div class="code-spotlight-label">EXAMPLE: EXPLAIN ANALYSIS</div>

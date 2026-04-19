@@ -33,10 +33,10 @@ const BREADCRUMB_LABELS = {
 };
 
 const FEATURE_DETAILS = {
-  notebooks: "Notebook workflows keep query logic, explanations, and outcomes together so teams can review and repeat analysis.",
-  explorer: "Explorer navigation keeps schema context close to your query so you spend less time switching between tools.",
-  ai: "AI assistance can explain query intent, suggest safer rewrites, and provide targeted optimization guidance.",
-  safety: "Environment tags and confirmation prompts reduce accidental execution in sensitive systems."
+  notebooks: "Notebook workflows keep SQL query logic, explanations, and outcomes together so teams can review, version, and replay PostgreSQL analysis in VS Code.",
+  explorer: "Explorer navigation keeps PostgreSQL schema context close to your query so you spend less time switching between tools and more time shipping data work.",
+  ai: "AI assistance can generate SQL from plain English, explain query intent, suggest safer rewrites, and provide targeted PostgreSQL optimization guidance.",
+  safety: "Environment tags, read-only controls, and confirmation prompts reduce accidental execution in sensitive development, staging, and production systems."
 };
 
 const PRODUCT_HIGHLIGHT_ORDER = [
@@ -127,16 +127,16 @@ const PRODUCT_HIGHLIGHTS = {
 
 // ── Search index ──────────────────────────────────────────
 const SEARCH_INDEX = [
-  { key: "readme", label: "README.md", path: "PGSTUDIO", text: "overview connect sql notebooks explorer ai assistant schema safety performance pgstudio" },
-  { key: "query", label: "query.pgsql", path: "NOTEBOOKS", text: "sql query run execute select orders revenue notebook cell results daily aggregation" },
-  { key: "features", label: "features.md", path: "PGSTUDIO", text: "features notebooks explorer ai assistant schema tools visual safety performance 50 capabilities" },
-  { key: "connections", label: "connections.demo", path: "WORKFLOW", text: "connect database host port username password ssl tls dev stage prod environment connection" },
-  { key: "install", label: "INSTALL.md", path: "WORKFLOW", text: "install marketplace extension vscode download get started setup" },
-  { key: "doc-notebooks", label: "01_notebooks.md", path: "DOCUMENTATION", text: "notebook pgsql sql cells run execute results export csv json history saved queries markdown notes" },
-  { key: "doc-explorer", label: "02_explorer.md", path: "DOCUMENTATION", text: "explorer tables views columns indexes constraints right-click generate scripts schema objects" },
-  { key: "doc-ai", label: "03_ai-assist.md", path: "DOCUMENTATION", text: "ai assistant openai claude gemini ask plain english sql explain optimize diagnose github models" },
-  { key: "doc-schema", label: "04_schema-tools.md", path: "DOCUMENTATION", text: "schema visual designer erd diagram diff migration import csv json compare alter table" },
-  { key: "doc-safety", label: "05_safety.md", path: "DOCUMENTATION", text: "safety prod dev stage read-only risk score environment labels ssh tunnel performance explain index advisor" }
+  { key: "readme", label: "README.md", path: "PGSTUDIO", text: "overview connect sql notebooks explorer ai assistant schema safety performance pgstudio postgres postgresql vs code extension free open source database management developer tool sql ide database client query editor productivity" },
+  { key: "query", label: "query.pgsql", path: "NOTEBOOKS", text: "sql query run execute select orders revenue notebook cell results daily aggregation date_trunc count sum group by where interval explain analyze explain plan query tuning performance optimization index recommendation" },
+  { key: "features", label: "features.md", path: "PGSTUDIO", text: "features notebooks explorer ai assistant schema tools visual safety performance 50 capabilities pgadmin dbeaver alternative vs code native postgres client free faq questions postgresql gui sql workflow developer experience" },
+  { key: "connections", label: "connections.demo", path: "WORKFLOW", text: "connect database host port username password ssl tls dev stage prod environment connection ssh tunnel rds supabase neon amazon secure secretstorage connection manager postgres connection setup" },
+  { key: "install", label: "INSTALL.md", path: "WORKFLOW", text: "install marketplace extension vscode download get started setup quick start pgsql extension id ric-v postgres-explorer open vsx visual studio code install postgres extension" },
+  { key: "doc-notebooks", label: "01_notebooks.md", path: "DOCUMENTATION", text: "notebook pgsql sql cells run execute results export csv json history saved queries markdown notes jupyter git commit share team reproducible interactive data analysis workflow" },
+  { key: "doc-explorer", label: "02_explorer.md", path: "DOCUMENTATION", text: "explorer tables views columns indexes constraints right-click generate scripts schema objects functions triggers partitions fdw foreign data wrapper materialized views sequences database browser postgres object explorer" },
+  { key: "doc-ai", label: "03_ai-assist.md", path: "DOCUMENTATION", text: "ai assistant openai gpt-4o claude anthropic gemini google github models ask plain english sql explain optimize diagnose index advisor slow query performance vs code lm api copilot text to sql sql assistant" },
+  { key: "doc-schema", label: "04_schema-tools.md", path: "DOCUMENTATION", text: "schema visual designer erd entity relationship diagram diff migration import csv json compare alter table create primary key foreign key constraint unique check index ddl generator" },
+  { key: "doc-safety", label: "05_safety.md", path: "DOCUMENTATION", text: "safety prod dev stage read-only risk score environment labels ssh tunnel performance explain index advisor delete without where truncate drop confirmation limit 1000 production protection guardrails" }
 ];
 
 // ── SQL Assistant responses ───────────────────────────────

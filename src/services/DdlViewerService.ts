@@ -36,6 +36,32 @@ type DdlObjectType =
   | 'policy'
   | 'placeholder';
 
+/** Tree item kinds that map to real DDL in `toTarget` (not placeholder). */
+const DDL_PREVIEW_TREE_TYPES = new Set<DdlObjectType>([
+  'database',
+  'schema',
+  'table',
+  'column',
+  'view',
+  'rule',
+  'function',
+  'procedure',
+  'constraint',
+  'index',
+  'materialized-view',
+  'sequence',
+  'type',
+  'domain',
+  'trigger',
+  'extension',
+  'role',
+  'foreign-table',
+  'foreign-data-wrapper',
+  'foreign-server',
+  'partition',
+  'policy'
+]);
+
 interface DdlViewerTarget {
   connectionId: string;
   databaseName: string;
@@ -100,6 +126,9 @@ function toTitleType(objectType: DdlObjectType): string {
 function toObjectDisplayName(target: DdlViewerTarget): string {
   if (!target.objectName) {
     return '(selection)';
+  }
+  if (target.objectType === 'policy' && target.tableName && target.schema) {
+    return `${target.schema}.${target.tableName}.${target.objectName}`;
   }
   if (target.schema) {
     return `${target.schema}.${target.objectName}`;
@@ -1532,6 +1561,25 @@ export class DdlViewerService implements vscode.Disposable {
           vscode.window.showInformationMessage('Select an object in Database Explorer to view its definition.');
           return;
         }
+        const target = this.toTarget(selected);
+        const uri = this.createUri(target);
+        if (isDdlViewerEnabled()) {
+          const existingTabs = this.collectTabsForDdlUri(uri);
+          if (existingTabs.length > 0) {
+            await vscode.window.tabGroups.close(existingTabs);
+            await vscode.workspace.getConfiguration().update(DDL_VIEWER_ENABLED_CONFIG, false, vscode.ConfigurationTarget.Global);
+            this.codeLensProvider.refresh();
+            this.refreshOpenPreviewDocuments();
+            this.lastPreviewTarget = undefined;
+            vscode.window.showInformationMessage('SQL Preview disabled.');
+            return;
+          }
+        }
+        if (!isDdlViewerEnabled()) {
+          await vscode.workspace.getConfiguration().update(DDL_VIEWER_ENABLED_CONFIG, true, vscode.ConfigurationTarget.Global);
+          this.codeLensProvider.refresh();
+          this.refreshOpenPreviewDocuments();
+        }
         await this.openForItem(selected, false);
       }),
       vscode.commands.registerCommand('postgres-explorer.ddlViewer.openEditableCopy', async (uri?: vscode.Uri) => {
@@ -1556,12 +1604,33 @@ export class DdlViewerService implements vscode.Disposable {
       vscode.commands.registerCommand('postgres-explorer.ddlViewer.toggleEnabled', async (forceState?: boolean) => {
         const current = isDdlViewerEnabled();
         const nextState = typeof forceState === 'boolean' ? forceState : !current;
+        if (!nextState) {
+          const ddlTabs = this.collectAllDdlViewerTabs();
+          if (ddlTabs.length > 0) {
+            await vscode.window.tabGroups.close(ddlTabs);
+          }
+          this.lastPreviewTarget = undefined;
+        }
         await vscode.workspace.getConfiguration().update(DDL_VIEWER_ENABLED_CONFIG, nextState, vscode.ConfigurationTarget.Global);
         this.codeLensProvider.refresh();
         this.refreshOpenPreviewDocuments();
+        if (nextState) {
+          const selected = this.treeView.selection[0];
+          if (selected && this.treeItemHasDdlPreview(selected)) {
+            await this.openForItem(selected, false);
+          }
+        }
         vscode.window.showInformationMessage(`SQL Preview ${nextState ? 'enabled' : 'disabled'}.`);
       })
     );
+  }
+
+  /** Whether the explorer item maps to generated DDL (not a folder/category placeholder). */
+  private treeItemHasDdlPreview(item: DatabaseTreeItem): boolean {
+    if (!item.connectionId || !item.databaseName) {
+      return false;
+    }
+    return DDL_PREVIEW_TREE_TYPES.has(item.type as DdlObjectType);
   }
 
   public async openForItem(item: DatabaseTreeItem, fromSelection: boolean): Promise<void> {
@@ -1584,8 +1653,9 @@ export class DdlViewerService implements vscode.Disposable {
       await vscode.languages.setTextDocumentLanguage(doc, 'sql');
     }
 
+    const alreadyOpen = this.collectTabsForDdlUri(uri).length > 0;
     await vscode.window.showTextDocument(doc, {
-      viewColumn: vscode.ViewColumn.Beside,
+      viewColumn: alreadyOpen ? undefined : vscode.ViewColumn.Beside,
       preserveFocus: fromSelection,
       preview: fromSelection
     });
@@ -1600,6 +1670,31 @@ export class DdlViewerService implements vscode.Disposable {
 
   private refreshOpenPreviewDocuments(): void {
     this.provider.refreshAllOpenDdlDocuments();
+  }
+
+  private collectTabsForDdlUri(uri: vscode.Uri): vscode.Tab[] {
+    const want = uri.toString();
+    const out: vscode.Tab[] = [];
+    for (const group of vscode.window.tabGroups.all) {
+      for (const tab of group.tabs) {
+        if (tab.input instanceof vscode.TabInputText && tab.input.uri.toString() === want) {
+          out.push(tab);
+        }
+      }
+    }
+    return out;
+  }
+
+  private collectAllDdlViewerTabs(): vscode.Tab[] {
+    const out: vscode.Tab[] = [];
+    for (const group of vscode.window.tabGroups.all) {
+      for (const tab of group.tabs) {
+        if (tab.input instanceof vscode.TabInputText && tab.input.uri.scheme === DDL_VIEWER_SCHEME) {
+          out.push(tab);
+        }
+      }
+    }
+    return out;
   }
 
   private resolveDdlUri(uri?: vscode.Uri): vscode.Uri | undefined {
@@ -1630,31 +1725,7 @@ export class DdlViewerService implements vscode.Disposable {
       objectName: item.label
     };
 
-    const supportedTypes = new Set<DdlObjectType>([
-      'database',
-      'schema',
-      'table',
-      'column',
-      'view',
-      'rule',
-      'function',
-      'procedure',
-      'constraint',
-      'index',
-      'materialized-view',
-      'sequence',
-      'type',
-      'domain',
-      'trigger',
-      'extension',
-      'role',
-      'foreign-table',
-      'foreign-data-wrapper',
-      'foreign-server',
-      'partition'
-    ]);
-
-    if (!supportedTypes.has(item.type as DdlObjectType)) {
+    if (!DDL_PREVIEW_TREE_TYPES.has(item.type as DdlObjectType)) {
       return unsupportedTarget;
     }
 

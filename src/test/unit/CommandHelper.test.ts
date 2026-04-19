@@ -14,6 +14,7 @@ import {
   getDatabaseConnection,
   validateCategoryItem,
   validateItem,
+  validateNotebookContextItem,
   validateRoleItem,
 } from '../../commands/helper';
 import { ConnectionManager } from '../../services/ConnectionManager';
@@ -39,6 +40,10 @@ describe('CommandHelper utilities', () => {
     expect(() => validateItem({ connectionId: 'c1', schema: 'public' } as any)).not.to.throw();
     expect(() => validateCategoryItem({ connectionId: 'c1' } as any)).not.to.throw();
     expect(() => validateRoleItem({ connectionId: 'c1' } as any)).not.to.throw();
+
+    expect(() => validateNotebookContextItem({} as any)).to.throw('Invalid selection');
+    expect(() => validateNotebookContextItem({ connectionId: 'c1' } as any)).to.throw('Invalid selection');
+    expect(() => validateNotebookContextItem({ connectionId: 'c1', databaseName: 'db1' } as any)).not.to.throw();
   });
 
   it('covers markdown, formatting, validation, and string helpers', () => {
