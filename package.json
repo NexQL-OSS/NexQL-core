@@ -1,7 +1,7 @@
 {
   "name": "postgres-explorer",
   "displayName": "PgStudio (PostgreSQL Explorer)",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "description": "PostgreSQL database explorer for VS Code with notebook support [Nightly]",
   "publisher": "ric-v",
   "private": false,
@@ -164,6 +164,12 @@
         "command": "postgres-explorer.optimizeQuery",
         "title": "AI: Optimize Query",
         "category": "PgStudio"
+      },
+      {
+        "command": "postgres-explorer.openSqlAssistantTab",
+        "title": "SQL Assistant: Open in Editor Tab",
+        "category": "PgStudio",
+        "icon": "$(go-to-file)"
       },
       {
         "command": "postgres-explorer.connect",
@@ -1910,6 +1916,11 @@
           "command": "postgres-explorer.loadSavedQuery",
           "when": "view == postgresExplorer",
           "group": "2_phase7"
+        },
+        {
+          "command": "postgres-explorer.openSqlAssistantTab",
+          "when": "view == postgresExplorer.chatView",
+          "group": "navigation"
         }
       ],
       "editor/title": [
@@ -3108,7 +3119,8 @@
     "onCommand:postgres-explorer.exportNotebook",
     "onCommand:postgres-explorer.openListenNotify",
     "onCommand:postgres-explorer.openListenNotifyFromPalette",
-    "onCommand:postgres-explorer.showDashboardFromPalette"
+    "onCommand:postgres-explorer.showDashboardFromPalette",
+    "onCommand:postgres-explorer.openSqlAssistantTab"
   ],
   "main": "./dist/extension.js",
   "scripts": {
