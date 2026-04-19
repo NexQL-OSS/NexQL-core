@@ -70,6 +70,19 @@ export interface DashboardStats {
 
   /** WAL / replication (may be partially empty if views are inaccessible). */
   walReplication: WalReplicationStats;
+
+  /** Schema health: indexes that have never been scanned. */
+  unusedIndexes: { index_name: string; table_name: string; index_size: string; raw_size: number }[];
+  /** Tables where sequential scans dominate over index scans. */
+  highSeqScanTables: { table_name: string; seq_scan: number; idx_scan: number; seq_scan_pct: number; row_count: number }[];
+  /** Tables with significant dead-tuple bloat. */
+  tableBloat: { table_name: string; n_live_tup: number; n_dead_tup: number; bloat_pct: number; table_size: string }[];
+  /** Currently running autovacuum workers. */
+  autovacuumProgress: { pid: number; table_name: string; phase: string; heap_blks_scanned: number; heap_blks_total: number }[];
+  /** Tables with notable dead tuples that need vacuum. */
+  tablesNeedingVacuum: { table_name: string; n_dead_tup: number; n_live_tup: number; last_autovacuum: string | null; last_autoanalyze: string | null }[];
+  /** Active connections grouped by application_name and state. */
+  connectionsByApp: { application_name: string; state: string; count: number }[];
 }
 
 export interface WalReplicationStats {
@@ -141,6 +154,12 @@ export async function fetchStats(client: Client | PoolClient, dbName: string): P
     walReceiverRes,
     pgStatWalRes,
     replSlotsRes,
+    unusedIndexesRes,
+    highSeqScanRes,
+    tableBloatRes,
+    autovacuumProgressRes,
+    tablesNeedingVacuumRes,
+    connectionsByAppRes,
   ] = await Promise.allSettled([
     // DB Info
     client.query(`
@@ -384,6 +403,88 @@ export async function fetchStats(client: Client | PoolClient, dbName: string): P
       FROM pg_replication_slots
       ORDER BY slot_name
     `),
+
+    // Unused indexes (never scanned)
+    client.query(`
+      SELECT schemaname || '.' || indexrelname AS index_name,
+             tablename AS table_name,
+             pg_size_pretty(pg_relation_size(indexrelid)) AS index_size,
+             pg_relation_size(indexrelid) AS raw_size
+      FROM pg_stat_user_indexes
+      WHERE idx_scan = 0
+        AND schemaname NOT IN ('pg_catalog', 'information_schema')
+      ORDER BY raw_size DESC
+      LIMIT 20
+    `),
+
+    // Tables with high sequential scan ratio
+    client.query(`
+      SELECT schemaname || '.' || relname AS table_name,
+             seq_scan,
+             COALESCE(idx_scan, 0) AS idx_scan,
+             CASE WHEN seq_scan + COALESCE(idx_scan, 0) > 0
+                  THEN ROUND(100.0 * seq_scan / (seq_scan + COALESCE(idx_scan, 0)), 1)
+                  ELSE 0 END AS seq_scan_pct,
+             n_live_tup AS row_count
+      FROM pg_stat_user_tables
+      WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
+        AND seq_scan + COALESCE(idx_scan, 0) > 100
+      ORDER BY seq_scan_pct DESC, seq_scan DESC
+      LIMIT 20
+    `),
+
+    // Table bloat via dead tuple ratio
+    client.query(`
+      SELECT schemaname || '.' || relname AS table_name,
+             n_live_tup,
+             n_dead_tup,
+             CASE WHEN n_live_tup + n_dead_tup > 0
+                  THEN ROUND(100.0 * n_dead_tup / (n_live_tup + n_dead_tup), 1)
+                  ELSE 0 END AS bloat_pct,
+             pg_size_pretty(pg_relation_size(relid)) AS table_size
+      FROM pg_stat_user_tables
+      WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
+        AND n_dead_tup > 1000
+      ORDER BY bloat_pct DESC
+      LIMIT 20
+    `),
+
+    // Currently running autovacuum workers
+    client.query(`
+      SELECT pid,
+             datname,
+             relid::regclass::text AS table_name,
+             phase,
+             COALESCE(heap_blks_scanned, 0) AS heap_blks_scanned,
+             COALESCE(heap_blks_total, 0) AS heap_blks_total
+      FROM pg_stat_progress_vacuum
+    `),
+
+    // Tables needing vacuum (notable dead tuples)
+    client.query(`
+      SELECT schemaname || '.' || relname AS table_name,
+             n_dead_tup,
+             n_live_tup,
+             last_autovacuum::text,
+             last_autoanalyze::text
+      FROM pg_stat_user_tables
+      WHERE n_dead_tup > 500
+        AND schemaname NOT IN ('pg_catalog', 'information_schema')
+      ORDER BY n_dead_tup DESC
+      LIMIT 20
+    `),
+
+    // Connections grouped by application_name and state
+    client.query(`
+      SELECT COALESCE(NULLIF(application_name, ''), 'unknown') AS application_name,
+             COALESCE(state, 'unknown') AS state,
+             COUNT(*)::int AS count
+      FROM pg_stat_activity
+      WHERE pid <> pg_backend_pid()
+      GROUP BY application_name, state
+      ORDER BY count DESC
+      LIMIT 20
+    `),
   ]);
 
   // Helper to safely extract result or return empty default
@@ -422,6 +523,13 @@ export async function fetchStats(client: Client | PoolClient, dbName: string): P
   const walRecvRow = getResult(walReceiverRes).rows[0];
   const pgWalRow = getResult(pgStatWalRes).rows[0];
   const slotRows = getResult(replSlotsRes).rows;
+
+  const unusedIndexRows = getResult(unusedIndexesRes).rows;
+  const highSeqScanRows = getResult(highSeqScanRes).rows;
+  const tableBloatRows = getResult(tableBloatRes).rows;
+  const autovacuumProgressRows = getResult(autovacuumProgressRes).rows;
+  const tablesNeedingVacuumRows = getResult(tablesNeedingVacuumRes).rows;
+  const connectionsByAppRows = getResult(connectionsByAppRes).rows;
 
   const walSettingsMap: Record<string, string> = {};
   for (const r of walSettingRows) {
@@ -584,6 +692,45 @@ export async function fetchStats(client: Client | PoolClient, dbName: string): P
     oldestTransactionAgeSeconds: parseInt(oldestTxRow.oldest_tx_age_seconds || '0'),
     vacuumTablesNeedingAttention: parseInt(vacuumHealthRow.tables_needing_attention || '0'),
     walReplication,
+    unusedIndexes: unusedIndexRows.map((r: any) => ({
+      index_name: r.index_name,
+      table_name: r.table_name,
+      index_size: r.index_size,
+      raw_size: parseInt(r.raw_size || '0'),
+    })),
+    highSeqScanTables: highSeqScanRows.map((r: any) => ({
+      table_name: r.table_name,
+      seq_scan: parseInt(r.seq_scan || '0'),
+      idx_scan: parseInt(r.idx_scan || '0'),
+      seq_scan_pct: parseFloat(r.seq_scan_pct || '0'),
+      row_count: parseInt(r.row_count || '0'),
+    })),
+    tableBloat: tableBloatRows.map((r: any) => ({
+      table_name: r.table_name,
+      n_live_tup: parseInt(r.n_live_tup || '0'),
+      n_dead_tup: parseInt(r.n_dead_tup || '0'),
+      bloat_pct: parseFloat(r.bloat_pct || '0'),
+      table_size: r.table_size,
+    })),
+    autovacuumProgress: autovacuumProgressRows.map((r: any) => ({
+      pid: parseInt(r.pid || '0'),
+      table_name: r.table_name,
+      phase: r.phase,
+      heap_blks_scanned: parseInt(r.heap_blks_scanned || '0'),
+      heap_blks_total: parseInt(r.heap_blks_total || '0'),
+    })),
+    tablesNeedingVacuum: tablesNeedingVacuumRows.map((r: any) => ({
+      table_name: r.table_name,
+      n_dead_tup: parseInt(r.n_dead_tup || '0'),
+      n_live_tup: parseInt(r.n_live_tup || '0'),
+      last_autovacuum: r.last_autovacuum ?? null,
+      last_autoanalyze: r.last_autoanalyze ?? null,
+    })),
+    connectionsByApp: connectionsByAppRows.map((r: any) => ({
+      application_name: r.application_name,
+      state: r.state,
+      count: parseInt(r.count || '0'),
+    })),
   };
 }
 

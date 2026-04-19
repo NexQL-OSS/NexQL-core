@@ -562,3 +562,532 @@ tr.row-focus {
     scroll-behavior: auto !important;
   }
 }
+
+/* ── AI Insights Panel ─────────────────────────────────────────── */
+
+.btn-ai {
+  background: linear-gradient(135deg, rgba(var(--vscode-textLink-activeForeground, 99,179,237), 0.15), transparent);
+  border-color: var(--accent-color);
+  color: var(--accent-color);
+}
+
+.btn-ai:hover {
+  background: rgba(99, 179, 237, 0.25);
+}
+
+.card-ai-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 11px;
+  opacity: 0.5;
+  padding: 0 2px;
+  line-height: 1;
+  vertical-align: middle;
+  transition: opacity 0.15s;
+}
+
+.card-ai-btn:hover {
+  opacity: 1;
+}
+
+.ai-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 380px;
+  height: 100vh;
+  background: var(--vscode-sideBar-background, var(--bg-color));
+  border-left: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  z-index: 1000;
+  transform: translateX(100%);
+  transition: transform 0.25s ease;
+  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.25);
+}
+
+.ai-panel.open {
+  transform: translateX(0);
+}
+
+.ai-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+
+.ai-panel-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg-color);
+  flex: 1;
+}
+
+.ai-auto-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--muted-color);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.ai-panel-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--muted-color);
+  padding: 2px 4px;
+  line-height: 1;
+  border-radius: 3px;
+}
+
+.ai-panel-close:hover {
+  color: var(--fg-color);
+  background: rgba(128, 128, 128, 0.15);
+}
+
+.ai-quick-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+
+.ai-chip {
+  background: rgba(128, 128, 128, 0.1);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 3px 10px;
+  font-size: 11px;
+  cursor: pointer;
+  color: var(--fg-color);
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.ai-chip:hover {
+  background: rgba(128, 128, 128, 0.2);
+  border-color: var(--accent-color);
+  color: var(--accent-color);
+}
+
+.ai-response-area {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ai-welcome {
+  color: var(--muted-color);
+  text-align: center;
+  padding: 20px 0;
+  font-size: 12px;
+}
+
+/* ── Message Bubbles (matches SQL Assistant style) ── */
+
+.ai-message {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  animation: ai-msg-in 0.2s ease;
+}
+
+@keyframes ai-msg-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.ai-message.user  { align-items: flex-end; }
+.ai-message.assistant { align-items: flex-start; }
+
+.ai-message-role {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--muted-color);
+  padding: 0 3px;
+  opacity: 0.7;
+}
+
+.ai-message-bubble {
+  max-width: 94%;
+  padding: 9px 12px;
+  border-radius: 10px;
+  word-wrap: break-word;
+  line-height: 1.5;
+}
+
+.ai-message.user .ai-message-bubble {
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-bottom-right-radius: 3px;
+  color: var(--fg-color);
+}
+
+.ai-message.assistant .ai-message-bubble {
+  background: rgba(128, 128, 128, 0.08);
+  border: 1px solid rgba(128, 128, 128, 0.15);
+  border-bottom-left-radius: 3px;
+}
+
+/* ── Message Content Typography (tight, chat-matching) ── */
+
+.ai-message-content {
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.ai-message-content p {
+  margin: 5px 0;
+}
+
+.ai-message-content p:first-child { margin-top: 0; }
+.ai-message-content p:last-child  { margin-bottom: 0; }
+
+.ai-message-content ul,
+.ai-message-content ol {
+  margin: 5px 0;
+  padding-left: 16px;
+}
+
+.ai-message-content li {
+  margin: 2px 0;
+  line-height: 1.5;
+}
+
+.ai-message-content li::marker {
+  color: var(--muted-color);
+}
+
+.ai-message-content strong {
+  font-weight: 600;
+  color: var(--fg-color);
+}
+
+.ai-message-content h1,
+.ai-message-content h2,
+.ai-message-content h3 {
+  margin: 10px 0 4px;
+  font-weight: 600;
+  color: var(--fg-color);
+}
+
+.ai-message-content h1 { font-size: 1.1em; }
+.ai-message-content h2 { font-size: 1.0em; }
+.ai-message-content h3 { font-size: 0.95em; }
+
+.ai-message-content blockquote {
+  margin: 8px 0;
+  padding: 8px 12px;
+  border-left: 3px solid var(--accent-color);
+  background: rgba(128, 128, 128, 0.07);
+  border-radius: 0 6px 6px 0;
+  font-style: italic;
+  color: var(--muted-color);
+}
+
+.ai-loading-dots {
+  display: inline-flex;
+  gap: 4px;
+  padding: 12px;
+}
+
+.ai-loading-dots span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-color);
+  animation: ai-dot-bounce 1.2s ease-in-out infinite;
+  opacity: 0.6;
+}
+
+.ai-loading-dots span:nth-child(2) { animation-delay: 0.2s; }
+.ai-loading-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes ai-dot-bounce {
+  0%, 80%, 100% { transform: scale(1); opacity: 0.6; }
+  40% { transform: scale(1.4); opacity: 1; }
+}
+
+.ai-input-row {
+  display: flex;
+  gap: 8px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+
+.ai-question-input {
+  flex: 1;
+  background: rgba(128, 128, 128, 0.08);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--fg-color);
+  font-family: var(--font-family);
+  font-size: 12px;
+  padding: 6px 8px;
+  resize: none;
+  line-height: 1.4;
+}
+
+.ai-question-input:focus {
+  outline: none;
+  border-color: var(--accent-color);
+}
+
+/* ── AI Code Block & SQL Syntax Highlighting ──────────────────── */
+
+.ai-code-block {
+  position: relative;
+  margin: 10px 0;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+  font-family: 'SF Mono', 'Segoe UI Mono', 'Roboto Mono', monospace;
+}
+
+.ai-code-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 5px 10px;
+  background: rgba(0, 0, 0, 0.2);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.ai-code-lang {
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--muted-color);
+}
+
+.ai-copy-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  font-size: 10px;
+  color: var(--muted-color);
+  background: rgba(128, 128, 128, 0.1);
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  font-family: var(--font-family);
+}
+
+.ai-copy-btn:hover {
+  background: rgba(128, 128, 128, 0.2);
+  color: var(--fg-color);
+}
+
+.ai-copy-btn svg { flex-shrink: 0; }
+
+.ai-code-content {
+  display: block;
+  padding: 12px;
+  font-size: 11.5px;
+  line-height: 1.55;
+  overflow-x: auto;
+  white-space: pre;
+  background: rgba(0, 0, 0, 0.12);
+  color: var(--fg-color);
+}
+
+.ai-inline-code {
+  font-family: 'SF Mono', 'Segoe UI Mono', monospace;
+  font-size: 11px;
+  background: rgba(128, 128, 128, 0.15);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+/* SQL Syntax Highlight Tokens */
+.sql-keyword    { color: var(--vscode-symbolIcon-keywordForeground, #569cd6); font-weight: 600; }
+.sql-function   { color: var(--vscode-symbolIcon-functionForeground, #dcdcaa); }
+.sql-string     { color: var(--vscode-symbolIcon-stringForeground, #ce9178); }
+.sql-number     { color: var(--vscode-symbolIcon-numberForeground, #b5cea8); }
+.sql-comment    { color: var(--vscode-symbolIcon-commentForeground, #6a9955); font-style: italic; }
+.sql-operator   { color: var(--vscode-symbolIcon-operatorForeground, #d4d4d4); }
+.sql-identifier { color: var(--vscode-symbolIcon-variableForeground, #9cdcfe); }
+.sql-punctuation{ color: var(--vscode-symbolIcon-punctuationForeground, #d4d4d4); }
+.sql-type       { color: var(--vscode-symbolIcon-typeParameterForeground, #4ec9b0); }
+
+/* ── Connection Analytics ──────────────────────────────────────── */
+
+.conn-app-bar {
+  height: 8px;
+  border-radius: 4px;
+  display: flex;
+  overflow: hidden;
+  min-width: 60px;
+}
+
+.conn-bar-active  { background: var(--success-color); }
+.conn-bar-idle    { background: rgba(128, 128, 128, 0.4); }
+.conn-bar-waiting { background: var(--warning-color); }
+
+/* ── AI Query Execution ─────────────────────────────────────────── */
+
+.ai-run-confirm {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+  padding: 6px 10px;
+  background: rgba(128, 128, 128, 0.08);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  font-size: 11px;
+}
+
+.ai-run-prompt { flex: 1; color: var(--fg-color); opacity: 0.85; }
+
+.ai-run-actions { display: flex; gap: 6px; }
+
+.ai-run-ok-btn {
+  background: var(--button-bg);
+  color: var(--button-fg);
+  border: none;
+  border-radius: 3px;
+  padding: 3px 10px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.ai-run-ok-btn:hover { opacity: 0.85; }
+
+.ai-run-skip-btn {
+  background: transparent;
+  color: var(--fg-color);
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  padding: 3px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  opacity: 0.7;
+}
+.ai-run-skip-btn:hover { opacity: 1; }
+
+.ai-run-executing {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+.ai-run-spinner {
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--border-color);
+  border-top-color: var(--accent-color, var(--button-bg));
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  display: inline-block;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.ai-query-result {
+  margin: 4px 0 6px 0;
+  font-size: 12px;
+}
+
+.ai-result-meta {
+  font-size: 11px;
+  opacity: 0.6;
+  margin-bottom: 4px;
+}
+
+.ai-result-error {
+  color: var(--danger-color);
+  font-size: 12px;
+  padding: 6px 8px;
+  background: rgba(255, 80, 80, 0.08);
+  border-radius: 4px;
+}
+
+.ai-result-empty { opacity: 0.6; font-size: 11px; }
+
+.ai-csv-btn {
+  background: transparent;
+  border: none;
+  color: var(--vscode-textLink-foreground, #4ec9b0);
+  font-size: 11px;
+  padding: 0 2px;
+  cursor: pointer;
+  text-decoration: underline;
+  opacity: 0.85;
+}
+.ai-csv-btn:hover { opacity: 1; }
+
+/* ── Schema Health Tab ─────────────────────────────────────────── */
+
+.bloat-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--success-color);
+  display: inline-block;
+  min-width: 2px;
+  max-width: 80px;
+}
+
+.bloat-bar.warn { background: var(--warning-color); }
+.bloat-bar.crit { background: var(--danger-color); }
+
+.vacuum-progress-bar {
+  height: 8px;
+  background: rgba(128, 128, 128, 0.15);
+  border-radius: 4px;
+  overflow: hidden;
+  min-width: 100px;
+}
+
+.vacuum-progress-fill {
+  height: 100%;
+  background: var(--accent-color);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.schema-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.schema-badge.ok   { background: rgba(74, 222, 128, 0.15); color: var(--success-color); }
+.schema-badge.warn { background: rgba(250, 204, 21, 0.15); color: var(--warning-color); }
+.schema-badge.crit { background: rgba(248, 113, 113, 0.15); color: var(--danger-color); }
+
+/* Adjust body padding when AI panel is open so content doesn't hide behind panel */
+body.ai-panel-open #main-view {
+  margin-right: 385px;
+  transition: margin-right 0.25s ease;
+}
+
+@media (max-width: 820px) {
+  .ai-panel {
+    width: 100%;
+  }
+}

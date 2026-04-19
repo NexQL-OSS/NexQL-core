@@ -539,6 +539,8 @@ function updateDashboard(stats) {
   updateOverviewSignals(stats);
   updatePerformanceInsights(stats);
   updateWalReplication(stats);
+  updateConnectionsByApp(stats.connectionsByApp || []);
+  updateSchemaHealth(stats);
 
   updateKpiDelta('locks', (stats.blockingLocks || []).length, 'locks-delta');
 
@@ -1595,6 +1597,15 @@ window.addEventListener('message', event => {
     case 'showDetails':
       renderDetailsView(message.type, message.data, message.columns);
       break;
+    case 'aiLoading':
+      renderAiLoading(message.loading);
+      break;
+    case 'aiResponse':
+      renderAiResponse(message.text);
+      break;
+    case 'queryForAIResult':
+      _handleQueryResult(message);
+      break;
   }
 });
 
@@ -1638,3 +1649,582 @@ initializeDashboard(initialStats);
 if (initialStats) {
   updateDashboard(initialStats);
 }
+
+// ── Shared helpers ───────────────────────────────────────────────────
+
+function escHtml(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+// ── Connection Analytics ─────────────────────────────────────────────
+
+function updateConnectionsByApp(connectionsByApp) {
+  const tbody = document.querySelector('#connections-by-app-table tbody');
+  if (!tbody) return;
+
+  if (!connectionsByApp.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted-color);padding:20px;">No connection data.</td></tr>';
+    return;
+  }
+
+  const byApp = {};
+  for (const row of connectionsByApp) {
+    if (!byApp[row.application_name]) {
+      byApp[row.application_name] = { active: 0, idle: 0, waiting: 0, other: 0 };
+    }
+    const st = (row.state || '').toLowerCase();
+    if (st === 'active') byApp[row.application_name].active += row.count;
+    else if (st === 'idle') byApp[row.application_name].idle += row.count;
+    else if (st === 'waiting' || st === 'idle in transaction (aborted)') byApp[row.application_name].waiting += row.count;
+    else byApp[row.application_name].other += row.count;
+  }
+
+  const entries = Object.entries(byApp).sort((a, b) => {
+    const totalA = a[1].active + a[1].idle + a[1].waiting + a[1].other;
+    const totalB = b[1].active + b[1].idle + b[1].waiting + b[1].other;
+    return totalB - totalA;
+  });
+
+  tbody.innerHTML = entries.map(([app, counts]) => {
+    const total = counts.active + counts.idle + counts.waiting + counts.other;
+    const activeW = total > 0 ? Math.round((counts.active / total) * 100) : 0;
+    const idleW = total > 0 ? Math.round((counts.idle / total) * 100) : 0;
+    const waitW = 100 - activeW - idleW;
+    return `<tr>
+      <td style="font-weight:500;">${escHtml(app)}</td>
+      <td style="text-align:right;color:var(--success-color);">${counts.active || 0}</td>
+      <td style="text-align:right;color:var(--muted-color);">${counts.idle || 0}</td>
+      <td style="text-align:right;color:var(--warning-color);">${counts.waiting || 0}</td>
+      <td style="text-align:right;font-weight:600;">${total}</td>
+      <td>
+        <div class="conn-app-bar">
+          ${activeW > 0 ? `<div class="conn-bar-active" style="flex:${activeW}" title="Active: ${counts.active}"></div>` : ''}
+          ${idleW > 0 ? `<div class="conn-bar-idle" style="flex:${idleW}" title="Idle: ${counts.idle}"></div>` : ''}
+          ${waitW > 0 ? `<div class="conn-bar-waiting" style="flex:${Math.max(waitW,0)}" title="Waiting: ${counts.waiting}"></div>` : ''}
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+// ── Schema Health Tab ────────────────────────────────────────────────
+
+function updateSchemaHealth(stats) {
+  renderUnusedIndexes(stats.unusedIndexes || []);
+  renderHighSeqScan(stats.highSeqScanTables || []);
+  renderTableBloat(stats.tableBloat || []);
+  renderAutovacuumProgress(stats.autovacuumProgress || []);
+  renderTablesNeedingVacuum(stats.tablesNeedingVacuum || []);
+}
+
+function renderUnusedIndexes(indexes) {
+  const tbody = document.querySelector('#unused-indexes-table tbody');
+  if (!tbody) return;
+  if (!indexes.length) {
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--success-color);padding:20px;">No unused indexes detected.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = indexes.map(idx => {
+    const rawMb = idx.raw_size / (1024 * 1024);
+    const sev = rawMb > 50 ? 'crit' : rawMb > 10 ? 'warn' : 'ok';
+    const badge = `<span class="schema-badge ${sev}">${sev === 'crit' ? 'Large' : sev === 'warn' ? 'Medium' : 'Small'}</span>`;
+    return `<tr class="${sev !== 'ok' ? 'row-' + sev : ''}">
+      <td class="mono" style="font-size:11px;">${escHtml(idx.index_name)}</td>
+      <td>${escHtml(idx.table_name)}</td>
+      <td style="text-align:right;">${escHtml(idx.index_size)}</td>
+      <td style="text-align:center;">${badge}</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderHighSeqScan(tables) {
+  const tbody = document.querySelector('#high-seq-scan-table tbody');
+  if (!tbody) return;
+  if (!tables.length) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--success-color);padding:20px;">No high sequential scan tables detected.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = tables.map(t => {
+    const pct = Number(t.seq_scan_pct || 0);
+    const cls = pct > 80 ? 'row-crit' : pct > 50 ? 'row-warn' : '';
+    const color = pct > 80 ? 'var(--danger-color)' : pct > 50 ? 'var(--warning-color)' : 'var(--fg-color)';
+    return `<tr class="${cls}">
+      <td>${escHtml(t.table_name)}</td>
+      <td style="text-align:right;">${(t.seq_scan||0).toLocaleString()}</td>
+      <td style="text-align:right;">${(t.idx_scan||0).toLocaleString()}</td>
+      <td style="text-align:right;font-weight:600;color:${color};">${pct.toFixed(1)}%</td>
+      <td style="text-align:right;">${(t.row_count||0).toLocaleString()}</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderTableBloat(tables) {
+  const tbody = document.querySelector('#table-bloat-table tbody');
+  if (!tbody) return;
+  if (!tables.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--success-color);padding:20px;">No significant table bloat detected.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = tables.map(t => {
+    const pct = Number(t.bloat_pct || 0);
+    const cls = pct > 20 ? 'crit' : pct > 10 ? 'warn' : '';
+    const rowCls = cls ? 'row-' + cls : '';
+    const barW = Math.min(80, Math.round(pct));
+    const barCls = cls ? ' ' + cls : '';
+    return `<tr class="${rowCls}">
+      <td>${escHtml(t.table_name)}</td>
+      <td style="text-align:right;">${(t.n_live_tup||0).toLocaleString()}</td>
+      <td style="text-align:right;">${(t.n_dead_tup||0).toLocaleString()}</td>
+      <td style="text-align:right;">
+        <span style="font-weight:600;">${pct.toFixed(1)}%</span>
+        <div class="bloat-bar${barCls}" style="width:${barW}px;"></div>
+      </td>
+      <td style="text-align:right;">${escHtml(t.table_size || '-')}</td>
+      <td style="text-align:center;">
+        ${cls ? `<span class="schema-badge ${cls}">VACUUM</span>` : '<span class="schema-badge ok">OK</span>'}
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function renderAutovacuumProgress(workers) {
+  const tbody = document.querySelector('#autovacuum-progress-table tbody');
+  if (!tbody) return;
+  if (!workers.length) {
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--muted-color);padding:20px;">No autovacuum workers currently running.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = workers.map(w => {
+    const total = w.heap_blks_total || 1;
+    const scanned = w.heap_blks_scanned || 0;
+    const pct = Math.min(100, Math.round((scanned / total) * 100));
+    return `<tr>
+      <td>${w.pid}</td>
+      <td class="mono" style="font-size:11px;">${escHtml(w.table_name || '-')}</td>
+      <td>${escHtml(w.phase || '-')}</td>
+      <td>
+        <div class="vacuum-progress-bar">
+          <div class="vacuum-progress-fill" style="width:${pct}%"></div>
+        </div>
+        <span style="font-size:10px;color:var(--muted-color);">${pct}% (${scanned.toLocaleString()}/${total.toLocaleString()} blocks)</span>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function renderTablesNeedingVacuum(tables) {
+  const tbody = document.querySelector('#tables-needing-vacuum-table tbody');
+  if (!tbody) return;
+  if (!tables.length) {
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--success-color);padding:20px;">No tables need immediate vacuum.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = tables.map(t => {
+    const dead = t.n_dead_tup || 0;
+    const cls = dead > 10000 ? 'row-crit' : dead > 2000 ? 'row-warn' : '';
+    const lastVac = t.last_autovacuum ? new Date(t.last_autovacuum).toLocaleString() : 'Never';
+    const lastAna = t.last_autoanalyze ? new Date(t.last_autoanalyze).toLocaleString() : 'Never';
+    return `<tr class="${cls}">
+      <td>${escHtml(t.table_name)}</td>
+      <td style="text-align:right;font-weight:600;">${dead.toLocaleString()}</td>
+      <td style="font-size:11px;color:var(--muted-color);">${lastVac}</td>
+      <td style="font-size:11px;color:var(--muted-color);">${lastAna}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ── AI Panel ──────────────────────────────────────────────────────────
+
+let currentStats = null;
+
+const aiPanel = document.getElementById('ai-panel');
+const aiToggleBtn = document.getElementById('ai-toggle-btn');
+const aiCloseBtn = document.getElementById('ai-panel-close');
+const aiSendBtn = document.getElementById('ai-send-btn');
+const aiQuestionInput = document.getElementById('ai-question');
+const aiResponseArea = document.getElementById('ai-response-area');
+const aiAutoNotify = document.getElementById('ai-auto-notify');
+
+function openAiPanel() {
+  if (!aiPanel) return;
+  aiPanel.classList.add('open');
+  document.body.classList.add('ai-panel-open');
+}
+
+function closeAiPanel() {
+  if (!aiPanel) return;
+  aiPanel.classList.remove('open');
+  document.body.classList.remove('ai-panel-open');
+}
+
+function buildContextSummary() {
+  if (!currentStats) return '';
+  const s = currentStats;
+  const lines = [
+    `Database: ${s.dbName || '-'} | Size: ${s.size || '-'}`,
+    `Connections: ${s.activeConnections || 0} active, ${s.idleConnections || 0} idle, ${s.waitingConnections || 0} waiting / ${s.maxConnections || 0} max`,
+    `Blocking locks: ${(s.blockingLocks || []).length}`,
+    `Long-running queries (>5s): ${s.longRunningQueries || 0}`,
+    `Wait events: ${(s.waitEvents || []).map(w => `${w.type}=${w.count}`).join(', ') || 'none'}`,
+    `Index hit ratio: ${(s.indexHitRatio || 0).toFixed(1)}%`,
+    `Oldest transaction age: ${s.oldestTransactionAgeSeconds || 0}s`,
+    `Tables needing vacuum: ${(s.tablesNeedingVacuum || []).length}`,
+    `Unused indexes: ${(s.unusedIndexes || []).length}`,
+    `Bloated tables: ${(s.tableBloat || []).length}`,
+  ];
+  if ((s.blockingLocks || []).length > 0) {
+    lines.push(`Blocking lock: PID ${s.blockingLocks[0].blocking_pid} blocks PID ${s.blockingLocks[0].blocked_pid} on ${s.blockingLocks[0].locked_object}`);
+  }
+  if ((s.pgStatStatements || []).length > 0) {
+    const top = s.pgStatStatements[0];
+    lines.push(`Top SQL: ${Number(top.total_time).toFixed(0)}ms total, ${top.calls} calls`);
+  }
+  return lines.join('\n');
+}
+
+const quickPromptMap = {
+  'analyze-health': 'Analyze the current database health status and explain what is causing any issues.',
+  'explain-locks': 'Explain the blocking lock situation in detail and provide steps to resolve it.',
+  'slow-queries': 'What are the long-running queries indicating and how should I address them?',
+  'top-sql': 'Review the top SQL statements by total time and suggest specific optimizations.',
+  'schema-health': 'Analyze the schema health — unused indexes, table bloat, and sequential scan patterns. What should I fix first?',
+  'vacuum-advice': 'Review the vacuum status and dead tuple counts. What vacuum actions should I take?',
+};
+
+const metricPromptMap = {
+  'db-health': 'Explain the current DB health status and what is causing any degradation.',
+  'active-load': 'Analyze the active connection load. Is it healthy? What should I watch for?',
+  'blocking-locks': 'Explain the blocking locks in detail. What transactions are involved and how do I resolve them?',
+  'wait-events': 'Explain the current wait events. What are they indicating about the workload?',
+  'unused-indexes': 'Analyze the unused indexes. Which ones should I consider dropping and why?',
+  'high-seq-scan': 'Analyze the tables with high sequential scan rates. Which might benefit from new indexes?',
+  'table-bloat': 'Analyze the table bloat. What is the impact and what VACUUM strategy should I use?',
+  'autovacuum': 'Analyze the autovacuum status. Is autovacuum keeping up? Should I tune any settings?',
+};
+
+let _lastAiQuestion = '';
+
+function _appendAiMessage(role, htmlContent) {
+  if (!aiResponseArea) return;
+  const welcome = aiResponseArea.querySelector('.ai-welcome');
+  if (welcome) welcome.remove();
+
+  const msgDiv = document.createElement('div');
+  msgDiv.className = 'ai-message ' + role;
+
+  const roleLabel = document.createElement('div');
+  roleLabel.className = 'ai-message-role';
+  roleLabel.textContent = role === 'user' ? 'You' : 'AI';
+
+  const bubble = document.createElement('div');
+  bubble.className = 'ai-message-bubble';
+
+  const content = document.createElement('div');
+  content.className = 'ai-message-content';
+  content.innerHTML = htmlContent;
+
+  bubble.appendChild(content);
+  msgDiv.appendChild(roleLabel);
+  msgDiv.appendChild(bubble);
+  aiResponseArea.appendChild(msgDiv);
+
+  if (role === 'assistant') {
+    _addSqlRunButtons(msgDiv);
+  }
+
+  aiResponseArea.scrollTop = aiResponseArea.scrollHeight;
+}
+
+function _addSqlRunButtons(msgDiv) {
+  msgDiv.querySelectorAll('.ai-code-block').forEach(block => {
+    const langEl = block.querySelector('.ai-code-lang');
+    const lang = langEl ? langEl.textContent.trim().toUpperCase() : '';
+    if (!['SQL', 'PGSQL', 'POSTGRESQL', 'PLPGSQL'].includes(lang)) return;
+
+    const codeEl = block.querySelector('.ai-code-content');
+    if (!codeEl) return;
+
+    const confirmRow = document.createElement('div');
+    confirmRow.className = 'ai-run-confirm';
+    confirmRow.innerHTML = `
+      <span class="ai-run-prompt">Run this query on <strong>${escHtml(currentStats ? currentStats.dbName : 'the database')}</strong>?</span>
+      <div class="ai-run-actions">
+        <button class="ai-run-ok-btn">&#9654; Run</button>
+        <button class="ai-run-skip-btn">Skip</button>
+      </div>`;
+    block.appendChild(confirmRow);
+
+    confirmRow.querySelector('.ai-run-ok-btn').addEventListener('click', () => {
+      const sql = codeEl.textContent.trim();
+      confirmRow.innerHTML = '<span class="ai-run-executing"><span class="ai-run-spinner"></span> Executing query…</span>';
+      vscode.postMessage({ command: 'executeQueryForAI', sql, question: _lastAiQuestion });
+    });
+
+    confirmRow.querySelector('.ai-run-skip-btn').addEventListener('click', () => {
+      confirmRow.remove();
+    });
+  });
+}
+
+function _handleQueryResult(data) {
+  if (!aiResponseArea) return;
+
+  const lastConfirm = aiResponseArea.querySelector('.ai-run-executing');
+  if (lastConfirm) lastConfirm.closest('.ai-run-confirm').remove();
+
+  const wrapper = document.createElement('div');
+  wrapper.className = 'ai-query-result';
+
+  if (data.error) {
+    wrapper.innerHTML = `<div class="ai-result-error"><strong>Query error:</strong> ${escHtml(data.error)}</div>`;
+    aiResponseArea.appendChild(wrapper);
+    aiResponseArea.scrollTop = aiResponseArea.scrollHeight;
+    return;
+  }
+
+  const rowCount = data.rowCount ?? (data.rows ? data.rows.length : 0);
+  let html = `<div class="ai-result-meta">Query returned ${rowCount} row${rowCount !== 1 ? 's' : ''}`;
+  if (data.columns && data.rows && data.rows.length > 0) {
+    html += ` &mdash; <button class="ai-csv-btn">&#8659; Download CSV</button>`;
+  }
+  html += `</div>`;
+  wrapper.innerHTML = html;
+
+  const csvBtn = wrapper.querySelector('.ai-csv-btn');
+  if (csvBtn) csvBtn.addEventListener('click', () => _downloadQueryCsv(data));
+
+  aiResponseArea.appendChild(wrapper);
+  aiResponseArea.scrollTop = aiResponseArea.scrollHeight;
+
+  _sendResultsToAI(data);
+}
+
+function _sendResultsToAI(data) {
+  const rowCount = data.rowCount ?? (data.rows ? data.rows.length : 0);
+  let resultContext = `Query results (${rowCount} row${rowCount !== 1 ? 's' : ''}):\n`;
+
+  if (data.columns && data.rows && data.rows.length > 0) {
+    resultContext += data.columns.join(' | ') + '\n';
+    resultContext += data.rows.slice(0, 50).map(row =>
+      data.columns.map(col => row[col] === null ? 'NULL' : String(row[col])).join(' | ')
+    ).join('\n');
+    if (data.rows.length > 50) resultContext += `\n… (${data.rows.length - 50} more rows truncated)`;
+  } else {
+    resultContext += '(no rows returned)';
+  }
+
+  const question = (data.question || 'Answer the original question using the query results below.') +
+    '\n\n' + resultContext;
+
+  renderAiLoading(true);
+  vscode.postMessage({ command: 'askAI', question, context: buildContextSummary() });
+}
+
+function _downloadQueryCsv(data) {
+  const { columns, rows } = data;
+  const esc = val => {
+    const s = val === null ? '' : String(val);
+    return (s.includes(',') || s.includes('"') || s.includes('\n'))
+      ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const lines = [columns.join(','), ...rows.map(row => columns.map(col => esc(row[col])).join(','))];
+  vscode.postMessage({ command: 'downloadCsv', csv: lines.join('\n'), filename: 'query_results.csv' });
+}
+
+function sendAiQuestion(question) {
+  if (!question || !question.trim()) return;
+  openAiPanel();
+  const q = question.trim();
+  _lastAiQuestion = q;
+  _appendAiMessage('user', escHtml(q).replace(/\n/g, '<br>'));
+  vscode.postMessage({
+    command: 'askAI',
+    question: q,
+    context: buildContextSummary(),
+  });
+  if (aiQuestionInput) aiQuestionInput.value = '';
+}
+
+function renderAiLoading(loading) {
+  if (!aiResponseArea) return;
+  const existing = aiResponseArea.querySelector('.ai-loading-dots');
+  if (loading && !existing) {
+    const dots = document.createElement('div');
+    dots.className = 'ai-loading-dots';
+    dots.innerHTML = '<span></span><span></span><span></span>';
+    aiResponseArea.appendChild(dots);
+    aiResponseArea.scrollTop = aiResponseArea.scrollHeight;
+  } else if (!loading && existing) {
+    existing.remove();
+  }
+}
+
+function renderAiResponse(text) {
+  _appendAiMessage('assistant', _parseAiMarkdown(text));
+  if (aiResponseArea) aiResponseArea.scrollTop = aiResponseArea.scrollHeight;
+}
+
+// ── AI Markdown + SQL Highlighting ──────────────────────────────────
+
+let _aiCodeBlockCounter = 0;
+let _aiMarkedRenderer = null;
+
+function _highlightSqlTokens(code) {
+  const keywords = ['SELECT', 'FROM', 'WHERE', 'INSERT', 'UPDATE', 'DELETE', 'DROP', 'CREATE', 'ALTER', 'TABLE', 'INDEX', 'VIEW', 'FUNCTION', 'TRIGGER', 'PROCEDURE', 'CONSTRAINT', 'PRIMARY', 'KEY', 'FOREIGN', 'REFERENCES', 'JOIN', 'INNER', 'LEFT', 'RIGHT', 'OUTER', 'FULL', 'CROSS', 'ON', 'GROUP', 'BY', 'ORDER', 'HAVING', 'LIMIT', 'OFFSET', 'UNION', 'ALL', 'DISTINCT', 'AS', 'AND', 'OR', 'NOT', 'IN', 'EXISTS', 'BETWEEN', 'LIKE', 'ILIKE', 'IS', 'NULL', 'TRUE', 'FALSE', 'CASE', 'WHEN', 'THEN', 'ELSE', 'END', 'DEFAULT', 'VALUES', 'SET', 'RETURNING', 'BEGIN', 'COMMIT', 'ROLLBACK', 'TRANSACTION', 'GRANT', 'REVOKE', 'WITH', 'ANALYZE', 'EXPLAIN', 'VACUUM', 'REINDEX', 'CLUSTER', 'COALESCE', 'NULLIF', 'CAST'];
+  const types = ['INT', 'INTEGER', 'BIGINT', 'SMALLINT', 'VARCHAR', 'TEXT', 'BOOLEAN', 'DATE', 'TIMESTAMP', 'TIMESTAMPTZ', 'NUMERIC', 'DECIMAL', 'FLOAT', 'REAL', 'JSON', 'JSONB', 'UUID', 'SERIAL', 'BIGSERIAL', 'BYTEA', 'OID', 'REGCLASS'];
+
+  let html = '';
+  let rest = code;
+  while (rest.length > 0) {
+    let m;
+    if ((m = rest.match(/^(--[^\n]*)/))) { html += '<span class="sql-comment">' + m[0] + '</span>'; rest = rest.slice(m[0].length); continue; }
+    if ((m = rest.match(/^(\/\*[\s\S]*?\*\/)/))) { html += '<span class="sql-comment">' + m[0] + '</span>'; rest = rest.slice(m[0].length); continue; }
+    if ((m = rest.match(/^('(?:[^'\\]|\\.)*')/))) { html += '<span class="sql-string">' + m[0] + '</span>'; rest = rest.slice(m[0].length); continue; }
+    if ((m = rest.match(/^(\d+\.?\d*)/))) { html += '<span class="sql-number">' + m[0] + '</span>'; rest = rest.slice(m[0].length); continue; }
+    if ((m = rest.match(/^([a-zA-Z_][a-zA-Z0-9_]*)/))) {
+      const w = m[0], u = w.toUpperCase();
+      if (keywords.includes(u)) html += '<span class="sql-keyword">' + w + '</span>';
+      else if (types.includes(u)) html += '<span class="sql-type">' + w + '</span>';
+      else if (/^\s*\(/.test(rest.slice(w.length))) html += '<span class="sql-function">' + w + '</span>';
+      else html += '<span class="sql-identifier">' + w + '</span>';
+      rest = rest.slice(w.length); continue;
+    }
+    if ((m = rest.match(/^(&[a-zA-Z]+;)/))) { html += m[0]; rest = rest.slice(m[0].length); continue; }
+    if ((m = rest.match(/^([+\-/*=<>!|%]+)/))) { html += '<span class="sql-operator">' + m[0] + '</span>'; rest = rest.slice(m[0].length); continue; }
+    if ((m = rest.match(/^([,;().[\]]+)/))) { html += '<span class="sql-punctuation">' + m[0] + '</span>'; rest = rest.slice(m[0].length); continue; }
+    html += rest[0]; rest = rest.slice(1);
+  }
+  return html;
+}
+
+function _getAiMarkedRenderer() {
+  if (_aiMarkedRenderer) return _aiMarkedRenderer;
+  if (typeof marked === 'undefined') return null;
+
+  const renderer = new marked.Renderer();
+
+  renderer.code = function ({ text, lang }) {
+    const id = 'ai-code-' + (++_aiCodeBlockCounter);
+    const language = lang || 'text';
+    const displayLang = language === 'text' ? 'CODE' : language.toUpperCase();
+    const isSql = ['sql', 'pgsql', 'postgresql', 'plpgsql'].includes(language.toLowerCase());
+
+    const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const highlighted = isSql ? _highlightSqlTokens(escaped) : escaped;
+
+    return `<div class="ai-code-block">
+      <div class="ai-code-header">
+        <span class="ai-code-lang">${displayLang}</span>
+        <button class="ai-copy-btn" data-code-id="${id}" title="Copy">
+          <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z"/><path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z"/></svg>
+          Copy
+        </button>
+      </div>
+      <pre><code id="${id}" class="ai-code-content">${highlighted}</code></pre>
+    </div>`;
+  };
+
+  renderer.codespan = function ({ text }) {
+    return `<code class="ai-inline-code">${text.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code>`;
+  };
+
+  _aiMarkedRenderer = renderer;
+  return _aiMarkedRenderer;
+}
+
+function _parseAiMarkdown(text) {
+  if (typeof marked !== 'undefined') {
+    try {
+      const renderer = _getAiMarkedRenderer();
+      if (renderer) {
+        return marked.parse(text, { renderer, breaks: true });
+      }
+    } catch (e) { /* fall through */ }
+  }
+  // Fallback: minimal escaping
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+}
+
+if (aiToggleBtn) {
+  aiToggleBtn.addEventListener('click', () => {
+    if (aiPanel && aiPanel.classList.contains('open')) {
+      closeAiPanel();
+    } else {
+      openAiPanel();
+    }
+  });
+}
+
+if (aiCloseBtn) {
+  aiCloseBtn.addEventListener('click', closeAiPanel);
+}
+
+if (aiSendBtn) {
+  aiSendBtn.addEventListener('click', () => {
+    sendAiQuestion(aiQuestionInput ? aiQuestionInput.value : '');
+  });
+}
+
+if (aiQuestionInput) {
+  aiQuestionInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendAiQuestion(aiQuestionInput.value);
+    }
+  });
+}
+
+if (aiAutoNotify) {
+  aiAutoNotify.addEventListener('change', () => {
+    vscode.postMessage({ command: 'toggleAutoNotify', enabled: aiAutoNotify.checked });
+  });
+}
+
+document.querySelectorAll('.ai-chip').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const prompt = quickPromptMap[btn.dataset.prompt];
+    if (prompt) sendAiQuestion(prompt);
+  });
+});
+
+document.addEventListener('click', e => {
+  const btn = e.target.closest('.card-ai-btn');
+  if (btn) {
+    e.stopPropagation();
+    const metric = btn.dataset.metric;
+    const prompt = metricPromptMap[metric] || `Analyze the ${metric} metric and explain what I should know.`;
+    sendAiQuestion(prompt);
+  }
+
+  // Copy button inside AI code blocks
+  const copyBtn = e.target.closest('.ai-copy-btn');
+  if (copyBtn) {
+    const codeId = copyBtn.dataset.codeId;
+    const codeEl = codeId && document.getElementById(codeId);
+    if (codeEl) {
+      navigator.clipboard.writeText(codeEl.textContent || '').then(() => {
+        copyBtn.textContent = 'Copied!';
+        setTimeout(() => {
+          copyBtn.innerHTML = `<svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z"/><path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z"/></svg> Copy`;
+        }, 1500);
+      });
+    }
+  }
+});
+
+// Cache stats for AI context
+const _origUpdateDashboard = updateDashboard;
+// Intercept to keep currentStats fresh
+const _dashboardStatsScript = document.getElementById('dashboard-stats');
+if (_dashboardStatsScript) {
+  try { currentStats = JSON.parse(_dashboardStatsScript.textContent); } catch (_) {}
+}
+window.addEventListener('message', e => {
+  if (e.data && e.data.command === 'updateStats') {
+    currentStats = e.data.stats;
+  }
+}, true);

@@ -1,16 +1,21 @@
 import { Client, PoolClient } from 'pg';
 import * as vscode from 'vscode';
-import { fetchStats } from './DashboardData';
+import { fetchStats, DashboardStats } from './DashboardData';
 import { getErrorHtml, getHtmlForWebview, getLoadingHtml } from './DashboardHtml';
 import { ConnectionManager } from '../services/ConnectionManager';
 import { ConnectionConfig } from '../common/types';
 import { createMetadata, createAndShowNotebook } from '../commands/connection';
+import { AiService } from '../providers/chat/AiService';
 
 export class DashboardPanel {
   private static panels: Map<string, DashboardPanel> = new Map();
   private readonly _panel: vscode.WebviewPanel;
   private readonly _disposables: vscode.Disposable[] = [];
   private readonly _panelKey: string;
+  private _aiService: AiService | null = null;
+  private _lastStats: DashboardStats | null = null;
+  private _autoNotifyEnabled = false;
+  private _lastHealthCritical = false;
 
   private constructor(panel: vscode.WebviewPanel, private readonly config: ConnectionConfig, private readonly dbName: string, panelKey: string, private readonly extensionUri: vscode.Uri) {
     this._panel = panel;
@@ -58,6 +63,18 @@ export class DashboardPanel {
             if (cancelAns === 'Yes') {
               await this._cancelQuery(message.pid);
             }
+            break;
+          case 'askAI':
+            await this._handleAskAI(message.question, message.context);
+            break;
+          case 'executeQueryForAI':
+            await this._executeQueryForAI(message.sql, message.question);
+            break;
+          case 'toggleAutoNotify':
+            this._autoNotifyEnabled = Boolean(message.enabled);
+            break;
+          case 'downloadCsv':
+            await this._downloadCsv(message.csv, message.filename);
             break;
         }
       },
@@ -138,15 +155,146 @@ export class DashboardPanel {
 
 
 
+  private async _handleAskAI(question: string, context: string) {
+    if (!this._aiService) {
+      this._aiService = new AiService();
+    }
+    this._panel.webview.postMessage({ command: 'aiLoading', loading: true });
+    try {
+      const config = vscode.workspace.getConfiguration('postgresExplorer');
+      const provider = config.get<string>('aiProvider') ?? 'vscode-lm';
+      const systemPrompt = this._buildDashboardSystemPrompt(context);
+      let result: { text: string };
+      if (provider === 'vscode-lm') {
+        result = await this._aiService.callVsCodeLm(question, config, systemPrompt);
+      } else {
+        result = await this._aiService.callDirectApi(provider, question, config, systemPrompt);
+      }
+      this._panel.webview.postMessage({ command: 'aiResponse', text: result.text });
+    } catch (err: any) {
+      this._panel.webview.postMessage({ command: 'aiResponse', text: `**Error:** ${err.message}` });
+    } finally {
+      this._panel.webview.postMessage({ command: 'aiLoading', loading: false });
+    }
+  }
+
+  private async _executeQueryForAI(sql: string, question: string) {
+    const trimmed = sql.trim();
+    const upper = trimmed.toUpperCase().replace(/\s+/g, ' ');
+    const isReadOnly = /^(SELECT|WITH|EXPLAIN)\b/.test(upper);
+    if (!isReadOnly) {
+      this._panel.webview.postMessage({
+        command: 'queryForAIResult',
+        error: 'Only SELECT, WITH, or EXPLAIN queries are allowed.'
+      });
+      return;
+    }
+    let client;
+    try {
+      client = await this.getClient();
+      await client.query('SET statement_timeout = 10000');
+      const result = await client.query(trimmed);
+      this._panel.webview.postMessage({
+        command: 'queryForAIResult',
+        sql: trimmed,
+        question,
+        columns: result.fields.map((f: any) => f.name),
+        rows: result.rows.slice(0, 100),
+        rowCount: result.rowCount ?? result.rows.length,
+      });
+    } catch (err: any) {
+      this._panel.webview.postMessage({
+        command: 'queryForAIResult',
+        sql: trimmed,
+        question,
+        error: err.message,
+      });
+    } finally {
+      if (client) client.release();
+    }
+  }
+
+  private _buildDashboardSystemPrompt(contextSummary: string): string {
+    return `You are an expert PostgreSQL DBA assistant embedded in a live monitoring dashboard.
+
+${contextSummary ? `## Current Database State\n${contextSummary}\n` : ''}
+
+## Your Role
+- Answer questions about database health, performance, locks, and schema directly and concisely
+- When you need live data, write a SELECT query in a \`\`\`sql block — the UI will present it to the user for approval and execution, then return the results to you automatically
+- When query results are provided in the message, interpret them directly and answer the original question — do NOT ask to run another query
+- Keep answers short and to the point
+
+## Rules for SQL Generation
+- ONLY write SELECT, WITH (read-only CTE), or EXPLAIN queries — NEVER INSERT, UPDATE, DELETE, DROP, CREATE, ALTER, or TRUNCATE
+- Always wrap SQL in \`\`\`sql fenced code blocks
+- Always add a LIMIT clause (max 100 rows unless the user asks for more)
+- Do NOT ask "shall I run this?" or "would you like me to execute?" — the UI handles that automatically
+- Do NOT invent or assume data values — query for them
+
+## Response Format
+- Answer in plain sentences — no bullet points for simple answers
+- Use bullets only for lists of 3+ items
+- Skip preamble — answer directly`;
+  }
+
+  private _buildContextSummary(stats: DashboardStats): string {
+    const health = stats.blockingLocks.length > 0 ? 'Degraded (blocking locks)' :
+      stats.waitingConnections > 0 ? 'Degraded (waiting sessions)' : 'OK';
+    const lines = [
+      `Database: ${stats.dbName} | Size: ${stats.size} | Owner: ${stats.owner}`,
+      `Health: ${health}`,
+      `Connections: ${stats.activeConnections} active / ${stats.idleConnections} idle / ${stats.waitingConnections} waiting / ${stats.maxConnections} max`,
+      `Blocking locks: ${stats.blockingLocks.length}`,
+      `Long-running queries (>5s): ${stats.longRunningQueries}`,
+      `Wait events: ${stats.waitEvents.map(w => `${w.type}=${w.count}`).join(', ') || 'none'}`,
+      `Index hit ratio: ${stats.indexHitRatio.toFixed(1)}%`,
+      `Oldest transaction age: ${stats.oldestTransactionAgeSeconds}s`,
+      `Tables needing vacuum attention: ${stats.vacuumTablesNeedingAttention}`,
+      `Unused indexes: ${stats.unusedIndexes.length}`,
+      `Bloated tables (>1000 dead tuples): ${stats.tableBloat.length}`,
+      `Tables needing vacuum: ${stats.tablesNeedingVacuum.length}`,
+    ];
+    if (stats.blockingLocks.length > 0) {
+      lines.push(`Blocking lock details: ${stats.blockingLocks.slice(0, 3).map(l =>
+        `PID ${l.blocking_pid} blocks PID ${l.blocked_pid} on ${l.locked_object} (${l.lock_mode})`
+      ).join('; ')}`);
+    }
+    if (stats.pgStatStatements && stats.pgStatStatements.length > 0) {
+      const top = stats.pgStatStatements[0];
+      lines.push(`Top SQL by total time: ${top.total_time.toFixed(0)}ms total, ${top.calls} calls, avg ${top.mean_time.toFixed(1)}ms`);
+    }
+    return lines.join('\n');
+  }
+
+  private _isHealthCritical(stats: DashboardStats): boolean {
+    return stats.blockingLocks.length > 0 ||
+      stats.waitingConnections > 5 ||
+      stats.longRunningQueries > 3 ||
+      (stats.totalConnections / stats.maxConnections) > 0.9;
+  }
+
   private async _update() {
     let client;
     try {
       client = await this.getClient();
       const stats = await fetchStats(client as unknown as Client, this.dbName);
+      this._lastStats = stats;
       this._panel.webview.postMessage({ command: 'updateStats', stats });
       // If it's the first load, set the HTML
       if (this._panel.webview.html.includes('Loading Dashboard...')) {
         this._panel.webview.html = await getHtmlForWebview(this._panel.webview, this.extensionUri, stats);
+      }
+      // Auto-notify if enabled and health newly turned critical
+      if (this._autoNotifyEnabled) {
+        const nowCritical = this._isHealthCritical(stats);
+        if (nowCritical && !this._lastHealthCritical) {
+          await this._handleAskAI(
+            'Database health has degraded. Explain what is happening and what I should do immediately.',
+            this._buildContextSummary(stats)
+          );
+        }
+        this._lastHealthCritical = nowCritical;
       }
     } catch (error: any) {
       // Only show error if we haven't loaded the UI yet, otherwise send error message
@@ -158,6 +306,17 @@ export class DashboardPanel {
       }
     } finally {
       if (client) client.release();
+    }
+  }
+
+  private async _downloadCsv(csv: string, filename: string) {
+    const uri = await vscode.window.showSaveDialog({
+      defaultUri: vscode.Uri.file(filename),
+      filters: { 'CSV Files': ['csv'], 'All Files': ['*'] }
+    });
+    if (uri) {
+      await vscode.workspace.fs.writeFile(uri, Buffer.from(csv, 'utf-8'));
+      vscode.window.showInformationMessage(`Saved: ${uri.fsPath}`);
     }
   }
 
