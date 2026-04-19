@@ -43,6 +43,15 @@ async function hydrateMarketplaceStats() {
     const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
     set("stat-version", `v${version}`);
     set("badge-version", `v${version}`);
+    set("min-overview-version", version);
+
+    document.querySelectorAll('[itemprop="softwareVersion"]').forEach((el) => {
+      if (el.tagName === "META") {
+        el.setAttribute("content", version);
+      } else {
+        el.textContent = version;
+      }
+    });
 
     window.setTimeout(() => {
       animateCountUp(dlEl, installs >= 1e3 ? installs / 1e3 : installs, installs >= 1e3 ? "K" : "", 1200);
