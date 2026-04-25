@@ -17,13 +17,6 @@
 
 ---
 
-## 🆕 Since v1.0.0
-
-- 🧩 **SQL Assistant in Editor Tabs** — Open SQL Assistant directly in the main editor area using `SQL Assistant: Open in Editor Tab`.
-- 🗂️ **Multiple SQL Assistant Tabs** — Run parallel assistant conversations in separate tabs and switch context faster.
-
----
-
 ## 📺 Video Guides
 
 ### 1. Setup
@@ -145,14 +138,6 @@
 | In-grid result editing parity with desktop IDEs | ⚠️ Partial | Planned improvements post-v1.0.0 |
 | ERD/schema visualization parity | ⚠️ Partial | Schema designer exists; ERD depth still evolving |
 | Advanced replication administration | ⚠️ Partial | Additional publication/subscription depth planned |
-
----
-
-## ⚠️ Known Limitations (v1.0.0)
-
-- In-grid editing is limited compared to full desktop DB IDEs.
-- ERD/schema visualization is still maturing.
-- Some advanced PostgreSQL administration areas are partial and will be expanded in v1.x.
 
 ---
 
