@@ -33,7 +33,7 @@ jobs:
       - name: Compute nightly version
         id: nightly_version
         run: |
-          NIGHTLY_VERSION=$(node -e "const [maj,min] = require('./package.json').version.split('.').map(Number); const nightlyMinor = min % 2 === 0 ? min + 1 : min; process.stdout.write(`${maj}.${nightlyMinor}.${process.env.GITHUB_RUN_NUMBER}`)")
+          NIGHTLY_VERSION=$(node ./scripts/compute-nightly-version.js)
           echo "VERSION=$NIGHTLY_VERSION" >> $GITHUB_OUTPUT
           echo "Using nightly version: $NIGHTLY_VERSION"
 

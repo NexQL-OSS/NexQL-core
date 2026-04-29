@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { computeNightlyVersion } = require('./compute-nightly-version.js');
 
 function ensureNightlySuffix(description) {
   const suffix = ' [Nightly]';
@@ -18,13 +19,12 @@ function main() {
     throw new Error('package.json not found in repository root');
   }
 
-  const nightlyVersion = process.env.NIGHTLY_VERSION;
-  if (!nightlyVersion) {
-    throw new Error('NIGHTLY_VERSION environment variable is required');
-  }
+  const basePackage = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+  const nightlyVersion =
+    process.env.NIGHTLY_VERSION ||
+    computeNightlyVersion(basePackage.version);
 
   const openVsxNightlyName = process.env.OPENVSX_NIGHTLY_NAME || 'postgres-explorer-nightly';
-  const basePackage = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
 
   const marketplaceNightly = {
     ...basePackage,
