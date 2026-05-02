@@ -67,14 +67,35 @@ export function registerProviders(context: vscode.ExtensionContext, outputChanne
   runDeferredProviderTask(outputChannel, 'registerSqlCompletionProvider', async () => {
     const sqlCompletionModule = await import('../providers/SqlCompletionProvider');
     const sqlCompletionProvider = new sqlCompletionModule.SqlCompletionProvider();
+    sqlCompletionModule.SqlCompletionProvider.setInstance(sqlCompletionProvider);
+
+    const warmSqlCompletionCache = (notebook: vscode.NotebookDocument) => {
+      const meta = notebook.metadata as { connectionId?: string; databaseName?: string } | undefined;
+      if (!meta?.connectionId) {
+        return;
+      }
+      const nbType = notebook.notebookType;
+      if (nbType !== 'postgres-notebook' && nbType !== 'postgres-query') {
+        return;
+      }
+      const database = meta.databaseName || 'postgres';
+      void sqlCompletionProvider.warmCache(meta.connectionId, database);
+    };
 
     context.subscriptions.push(
       vscode.languages.registerCompletionItemProvider(
         { scheme: 'vscode-notebook-cell', language: 'sql' },
         sqlCompletionProvider,
-        '.'
-      )
+        '.', ' '
+      ),
+      vscode.workspace.onDidOpenNotebookDocument(doc => {
+        warmSqlCompletionCache(doc);
+      })
     );
+
+    for (const nb of vscode.workspace.notebookDocuments) {
+      warmSqlCompletionCache(nb);
+    }
   });
 
   runDeferredProviderTask(outputChannel, 'registerQueryCodeLensProvider', async () => {

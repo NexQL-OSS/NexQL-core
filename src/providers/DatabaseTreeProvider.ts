@@ -312,6 +312,19 @@ export class DatabaseTreeProvider implements vscode.TreeDataProvider<DatabaseTre
       } else if (element.connectionId) {
         this._cache.invalidateConnection(element.connectionId);
       }
+      void import('./SqlCompletionProvider').then(({ SqlCompletionProvider }) => {
+        const completion = SqlCompletionProvider.getInstance();
+        if (!completion) {
+          return;
+        }
+        if (!element) {
+          completion.invalidateAll();
+        } else if (element.connectionId && element.databaseName) {
+          completion.invalidate(element.connectionId, element.databaseName);
+        } else if (element.connectionId) {
+          completion.invalidate(element.connectionId);
+        }
+      });
       this._onDidChangeTreeData.fire(element);
     }, 300); // Debounce for 300ms to batch rapid updates
   }

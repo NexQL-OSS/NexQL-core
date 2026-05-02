@@ -1,4 +1,5 @@
 import { ConnectionConfig } from '../common/types';
+import { SqlParser } from '../providers/kernel/SqlParser';
 
 /**
  * Execution plan performance metrics extracted from EXPLAIN JSON
@@ -262,6 +263,18 @@ export class QueryAnalyzer {
         ? this.buildWarningMessage(operations, connection)
         : undefined,
     };
+  }
+
+  /**
+   * Whether successfully executing this statement should drop SQL completion caches
+   * (objects/columns/FKs) for the current database.
+   */
+  public isCatalogInvalidatingSql(sql: string): boolean {
+    const q = SqlParser.stripCommentsAndStrings(sql).trim();
+    if (!q) {
+      return false;
+    }
+    return /^\s*(CREATE|ALTER|DROP)\s+/i.test(q) || /^\s*TRUNCATE\s+/i.test(q);
   }
 
   /**

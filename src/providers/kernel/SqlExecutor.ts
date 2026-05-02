@@ -885,6 +885,13 @@ export class SqlExecutor {
             executionTime,
           });
 
+          if (QueryAnalyzer.getInstance().isCatalogInvalidatingSql(statements[stmtIndex])) {
+            const dbName = metadata.databaseName || connection.database || 'postgres';
+            void import('../SqlCompletionProvider').then(mod => {
+              mod.SqlCompletionProvider.getInstance()?.invalidate(connection.id, dbName);
+            });
+          }
+
           await this.maybePromptForReview();
 
         } catch (err: any) {
