@@ -66,8 +66,10 @@ export function registerProviders(context: vscode.ExtensionContext, outputChanne
   // Register SQL completion provider, CodeLens, and query history lazily.
   runDeferredProviderTask(outputChannel, 'registerSqlCompletionProvider', async () => {
     const sqlCompletionModule = await import('../providers/SqlCompletionProvider');
+    const sqlSigModule = await import('../providers/SqlSignatureHelpProvider');
     const sqlCompletionProvider = new sqlCompletionModule.SqlCompletionProvider();
     sqlCompletionModule.SqlCompletionProvider.setInstance(sqlCompletionProvider);
+    const sqlSignatureHelpProvider = new sqlSigModule.SqlSignatureHelpProvider();
 
     const warmSqlCompletionCache = (notebook: vscode.NotebookDocument) => {
       const meta = notebook.metadata as { connectionId?: string; databaseName?: string } | undefined;
@@ -87,6 +89,11 @@ export function registerProviders(context: vscode.ExtensionContext, outputChanne
         { scheme: 'vscode-notebook-cell', language: 'sql' },
         sqlCompletionProvider,
         '.', ' '
+      ),
+      vscode.languages.registerSignatureHelpProvider(
+        { scheme: 'vscode-notebook-cell', language: 'sql' },
+        sqlSignatureHelpProvider,
+        '(', ','
       ),
       vscode.workspace.onDidOpenNotebookDocument(doc => {
         warmSqlCompletionCache(doc);

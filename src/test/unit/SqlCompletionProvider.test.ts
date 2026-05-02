@@ -18,6 +18,15 @@ function attachNotebook(document: vscode.TextDocument, metadata: any) {
   return notebook;
 }
 
+function attachNotebookMultiCells(documents: vscode.TextDocument[], metadata: any) {
+  const notebook = new vscode.NotebookDocument(vscode.Uri.file('/workspace/sql-notebook.pgsql'), metadata);
+  (notebook as any).notebookType = 'postgres-notebook';
+  const cells = documents.map((doc, i) => new vscode.NotebookCell(doc, i, vscode.NotebookCellKind.Code));
+  notebook.getCells = () => cells;
+  vscode.workspace.notebookDocuments = [notebook];
+  return notebook;
+}
+
 describe('SqlCompletionProvider', () => {
   let sandbox: sinon.SinonSandbox;
   let getConfigurationStub: sinon.SinonStub;
@@ -46,17 +55,21 @@ describe('SqlCompletionProvider', () => {
     vscode.workspace.notebookDocuments = [];
   });
 
-  /** Query order: objects, columns, FKs, search_path (single `_fetchAndStoreCache` round-trip). */
+  /** Query order: objects, columns, FKs, search_path, composites, roles (single `_fetchAndStoreCache` round-trip). */
   const setupCacheResults = (
     objectsRows: any[],
     columnsRows: any[],
     foreignKeyRows: any[] = [],
-    searchPath = 'public'
+    searchPath = 'public',
+    compositeRows: any[] = [],
+    roleRows: any[] = [{ rolname: 'postgres' }]
   ) => {
     queryStub.onCall(0).resolves({ rows: objectsRows });
     queryStub.onCall(1).resolves({ rows: columnsRows });
     queryStub.onCall(2).resolves({ rows: foreignKeyRows });
     queryStub.onCall(3).resolves({ rows: [{ search_path: searchPath }] });
+    queryStub.onCall(4).resolves({ rows: compositeRows });
+    queryStub.onCall(5).resolves({ rows: roleRows });
   };
 
   it('returns empty completions for unsupported documents', async () => {
@@ -127,7 +140,7 @@ describe('SqlCompletionProvider', () => {
     const firstLabels = firstItems.map(item => item.label);
     expect(getPooledClientStub.calledOnce).to.be.true;
     expect(releaseStub.calledOnce).to.be.true;
-    expect(queryStub.callCount).to.equal(4);
+    expect(queryStub.callCount).to.equal(6);
     expect(queryStub.firstCall.args[0]).to.contain('NULL::text as arguments');
     expect(queryStub.firstCall.args[0]).to.contain('pg_get_function_arguments(p.oid) AS arguments');
     expect(queryStub.firstCall.args[0]).to.contain('pg_get_function_identity_arguments(p.oid) AS call_arguments');
@@ -149,6 +162,15 @@ describe('SqlCompletionProvider', () => {
     expect((recomputeTotalsItem?.insertText as any)?.value || recomputeTotalsItem?.insertText).to.equal('recompute_totals(${1:customer_id}, ${2:include_tax})');
     expect((syncInventoryItem?.insertText as any)?.value || syncInventoryItem?.insertText).to.equal('sync_inventory(${1:warehouse_id})');
     expect(secondItems.map(item => item.label)).to.deep.equal(firstLabels);
+
+    const sqlFromAfterCursor = 'SELECT u FROM public.users u';
+    const docAliasPrefix = createNotebookCellDocument(sqlFromAfterCursor, 'cell-alias-prefix');
+    attachNotebook(docAliasPrefix, { connectionId: 'conn-1', databaseName: 'appdb' });
+    const aliasPrefixPos = new vscode.Position(0, 'SELECT u'.length);
+    const aliasPrefixItems = await provider.provideCompletionItems(docAliasPrefix, aliasPrefixPos, {} as any, {} as any);
+    const aliasPrefixLabels = aliasPrefixItems.map(item => item.label);
+    expect(aliasPrefixLabels).to.include('email');
+    expect(aliasPrefixItems.find(i => i.label === 'email')?.insertText).to.equal('u.email');
 
     const fallbackDocument = createNotebookCellDocument('SELECT 1;', 'cell-2');
     attachNotebook(fallbackDocument, { connectionId: 'conn-1', databaseName: 'appdb' });
@@ -430,7 +452,7 @@ describe('SqlCompletionProvider', () => {
 
     expect(getPooledClientStub.calledOnce).to.be.true;
     expect(releaseStub.calledOnce).to.be.true;
-    expect(queryStub.callCount).to.equal(4);
+    expect(queryStub.callCount).to.equal(6);
     expect(itemsFirst.map(i => i.label)).to.include('id');
 
     queryStub.resetHistory();
@@ -440,5 +462,72 @@ describe('SqlCompletionProvider', () => {
     const itemsCached = await provider.provideCompletionItems(document, pos, {} as any, {} as any);
     expect(getPooledClientStub.called).to.be.false;
     expect(itemsCached.map(i => i.label)).to.include('id');
+  });
+
+  it('includes prior notebook SQL cells so CTE names resolve in a later cell', async () => {
+    (getConfigurationStub as sinon.SinonStub).returns({
+      get: (key: string) =>
+        key === 'postgresExplorer.connections'
+          ? [{ id: 'conn-1', name: 'Main', host: 'localhost', port: 5432, username: 'postgres' }]
+          : undefined
+    } as any);
+
+    setupCacheResults([{ schema: 'public', object_name: 'users', object_type: 'table' }], []);
+
+    const provider = new SqlCompletionProvider();
+    const cellA = createNotebookCellDocument('WITH t AS (SELECT 1 AS cx)', 'cell-a');
+    const cellB = createNotebookCellDocument('SELECT t.', 'cell-b');
+    attachNotebookMultiCells([cellA, cellB], { connectionId: 'conn-1', databaseName: 'appdb' });
+
+    await provider.warmCache('conn-1', 'appdb');
+
+    const items = await provider.provideCompletionItems(cellB, new vscode.Position(0, 'SELECT t.'.length), {} as any, {} as any);
+    expect(items.map(i => i.label)).to.include('cx');
+  });
+
+  it('suggests columns from a derived subquery alias', async () => {
+    (getConfigurationStub as sinon.SinonStub).returns({
+      get: (key: string) =>
+        key === 'postgresExplorer.connections'
+          ? [{ id: 'conn-1', name: 'Main', host: 'localhost', port: 5432, username: 'postgres' }]
+          : undefined
+    } as any);
+
+    setupCacheResults(
+      [{ schema: 'public', object_name: 'users', object_type: 'table' }],
+      [{ schema: 'public', table_name: 'users', column_name: 'user_id', data_type: 'integer' }]
+    );
+
+    const provider = new SqlCompletionProvider();
+    const sql = 'SELECT sq. FROM (SELECT user_id AS uid FROM public.users) sq';
+    const document = createNotebookCellDocument(sql);
+    attachNotebook(document, { connectionId: 'conn-1', databaseName: 'appdb' });
+
+    await provider.warmCache('conn-1', 'appdb');
+
+    const items = await provider.provideCompletionItems(document, new vscode.Position(0, 'SELECT sq.'.length), {} as any, {} as any);
+    expect(items.map(i => i.label)).to.include('uid');
+  });
+
+  it('INSERT INTO target lists relation objects only', async () => {
+    (getConfigurationStub as sinon.SinonStub).returns({
+      get: (key: string) =>
+        key === 'postgresExplorer.connections'
+          ? [{ id: 'conn-1', name: 'Main', host: 'localhost', port: 5432, username: 'postgres' }]
+          : undefined
+    } as any);
+
+    setupCacheResults([{ schema: 'public', object_name: 'orders', object_type: 'table' }], []);
+
+    const provider = new SqlCompletionProvider();
+    const document = createNotebookCellDocument('INSERT INTO ');
+    attachNotebook(document, { connectionId: 'conn-1', databaseName: 'appdb' });
+
+    await provider.warmCache('conn-1', 'appdb');
+
+    const items = await provider.provideCompletionItems(document, new vscode.Position(0, 'INSERT INTO '.length), {} as any, {} as any);
+    const labels = items.map(i => i.label);
+    expect(labels).to.include('orders');
+    expect(labels).to.not.include('SELECT');
   });
 });

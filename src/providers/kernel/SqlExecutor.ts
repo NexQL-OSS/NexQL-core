@@ -885,7 +885,8 @@ export class SqlExecutor {
             executionTime,
           });
 
-          if (QueryAnalyzer.getInstance().isCatalogInvalidatingSql(statements[stmtIndex])) {
+          const qa = QueryAnalyzer.getInstance();
+          if (qa.isCatalogInvalidatingSql(statements[stmtIndex]) || qa.isSearchPathChangingSql(statements[stmtIndex])) {
             const dbName = metadata.databaseName || connection.database || 'postgres';
             void import('../SqlCompletionProvider').then(mod => {
               mod.SqlCompletionProvider.getInstance()?.invalidate(connection.id, dbName);

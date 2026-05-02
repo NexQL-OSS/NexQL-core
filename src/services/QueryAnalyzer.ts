@@ -277,6 +277,15 @@ export class QueryAnalyzer {
     return /^\s*(CREATE|ALTER|DROP)\s+/i.test(q) || /^\s*TRUNCATE\s+/i.test(q);
   }
 
+  /** Session changes that affect completion search_path ordering (refresh catalog cache). */
+  public isSearchPathChangingSql(sql: string): boolean {
+    const q = SqlParser.stripCommentsAndStrings(sql).trim();
+    if (!q) {
+      return false;
+    }
+    return /^\s*set\s+search_path\b/i.test(q);
+  }
+
   /**
    * Normalize query by removing comments and extra whitespace
    */

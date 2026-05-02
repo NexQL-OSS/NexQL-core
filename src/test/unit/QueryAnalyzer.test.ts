@@ -255,4 +255,11 @@ describe('QueryAnalyzer', () => {
     expect(analyzer.isReadOnlyQuery('/* cleanup */\nWITH x AS (SELECT 1) SELECT * FROM x;')).to.be.true;
     expect(analyzer.isReadOnlyQuery('WITH d AS (DELETE FROM users WHERE id=1) SELECT * FROM d;')).to.be.false;
   });
+
+  it('detects SET search_path as session metadata invalidating completion ordering', () => {
+    expect(analyzer.isSearchPathChangingSql('SET search_path TO foo, public')).to.be.true;
+    expect(analyzer.isSearchPathChangingSql('SET search_path = bar')).to.be.true;
+    expect(analyzer.isSearchPathChangingSql('SELECT set_search_path')).to.be.false;
+    expect(analyzer.isSearchPathChangingSql('SELECT 1')).to.be.false;
+  });
 });
