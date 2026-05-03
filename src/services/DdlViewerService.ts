@@ -3,6 +3,7 @@ import { PoolClient } from 'pg';
 import { DatabaseTreeItem } from '../providers/DatabaseTreeProvider';
 import { ConnectionManager } from './ConnectionManager';
 import { createMetadata, getConnectionWithPassword } from '../commands/connection';
+import { PG_VERSION_10, queryServerVersionNum } from '../lib/postgresServerVersion';
 
 const DDL_VIEWER_SCHEME = 'pgstudio-ddl';
 const DDL_VIEWER_ENABLED_CONFIG = 'pgstudio.ddlViewer.enabled';
@@ -460,8 +461,10 @@ class DdlContentProvider implements vscode.TextDocumentContentProvider {
   }
 
   private async generateTableDdl(client: PoolClient, target: DdlViewerTarget): Promise<string> {
-    const metaResult = await client.query(
-      `SELECT
+    const pgVer = await queryServerVersionNum(client);
+    const metaSql =
+      pgVer >= PG_VERSION_10
+        ? `SELECT
          c.oid,
          pg_get_userbyid(c.relowner) AS owner,
          COALESCE(ts.spcname, 'pg_default') AS tablespace,
@@ -476,9 +479,24 @@ class DdlContentProvider implements vscode.TextDocumentContentProvider {
        LEFT JOIN pg_tablespace ts ON ts.oid = c.reltablespace
        WHERE n.nspname = $1
          AND c.relname = $2
-         AND c.relkind IN ('r', 'p')`,
-      [target.schema, target.objectName]
-    );
+         AND c.relkind IN ('r', 'p')`
+        : `SELECT
+         c.oid,
+         pg_get_userbyid(c.relowner) AS owner,
+         COALESCE(ts.spcname, 'pg_default') AS tablespace,
+         c.reltuples::bigint AS estimated_rows,
+         c.relkind,
+         c.relrowsecurity,
+         false AS relispartition,
+         NULL::text AS partition_key,
+         obj_description(c.oid, 'pg_class') AS table_comment
+       FROM pg_class c
+       JOIN pg_namespace n ON n.oid = c.relnamespace
+       LEFT JOIN pg_tablespace ts ON ts.oid = c.reltablespace
+       WHERE n.nspname = $1
+         AND c.relname = $2
+         AND c.relkind = 'r'`;
+    const metaResult = await client.query(metaSql, [target.schema, target.objectName]);
 
     const tableMeta = metaResult.rows[0];
     if (!tableMeta) {

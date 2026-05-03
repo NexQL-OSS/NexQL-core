@@ -10,6 +10,7 @@ import {
   QueryBuilder
 } from '../helper';
 import { TableSQL } from '../sql';
+import { queryServerVersionNum } from '../../lib/postgresServerVersion';
 
 export async function cmdTableOperations(item: DatabaseTreeItem, context: vscode.ExtensionContext) {
   await CommandBase.run(context, item, 'create table operations notebook', async (conn, client, metadata) => {
@@ -170,9 +171,10 @@ export async function cmdTruncateTable(item: DatabaseTreeItem, context: vscode.E
 
 export async function cmdShowTableProperties(item: DatabaseTreeItem, context: vscode.ExtensionContext) {
   await CommandBase.run(context, item, 'view table properties', async (conn, client, metadata) => {
+    const serverVersionNum = await queryServerVersionNum(client);
     // Gather comprehensive table information
     const [tableInfo, columnInfo, constraintInfo, indexInfo, statsInfo, sizeInfo] = await Promise.all([
-      client.query(QueryBuilder.tableInfo(item.schema!, item.label)),
+      client.query(QueryBuilder.tableInfo(item.schema!, item.label, serverVersionNum)),
       client.query(QueryBuilder.tableColumns(item.schema!, item.label)),
       client.query(QueryBuilder.tableConstraints(item.schema!, item.label)),
       client.query(QueryBuilder.tableIndexes(item.schema!, item.label)),

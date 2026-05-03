@@ -3,6 +3,7 @@ import { ConnectionManager } from '../services/ConnectionManager';
 import { SqlParser } from './kernel/SqlParser';
 import { outputChannel } from '../extension';
 import { sqlFormatIdentifier } from './sql-completion-shared';
+import { PG_VERSION_10, PG_VERSION_11, queryServerVersionNum } from '../lib/postgresServerVersion';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -303,14 +304,43 @@ export class SqlCompletionProvider implements vscode.CompletionItemProvider {
   private static readonly RELATION_LEAD_IN =
     '(?:from|join|update|into|table|delete\\s+from|truncate\\s+table|call)\\s+(?:lateral\\s+)?';
 
-  private static readonly CATALOG_OBJECTS_SQL = `
+  private static buildCatalogObjectsSql(pgVer: number): string {
+    const tableWhere =
+      pgVer >= PG_VERSION_10
+        ? `c.relkind IN ('r', 'p') AND NOT c.relispartition`
+        : `c.relkind = 'r'`;
+    const routinesUnion =
+      pgVer >= PG_VERSION_11
+        ? `SELECT
+                  CASE WHEN p.prokind = 'p' THEN 'procedure' ELSE 'function' END AS object_type,
+                  n.nspname AS schema,
+                  p.proname AS object_name,
+                  pg_get_function_arguments(p.oid) AS arguments,
+                  pg_get_function_identity_arguments(p.oid) AS call_arguments,
+                  NULL::boolean AS is_populated
+              FROM pg_proc p
+              JOIN pg_namespace n ON p.pronamespace = n.oid
+              WHERE p.prokind IN ('f', 'p')
+                AND n.nspname NOT IN ('pg_catalog', 'information_schema')`
+        : `SELECT
+                  'function'::text AS object_type,
+                  n.nspname AS schema,
+                  p.proname AS object_name,
+                  pg_get_function_arguments(p.oid) AS arguments,
+                  pg_get_function_identity_arguments(p.oid) AS call_arguments,
+                  NULL::boolean AS is_populated
+              FROM pg_proc p
+              JOIN pg_namespace n ON p.pronamespace = n.oid
+              WHERE NOT p.proisagg
+                AND n.nspname NOT IN ('pg_catalog', 'information_schema')`;
+    return `
               SELECT * FROM (
               SELECT 'table' AS object_type, n.nspname AS schema, c.relname AS object_name,
                      NULL::text AS arguments, NULL::text AS call_arguments,
                      NULL::boolean AS is_populated
               FROM pg_class c
               JOIN pg_namespace n ON n.oid = c.relnamespace
-              WHERE c.relkind IN ('r', 'p') AND NOT c.relispartition
+              WHERE ${tableWhere}
                 AND n.nspname NOT IN ('pg_catalog', 'information_schema')
               UNION ALL
               SELECT 'view', n.nspname, c.relname, NULL::text, NULL::text, NULL::boolean
@@ -325,19 +355,10 @@ export class SqlCompletionProvider implements vscode.CompletionItemProvider {
               WHERE c.relkind = 'm'
                 AND n.nspname NOT IN ('pg_catalog', 'information_schema')
               UNION ALL
-              SELECT
-                  CASE WHEN p.prokind = 'p' THEN 'procedure' ELSE 'function' END,
-                  n.nspname,
-                  p.proname,
-                  pg_get_function_arguments(p.oid) AS arguments,
-                  pg_get_function_identity_arguments(p.oid) AS call_arguments,
-                  NULL::boolean AS is_populated
-              FROM pg_proc p
-              JOIN pg_namespace n ON p.pronamespace = n.oid
-              WHERE p.prokind IN ('f', 'p')
-                AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+              ${routinesUnion}
               ) q ORDER BY schema, object_name
                 `;
+  }
 
   private static readonly CATALOG_COLUMNS_SQL = `
                     SELECT
@@ -614,7 +635,8 @@ export class SqlCompletionProvider implements vscode.CompletionItemProvider {
         name: cfg.name
       });
 
-      const objectsResult = await client.query(SqlCompletionProvider.CATALOG_OBJECTS_SQL);
+      const pgVer = await queryServerVersionNum(client);
+      const objectsResult = await client.query(SqlCompletionProvider.buildCatalogObjectsSql(pgVer));
       const objects = this._dedupeTables(
         objectsResult.rows.map(
           (row: {

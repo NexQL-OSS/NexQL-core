@@ -9,6 +9,7 @@ import {
   validateCategoryItem,
 } from '../helper';
 import { SchemaSQL } from '../sql';
+import { queryServerVersionNum } from '../../lib/postgresServerVersion';
 
 
 
@@ -119,10 +120,11 @@ export async function cmdShowSchemaProperties(item: DatabaseTreeItem, context: v
     dbConn = await getDatabaseConnection(item);
     const { client, metadata } = dbConn;
 
+    const serverVersionNum = await queryServerVersionNum(client);
     // Gather comprehensive schema information
     const [schemaInfo, objectsInfo, sizeInfo, privilegesInfo, dependenciesInfo, extensionsInfo] = await Promise.all([
       client.query(QueryBuilder.schemaDetails(item.schema!)),
-      client.query(QueryBuilder.schemaObjectCounts(item.schema!)),
+      client.query(QueryBuilder.schemaObjectCounts(item.schema!, serverVersionNum)),
       client.query(QueryBuilder.schemaSize(item.schema!)),
       client.query(QueryBuilder.schemaPrivileges(item.schema!)),
       client.query(QueryBuilder.schemaDependencies(item.schema!)),
