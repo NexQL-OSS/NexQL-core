@@ -231,6 +231,9 @@ export async function activate(context: vscode.ExtensionContext) {
     notebooksTreeProvider
   );
 
+  const { registerPgDumpTaskProvider } = await import('./features/backup/backupTaskProvider');
+  registerPgDumpTaskProvider(context);
+
   const rendererMessaging = vscode.notebooks.createRendererMessaging('postgres-query-renderer');
 
   let kernelsInitialized = false;

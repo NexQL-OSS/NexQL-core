@@ -15,6 +15,7 @@ import {
   validateCategoryItem
 } from './helper';
 import { openOrCreateNotebookWithPicker } from './notebook';
+import { BackupRestorePanel } from '../features/backup/BackupRestorePanel';
 
 
 
@@ -620,136 +621,101 @@ DROP DATABASE IF EXISTS "${item.label}";`)
 
 export async function cmdBackupDatabase(item: DatabaseTreeItem, context: vscode.ExtensionContext) {
   try {
-    const connectionConfig = await getConnectionWithPassword(item.connectionId!, item.databaseName);
-
-    // 1. Prompt for save location
-    const uri = await vscode.window.showSaveDialog({
-      defaultUri: vscode.Uri.file(`${item.label}_backup.dump`),
-      filters: { 'PostgreSQL Dump': ['dump', 'sql', 'tar'] },
-      title: 'Select Backup Location'
-    });
-
-    if (!uri) {
-      return; // User cancelled
+    if (!item.connectionId || !item.databaseName) {
+      throw new Error('Select a database in the explorer');
     }
-
-    const filePath = uri.fsPath;
-
-    // 2. Construct pg_dump command
-    // Use quotes for paths to handle spaces
-    const command = `pg_dump -h ${connectionConfig.host} -p ${connectionConfig.port} -U ${connectionConfig.username} -F c -b -v -f "${filePath}" "${item.label}"`;
-
-    // 3. Create Help HTML
-    const htmlContent = `
-            <h1>📦 Database Backup Guide</h1>
-            <p>You are about to backup database: <strong>${item.label}</strong></p>
-
-            <h2>Command Details</h2>
-            <p>The following command has been prepared in your terminal:</p>
-            <pre>${command}</pre>
-
-            <h3>🚩 Flags Explanation:</h3>
-            <ul>
-                <li><code>-h, -p, -U</code>: Connection details (Host, Port, User)</li>
-                <li><code>-F c</code>: Custom format (compressed, allows reordering)</li>
-                <li><code>-b</code>: Include large objects (blobs)</li>
-                <li><code>-v</code>: Verbose mode (show progress)</li>
-                <li><code>-f</code>: Output file path</li>
-            </ul>
-
-            <h2>🚀 Next Steps</h2>
-            <ol>
-                <li>Go to the <strong>Terminal</strong> panel below.</li>
-                <li>Review the command.</li>
-                <li>Press <strong>Enter</strong> to execute.</li>
-                <li>Enter your password if prompted.</li>
-            </ol>
-
-            <div class="alert info">
-                <strong>ℹ️ Note:</strong> Ensure <code>pg_dump</code> is installed and in your system PATH.
-            </div>
-        `;
-
-    // 4. Show Help Webview
-    createHelpPanel(context, 'Backup Guide', htmlContent);
-
-    // 5. Open Terminal and Send Command
-    const terminal = vscode.window.createTerminal(`PG Backup: ${item.label}`);
-    terminal.show(true); // Preserve focus on editor if possible, but usually terminal takes focus
-    terminal.sendText(command, false); // false = do not execute immediately
-
+    const labelStr = typeof item.label === 'string' ? item.label : String((item.label as { label?: string })?.label ?? item.databaseName);
+    await BackupRestorePanel.show(context, {
+      initialTab: 'dump',
+      connectionId: item.connectionId,
+      databaseName: item.databaseName,
+      databaseLabel: labelStr
+    });
   } catch (err: any) {
-    await ErrorHandlers.handleCommandError(err, 'initiate backup');
+    await ErrorHandlers.handleCommandError(err, 'open backup workspace');
   }
 }
 
 export async function cmdRestoreDatabase(item: DatabaseTreeItem, context: vscode.ExtensionContext) {
   try {
-    const connectionConfig = await getConnectionWithPassword(item.connectionId!, item.databaseName);
-
-    // 1. Prompt for source file
-    const uris = await vscode.window.showOpenDialog({
-      canSelectFiles: true,
-      canSelectFolders: false,
-      canSelectMany: false,
-      filters: { 'PostgreSQL Dump': ['dump', 'sql', 'tar', 'backup'] },
-      title: 'Select Backup File to Restore'
+    if (!item.connectionId || !item.databaseName) {
+      throw new Error('Select a database in the explorer');
+    }
+    const labelStr = typeof item.label === 'string' ? item.label : String((item.label as { label?: string })?.label ?? item.databaseName);
+    await BackupRestorePanel.show(context, {
+      initialTab: 'restore',
+      connectionId: item.connectionId,
+      databaseName: item.databaseName,
+      databaseLabel: labelStr
     });
+  } catch (err: any) {
+    await ErrorHandlers.handleCommandError(err, 'open restore workspace');
+  }
+}
 
-    if (!uris || uris.length === 0) {
-      return; // User cancelled
+/** Command Palette: pick connection → database, then open Backup & Restore panel. */
+export async function cmdOpenBackupWorkspaceFromPalette(context: vscode.ExtensionContext): Promise<void> {
+  const connections =
+    vscode.workspace.getConfiguration().get<Array<Record<string, unknown>>>('postgresExplorer.connections') || [];
+  if (connections.length === 0) {
+    await vscode.window.showErrorMessage('No saved connections. Add one in settings.');
+    return;
+  }
+
+  const connPick = await vscode.window.showQuickPick(
+    connections.map((c: any) => ({
+      label: (c.name as string) || `${c.host}:${c.port}`,
+      description: (c.database as string) || 'postgres',
+      conn: c
+    })),
+    { title: 'Backup & Restore: Connection', placeHolder: 'Select a saved connection' }
+  );
+  if (!connPick?.conn) {
+    return;
+  }
+
+  const connection = connPick.conn as Record<string, unknown> & {
+    id: string;
+    host: string;
+    port: number;
+    database?: string;
+  };
+  const bootstrapDb = connection.database || 'postgres';
+
+  let tempClient;
+  try {
+    tempClient = await ConnectionManager.getInstance().getPooledClient({
+      ...(connection as any),
+      database: bootstrapDb
+    });
+  } catch (err: any) {
+    await vscode.window.showErrorMessage(`Could not connect: ${err?.message || String(err)}`);
+    return;
+  }
+
+  try {
+    const dbsResult = await tempClient.query(`
+      SELECT datname FROM pg_database
+      WHERE datallowconn = true AND datistemplate = false
+      ORDER BY datname
+    `);
+    const databases = dbsResult.rows.map((r: { datname: string }) => r.datname);
+    const dbChoice = await vscode.window.showQuickPick(databases, {
+      title: 'Backup & Restore: Database',
+      placeHolder: 'Database to associate with the workspace'
+    });
+    if (!dbChoice) {
+      return;
     }
 
-    const filePath = uris[0].fsPath;
-
-    // 2. Construct pg_restore command
-    // Note: -d is target database
-    const command = `pg_restore -h ${connectionConfig.host} -p ${connectionConfig.port} -U ${connectionConfig.username} -d "${item.label}" -v "${filePath}"`;
-
-    // 3. Create Help HTML
-    const htmlContent = `
-            <h1>♻️ Database Restore Guide</h1>
-            <p>You are about to restore database: <strong>${item.label}</strong></p>
-
-            <h2>Command Details</h2>
-            <p>The following command has been prepared in your terminal:</p>
-            <pre>${command}</pre>
-
-            <h3>🚩 Flags Explanation:</h3>
-            <ul>
-                <li><code>-h, -p, -U</code>: Connection details</li>
-                <li><code>-d</code>: Target database name</li>
-                <li><code>-v</code>: Verbose mode</li>
-                <li><code>"${filePath}"</code>: Source backup file</li>
-            </ul>
-
-            <div class="alert warning">
-                <strong>⚠️ Warning:</strong> Restoring will modify the existing database. Ensure you are restoring to the correct target!
-            </div>
-
-            <h2>🚀 Next Steps</h2>
-            <ol>
-                <li>Go to the <strong>Terminal</strong> panel below.</li>
-                <li>Review the command.</li>
-                <li>Press <strong>Enter</strong> to execute.</li>
-                <li>Enter your password if prompted.</li>
-            </ol>
-
-            <div class="alert info">
-                <strong>ℹ️ Note:</strong> Ensure <code>pg_restore</code> is installed and in your system PATH.
-            </div>
-        `;
-
-    // 4. Show Help Webview
-    createHelpPanel(context, 'Restore Guide', htmlContent);
-
-    // 5. Open Terminal and Send Command
-    const terminal = vscode.window.createTerminal(`PG Restore: ${item.label}`);
-    terminal.show(true);
-    terminal.sendText(command, false); // false = do not execute immediately
-
-  } catch (err: any) {
-    await ErrorHandlers.handleCommandError(err, 'initiate restore');
+    await BackupRestorePanel.show(context, {
+      initialTab: 'dump',
+      connectionId: connection.id,
+      databaseName: dbChoice,
+      databaseLabel: dbChoice
+    });
+  } finally {
+    tempClient.release();
   }
 }
 
@@ -920,73 +886,6 @@ export async function cmdShowConfiguration(item: DatabaseTreeItem, context: vsco
   } finally {
     if (dbConn && dbConn.release) dbConn.release();
   }
-}
-
-/**
- * Helper function to create a styled Webview panel for help guides.
- */
-function createHelpPanel(context: vscode.ExtensionContext, title: string, content: string) {
-  const panel = vscode.window.createWebviewPanel(
-    'pgHelp',
-    title,
-    vscode.ViewColumn.One,
-    {
-      enableScripts: false,
-      localResourceRoots: []
-    }
-  );
-
-  panel.webview.html = `<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${title}</title>
-    <style>
-        body { 
-            font-family: var(--vscode-font-family); 
-            color: var(--vscode-editor-foreground); 
-            background-color: var(--vscode-editor-background); 
-            padding: 20px; 
-            line-height: 1.6;
-        }
-        h1, h2, h3 { color: var(--vscode-textLink-foreground); }
-        h1 { border-bottom: 1px solid var(--vscode-widget-border); padding-bottom: 10px; }
-        code { 
-            background-color: var(--vscode-textBlockQuote-background); 
-            padding: 2px 4px; 
-            border-radius: 3px; 
-            font-family: var(--vscode-editor-font-family);
-        }
-        pre { 
-            background-color: var(--vscode-textBlockQuote-background); 
-            padding: 15px; 
-            border-radius: 5px; 
-            overflow-x: auto; 
-            border: 1px solid var(--vscode-widget-border);
-        }
-        .alert { 
-            padding: 15px; 
-            border-left: 5px solid; 
-            margin: 20px 0; 
-            border-radius: 3px; 
-        }
-        .info { 
-            background-color: rgba(52, 152, 219, 0.1); 
-            border-color: #3498db; 
-        }
-        .warning { 
-            background-color: rgba(231, 76, 60, 0.1); 
-            border-color: #e74c3c; 
-        }
-        ul, ol { padding-left: 25px; }
-        li { margin-bottom: 5px; }
-    </style>
-</head>
-<body>
-    ${content}
-</body>
-</html>`;
 }
 
 /**

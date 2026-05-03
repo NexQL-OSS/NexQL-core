@@ -134,6 +134,7 @@ describe('SQL template modules', () => {
     expectSqlContains(PgCronSQL.jobDetail(3), ['FROM cron.job', 'WHERE jobid = 3']);
     expectSqlContains(PgCronSQL.unschedule(9), ['cron.unschedule', '9']);
     expectSqlContains(PgCronSQL.scheduleNewJob(), ['cron.schedule']);
+    expectSqlContains(PgCronSQL.scheduleBackupShellExample(), ['pgstudio-pgdump', 'cron.schedule']);
   });
 
   it('covers RLS policy SQL templates', () => {

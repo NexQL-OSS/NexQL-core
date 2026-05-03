@@ -692,6 +692,12 @@
         "icon": "$(cloud-upload)"
       },
       {
+        "command": "postgres-explorer.openBackupWorkspace",
+        "title": "Backup & Restore Workspace: Choose Connection & Database…",
+        "category": "PostgreSQL",
+        "icon": "$(archive)"
+      },
+      {
         "command": "postgres-explorer.generateCreateScript",
         "title": "CREATE Script",
         "icon": "$(file-code)"
@@ -1952,6 +1958,44 @@
         "editor.acceptSuggestionOnEnter": "on"
       }
     },
+    "taskDefinitions": [
+      {
+        "type": "pgstudio-pgdump",
+        "required": ["connectionId", "databaseName", "outputPath"],
+        "properties": {
+          "connectionId": {
+            "type": "string",
+            "description": "Connection id (postgresExplorer.connections[].id)"
+          },
+          "databaseName": {
+            "type": "string",
+            "description": "Database to dump"
+          },
+          "outputPath": {
+            "type": "string",
+            "description": "Output file or directory path (supports ${workspaceFolder})"
+          },
+          "dumpFormat": {
+            "type": "string",
+            "enum": ["custom", "plain", "directory", "tar"],
+            "description": "pg_dump -F mapping",
+            "default": "custom"
+          },
+          "verbose": {
+            "type": "boolean",
+            "default": true
+          },
+          "schemaOnly": {
+            "type": "boolean",
+            "default": false
+          },
+          "dataOnly": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      }
+    ],
     "menus": {
       "notebook/toolbar": [
         {

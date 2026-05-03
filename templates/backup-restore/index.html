@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="{{CSP}}">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Backup & Restore</title>
+  <style>
+{{INLINE_STYLES}}
+  </style>
+</head>
+<body>
+  <div class="backup-root">
+    <header class="backup-header">
+      <h1 class="backup-title">Backup & Restore</h1>
+      <p class="backup-subtitle" id="backupSubtitle"></p>
+    </header>
+
+    <div id="banner"></div>
+
+    <nav class="backup-tabs" role="tablist" aria-label="Backup mode">
+      <button type="button" class="backup-tab is-active" data-tab="dump" role="tab" aria-selected="true">Dump</button>
+      <button type="button" class="backup-tab" data-tab="restore" role="tab" aria-selected="false">Restore</button>
+      <button type="button" class="backup-tab" data-tab="dumpall" role="tab" aria-selected="false">Dump all</button>
+    </nav>
+
+    <div class="backup-scroll">
+      <section id="dump" class="backup-panel is-visible" role="tabpanel">
+        <div class="backup-card">
+          <div class="backup-card-title">Format & options</div>
+          <div class="field">
+            <label class="field-label" for="d_format">Format</label>
+            <select id="d_format" class="field-control">
+              <option value="custom">Custom archive (-Fc)</option>
+              <option value="plain">Plain SQL (-Fp)</option>
+              <option value="directory">Directory (-Fd)</option>
+              <option value="tar">Tar (-Ft)</option>
+            </select>
+          </div>
+          <div class="chk-grid">
+            <label class="chk-item"><input type="checkbox" id="d_verbose" checked> Verbose (-v)</label>
+            <label class="chk-item"><input type="checkbox" id="d_schema"> Schema only (-s)</label>
+            <label class="chk-item"><input type="checkbox" id="d_data"> Data only (-a)</label>
+            <label class="chk-item"><input type="checkbox" id="d_blobs" checked> Blobs (-b)</label>
+          </div>
+          <div class="field field--tight-top">
+            <label class="field-label" for="d_extra">Extra CLI arguments (optional)</label>
+            <input class="field-control field-control--mono" type="text" id="d_extra" autocomplete="off" spellcheck="false" placeholder="e.g. --no-owner --role=restore_role">
+            <p class="field-hint">Space-separated tokens appended before the database name (quoted strings supported). Omit connection flags; host, port, and user come from the connection.</p>
+          </div>
+        </div>
+        <div class="backup-card">
+          <div class="backup-card-title">Scope</div>
+          <div class="field-row-2">
+            <div class="field">
+              <label class="field-label" for="d_jobs">Parallel jobs (-j)</label>
+              <input class="field-control" type="number" id="d_jobs" min="1" value="1">
+              <p class="field-hint">Directory format</p>
+            </div>
+            <div class="field">
+              <label class="field-label" for="d_z">Compression (-Z)</label>
+              <input class="field-control" type="number" id="d_z" min="0" max="9" value="9">
+              <p class="field-hint">Custom format only (0–9)</p>
+            </div>
+          </div>
+          <div class="field">
+            <label class="field-label" for="d_db">Database</label>
+            <input class="field-control" type="text" id="d_db" autocomplete="off">
+          </div>
+          <div class="field">
+            <label class="field-label" id="d_sn_label">Schema (-n)</label>
+            <p class="field-hint">Optional: with no tables chosen below, dump only these schemas (-n). While any schema is selected here, the table list is limited to those schemas. If you pick tables, pg_dump uses -t only (no -n).</p>
+            <div id="d_sn_chips" class="picker-chips" role="list" aria-label="Selected schemas" hidden></div>
+            <div class="ms-dropdown schema-ns-picker" id="d_sn_ms_wrap">
+              <button type="button" class="ms-dropdown-trigger field-control" id="d_sn_btn" aria-haspopup="dialog" aria-expanded="false" aria-controls="d_sn_panel">
+                <span class="ms-dropdown-value" id="d_sn_trigger_summary">No schema filter (-n)</span>
+                <span class="ms-dropdown-chevron" aria-hidden="true"></span>
+              </button>
+              <div class="ms-dropdown-panel ms-dropdown-panel--picker" id="d_sn_panel" role="dialog" aria-labelledby="d_sn_label" hidden>
+                <div class="ms-dropdown-head ms-dropdown-head--wrap">
+                  <span class="ms-dropdown-title">Search and select schemas</span>
+                  <button type="button" class="ms-dropdown-link" id="d_sn_select_all">Select all</button>
+                  <button type="button" class="ms-dropdown-link" id="d_sn_select_shown">Match search</button>
+                  <button type="button" class="ms-dropdown-link" id="d_sn_clear">Clear</button>
+                </div>
+                <div class="ms-dropdown-search">
+                  <input type="search" id="d_sn_search" class="field-control" placeholder="Search schemas…" autocomplete="off" aria-label="Search schemas" aria-describedby="d_sn_label">
+                </div>
+                <div id="d_sn_list" class="ms-dropdown-list ms-dropdown-list--scroll" role="group" aria-label="Schemas to include"></div>
+                <p id="d_sn_empty" class="ms-dropdown-empty field-hint" hidden>No schemas in catalog.</p>
+              </div>
+            </div>
+          </div>
+          <div class="field">
+            <label class="field-label" id="d_table_label">Tables (-t)</label>
+            <p class="field-hint">Choose tables for a targeted dump. When schemas are selected above, only tables from those schemas appear here.</p>
+            <div class="ms-dropdown" id="d_table_ms_wrap">
+              <button type="button" class="ms-dropdown-trigger field-control" id="d_table_btn" aria-haspopup="dialog" aria-expanded="false" aria-controls="d_table_panel">
+                <span class="ms-dropdown-value" id="d_table_trigger_summary">0 tables selected</span>
+                <span class="ms-dropdown-chevron" aria-hidden="true"></span>
+              </button>
+              <div class="ms-dropdown-panel ms-dropdown-panel--picker ms-dropdown-panel--wide" id="d_table_panel" role="dialog" aria-labelledby="d_table_label" hidden>
+                <div class="ms-dropdown-section">
+                  <div class="ms-dropdown-head ms-dropdown-head--sub">
+                    <span class="ms-dropdown-title">Show tables from (schemas)</span>
+                    <button type="button" class="ms-dropdown-link" id="d_sch_filter_all">Show all</button>
+                  </div>
+                  <div id="d_sch_filter_list" class="ms-dropdown-list ms-dropdown-list--filter" role="group" aria-label="Schema visibility for table list"></div>
+                </div>
+                <div class="ms-dropdown-divider" role="separator"></div>
+                <div class="ms-dropdown-search">
+                  <input type="search" id="d_table_search" class="field-control" placeholder="Search tables…" autocomplete="off" aria-label="Search tables" aria-describedby="d_table_label">
+                </div>
+                <div class="ms-dropdown-actions btn-row table-picker-actions">
+                  <button type="button" class="btn btn-secondary" id="d_table_select_all">Select all</button>
+                  <button type="button" class="btn btn-secondary" id="d_table_select_shown" title="Select only rows currently visible after filters">Listed only</button>
+                  <button type="button" class="btn btn-secondary" id="d_table_clear">Clear</button>
+                </div>
+                <div id="d_table_list" class="ms-dropdown-list ms-dropdown-list--scroll" role="group" aria-label="Tables to dump"></div>
+                <p id="d_table_empty" class="ms-dropdown-empty field-hint" hidden>No tables found (permissions or empty database).</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="backup-card">
+          <div class="backup-card-title">Output</div>
+          <div class="field">
+            <label class="field-label" for="d_out">File or directory</label>
+            <input class="field-control" type="text" id="d_out" autocomplete="off">
+          </div>
+          <div class="btn-row">
+            <button type="button" class="btn btn-secondary" id="d_browse_file">Browse file…</button>
+            <button type="button" class="btn btn-secondary" id="d_browse_dir">Browse folder…</button>
+          </div>
+          <div class="btn-row">
+            <button type="button" class="btn btn-primary" id="d_run">Run pg_dump</button>
+            <button type="button" class="btn btn-secondary" id="d_task">Copy tasks.json snippet</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="restore" class="backup-panel" role="tabpanel">
+        <div class="backup-card">
+          <div class="backup-card-title">Archive</div>
+          <div class="field">
+            <label class="field-label" for="r_in">Archive path</label>
+            <input class="field-control" type="text" id="r_in" autocomplete="off">
+          </div>
+          <button type="button" class="btn btn-secondary" id="r_browse_in">Browse…</button>
+        </div>
+        <div class="backup-card">
+          <div class="backup-card-title">Restore target</div>
+          <div class="field">
+            <label class="field-label" for="r_target">Target database</label>
+            <select id="r_target" class="field-control"></select>
+          </div>
+          <div class="field-row-2">
+            <div class="field">
+              <label class="field-label">Options</label>
+              <label class="chk-item" for="r_verbose"><input type="checkbox" id="r_verbose" checked> Verbose (-v)</label>
+            </div>
+            <div class="field">
+              <label class="field-label" for="r_jobs">Parallel jobs (-j)</label>
+              <input class="field-control" type="number" id="r_jobs" min="1" value="1">
+            </div>
+          </div>
+          <div class="field field--tight-top">
+            <label class="field-label" for="r_extra">Extra CLI arguments (optional)</label>
+            <input class="field-control field-control--mono" type="text" id="r_extra" autocomplete="off" spellcheck="false" placeholder="e.g. --no-owner --exit-on-error">
+            <p class="field-hint">Space-separated tokens for <code>pg_restore</code> and for Dry-run <code>pg_restore --list</code> (archive path is appended automatically). Omit <code>-h</code>/<code>-p</code>/<code>-U</code>/<code>-d</code> when restoring from this panel.</p>
+          </div>
+          <button type="button" class="btn btn-secondary" id="r_list">Dry-run: pg_restore --list</button>
+          <div id="tocWrap" class="toc-card" style="display:none">
+            <p class="field-label">Archive objects</p>
+            <p class="field-hint">Uncheck items to exclude from restore when using selective restore.</p>
+            <div id="toc"></div>
+          </div>
+          <div class="btn-row">
+            <button type="button" class="btn btn-primary" id="r_run">Run pg_restore</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="dumpall" class="backup-panel" role="tabpanel">
+        <div class="backup-card">
+          <div class="backup-card-title">Cluster dump</div>
+          <div class="field">
+            <label class="field-label" for="a_out">Output SQL file</label>
+            <input class="field-control" type="text" id="a_out" autocomplete="off">
+          </div>
+          <button type="button" class="btn btn-secondary" id="a_browse">Browse…</button>
+          <div class="chk-grid" style="margin-top:10px">
+            <label class="chk-item"><input type="checkbox" id="a_verbose" checked> Verbose (-v)</label>
+            <label class="chk-item"><input type="checkbox" id="a_globals"> Globals only (-g)</label>
+            <label class="chk-item"><input type="checkbox" id="a_roles"> Roles only (-r)</label>
+          </div>
+          <div class="field field--tight-top">
+            <label class="field-label" for="a_extra">Extra CLI arguments (optional)</label>
+            <input class="field-control field-control--mono" type="text" id="a_extra" autocomplete="off" spellcheck="false" placeholder="e.g. --quote-all-identifiers">
+            <p class="field-hint">Space-separated tokens inserted before <code>-f</code>. Omit connection flags; host, port, and user come from the connection.</p>
+          </div>
+          <p class="field-hint">Uses the configured role; roles/globals often need elevated privileges.</p>
+          <div class="btn-row">
+            <button type="button" class="btn btn-primary" id="a_run">Run pg_dumpall</button>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div class="backup-log-wrap" id="backup_log_wrap">
+      <div class="backup-log-resize-handle" id="backup_log_resize" role="separator" aria-orientation="horizontal" aria-label="Resize output log height" tabindex="0"></div>
+      <section class="backup-log-section pg-panel" aria-label="Command output">
+        <div class="pg-panel-header backup-log-header-bar" id="backup_log_header" title="Click to collapse or expand">
+          <button type="button" class="backup-log-collapse-btn" id="backup_log_toggle" aria-expanded="true" aria-controls="backup_log_collapsible" title="Collapse output log">
+            <span class="backup-log-chevron" aria-hidden="true">▼</span>
+          </button>
+          <p class="backup-log-label">Output log</p>
+        </div>
+        <div id="backup_log_collapsible" class="backup-log-collapsible">
+          <div class="pg-panel-body">
+            <div id="log" tabindex="0" role="log" aria-live="polite"></div>
+            <div class="btn-row log-actions">
+              <button type="button" class="btn btn-secondary" id="nb_append">Append log to notebook</button>
+              <button type="button" class="btn btn-secondary" id="nb_assist" hidden>Ask SQL Assistant about this log…</button>
+              <button type="button" class="btn btn-secondary" id="nb_cancel">Cancel job</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+  <script nonce="{{NONCE}}">
+{{INLINE_SCRIPTS}}
+  </script>
+</body>
+</html>

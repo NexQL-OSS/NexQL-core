@@ -31,3 +31,4 @@ FIXES_APPLIED.md
 .cursor/
 .agents/
 skills-lock.json
+graphify-out/

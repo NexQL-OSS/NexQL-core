@@ -21,8 +21,35 @@ import {
   SessionService,
   getWebviewHtml
 } from './chat';
+import type { ConnectionConfig, NoticeLogEntry } from '../common/types';
+import { buildBackupToolsSystemPrompt, buildBackupToolsUserMessage } from './chat/backupToolsAssistantPrompt';
 import { ErrorService } from '../services/ErrorService';
-import type { NoticeLogEntry } from '../common/types';
+
+/** Params for {@link ChatViewProvider.openBackupToolsAssistant} (Backup & Restore panel). */
+export interface OpenBackupToolsAssistantParams {
+  scenario: 'version_banner' | 'tool_log';
+  connectionId: string;
+  databaseLabel: string;
+  databaseName: string;
+  connection?: ConnectionConfig;
+  toolLog?: string;
+  serverMajor: number;
+  pgDumpMajor: number;
+  pgRestoreMajor: number;
+}
+
+function inferBackupToolFromLog(log: string): string | undefined {
+  if (/pg_restore:/m.test(log)) {
+    return 'pg_restore';
+  }
+  if (/pg_dumpall:/m.test(log)) {
+    return 'pg_dumpall';
+  }
+  if (/pg_dump:/m.test(log)) {
+    return 'pg_dump';
+  }
+  return undefined;
+}
 
 export class ChatViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'postgresExplorer.chatView';
@@ -41,6 +68,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   // B1: Track production/read-only environment for AI safety guardrails
   private _currentEnvironment: 'production' | 'staging' | 'development' | undefined;
   private _currentReadOnlyMode: boolean = false;
+
+  /** When `backup_tools`, AI uses backup/restore specialist system prompt until new/clear chat or session load. */
+  private _chatSystemPromptMode: 'default' | 'backup_tools' = 'default';
 
   // Services
   private _dbObjectService: DbObjectService;
@@ -143,12 +173,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         case 'clearChat':
           this._messages = [];
           this._sessionService.clearCurrentSession();
+          this._chatSystemPromptMode = 'default';
           this._updateChatHistory();
           break;
         case 'newChat':
           await this._saveCurrentSession();
           this._messages = [];
           this._sessionService.clearCurrentSession();
+          this._chatSystemPromptMode = 'default';
           this._updateChatHistory();
           this._sendHistoryToWebview();
           break;
@@ -565,7 +597,17 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       const aiStartTime = Date.now();
 
       console.log('[ChatView] Calling AI provider:', provider);
-      const result = await this._aiService.callProvider(provider, aiMessage, config);
+      const customSystem =
+        this._chatSystemPromptMode === 'backup_tools'
+          ? buildBackupToolsSystemPrompt({
+              connectionDisplayName: this._currentConnectionName,
+              databaseName: this._currentDatabase,
+              environment: this._currentEnvironment,
+              readOnlyMode: this._currentReadOnlyMode
+            })
+          : undefined;
+
+      const result = await this._aiService.callProvider(provider, aiMessage, config, customSystem);
       responseText = result.text;
       usageInfo = result.usage;
 
@@ -922,6 +964,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     const messages = this._sessionService.loadSession(sessionId);
     if (messages) {
       this._messages = messages;
+      this._chatSystemPromptMode = 'default';
       this._updateChatHistory();
     }
   }
@@ -933,6 +976,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
     if (wasCurrentSession) {
       this._messages = [];
+      this._chatSystemPromptMode = 'default';
       this._updateChatHistory();
     }
 
@@ -1126,6 +1170,86 @@ This might indicate table bloat or stale statistics affecting query planning.`;
 Why is this query running slower than its historical baseline? What could have changed (table growth, missing statistics, index bloat, lock contention, etc.)? Please provide specific next steps to diagnose and fix the performance regression.`;
 
     await this._handleUserMessage(prompt);
+  }
+
+  /**
+   * Opens SQL Assistant with a **backup-tools** system prompt (pg_dump/pg_restore focus),
+   * starts a fresh chat, and sends one auto-generated user turn with panel context.
+   */
+  public async openBackupToolsAssistant(params: OpenBackupToolsAssistantParams): Promise<void> {
+    if (this._isProcessing) {
+      vscode.window.showWarningMessage('SQL Assistant is busy. Cancel the current request or wait.');
+      return;
+    }
+
+    const target = await this._ensureChatWebview();
+    if (!target) {
+      vscode.window.showWarningMessage('Could not open SQL Assistant.');
+      return;
+    }
+
+    await vscode.commands.executeCommand('postgresExplorer.chatView.focus');
+    await new Promise<void>(resolve => setTimeout(resolve, 280));
+
+    await this._saveCurrentSession();
+    this._messages = [];
+    this._sessionService.clearCurrentSession();
+    this._chatSystemPromptMode = 'backup_tools';
+
+    const conn = params.connection;
+    this._currentConnectionName = conn?.name ?? params.databaseLabel;
+    this._currentDatabase = params.databaseName;
+    this._currentEnvironment = conn?.environment;
+    this._currentReadOnlyMode = conn?.readOnlyMode === true;
+    this._aiService.setConnectionContext({
+      environment: this._currentEnvironment,
+      readOnlyMode: this._currentReadOnlyMode,
+      connectionName: this._currentConnectionName
+    });
+    this._sendContextUpdate();
+
+    const inferred = params.toolLog ? inferBackupToolFromLog(params.toolLog) : undefined;
+    const userMsg = buildBackupToolsUserMessage({
+      scenario: params.scenario,
+      connectionId: params.connectionId,
+      databaseLabel: params.databaseLabel,
+      databaseName: params.databaseName,
+      host: conn?.host,
+      port: conn?.port,
+      username: conn?.username,
+      sshEnabled: !!conn?.ssh?.enabled,
+      serverMajor: params.serverMajor,
+      pgDumpMajor: params.pgDumpMajor,
+      pgRestoreMajor: params.pgRestoreMajor,
+      toolLog: params.toolLog,
+      inferredTool: inferred
+    });
+
+    this._isProcessing = true;
+    try {
+      this._messages.push({ role: 'user', content: userMsg });
+      this._updateChatHistory();
+      this._sendHistoryToWebview();
+
+      this._setTypingIndicator(true);
+      try {
+        await this._runAiRequest(userMsg);
+      } finally {
+        this._setTypingIndicator(false);
+        this._updateChatHistory();
+      }
+
+      await this._saveCurrentSession();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      this._messages.push({
+        role: 'assistant',
+        content: `❌ Error: ${msg}\n\nPlease check your AI provider settings.`
+      });
+      this._updateChatHistory();
+    } finally {
+      this._isProcessing = false;
+    }
   }
 
   public async handleGenerateQuery(
