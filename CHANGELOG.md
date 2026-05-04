@@ -5,23 +5,44 @@ All notable changes to the PostgreSQL Explorer extension will be documented in t
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.2.3] - 2026-04-29
+## [1.2.4] - 2026-05-03
 
 ### Added
 
-**Result AI toolbar** — Replaces the hover-only overlay: a **toggle** (sparkles + chevron, `aria-expanded`, default **collapsed**) shows/hides the action strip; strip is **flex-docked** under the output area. **Add to chat** sends query text, sampled rows (capped), optional NOTICEs, and preset helper text.
-
-**Telemetry modes** — **`off`**: none. **`basic`**: usage counters only (commands, features, sessions, coarse connection/AI). **`detailed`**: + buckets for query duration/result size and spans (no SQL, hosts, or schema). Gated by VS Code global telemetry. Controls: status bar, **Set Telemetry Mode**, **Telemetry: Off | Basic | Detailed**, What’s New links - [Basic](command:postgres-explorer.telemetry.setModeBasic) | [Detailed](command:postgres-explorer.telemetry.setModeDetailed) | [Picker](command:postgres-explorer.telemetry.openModePicker). Details: **README**, **SECURITY.md**.
-
-- Dashboard: WAL/checkpointer/version-safe stats; unused-index severity; statement stats if extension present.
-- Connection test/save: TCP preflight; SSL cert paths for verify modes.
-- Webviews: typed message IDs + validation; shared panel CSS; chat CSP nonce.
-- Saved-query import: counts + merge by id/title; CI triggers documented; tree item keys; What’s New `command:` URIs.
+- **Backup and restore** — Database backup and restore from the extension: connection/database selection, a dedicated backup/restore webview with guided options, `pg_dump` / `pg_restore` (and related) argument builders with safe identifier handling and extra CLI args parsing, task-provider integration for scheduled dumps from VS Code, and clearer logging and errors across the flow. Chat assistant gains backup-oriented tooling and prompts where relevant.
+- **PostgreSQL server version awareness** — New server-version helper so the extension can adapt queries and metadata reads; SQL helpers and the database tree use the live server version for better behavior on PostgreSQL 10 and 11. SQL completions and the DDL viewer incorporate version-aware paths where capabilities differ by release.
 
 ### Changed
-- Telemetry: `mode` + sinks/batching (see settings); lifecycle + usage + optional performance events.
-- Connections: no SSL downgrade when env is **production**; AI: provider allowlist + empty-message guard + usage events.
-- Grid prefs: structured responses; phased coverage merges before report; ignore `.cursor/`.
+
+- **Database commands** — Refactored database command surface to align with the new backup/restore entry points and shared resolution of connections for external tools.
+- **Chat webview** — Wiring updates to support backup-related assistant flows alongside existing chat behavior.
+
+## [1.2.3] - 2026-05-02
+
+### Added
+
+- **Multi-statement failure strategies** — Added `postgresExplorer.query.executionFailureStrategy` so long SQL batches can keep going, stop hard, or ask you what to do next.
+- **Execution summaries** — Mixed results now end with a clear markdown recap, so you can see what succeeded, what failed, and how far the cell got without digging through noise.
+- **Dangerous SQL transaction UX** — Risky SQL now asks once per cell and gives you a safer `Execute in Transaction` path with an explicit COMMIT/ROLLBACK follow-up.
+- **Result AI toolbar** — The result actions are easier to find now: a proper toggle reveals the strip when you need it, and **Add to chat** sends the query, sample rows, and helpful context without extra clicking.
+- **Telemetry modes** — Choose between no telemetry, basic usage counters, or detailed performance buckets. It stays behind VS Code's global telemetry switch and is surfaced where you can actually change it.
+  - Dashboard: WAL/checkpointer/version-safe stats; unused-index severity; statement stats if extension present.
+  - Connection test/save: TCP preflight; SSL cert paths for verify modes.
+  - Webviews: typed message IDs + validation; shared panel CSS; chat CSP nonce.
+  - Saved-query import: counts + merge by id/title; CI triggers documented; tree item keys; What’s New `command:` URIs.
+- **SQL completion warm cache** — Completions can reuse a warm cache tied to notebook metadata, with invalidation when the tree or executed SQL updates schema-related context.
+- **ERD 2.0 across schemas & DBML import** — Schema designer adds commands to open an ERD spanning multiple schemas and to import DBML for visualization and workflow (DBML parsing via `@dbml/core`).
+- **Lazy result tabs** — Chart, analyst, and explain experiences load on demand in the notebook result renderer to keep heavy UI off the critical path.
+
+### Changed
+- **Improved SQL keyword suggestions**: Notebook SQL suggestions now pay attention to where you are in the query, so the list feels less random and more helpful.
+- Query analysis now explains ALTER impact more clearly and asks for confirmation more consistently when a change could hurt production.
+- Telemetry now uses explicit modes and sinks, with lifecycle, usage, and optional performance events routed more intentionally.
+- Connections no longer silently relax SSL in production, and AI providers are kept on an allowlist with a guard for empty messages.
+- Grid preferences now return structured responses, coverage merges happen before reporting, and `.cursor/` is ignored.
+- **SQL completion depth** — Parser support for stripping comments and normalizing identifiers; completions respect `search_path`-changing statements, derived subquery aliases, and session metadata; shared completion helpers consolidated.
+- **Schema designer / ERD** — ERD panel and webview reorganized into focused modules (queries, types, HTML, DBML import, export/migration draft helpers); AI settings/chat templates updated alongside AI service wiring.
+- **Notebook result renderer** — Chart.js registration is idempotent; large result rendering split into dedicated modules (`renderQueryResult`, review/edit helpers) for clearer structure and easier maintenance.
 
 ### Fixed
 - Explorer favorites key typo (trailing space).
@@ -29,30 +50,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.2.2] - 2026-04-28
 
 ### Added
-- **Sliding-window result streaming**: Optional PostgreSQL `SCROLL` cursor execution for eligible parameter-free `SELECT` queries (`postgresExplorer.performance.slidingWindowSelects`, default on). Keeps a bounded row buffer in the grid and extension host; scrolling fetches the next/previous window. Configurable cap via `postgresExplorer.performance.slidingWindowRowCap` (10–500 rows). Dismissible streaming hint banner with optional mute for the session/workspace.
-- **`bytea` display modes**: Setting `postgresExplorer.query.byteaDisplayFormat` — `hex0x` (default), PostgreSQL `\x` hex text, or JSON-oriented debug shape — applied consistently in result grids and history.
-- **SQL Assistant turn controls**: Regenerate the latest assistant reply without duplicating the user turn; resend / branch from a chosen user message (truncate history after that turn and rerun). Attach-to-assistant flows can prefill the composer when a message string is supplied (toast copy updated accordingly).
-- **Result grid toolbar & editing workflow**: Result identity bar, consolidated toolbar/footer, view selector, inline banners, and a commit-confirmation step for pending cell edits. Source notebook cell index is surfaced for returning focus to the executing cell.
+- **Sliding-window result streaming**: Large `SELECT` results can now stream in windows instead of overwhelming the grid, with a bounded buffer, a configurable row cap, and a hint banner you can dismiss when you already know the feature.
+- **`bytea` display modes**: `bytea` values now show up the way you expect, whether you prefer `hex0x`, PostgreSQL `\x` text, or a JSON-friendly debug shape.
+- **SQL Assistant turn controls**: You can regenerate the latest reply without repeating yourself, branch from an earlier turn, or prefill the composer when you want to move faster.
+- **Result grid toolbar & editing workflow**: The result grid now feels steadier to work in, with a clearer toolbar, better banners, and a final commit check before edits are written back.
 
 ### Changed
-- **Export vs Auto-LIMIT**: Query results carry `exportQuery` (original SQL before Auto-LIMIT) so full CSV/JSON/Excel exports can rerun the unrestricted statement when the grid was limited for display.
-- **Renderer & executor integration**: Server-side cursor sessions coordinate with the webview for windowed fetches; grid-derived queries and edit-commit preferences are handled in the extension host so UI actions stay consistent with execution policy.
+- **Export vs Auto-LIMIT**: Exports now rerun the original SQL instead of the display-limited query, so CSV/JSON/Excel downloads can include everything you asked for.
+- **Renderer & executor integration**: Windowed fetches and edit commits are coordinated in the extension host so the UI stays aligned with what the database is actually doing.
 
 ## [1.2.0] - 2026-04-19
 
 ### Added
-- **SQL Assistant editor tabs**: Added `postgres-explorer.openSqlAssistantTab` so users can open SQL Assistant in the main editor area, not only in the sidebar container.
-- **Multi-tab SQL Assistant workflow**: SQL Assistant now supports opening multiple editor tabs for parallel AI conversations and context switching.
-- **AI Insights dashboard panel**: Added a richer dashboard assistant surface with schema-health metrics, connection analytics, vacuum progress, and direct Ask AI actions.
+- **SQL Assistant editor tabs**: You can open SQL Assistant in the main editor now, which makes the flow feel less cramped when the sidebar is not enough.
+- **Multi-tab SQL Assistant workflow**: Multiple assistant tabs are supported, so you can keep separate conversations going without losing your place.
+- **AI Insights dashboard panel**: The dashboard now surfaces schema health, connection analytics, vacuum progress, and direct Ask AI actions in one place.
 
 ### Fixed
-- **SQL completion deduplication**: Table and column completion items are now deduplicated before caching, preventing repeated suggestions in notebook SQL autocomplete.
-- **Assistant routing consistency**: Chat attachments and assistant updates now route to the active SQL Assistant webview (sidebar view or editor tab), which keeps multi-tab conversations in sync.
-- **Review changes UI stability**: The result review / compare UI now renders more consistently and keeps action visibility aligned with the active table state.
+- **SQL completion deduplication**: Table and column suggestions are deduplicated before caching, so notebook autocomplete stops repeating itself.
+- **Assistant routing consistency**: Chat attachments and assistant updates now follow the active SQL Assistant webview, which keeps multi-tab conversations in sync.
+- **Review changes UI stability**: The result review / compare UI now renders more consistently and keeps actions aligned with the active table state.
 
 ### Changed
-- **Dashboard telemetry expansion**: Dashboard stats now include unused indexes, high sequential-scan tables, table bloat, autovacuum progress, tables needing vacuum, and connections grouped by application name.
-- **Dashboard AI interactions**: AI prompts can be launched from dashboard context, queries can be executed for analysis, CSV can be downloaded from AI-assisted query results, and health degradation can trigger auto-notify behavior.
+- **Dashboard telemetry expansion**: Dashboard stats now show unused indexes, sequential scans, table bloat, autovacuum progress, tables needing vacuum, and connections grouped by application name.
+- **Dashboard AI interactions**: You can launch AI prompts from the dashboard, run queries for analysis, download CSV from AI-assisted results, and get notified when health starts slipping.
 
 ## [1.0.0] - 2026-04-14
 
@@ -163,40 +184,40 @@ PgStudio v1.0.0 is a major milestone release with comprehensive stability improv
 ## [0.9.5] - 2026-04-09
 
 ### Added
-- **Image support in SQL Assistant**: Paste images directly from clipboard or upload via the new image button (🖼) in the chat input. Images render as fixed 56×56px thumbnails in a dedicated preview strip above the textarea.
-- **Image lightbox**: Click any image thumbnail (in the input strip or in message history) to open a full-size overlay preview.
-- **Vision AI support**: Images are now properly sent to AI providers that support vision — OpenAI/custom as `image_url` parts, Anthropic as `base64` image blocks, Gemini as `inline_data` parts, and VS Code LM via `LanguageModelImagePart`.
-- **File preview from chat**: Clicking an attached file chip (in the input area or in message history) opens the file as a preview tab in the VS Code editor. Works for files attached via the file picker, "Send to Chat", and "Analyze Data" buttons.
-- **GitHub Models account sign-in**: Added first-class GitHub Models provider support using VS Code GitHub authentication sessions, including model listing and connection checks from AI Settings.
+- **Image support in SQL Assistant**: You can paste or upload images right into chat, with compact thumbnails so the composer stays usable.
+- **Image lightbox**: Thumbnails open into a full-size preview when you want to inspect an image before sending it on.
+- **Vision AI support**: Image attachments now reach the providers that can actually use them, including OpenAI, Anthropic, Gemini, and VS Code LM.
+- **File preview from chat**: Attached files open in a preview tab, whether they came from the picker, Send to Chat, or Analyze Data.
+- **GitHub Models account sign-in**: GitHub Models now plugs into VS Code auth sessions, with model listing and connection checks from AI Settings.
 
 ### Changed
-- **GitHub auth UX**: GitHub provider connection now uses the standard VS Code GitHub sign-in flow in AI Settings, with provider state reflected in the UI.
-- **Nightly release channel**: Nightly builds are now available as pre-release updates, including a dedicated Open VSX nightly companion package for early access testing.
+- **GitHub auth UX**: GitHub sign-in now follows the standard VS Code flow, and the provider state is reflected where you make the choice.
+- **Nightly release channel**: Nightly builds ship as pre-release updates, with a dedicated Open VSX companion package for early access testing.
 
 ### Fixed
-- **Image CSP**: Added `img-src data: blob:` to the webview Content Security Policy so image thumbnails actually render (previously blocked by `default-src 'none'`).
-- **File path missing on attach**: Files picked via the attachment button now include their filesystem path, enabling click-to-preview.
-- **Open VSX GitHub auth fallback**: Removed invalid OAuth scope requests for GitHub session auth to prevent users from being redirected to PAT-only fallback prompts.
+- **Image CSP**: Webviews now allow `data:` and `blob:` image sources, so the thumbnails actually show up.
+- **File path missing on attach**: Attachment-picked files now keep their filesystem path, which makes preview tabs work.
+- **Open VSX GitHub auth fallback**: Invalid OAuth scope requests were removed so GitHub auth no longer bounces people into PAT fallback prompts.
 
 ---
 
 ## [0.9.2] - 2026-04-07
 
 ### Added
-- **Local AI model support**: New **Ollama** and **LM Studio** providers connect to locally-running models at their default endpoints (`http://localhost:11434` and `http://localhost:1234`). No API key required.
-- **Nightly build pipeline**: Automated GitHub Actions workflow publishes pre-release builds to VS Code Marketplace and Open VSX on every push to `main`. Nightly versions use odd minor numbers (e.g., `0.9.1.{run}`).
-- **AI response timing**: Chat responses now display elapsed time alongside token usage for quick performance feedback.
-- **Code snippet execution**: Suggestion bubbles in chat can now run code snippets directly via a new `runSnippet()` action.
+- **Local AI model support**: Ollama and LM Studio now connect to local models at their default endpoints, with no API key needed.
+- **Nightly build pipeline**: Every push to `main` now publishes pre-release builds to VS Code Marketplace and Open VSX.
+- **AI response timing**: Chat replies now show elapsed time alongside token usage, which makes slow turns easier to notice.
+- **Code snippet execution**: Suggestion bubbles can now run snippets directly when you want to act on an idea instead of copying it out.
 
 ### Changed
-- **Connection edit flow**: Editing a connection now opens `ConnectionFormPanel` directly instead of dispatching a command, making the flow more reliable.
-- **Connection card styling**: Environment-specific accent colors (green for DEV, orange for STAGING, red for PROD) applied consistently across connection cards.
-- **Chat input focus**: `sendSuggestion()` now properly focuses the input and positions the cursor after inserting a suggestion.
-- **Publish workflow**: Version mismatch between the git tag and `package.json` now fails the build instead of emitting a warning.
+- **Connection edit flow**: Editing a connection now opens the form directly, which makes the flow feel more dependable.
+- **Connection card styling**: Environment-specific accent colors are applied consistently across connection cards.
+- **Chat input focus**: `sendSuggestion()` now focuses the input and leaves the cursor where people expect it.
+- **Publish workflow**: Version mismatches between the git tag and `package.json` now fail fast instead of slipping through as warnings.
 
 ### Fixed
-- **Inline code rendering**: Fixed markdown rendering of inline code in chat responses (resolves display issues with meta-notation like `(u, o)`).
-- **SVG icon sizing**: Code block action buttons now have explicit `width`/`height` attributes, preventing layout inconsistencies across themes.
+- **Inline code rendering**: Markdown inline code now renders correctly in chat responses, including meta-notation like `(u, o)`.
+- **SVG icon sizing**: Code block action buttons now size consistently across themes.
 
 ### Removed
 - **Tree filter commands**: `postgres-explorer.filterTree` and `postgres-explorer.clearFilter` removed from activation — these experimental commands were unused.
@@ -206,61 +227,58 @@ PgStudio v1.0.0 is a major milestone release with comprehensive stability improv
 ## [0.9.0] - 2026-04-06
 
 ### Added
-- **Anthropic model discovery**: AI Settings now lists Anthropic models from the official `/v1/models` API instead of a fixed local list.
-- **Guided chat responses**: Assistant replies can now include numbered follow-up questions, optional next-step suggestion bubbles, and contextual quote-style factoids or jokes when they genuinely fit.
+- **Anthropic model discovery**: AI Settings now pulls Anthropic models from the official `/v1/models` API, so the list stays in sync without manual upkeep.
+- **Guided chat responses**: Assistant replies can now offer numbered follow-ups, optional next-step bubbles, and the occasional well-placed factoid or joke when it actually helps.
 
 ### Changed
-- **AI key lookup**: Direct AI provider keys now resolve from `SecretStorage` first, fixing false “API key required” errors when the key is already saved.
-- **Chat identity and styling**: Assistant messages are labeled **PG Studio Bot**, with improved assistant bubble contrast and quote styling for richer responses.
-- **Composer UX**: The chat input and suggestion bubbles were tightened for readability, capped to a compact height, and styled to avoid carrying stale next-step actions between chats.
+- **AI key lookup**: Direct AI provider keys now resolve from `SecretStorage` first, which prevents the frustrating false "API key required" message when the key is already saved.
+- **Chat identity and styling**: Assistant messages are labeled **PG Studio Bot**, with clearer contrast and quote styling that makes replies easier to read.
+- **Composer UX**: The chat input and suggestion bubbles were tightened for readability and kept from carrying stale next-step actions between chats.
 
 ### Fixed
-- **Follow-up selection**: Typing a number now resolves to the corresponding numbered follow-up question from the previous assistant message, instead of being treated as a fresh prompt.
-- **Next-step carry-over**: Next-step bubbles are hidden when a new follow-up is sent or when switching chats, so actions remain specific to the active conversation.
+- **Follow-up selection**: Typing a number now picks the matching follow-up question from the previous assistant message instead of starting over.
+- **Next-step carry-over**: Next-step bubbles now stay tied to the active conversation, so they do not leak into the next chat.
 
 ## [0.8.8] - 2026-03-21
 
 ### Added
-- **Command palette — release notes**: **PgStudio: Show Release Notes / What's New** is registered in the manifest for discovery (changelog opens in an editor-area webview panel).
-- **Tests**: Integration coverage for notebook renderer message flow (`NotebookRendererFlow.test.ts`) and unit tests for query save/delete handlers (`QueryHandlers.test.ts`).
-- **Table Designer (create mode)**: Drag-and-drop column reorder with clear create-vs-edit UI behavior.
-- **AI chat**: Explicit **production safety** rules in the system prompt (read-first bias, transaction/rollback guidance, guarded writes).
+- **Command palette - release notes**: **PgStudio: Show Release Notes / What's New** is now easy to find, and it opens in the editor area instead of hiding off to the side.
+- **Tests**: Added coverage for notebook renderer message flow and query save/delete handlers.
+- **Table Designer (create mode)**: Drag-and-drop column reorder now has clearer create-vs-edit behavior.
+- **AI chat**: The system prompt now carries explicit production-safety rules, so the assistant stays more cautious around writes.
 
 ### Changed
-- **Sidebar layout**: **Connections** and **SQL Assistant** are listed first; **Saved Queries** and **Query History** use new view identifiers and start **collapsed by default** (VS Code only applies manifest defaults when it has no prior UI state for that view).
-- **Release notes**: **What's New** is no longer a sidebar section; use the command palette command. Automatic release-note panels on upgrade are not shown on activation.
-- **Notebook inline edits**: `SaveChangesHandler` and bulk/table deletes use **parameterized** `UPDATE`/`DELETE`, run inside a **transaction** (`BEGIN` / `COMMIT` / `ROLLBACK` on failure), and build predicates with proper identifier quoting (fixes composite-key and NULL edge cases).
+- **Sidebar layout**: **Connections** and **SQL Assistant** now lead the sidebar, while **Saved Queries** and **Query History** start collapsed.
+- **Release notes**: **What's New** moved out of the sidebar and into the command palette, and upgrade popups no longer appear on activation.
+- **Notebook inline edits**: Inline saves and bulk/table deletes now use parameterized SQL inside transactions with proper identifier quoting.
 
 ---
 
 ## [0.8.6...0.8.7] - 2026-03-15
 
 ### Added
-- **.pgpass support**: Native backwards-compatible support with explicit resolvers parsing standard `.pgpass` (and Windows `%APPDATA%\postgresql\pgpass.conf`) secret files.
+- **.pgpass support**: Standard `.pgpass` files are now supported, including the Windows `%APPDATA%\postgresql\pgpass.conf` path.
 
 ### Fixed
-- **Authentication Resilience**: Resolved standard connection `password authentication failed` issues that fell back to implicit OS defaults incorrectly. 
-- **SSL Fallback Reliability**: Fixed `DatabaseTreeProvider` stripping configuration details (such as direct inline passwords and sslmode) during fallback client re-trigger calculations.
-- **.pgpass lookup scope**: Avoided resolving implicit machine name environments by strictly isolating parsing searches for explicit username options, fixing backward compatibility for local `trust` authentications.
+- **Authentication Resilience**: Fixed connection failures that were incorrectly falling back to implicit OS defaults.
+- **SSL Fallback Reliability**: `DatabaseTreeProvider` now keeps the full connection configuration when it retries clients.
+- **.pgpass lookup scope**: `.pgpass` lookup now stays scoped to explicit usernames, which avoids confusing machine-name fallbacks and preserves local `trust` auth.
 
 ---
 
 ## [0.8.4...0.8.5] - 2026-02-19
     
 ### Added
-- **Visual Table Designer**: A robust, interactive UI for creating tables. Define columns, data types, constraints, and foreign keys visually without writing SQL.
-- **Visual Index & Constraint Manager**: Manage indexes and constraints with a modern GUI. Analyze usage, drop unused indexes, and create new constraints with ease.
-- **Smart Paste**: Intelligent clipboard handling that detects SQL, CSV, or JSON content and offers context-aware actions (e.g., "Insert as Rows", "Format SQL").
-- **Dashboard Improvements**:
-    - **Visual Lock Viewer**: Diagnostic tree view to identify and resolve blocking chains and deadlocks.
-    - **Enhanced Metrics**: Real-time charts for IO, Checkpoints, and System Load.
-    - **Active Query Management**: Kill/Cancel blocking queries directly from the dashboard.
+- **Visual Table Designer**: A visual table builder for defining columns, data types, constraints, and foreign keys without hand-writing SQL.
+- **Visual Index & Constraint Manager**: A GUI for managing indexes and constraints, checking usage, and dropping or creating them more comfortably.
+- **Smart Paste**: Clipboard handling now recognizes SQL, CSV, and JSON content and offers the right action.
+- **Dashboard Improvements**: Added lock diagnostics, better live metrics, and direct blocking-query controls in the dashboard.
 
 ### Improved
-- **Stability**: Fixed dashboard template loading issues to ensure reliable rendering on all platforms.
+- **Stability**: Dashboard template loading is fixed, so rendering is more reliable across platforms.
 
 ### Fixed
-- https://github.com/dev-asterix/PgStudio/issues/56 - Resolved local AI model API implementation with support for http and custom port.
+- Local AI model API support now works with HTTP and custom ports.
 
 ---
 

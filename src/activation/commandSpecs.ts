@@ -10,7 +10,7 @@ import { showConstraintProperties, copyConstraintName, generateDropConstraintScr
 import { cmdConnectDatabase, cmdDisconnectConnection, cmdDisconnectDatabase, cmdReconnectConnection, cmdDuplicateConnection, showConnectionSafety, revealInExplorer } from '../commands/connection';
 import { cmdImportConnectionFromDatabaseUrl } from '../commands/importConnectionFromDatabaseUrl';
 import { showIndexProperties, copyIndexName, generateDropIndexScript, generateReindexScript, generateScriptCreate, analyzeIndexUsage, generateAlterIndexScript, addIndexComment, cmdIndexOperations, cmdAddIndex } from '../commands/indexes';
-import { cmdAddObjectInDatabase, cmdBackupDatabase, cmdCreateDatabase, cmdDatabaseDashboard, cmdDatabaseDashboardFromPalette, cmdDatabaseOperations, cmdDeleteDatabase, cmdDisconnectDatabase as cmdDisconnectDatabaseLegacy, cmdGenerateCreateScript, cmdMaintenanceDatabase, cmdPsqlTool, cmdQueryTool, cmdRestoreDatabase, cmdScriptAlterDatabase, cmdShowConfiguration } from '../commands/database';
+import { cmdAddObjectInDatabase, cmdBackupDatabase, cmdCreateDatabase, cmdDatabaseDashboard, cmdDatabaseDashboardFromPalette, cmdDatabaseOperations, cmdDeleteDatabase, cmdDisconnectDatabase as cmdDisconnectDatabaseLegacy, cmdGenerateCreateScript, cmdMaintenanceDatabase, cmdOpenBackupWorkspaceFromPalette, cmdPsqlTool, cmdQueryTool, cmdRestoreDatabase, cmdScriptAlterDatabase, cmdShowConfiguration } from '../commands/database';
 import { cmdDropExtension, cmdEnableExtension, cmdExtensionOperations, cmdRefreshExtension } from '../commands/extensions';
 import { cmdCreateForeignTable, cmdDropForeignTable, cmdEditForeignTable, cmdForeignTableOperations, cmdRefreshForeignTable, cmdShowForeignTableProperties, cmdViewForeignTableData } from '../commands/foreignTables';
 import { cmdForeignDataWrapperOperations, cmdShowForeignDataWrapperProperties, cmdCreateForeignServer, cmdForeignServerOperations, cmdShowForeignServerProperties, cmdDropForeignServer, cmdCreateUserMapping, cmdUserMappingOperations, cmdShowUserMappingProperties, cmdDropUserMapping, cmdRefreshForeignDataWrapper, cmdRefreshForeignServer, cmdRefreshUserMapping } from '../commands/foreignDataWrappers';
@@ -64,6 +64,8 @@ import {
   cmdOpenSchemaDiff,
   cmdOpenSchemaDiffFromPalette,
   cmdOpenErd,
+  cmdOpenErdMultiFromDatabase,
+  cmdImportDbml,
   cmdImportData,
 } from '../commands/schemaDesigner';
 import { NotebookTreeItem, NotebooksTreeProvider } from '../providers/NotebooksTreeProvider';
@@ -90,12 +92,14 @@ import { cmdOpenListenNotify, cmdOpenListenNotifyFromPalette } from '../commands
 import { cmdSearchSchema } from '../commands/schemaSearch';
 import { WorkspaceStateService } from '../services/WorkspaceStateService';
 import { switchWorkspaceDefaultConnection } from '../commands/workspaceConnection';
+import { WhatsNewManager } from './WhatsNewManager';
 
 export function getCommandSpecs(
   context: vscode.ExtensionContext,
   databaseTreeProvider: DatabaseTreeProvider,
   chatViewProviderInstance: ChatViewProvider | undefined,
   outputChannel: vscode.OutputChannel,
+  whatsNewManager: WhatsNewManager,
   savedQueriesTreeProvider?: SavedQueriesTreeProvider,
   notebooksTreeProvider?: NotebooksTreeProvider
 ): Array<{ command: string; callback: (...args: any[]) => any }> {
@@ -159,6 +163,12 @@ export function getCommandSpecs(
     {
       command: 'postgres-explorer.telemetry.setModeDetailed',
       callback: () => setTelemetryMode('detailed')
+    },
+    {
+      command: 'postgres-explorer.showWhatsNew',
+      callback: () => {
+        void whatsNewManager.checkAndShow(true);
+      }
     },
     {
       command: 'postgres-explorer.copyQuery',
@@ -522,6 +532,10 @@ export function getCommandSpecs(
     {
       command: 'postgres-explorer.restoreDatabase',
       callback: async (item: DatabaseTreeItem) => await cmdRestoreDatabase(item, context)
+    },
+    {
+      command: 'postgres-explorer.openBackupWorkspace',
+      callback: () => cmdOpenBackupWorkspaceFromPalette(context)
     },
     {
       command: 'postgres-explorer.generateCreateScript',
@@ -1386,6 +1400,14 @@ export function getCommandSpecs(
     {
       command: 'postgres-explorer.openErd',
       callback: (item: DatabaseTreeItem) => cmdOpenErd(item, context)
+    },
+    {
+      command: 'postgres-explorer.openErdMulti',
+      callback: (item: DatabaseTreeItem) => cmdOpenErdMultiFromDatabase(item, context)
+    },
+    {
+      command: 'postgres-explorer.importDbml',
+      callback: (item?: DatabaseTreeItem) => cmdImportDbml(item, context)
     },
     // Import Data
     {

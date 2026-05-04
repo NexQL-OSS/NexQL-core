@@ -7,19 +7,16 @@ type TelemetryEventKind = 'usage' | 'performance';
 
 const DEFAULT_FLUSH_INTERVAL_MS = 10_000;
 const DEFAULT_MAX_BATCH_SIZE = 25;
+/** Cap queued envelopes so bursty callers cannot grow memory unbounded; oldest dropped first. */
+const MAX_QUEUED_EVENTS = 500;
 const MAX_PROPERTY_VALUE_LENGTH = 200;
 const REDACTED_VALUE = '[redacted]';
-const SAFE_ERROR_CATEGORY_UNKNOWN = 'unknown';
 
 const SENSITIVE_KEY_PATTERN = /(password|secret|token|authorization|cookie|sql|query|database|schema|host|user|email|name|credential|connection)/i;
 
 const EVENT_SCHEMA: Record<string, { kind: TelemetryEventKind; allowedProps: Set<string> }> = {
   extension_activated: { kind: 'usage', allowedProps: new Set(['version']) },
-  extension_deactivated: { kind: 'usage', allowedProps: new Set(['sessionDurationBucket']) },
-  session_started: { kind: 'usage', allowedProps: new Set(['source']) },
-  session_ended: { kind: 'usage', allowedProps: new Set(['durationBucket']) },
-  active_day_ping: { kind: 'usage', allowedProps: new Set(['day']) },
-  active_week_ping: { kind: 'usage', allowedProps: new Set(['week']) },
+  extension_deactivated: { kind: 'usage', allowedProps: new Set(['durationBucket']) },
   command_invoked: { kind: 'usage', allowedProps: new Set(['group']) },
   feature_used: { kind: 'usage', allowedProps: new Set(['feature']) },
   connection_opened: { kind: 'usage', allowedProps: new Set(['connectionKind']) },
@@ -202,6 +199,10 @@ export class TelemetryService {
     };
 
     this.queue.push(envelope);
+    if (this.queue.length > MAX_QUEUED_EVENTS) {
+      const overflow = this.queue.length - MAX_QUEUED_EVENTS;
+      this.queue.splice(0, overflow);
+    }
     if (this.queue.length >= this.config.maxBatchSize) {
       void this.flush();
     }
@@ -222,13 +223,15 @@ export class TelemetryService {
     }
   }
 
-  public trackSessionStart(): void {
-    this.trackEvent('session_started', { source: 'extension' });
+  /** One usage event on shutdown; avoids duplicate session_ended + extension_deactivated. */
+  public trackExtensionDeactivate(): void {
+    const bucket = this.bucketDuration(Date.now() - this.sessionStartMs);
+    this.trackEvent('extension_deactivated', { durationBucket: bucket });
   }
 
-  public trackSessionEnd(): void {
-    const bucket = this.bucketDuration(Date.now() - this.sessionStartMs);
-    this.trackEvent('session_ended', { durationBucket: bucket });
+  /** Public so callers can align performance buckets with span/query telemetry. */
+  public durationBucket(durationMs: number): string {
+    return this.bucketDuration(durationMs);
   }
 
   public startSpan(name: string, attributes?: Record<string, TelemetryValue>): string {
@@ -279,7 +282,6 @@ export class TelemetryService {
       durationBucket: this.bucketDuration(durationMs),
       success: false,
     });
-    this.trackEvent('connection_error', { errorCategory: this.errorCategory(error) });
     this.spans.delete(spanId);
   }
 
@@ -412,15 +414,6 @@ export class TelemetryService {
     if (durationMs < 5_000) return '1_5s';
     if (durationMs < 30_000) return '5_30s';
     return 'gte_30s';
-  }
-
-  private errorCategory(error: Error): string {
-    const message = error.message.toLowerCase();
-    if (message.includes('timeout')) return 'timeout';
-    if (message.includes('auth')) return 'auth';
-    if (message.includes('network')) return 'network';
-    if (message.includes('ssl')) return 'ssl';
-    return SAFE_ERROR_CATEGORY_UNKNOWN;
   }
 }
 

@@ -58,6 +58,11 @@ function autoLoadModels(provider, apiKey, endpoint, options = {}) {
         settings: { provider: 'github', apiKey: '', endpoint: '' }
       });
     }
+  } else if (provider === 'cursor') {
+    vscode.postMessage({
+      command: 'listModels',
+      settings: { provider: 'cursor', apiKey: apiKey || '', endpoint: endpoint || '' }
+    });
   } else if (provider === 'anthropic') {
     // Prefer to fetch Anthropic models from the API when API key is provided
     if (apiKey && apiKey.length > 0) {
@@ -134,6 +139,13 @@ function getFormData() {
     model = (selectEl && !selectEl.classList.contains('hidden') && selectEl.value)
       ? selectEl.value
       : inputEl.value;
+  } else if (provider === 'cursor') {
+    apiKey = document.getElementById('apiKey-cursor').value;
+    const selectEl = document.getElementById('model-cursor-select');
+    const inputEl = document.getElementById('model-cursor');
+    model = (selectEl && !selectEl.classList.contains('hidden') && selectEl.value)
+      ? selectEl.value
+      : inputEl.value;
   } else if (provider === 'custom') {
     apiKey = document.getElementById('apiKey-custom').value;
     model = document.getElementById('model-custom').value;
@@ -166,6 +178,9 @@ function setFormData(settings) {
     document.getElementById('model-gemini').value = settings.model || '';
   } else if (settings.provider === 'github') {
     document.getElementById('model-github').value = settings.model || '';
+  } else if (settings.provider === 'cursor') {
+    document.getElementById('apiKey-cursor').value = settings.cursorApiKey || '';
+    document.getElementById('model-cursor').value = settings.model || '';
   } else if (settings.provider === 'custom') {
     document.getElementById('apiKey-custom').value = settings.apiKey || '';
     document.getElementById('model-custom').value = settings.model || '';
@@ -225,6 +240,16 @@ document.querySelectorAll('.list-models-btn').forEach(btn => {
       return;
     }
 
+    if (provider === 'cursor') {
+      this.disabled = true;
+      this.textContent = 'Loading models...';
+      vscode.postMessage({
+        command: 'listModels',
+        settings: { provider: 'cursor', apiKey: settings.apiKey, endpoint: '' }
+      });
+      return;
+    }
+
     // VS Code LM does not require an API key
     if (provider === 'custom' && !settings.endpoint) {
       showMessage('Please enter an endpoint first', true);
@@ -247,7 +272,7 @@ document.querySelectorAll('.list-models-btn').forEach(btn => {
 });
 
 // Model select change handlers
-['vscode-lm', 'github', 'openai', 'anthropic', 'gemini', 'ollama', 'lmstudio'].forEach(provider => {
+['vscode-lm', 'github', 'cursor', 'openai', 'anthropic', 'gemini', 'ollama', 'lmstudio'].forEach(provider => {
   const selectEl = document.getElementById('model-' + provider + '-select');
   const inputEl = document.getElementById('model-' + provider);
   if (selectEl && inputEl) {
@@ -259,8 +284,8 @@ document.querySelectorAll('.list-models-btn').forEach(btn => {
   }
 });
 
-// Auto-load models when API key is entered for OpenAI and Gemini
-['openai', 'gemini'].forEach(provider => {
+// Auto-load models when API key is entered for OpenAI, Gemini, and Cursor
+['openai', 'gemini', 'cursor'].forEach(provider => {
   const apiKeyInput = document.getElementById('apiKey-' + provider);
   if (apiKeyInput) {
     apiKeyInput.addEventListener('blur', function () {
@@ -323,7 +348,7 @@ window.addEventListener('message', event => {
       // Auto-load models for the current provider
       const settings = message.settings;
       if (settings && settings.provider) {
-        autoLoadModels(settings.provider, settings.apiKey || '', settings.endpoint || '', {
+        autoLoadModels(settings.provider, settings.cursorApiKey || settings.apiKey || '', settings.endpoint || '', {
           allowPrompt: !!settings.githubAuth?.connected
         });
       }
@@ -404,8 +429,13 @@ function handleModelsListed(models) {
     selectEl.innerHTML = '<option value="">Select a model...</option>';
     models.forEach(model => {
       const option = document.createElement('option');
-      option.value = model;
-      option.textContent = model;
+      if (model && typeof model === 'object') {
+        option.value = model.id || model.displayName || '';
+        option.textContent = model.displayName || model.id || '';
+      } else {
+        option.value = model;
+        option.textContent = model;
+      }
       selectEl.appendChild(option);
     });
 

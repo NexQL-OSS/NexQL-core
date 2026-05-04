@@ -182,7 +182,6 @@ export class PostgresKernel implements vscode.Disposable {
 
   private async _executeAll(cells: vscode.NotebookCell[], _notebook: vscode.NotebookDocument, _controller: vscode.NotebookController): Promise<void> {
     const telemetry = TelemetryService.getInstance();
-    telemetry.trackEvent('feature_used', { feature: 'notebook' });
     telemetry.trackEvent('notebook_executed', {
       cellCountBucket: cells.length < 5 ? 'lt_5' : cells.length < 20 ? '5_19' : 'gte_20',
     });

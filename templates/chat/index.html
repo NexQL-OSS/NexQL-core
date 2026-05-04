@@ -16,11 +16,11 @@
   <script nonce="{{NONCE}}">{{THEME_DETECTION_SCRIPT}}</script>
   <div class="main-container">
     <!-- History Overlay -->
-    <div class="history-overlay" id="historyOverlay" onclick="closeHistory(event)">
-      <div class="history-panel" onclick="event.stopPropagation()">
+    <div class="history-overlay" id="historyOverlay">
+      <div class="history-panel" id="historyPanel">
         <div class="history-header">
           <h3>📚 Chat History</h3>
-          <button class="history-close-btn" onclick="toggleHistory()" title="Close">
+          <button type="button" class="history-close-btn" id="historyCloseBtn" title="Close">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
               <path
                 d="M8 8.707l3.646 3.647.708-.707L8.707 8l3.647-3.646-.707-.708L8 7.293 4.354 3.646l-.708.708L7.293 8l-3.647 3.646.708.708L8 8.707z" />
@@ -28,7 +28,7 @@
           </button>
         </div>
         <div class="history-search">
-          <input type="text" id="historySearch" placeholder="🔍 Search chats..." oninput="filterHistory(this.value)">
+          <input type="text" id="historySearch" placeholder="🔍 Search chats...">
         </div>
         <div class="history-list" id="historyList">
           <div class="history-empty">No chat history yet</div>
@@ -39,20 +39,20 @@
     <div class="chat-container">
       <div class="chat-header">
         <div class="chat-header-left">
-          <button class="header-btn" onclick="toggleHistory()" title="Chat History">
+          <button type="button" class="header-btn" id="btnChatHistory" title="Chat History">
             <svg viewBox="0 0 16 16" fill="currentColor">
               <path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zM0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8z" />
               <path d="M8 3.5a.5.5 0 0 1 .5.5v4H12a.5.5 0 0 1 0 1H8a.5.5 0 0 1-.5-.5V4a.5.5 0 0 1 .5-.5z" />
             </svg>
           </button>
-          <button class="header-btn" onclick="newChat()" title="New Chat">
+          <button type="button" class="header-btn" id="btnNewChat" title="New Chat">
             <svg viewBox="0 0 16 16" fill="currentColor">
               <path d="M8 2a.5.5 0 0 1 .5.5v5h5a.5.5 0 0 1 0 1h-5v5a.5.5 0 0 1-1 0v-5h-5a.5.5 0 0 1 0-1h5v-5A.5.5 0 0 1 8 2z" />
             </svg>
           </button>
         </div>
         <div class="chat-header-right">
-          <button class="header-btn ai-model-icon-btn" onclick="openAiSettings()" id="aiModelBadge"
+          <button type="button" class="header-btn ai-model-icon-btn" id="aiModelBadge"
             title="Loading...">
             <svg viewBox="0 0 16 16" fill="currentColor">
               <path d="M7.657 6.247c.11-.33.576-.33.686 0l.645 1.937a2.89 2.89 0 0 0 1.829 1.828l1.936.645c.33.11.33.576 0 .686l-1.937.645a2.89 2.89 0 0 0-1.828 1.829l-.645 1.936a.361.361 0 0 1-.686 0l-.645-1.937a2.89 2.89 0 0 0-1.828-1.828l-1.937-.645a.361.361 0 0 1 0-.686l1.937-.645a2.89 2.89 0 0 0 1.828-1.828l.645-1.937zM3.794 1.148a.217.217 0 0 1 .412 0l.387 1.162c.173.518.579.924 1.097 1.097l1.162.387a.217.217 0 0 1 0 .412l-1.162.387A1.734 1.734 0 0 0 4.593 5.69l-.387 1.162a.217.217 0 0 1-.412 0L3.407 5.69A1.734 1.734 0 0 0 2.31 4.593l-1.162-.387a.217.217 0 0 1 0-.412l1.162-.387A1.734 1.734 0 0 0 3.407 2.31l.387-1.162zM10.863.099a.145.145 0 0 1 .274 0l.258.774c.115.346.386.617.732.732l.774.258a.145.145 0 0 1 0 .274l-.774.258a1.156 1.156 0 0 0-.732.732l-.258.774a.145.145 0 0 1-.274 0l-.258-.774a1.156 1.156 0 0 0-.732-.732L9.1 2.137a.145.145 0 0 1 0-.274l.774-.258c.346-.115.617-.386.732-.732L10.863.1z"/>
@@ -84,22 +84,22 @@
           
           <!-- Quick Action Grid (2x2) -->
           <div class="quick-grid">
-            <button class="quick-card" onclick="sendSuggestion('Write a query to...')">
+            <button type="button" class="quick-card" data-suggestion="Write a query to...">
               <div class="quick-card-icon">+</div>
               <div class="quick-card-title">Write a query</div>
               <div class="quick-card-description">Describe what you need</div>
             </button>
-            <button class="quick-card" onclick="sendSuggestion('Optimize this query...')">
+            <button type="button" class="quick-card" data-suggestion="Optimize this query...">
               <div class="quick-card-icon">⚡</div>
               <div class="quick-card-title">Optimize slow query</div>
               <div class="quick-card-description">Paste query below</div>
             </button>
-            <button class="quick-card" onclick="sendSuggestion('Explain...')">
+            <button type="button" class="quick-card" data-suggestion="Explain...">
               <div class="quick-card-icon">•</div>
               <div class="quick-card-title">Explain a concept</div>
               <div class="quick-card-description">CTEs, indexes, JOINs...</div>
             </button>
-            <button class="quick-card" onclick="sendSuggestion('Review my schema...')">
+            <button type="button" class="quick-card" data-suggestion="Review my schema...">
               <div class="quick-card-icon">⊞</div>
               <div class="quick-card-title">Review my schema</div>
               <div class="quick-card-description">Get design feedback</div>
@@ -110,12 +110,12 @@
           <div class="snippets-section">
             <div class="snippets-label">SQL SNIPPETS</div>
             <div class="snippets-grid">
-              <button class="snippet-btn" onclick="runSnippet('Show me how INNER JOIN works in PostgreSQL with a practical example — join two tables and explain what rows are included vs excluded.')">INNER_JOIN</button>
-              <button class="snippet-btn" onclick="runSnippet('Explain how to write a CTE using WITH cte AS (...) in PostgreSQL. Show a real example and explain when to use a CTE instead of a subquery.')">WITH cte AS</button>
-              <button class="snippet-btn" onclick="runSnippet('How does ROW_NUMBER() work as a window function in PostgreSQL? Show an example that numbers rows within a partition and explain PARTITION BY and ORDER BY.')">ROW_NUMBER()</button>
-              <button class="snippet-btn" onclick="runSnippet('How do I use EXPLAIN ANALYZE in PostgreSQL to diagnose a slow query? Show what the output means and what to look for to find performance bottlenecks.')">EXPLAIN ANALYZE</button>
-              <button class="snippet-btn" onclick="runSnippet('How does ON CONFLICT work in PostgreSQL for upserts? Show examples of DO NOTHING and DO UPDATE SET, and explain when to use each.')">ON CONFLICT</button>
-              <button class="snippet-btn" onclick="runSnippet('How does jsonb_agg work in PostgreSQL? Show an example that aggregates rows into a JSON array, and explain how to use it with filters and ordering.')">jsonb_agg</button>
+              <button type="button" class="snippet-btn" data-snippet="innerJoin">INNER JOIN</button>
+              <button type="button" class="snippet-btn" data-snippet="withCte">WITH cte AS</button>
+              <button type="button" class="snippet-btn" data-snippet="rowNumber">ROW_NUMBER()</button>
+              <button type="button" class="snippet-btn" data-snippet="explainAnalyze">EXPLAIN ANALYZE</button>
+              <button type="button" class="snippet-btn" data-snippet="onConflict">ON CONFLICT</button>
+              <button type="button" class="snippet-btn" data-snippet="jsonbAgg">jsonb_agg</button>
             </div>
           </div>
         </div>
@@ -139,13 +139,13 @@
           </div>
           <div class="error-card-message" id="errorCardMessage"></div>
           <div class="error-card-actions">
-            <button class="error-card-btn" onclick="retryLastMessage()" title="Retry the last message">
+            <button type="button" class="error-card-btn" id="errorRetryBtn" title="Retry the last message">
               🔄 Retry
             </button>
-            <button class="error-card-btn" onclick="openAiSettings()" title="Configure AI settings">
+            <button type="button" class="error-card-btn" id="errorConfigureBtn" title="Configure AI settings">
               ⚙️ Configure
             </button>
-            <button class="error-card-btn" onclick="dismissError()" title="Dismiss error">
+            <button type="button" class="error-card-btn" id="errorDismissBtn" title="Dismiss error">
               ✕ Dismiss
             </button>
           </div>
@@ -157,8 +157,7 @@
           </div>
           <div class="mention-breadcrumbs" id="mentionBreadcrumbs"></div>
           <input type="text" class="mention-picker-search" id="mentionSearch"
-            placeholder="Search tables, views, functions..." oninput="searchMentions(this.value)"
-            onkeydown="handleMentionSearchKeydown(event)">
+            placeholder="Search tables, views, functions...">
           <div class="mention-picker-list" id="mentionList">
             <div class="mention-picker-loading">Loading database objects...</div>
           </div>
@@ -167,32 +166,31 @@
           <!-- Image preview strip (above textarea, hidden when empty) -->
           <div class="image-preview-strip" id="imagePreviewStrip"></div>
           <div class="composer-editor">
-            <textarea class="chat-input" id="chatInput" placeholder="Ask anything postgres/SQL... (@ to refer a table/function)" rows="1"
-              onkeydown="handleKeyDown(event)" oninput="handleChatInput(event)"></textarea>
+            <textarea class="chat-input" id="chatInput" placeholder="Ask anything postgres/SQL... (@ to refer a table/function)" rows="1"></textarea>
           </div>
           <div class="composer-footer">
-            <button class="attach-btn" id="attachBtn" onclick="attachFile()"
+            <button type="button" class="attach-btn" id="attachBtn"
               title="Attach file (SQL, CSV, JSON, TXT)">
               <svg viewBox="0 0 16 16" fill="currentColor">
                 <path
                   d="M11.5 2c1.4 0 2.5 1.1 2.5 2.5v6c0 2.5-2 4.5-4.5 4.5S5 13 5 10.5V4h1v6.5c0 1.9 1.6 3.5 3.5 3.5s3.5-1.6 3.5-3.5v-6c0-.8-.7-1.5-1.5-1.5S10 3.7 10 4.5v6c0 .3.2.5.5.5s.5-.2.5-.5V5h1v5.5c0 .8-.7 1.5-1.5 1.5S9 11.3 9 10.5v-6C9 3.1 10.1 2 11.5 2z" />
               </svg>
             </button>
-            <button class="attach-btn" id="imageBtn" onclick="attachImage()"
+            <button type="button" class="attach-btn" id="imageBtn"
               title="Attach image (PNG, JPG, GIF, WebP)">
               <svg viewBox="0 0 16 16" fill="currentColor">
                 <path d="M14.002 2h-12a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V3a1 1 0 0 0-1-1zm-1 10H3.002L6.5 7.5l2 2.5 2.5-3.5 2 3.5zM5.5 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2z"/>
               </svg>
             </button>
-            <input type="file" id="imageFileInput" accept="image/*" style="display:none" onchange="handleImageFileInput(event)">
-            <button class="mention-btn" id="mentionBtn" onclick="toggleMentionPicker()"
+            <input type="file" id="imageFileInput" accept="image/*" style="display:none">
+            <button type="button" class="mention-btn" id="mentionBtn"
               title="Reference a database object (@)">@</button>
             <div class="attachments-container" id="attachmentsContainer"></div>
-            <button class="send-btn" id="sendBtn" onclick="sendMessage()" title="Send message">
+            <button type="button" class="send-btn" id="sendBtn" title="Send message">
               <span class="send-btn-label">Send</span>
               <span class="send-btn-shortcut">↵</span>
             </button>
-            <button class="stop-btn" id="stopBtn" onclick="cancelRequest()" title="Stop generation"
+            <button type="button" class="stop-btn" id="stopBtn" title="Stop generation"
               style="display: none;">
               <svg viewBox="0 0 16 16" fill="currentColor">
                 <rect x="3" y="3" width="10" height="10" rx="1" />
@@ -207,7 +205,7 @@
   <script nonce="{{NONCE}}">{{INLINE_SCRIPTS}}</script>
 
   <!-- Image lightbox -->
-  <div id="imageLightbox" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:9999;align-items:center;justify-content:center;cursor:zoom-out;" onclick="closeLightbox()">
+  <div id="imageLightbox" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:9999;align-items:center;justify-content:center;cursor:zoom-out;">
     <img id="lightboxImg" src="" alt="" style="max-width:90vw;max-height:90vh;border-radius:8px;object-fit:contain;box-shadow:0 8px 32px rgba(0,0,0,0.5);">
   </div>
 </body>

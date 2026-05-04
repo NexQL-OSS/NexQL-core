@@ -14,6 +14,7 @@ const GITHUB_MODELS_SCOPES: string[] = [];
 const GITHUB_MODELS_API_BASE = 'https://models.github.ai';
 const GITHUB_MODELS_API_VERSION = '2026-03-10';
 const DEFAULT_GITHUB_MODEL = 'openai/gpt-4.1';
+const DEFAULT_CURSOR_MODEL = 'auto';
 const DIRECT_API_PROVIDERS = new Set([
   'openai',
   'anthropic',
@@ -79,6 +80,18 @@ export class AiService {
 
   setConnectionContext(ctx: AiService['_connectionContext']): void {
     this._connectionContext = ctx;
+  }
+
+  async callProvider(provider: string, userMessage: string, config: vscode.WorkspaceConfiguration, customSystemPrompt?: string): Promise<{ text: string, usage?: string }> {
+    if (provider === 'vscode-lm') {
+      return await this.callVsCodeLm(userMessage, config, customSystemPrompt);
+    }
+
+    if (provider === 'cursor') {
+      return await this.callCursorAgent(userMessage, config, customSystemPrompt);
+    }
+
+    return await this.callDirectApi(provider, userMessage, config, customSystemPrompt);
   }
 
   buildSystemPrompt(): string {
@@ -436,6 +449,139 @@ The UI will automatically parse this and show clickable suggestion bubbles.`;
       if (this._cancellationTokenSource) {
         this._cancellationTokenSource.dispose();
         this._cancellationTokenSource = null;
+      }
+    }
+  }
+
+  private async _loadCursorSdk(): Promise<any> {
+    try {
+      return await import('@cursor/sdk');
+    } catch {
+      throw new Error('Cursor SDK is not installed. Install @cursor/sdk to use the Cursor provider.');
+    }
+  }
+
+  private async _getCursorApiKey(config: vscode.WorkspaceConfiguration): Promise<string> {
+    const secretApiKey = await SecretStorageService.getInstance().getCursorApiKey();
+    return secretApiKey || process.env.CURSOR_API_KEY || config.get<string>('cursorApiKey') || '';
+  }
+
+  private async _listCursorModels(apiKey: string): Promise<Array<{ id: string; displayName?: string }>> {
+    const { Cursor } = await this._loadCursorSdk();
+    const resolvedApiKey = apiKey || process.env.CURSOR_API_KEY || '';
+    const models = await Cursor.models.list({ apiKey: resolvedApiKey });
+
+    return (models || [])
+      .map((model: any) => ({
+        id: model.id,
+        displayName: model.displayName || model.id,
+      }))
+      .filter((model: { id: string }) => !!model.id);
+  }
+
+  private async _resolveCursorModel(config: vscode.WorkspaceConfiguration, apiKey: string): Promise<string> {
+    const configuredModel = config.get<string>('aiModel');
+    if (configuredModel) {
+      try {
+        const models = await this._listCursorModels(apiKey);
+        const match = models.find((model) => model.id === configuredModel || model.displayName === configuredModel);
+        if (match) {
+          return match.id;
+        }
+      } catch {
+        return configuredModel;
+      }
+      return configuredModel;
+    }
+
+    try {
+      const models = await this._listCursorModels(apiKey);
+      return models[0]?.id || DEFAULT_CURSOR_MODEL;
+    } catch {
+      return DEFAULT_CURSOR_MODEL;
+    }
+  }
+
+  private _buildCursorPrompt(userMessage: string, systemPrompt: string): string {
+    const history = this._messages.slice(-10).map((msg, index) => {
+      const role = msg.role === 'assistant' ? 'Assistant' : 'User';
+      const content = this._sanitizeContent(this._getMessageContent(msg)).trim();
+      return `${index + 1}. ${role}: ${content}`;
+    }).join('\n');
+
+    const sections = [
+      systemPrompt ? `System instructions:\n${systemPrompt}` : '',
+      history ? `Conversation history:\n${history}` : '',
+      `Current user request:\n${userMessage}`
+    ].filter(Boolean);
+
+    return sections.join('\n\n');
+  }
+
+  private async callCursorAgent(userMessage: string, config: vscode.WorkspaceConfiguration, customSystemPrompt?: string): Promise<{ text: string, usage?: string }> {
+    const telemetry = TelemetryService.getInstance();
+    if (!userMessage || !userMessage.trim()) {
+      throw new Error('User message is required for AI requests.');
+    }
+
+    const apiKey = await this._getCursorApiKey(config);
+    if (!apiKey) {
+      throw new Error('Cursor API key is required. Set CURSOR_API_KEY or save it in AI Settings.');
+    }
+
+    const { Agent } = await this._loadCursorSdk();
+    const model = await this._resolveCursorModel(config, apiKey);
+    const systemPrompt = customSystemPrompt !== undefined ? customSystemPrompt : this.buildSystemPrompt();
+    const prompt = this._buildCursorPrompt(userMessage, systemPrompt);
+    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.cwd();
+
+    this._cancellationTokenSource = new vscode.CancellationTokenSource();
+    let agent: any;
+
+    try {
+      agent = await Agent.create({
+        apiKey,
+        model: { id: model },
+        local: { cwd: workspaceRoot }
+      });
+
+      const run = await agent.send({ text: prompt });
+      const cancellationListener = (this._cancellationTokenSource.token as any).onCancellationRequested?.(() => {
+        void run.cancel();
+      }) ?? { dispose: () => undefined };
+
+      try {
+        const result = await run.wait();
+        cancellationListener.dispose();
+
+        if (result.status === 'cancelled') {
+          throw new Error('AI request cancelled.');
+        }
+
+        const responseText = result.result || '';
+        if (!responseText.trim()) {
+          throw new Error('AI model returned an empty response. Please retry or select a different model.');
+        }
+
+        const usage = result.durationMs ? `Cursor · ${result.durationMs}ms` : undefined;
+        telemetry.trackEvent('ai_request', { provider: 'cursor', success: true });
+        return { text: responseText, usage };
+      } catch (error) {
+        cancellationListener.dispose();
+        throw error;
+      }
+    } catch (error) {
+      telemetry.trackEvent('ai_request', { provider: 'cursor', success: false });
+      throw error;
+    } finally {
+      if (this._cancellationTokenSource) {
+        this._cancellationTokenSource.dispose();
+        this._cancellationTokenSource = null;
+      }
+      try {
+        agent?.close();
+      } catch {
+        // ignore cleanup errors
       }
     }
   }
@@ -1205,6 +1351,27 @@ The UI will automatically parse this and show clickable suggestion bubbles.`;
         }
         const anyModels = await this._selectChatModelsWithTimeout({});
         return anyModels.length > 0 ? (anyModels[0].name || anyModels[0].id) : 'VS Code LM (No Models)';
+      } else if (provider === 'cursor') {
+        const apiKey = await this._getCursorApiKey(config);
+        if (configuredModel) {
+          try {
+            const models = await this._listCursorModels(apiKey);
+            const matchingModel = models.find((model) => model.id === configuredModel || model.displayName === configuredModel);
+            if (matchingModel) {
+              return matchingModel.displayName || matchingModel.id;
+            }
+          } catch {
+            return configuredModel;
+          }
+          return configuredModel;
+        }
+
+        try {
+          const models = await this._listCursorModels(apiKey);
+          return models[0]?.displayName || models[0]?.id || 'Cursor (No Models)';
+        } catch {
+          return 'Cursor';
+        }
       } else {
         return configuredModel || this._getDefaultModel(provider);
       }
@@ -1216,6 +1383,7 @@ The UI will automatically parse this and show clickable suggestion bubbles.`;
   private _getDefaultModel(provider: string): string {
     switch (provider) {
       case 'github': return DEFAULT_GITHUB_MODEL;
+      case 'cursor': return DEFAULT_CURSOR_MODEL;
       case 'openai': return 'gpt-4o';
       case 'anthropic': return 'claude-3-5-sonnet-20241022';
       case 'gemini': return 'gemini-1.5-flash';

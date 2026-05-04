@@ -1,4 +1,5 @@
 import { ConnectionConfig } from '../common/types';
+import { SqlParser } from '../providers/kernel/SqlParser';
 
 /**
  * Execution plan performance metrics extracted from EXPLAIN JSON
@@ -200,16 +201,20 @@ export class QueryAnalyzer {
 
     // Detect ALTER operations
     const alterMatch = normalizedQuery.match(
-      /\bALTER\s+(TABLE|DATABASE|SCHEMA|VIEW|FUNCTION|PROCEDURE)\s+([^\s;]+)/i
+      /\bALTER\s+(TABLE|DATABASE|SCHEMA|VIEW|FUNCTION|PROCEDURE)\s+([^\s;]+)(?:\s+(.+?))?(?:;|$)/i
     );
     if (alterMatch) {
+      const objectType = alterMatch[1].toLowerCase();
+      const objectName = alterMatch[2];
+      const alterAction = (alterMatch[3] || '').trim();
+      const actionSummary = alterAction ? ` (${alterAction})` : '';
       operations.push({
         type: 'ALTER',
         severity: 'high',
-        reason: `Altering ${alterMatch[1].toLowerCase()}: ${alterMatch[2]}`,
-        affectedObjects: [alterMatch[2]],
+        reason: `Altering ${objectType}: ${objectName}${actionSummary}`,
+        affectedObjects: [objectName],
         hasWhereClause: false,
-        estimatedImpact: 'Schema changes may affect dependent objects',
+        estimatedImpact: this.describeAlterImpact(alterAction),
       });
     }
 
@@ -258,6 +263,27 @@ export class QueryAnalyzer {
         ? this.buildWarningMessage(operations, connection)
         : undefined,
     };
+  }
+
+  /**
+   * Whether successfully executing this statement should drop SQL completion caches
+   * (objects/columns/FKs) for the current database.
+   */
+  public isCatalogInvalidatingSql(sql: string): boolean {
+    const q = SqlParser.stripCommentsAndStrings(sql).trim();
+    if (!q) {
+      return false;
+    }
+    return /^\s*(CREATE|ALTER|DROP)\s+/i.test(q) || /^\s*TRUNCATE\s+/i.test(q);
+  }
+
+  /** Session changes that affect completion search_path ordering (refresh catalog cache). */
+  public isSearchPathChangingSql(sql: string): boolean {
+    const q = SqlParser.stripCommentsAndStrings(sql).trim();
+    if (!q) {
+      return false;
+    }
+    return /^\s*set\s+search_path\b/i.test(q);
   }
 
   /**
@@ -317,28 +343,57 @@ export class QueryAnalyzer {
     operations: DangerousOperation[],
     connection?: ConnectionConfig
   ): boolean {
-    // Always require confirmation for critical operations
-    if (operations.some((op) => op.severity === 'critical')) {
+    // Always require confirmation for destructive operations.
+    if (operations.some((op) => ['DROP', 'TRUNCATE', 'DELETE', 'UPDATE', 'ALTER'].includes(op.type))) {
       return true;
     }
 
-    // Require confirmation for high severity on production
+    // Require confirmation for CREATE on production.
     if (
       connection?.environment === 'production' &&
-      operations.some((op) => op.severity === 'high')
+      operations.some((op) => op.type === 'CREATE')
     ) {
       return true;
     }
 
-    // Require confirmation for medium severity on production without WHERE
+    // Require confirmation for permission changes on production or when they are broad.
     if (
-      connection?.environment === 'production' &&
-      operations.some((op) => op.severity === 'medium' && !op.hasWhereClause)
+      operations.some((op) => op.type === 'GRANT' || op.type === 'REVOKE') &&
+      (connection?.environment === 'production' || operations.some((op) => !op.hasWhereClause))
     ) {
       return true;
     }
 
     return false;
+  }
+
+  /**
+   * Describe the impact of an ALTER TABLE action using the specific subcommand when possible.
+   */
+  private describeAlterImpact(alterAction: string): string {
+    const action = alterAction.toUpperCase();
+    if (action.startsWith('ADD COLUMN')) {
+      return 'New column will be added to the table';
+    }
+    if (action.startsWith('DROP COLUMN')) {
+      return 'Column and its data may be removed';
+    }
+    if (action.startsWith('ALTER COLUMN')) {
+      return 'Existing column definition may change';
+    }
+    if (action.startsWith('RENAME TO') || action.startsWith('RENAME COLUMN')) {
+      return 'Object names will change and dependent queries may break';
+    }
+    if (action.startsWith('SET DATA TYPE')) {
+      return 'Column data type will change and may require a table rewrite';
+    }
+    if (action.startsWith('ADD CONSTRAINT')) {
+      return 'A new constraint will be enforced on future writes';
+    }
+    if (action.startsWith('DROP CONSTRAINT')) {
+      return 'An existing constraint will be removed';
+    }
+    return 'Schema changes may affect dependent objects';
   }
 
   /**

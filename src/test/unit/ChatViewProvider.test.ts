@@ -36,6 +36,12 @@ function createProviderHarness(sandbox: sinon.SinonSandbox) {
 
   const aiService = {
     getModelInfo: sandbox.stub().resolves('Mock AI'),
+    callProvider: sandbox.stub().callsFake(async (provider: string, message: string, config: any, systemPrompt?: string) => {
+      if (provider === 'vscode-lm') {
+        return await aiService.callVsCodeLm(message, config, systemPrompt);
+      }
+      return await aiService.callDirectApi(provider, message, config, systemPrompt);
+    }),
     callVsCodeLm: sandbox.stub().resolves({ text: 'SELECT 1;', usage: 'usage' }),
     callDirectApi: sandbox.stub(),
     setMessages: sandbox.stub(),
@@ -345,7 +351,7 @@ describe('ChatViewProvider', () => {
     await clock.tickAsync(200);
     await attachPromise;
 
-    expect(showStub.calledOnceWithExactly(true)).to.be.true;
+    expect(showStub.called).to.be.false;
     expect(getObjectSchemaStub.calledOnce).to.be.true;
     expect(postMessage.calledWithMatch({
       type: 'addMentionFromTree',

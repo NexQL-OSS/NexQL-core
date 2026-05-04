@@ -37,6 +37,7 @@
                     <select id="provider" required>
                         <option value="vscode-lm">VS Code Language Model (GitHub Copilot)</option>
                         <option value="github">GitHub Models (GitHub account)</option>
+                        <option value="cursor">Cursor SDK (local agents)</option>
                         <option value="openai">OpenAI (GPT-4, GPT-3.5)</option>
                         <option value="anthropic">Anthropic (Claude)</option>
                         <option value="gemini">Google Gemini</option>
@@ -97,6 +98,33 @@
                             <option value="">Select a model...</option>
                         </select>
                         <input type="text" id="model-github" placeholder="openai/gpt-4.1">
+                    </div>
+                </div>
+
+                <!-- Cursor Details -->
+                <div id="provider-cursor" class="provider-details">
+                    <div class="info-box info">
+                        <span class="info-box-icon">⚙️</span>
+                        <div>
+                            <strong>Cursor SDK</strong>
+                            Uses the Cursor TypeScript SDK for model discovery and agent execution. Set a Cursor API key or rely on the CURSOR_API_KEY environment variable.
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="apiKey-cursor">Cursor API Key <span class="required-indicator">*</span> <a href="https://cursor.com/dashboard/integrations" class="label-link" target="_blank">↗ Get key</a></label>
+                        <input type="password" id="apiKey-cursor" placeholder="cursor-… · cursor.com/dashboard/integrations">
+                    </div>
+                    <div class="form-group">
+                        <label for="model-cursor">
+                            Model
+                            <span class="label-description">
+                                <button type="button" class="btn-link list-models-btn" data-provider="cursor">List available models</button>
+                            </span>
+                        </label>
+                        <select id="model-cursor-select" class="hidden">
+                            <option value="">Select a model...</option>
+                        </select>
+                        <input type="text" id="model-cursor" placeholder="composer-2, auto, or another Cursor model">
                     </div>
                 </div>
 

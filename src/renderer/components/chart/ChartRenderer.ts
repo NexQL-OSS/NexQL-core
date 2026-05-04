@@ -1,9 +1,7 @@
-import { Chart, registerables, ChartType, TooltipPositionerFunction } from 'chart.js';
+import { Chart, ChartType, TooltipPositionerFunction } from 'chart.js';
+import { ensureChartJsRegistered } from './chartJsRegister';
 import { createGradient, darkenColor, formatDate, isDateColumn } from '../../utils/formatting';
 import { ChartRenderOptions } from '../../../common/types';
-
-// Register Chart.js components
-Chart.register(...registerables);
 
 // Default colors matching renderer_v2.ts
 export const DEFAULT_COLORS = [
@@ -35,6 +33,7 @@ export class ChartRenderer {
   constructor(private canvas: HTMLCanvasElement) { }
 
   public render(rows: any[], options: ChartRenderOptions) {
+    ensureChartJsRegistered();
     // Destroy existing chart
     this.destroy();
 

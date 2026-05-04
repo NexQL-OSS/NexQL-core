@@ -6,6 +6,11 @@ import { getSchemaCache, SchemaCache } from '../lib/schema-cache';
 import { Debouncer } from '../lib/debounce';
 import { AutoRefreshService } from '../services/AutoRefreshService';
 import { buildTreeItemKey, buildTreeItemKeyFromParts } from './tree/treeItemKey';
+import {
+  PG_VERSION_10,
+  PG_VERSION_11,
+  queryServerVersionNum,
+} from '../lib/postgresServerVersion';
 
 const buildItemKey = buildTreeItemKey;
 
@@ -19,6 +24,8 @@ export class DatabaseTreeProvider implements vscode.TreeDataProvider<DatabaseTre
   private readonly debouncer = new Debouncer();
   private treeView?: vscode.TreeView<DatabaseTreeItem>;
   private _autoRefreshService: AutoRefreshService | undefined;
+  /** Cached `SHOW server_version_num` per connection (invalidated on full tree refresh). */
+  private readonly _serverVersionByConnection = new Map<string, number>();
 
   // Filter, Favorites, and Recent Items
   private _favorites: Set<string> = new Set();
@@ -179,6 +186,16 @@ export class DatabaseTreeProvider implements vscode.TreeDataProvider<DatabaseTre
     this._autoRefreshService?.onConnectionConnected(connectionId);
   }
 
+  private async getCachedServerVersion(connectionId: string, client: PoolClient): Promise<number> {
+    const cached = this._serverVersionByConnection.get(connectionId);
+    if (cached !== undefined) {
+      return cached;
+    }
+    const v = await queryServerVersionNum(client);
+    this._serverVersionByConnection.set(connectionId, v);
+    return v;
+  }
+
   /**
    * Get database objects (tables, views, functions, procedures) for a connection
    * Used by AI Generate Query feature to provide schema context
@@ -195,6 +212,7 @@ export class DatabaseTreeProvider implements vscode.TreeDataProvider<DatabaseTre
     });
 
     try {
+      const pgVer = await queryServerVersionNum(client);
       const objects: Array<{ type: string, schema: string, name: string, columns?: string[] }> = [];
 
       // Fetch tables with columns
@@ -251,8 +269,10 @@ export class DatabaseTreeProvider implements vscode.TreeDataProvider<DatabaseTre
         });
       });
 
-      // Fetch functions
-      const functionsQuery = `
+      // Fetch functions (pg_proc.prokind is PostgreSQL 11+)
+      const functionsQuery =
+        pgVer >= PG_VERSION_11
+          ? `
         SELECT 
           n.nspname as schema_name,
           p.proname as function_name
@@ -260,6 +280,17 @@ export class DatabaseTreeProvider implements vscode.TreeDataProvider<DatabaseTre
         JOIN pg_namespace n ON p.pronamespace = n.oid
         WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
           AND p.prokind = 'f'
+        ORDER BY n.nspname, p.proname
+        LIMIT 50
+      `
+          : `
+        SELECT 
+          n.nspname as schema_name,
+          p.proname as function_name
+        FROM pg_proc p
+        JOIN pg_namespace n ON p.pronamespace = n.oid
+        WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+          AND NOT p.proisagg
         ORDER BY n.nspname, p.proname
         LIMIT 50
       `;
@@ -273,8 +304,9 @@ export class DatabaseTreeProvider implements vscode.TreeDataProvider<DatabaseTre
         });
       });
 
-      // Fetch procedures
-      const proceduresQuery = `
+      // Fetch procedures (SQL procedures are PostgreSQL 11+)
+      if (pgVer >= PG_VERSION_11) {
+        const proceduresQuery = `
         SELECT 
           n.nspname as schema_name,
           p.proname as procedure_name
@@ -286,14 +318,15 @@ export class DatabaseTreeProvider implements vscode.TreeDataProvider<DatabaseTre
         LIMIT 50
       `;
 
-      const proceduresResult = await client.query(proceduresQuery);
-      proceduresResult.rows.forEach((row: any) => {
-        objects.push({
-          type: 'procedure',
-          schema: row.schema_name,
-          name: row.procedure_name
+        const proceduresResult = await client.query(proceduresQuery);
+        proceduresResult.rows.forEach((row: any) => {
+          objects.push({
+            type: 'procedure',
+            schema: row.schema_name,
+            name: row.procedure_name
+          });
         });
-      });
+      }
 
       return objects;
     } finally {
@@ -307,11 +340,25 @@ export class DatabaseTreeProvider implements vscode.TreeDataProvider<DatabaseTre
       // Clear cache on manual refresh to ensure fresh data
       if (!element) {
         this._cache.clear();
+        this._serverVersionByConnection.clear();
       } else if (element.connectionId && element.databaseName) {
         this._cache.invalidateDatabase(element.connectionId, element.databaseName);
       } else if (element.connectionId) {
         this._cache.invalidateConnection(element.connectionId);
       }
+      void import('./SqlCompletionProvider').then(({ SqlCompletionProvider }) => {
+        const completion = SqlCompletionProvider.getInstance();
+        if (!completion) {
+          return;
+        }
+        if (!element) {
+          completion.invalidateAll();
+        } else if (element.connectionId && element.databaseName) {
+          completion.invalidate(element.connectionId, element.databaseName);
+        } else if (element.connectionId) {
+          completion.invalidate(element.connectionId);
+        }
+      });
       this._onDidChangeTreeData.fire(element);
     }, 300); // Debounce for 300ms to batch rapid updates
   }
@@ -456,6 +503,10 @@ export class DatabaseTreeProvider implements vscode.TreeDataProvider<DatabaseTre
         database: dbName,
       });
 
+      const pgVer =
+        element.connectionId != null
+          ? await this.getCachedServerVersion(element.connectionId, client)
+          : PG_VERSION_11;
 
       switch (element.type) {
         case 'connection':
@@ -667,7 +718,14 @@ export class DatabaseTreeProvider implements vscode.TreeDataProvider<DatabaseTre
 
           const fdwCountResult = await client.query('SELECT COUNT(*) FROM pg_foreign_data_wrapper');
           const eventTriggerCountResult = await client.query('SELECT COUNT(*) FROM pg_event_trigger');
-          const publicationCountResult = await client.query('SELECT COUNT(*) FROM pg_publication');
+
+          let publicationCount = 0;
+          try {
+            const publicationCountResult = await client.query('SELECT COUNT(*) FROM pg_publication');
+            publicationCount = publicationCountResult.rows[0].count;
+          } catch {
+            // pg_publication exists only in PostgreSQL 10+ (logical replication)
+          }
 
           let subscriptionCount = 0;
           try {
@@ -683,7 +741,7 @@ export class DatabaseTreeProvider implements vscode.TreeDataProvider<DatabaseTre
             new DatabaseTreeItem('Cron Jobs', vscode.TreeItemCollapsibleState.Collapsed, 'category', element.connectionId, element.databaseName, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, cronJobCount),
             new DatabaseTreeItem('Foreign Data Wrappers', vscode.TreeItemCollapsibleState.Collapsed, 'category', element.connectionId, element.databaseName, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, fdwCountResult.rows[0].count),
             new DatabaseTreeItem('Event Triggers', vscode.TreeItemCollapsibleState.Collapsed, 'category', element.connectionId, element.databaseName, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, eventTriggerCountResult.rows[0].count),
-            new DatabaseTreeItem('Publications', vscode.TreeItemCollapsibleState.Collapsed, 'category', element.connectionId, element.databaseName, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, publicationCountResult.rows[0].count),
+            new DatabaseTreeItem('Publications', vscode.TreeItemCollapsibleState.Collapsed, 'category', element.connectionId, element.databaseName, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, publicationCount),
             new DatabaseTreeItem('Subscriptions', vscode.TreeItemCollapsibleState.Collapsed, 'category', element.connectionId, element.databaseName, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, subscriptionCount)
           ];
 
@@ -1068,8 +1126,7 @@ i.relname as index_name,
                  JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = t.table_schema
                  WHERE t.table_schema = $1
                    AND t.table_type = 'BASE TABLE'
-                   AND NOT c.relispartition
-                   AND t.table_name NOT LIKE 'pg\_%' ESCAPE '\\'
+                   ${pgVer >= PG_VERSION_10 ? 'AND NOT c.relispartition\n                   ' : ''}AND t.table_name NOT LIKE 'pg\_%' ESCAPE '\\'
                    AND t.table_name NOT LIKE 'sql\_%' ESCAPE '\\'
                  ORDER BY t.table_name`,
                 [element.schema]
@@ -1175,6 +1232,9 @@ i.relname as index_name,
                 });
 
             case 'Procedures':
+              if (pgVer < PG_VERSION_11) {
+                return [];
+              }
               const procedureResult = await client.query(
                 `SELECT p.proname AS procedure_name
                  FROM pg_proc p
@@ -1284,7 +1344,10 @@ i.relname as index_name,
 
             case 'Sequences':
               const seqResult = await client.query(
-                "SELECT sequencename, last_value FROM pg_sequences WHERE schemaname = $1 ORDER BY sequencename",
+                pgVer >= PG_VERSION_10
+                  ? 'SELECT sequencename, last_value FROM pg_sequences WHERE schemaname = $1 ORDER BY sequencename'
+                  : `SELECT sequence_name AS sequencename, NULL::bigint AS last_value
+                     FROM information_schema.sequences WHERE sequence_schema = $1 ORDER BY sequence_name`,
                 [element.schema]
               );
               return seqResult.rows.map((row: any) => new DatabaseTreeItem(
@@ -1331,10 +1394,11 @@ i.relname as index_name,
               ));
 
             case 'Aggregates':
-              const aggResult = await client.query(
-                `SELECT DISTINCT p.proname FROM pg_proc p JOIN pg_namespace n ON p.pronamespace = n.oid WHERE p.prokind = 'a' AND n.nspname = $1 ORDER BY p.proname`,
-                [element.schema]
-              );
+              const aggListSql =
+                pgVer >= PG_VERSION_11
+                  ? `SELECT DISTINCT p.proname FROM pg_proc p JOIN pg_namespace n ON p.pronamespace = n.oid WHERE p.prokind = 'a' AND n.nspname = $1 ORDER BY p.proname`
+                  : `SELECT DISTINCT p.proname FROM pg_proc p JOIN pg_namespace n ON p.pronamespace = n.oid WHERE p.proisagg AND n.nspname = $1 ORDER BY p.proname`;
+              const aggResult = await client.query(aggListSql, [element.schema]);
               return aggResult.rows.map((row: any) => new DatabaseTreeItem(
                 row.proname,
                 vscode.TreeItemCollapsibleState.None,
@@ -1376,10 +1440,16 @@ i.relname as index_name,
               ));
 
             case 'Publications':
-              const pubResult = await client.query(
-                `SELECT pubname FROM pg_publication ORDER BY pubname`
-              );
-              return pubResult.rows.map((row: any) => new DatabaseTreeItem(
+              let pubRows: any[] = [];
+              try {
+                const pubResult = await client.query(
+                  `SELECT pubname FROM pg_publication ORDER BY pubname`
+                );
+                pubRows = pubResult.rows;
+              } catch {
+                // pg_publication exists only in PostgreSQL 10+
+              }
+              return pubRows.map((row: any) => new DatabaseTreeItem(
                 row.pubname,
                 vscode.TreeItemCollapsibleState.None,
                 'publication',
@@ -1431,8 +1501,7 @@ i.relname as index_name,
              JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = t.table_schema
              WHERE t.table_schema = $1
                AND t.table_type = 'BASE TABLE'
-               AND NOT c.relispartition
-               AND t.table_name NOT LIKE 'pg\\_%' ESCAPE E'\\\\'
+               ${pgVer >= PG_VERSION_10 ? 'AND NOT c.relispartition\n               ' : ''}AND t.table_name NOT LIKE 'pg\\_%' ESCAPE E'\\\\'
                AND t.table_name NOT LIKE 'sql\\_%' ESCAPE E'\\\\'`,
             [element.schema]
           );
@@ -1452,13 +1521,16 @@ i.relname as index_name,
             [element.schema]
           );
 
-          const proceduresCountResult = await client.query(
-            `SELECT COUNT(*)
+          const proceduresCountResult =
+            pgVer >= PG_VERSION_11
+              ? await client.query(
+                  `SELECT COUNT(*)
              FROM pg_proc p
              JOIN pg_namespace n ON n.oid = p.pronamespace
              WHERE n.nspname = $1 AND p.prokind = 'p'`,
-            [element.schema]
-          );
+                  [element.schema]
+                )
+              : { rows: [{ count: 0 }] };
 
           const materializedViewsCountResult = await client.query(
             "SELECT COUNT(*) FROM pg_matviews WHERE schemaname = $1",
@@ -1476,7 +1548,9 @@ i.relname as index_name,
           );
 
           const seqCountResult = await client.query(
-            "SELECT COUNT(*) FROM pg_sequences WHERE schemaname = $1",
+            pgVer >= PG_VERSION_10
+              ? 'SELECT COUNT(*) FROM pg_sequences WHERE schemaname = $1'
+              : 'SELECT COUNT(*) FROM information_schema.sequences WHERE sequence_schema = $1',
             [element.schema]
           );
 
@@ -1491,7 +1565,9 @@ i.relname as index_name,
           );
 
           const aggCountResult = await client.query(
-            "SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON p.pronamespace = n.oid WHERE p.prokind = 'a' AND n.nspname = $1",
+            pgVer >= PG_VERSION_11
+              ? "SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON p.pronamespace = n.oid WHERE p.prokind = 'a' AND n.nspname = $1"
+              : "SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON p.pronamespace = n.oid WHERE p.proisagg AND n.nspname = $1",
             [element.schema]
           );
 

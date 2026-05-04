@@ -97,7 +97,10 @@ export const window = {
 
 export const commands = { registerCommand: (_name: string, _cb?: any) => ({ dispose: () => { } }), executeCommand: async (_cmd: string, ..._args: any[]) => undefined } as any;
 
-export const languages = { registerCompletionItemProvider: (_selector: any, _provider: any) => ({ dispose: () => { } }) } as any;
+export const languages = {
+  registerCompletionItemProvider: (_selector: any, _provider: any) => ({ dispose: () => { } }),
+  registerSignatureHelpProvider: (_selector: any, _provider: any, ..._chars: string[]) => ({ dispose: () => { } })
+} as any;
 
 export const TreeItemCollapsibleState = { None: 0, Collapsed: 1, Expanded: 2 } as const;
 export type TreeItemCollapsibleState = typeof TreeItemCollapsibleState[keyof typeof TreeItemCollapsibleState];

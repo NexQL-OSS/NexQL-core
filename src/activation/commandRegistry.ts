@@ -6,6 +6,7 @@ import { SavedQueriesTreeProvider } from '../providers/Phase7TreeProviders';
 import { NotebooksTreeProvider } from '../providers/NotebooksTreeProvider';
 import { cmdPasteTable } from '../commands/schema';
 import { getCommandSpecs } from './commandSpecs';
+import { WhatsNewManager } from './WhatsNewManager';
 import { TelemetryService } from '../services/TelemetryService';
 
 /**
@@ -16,6 +17,7 @@ export function registerAllCommands(
   databaseTreeProvider: DatabaseTreeProvider,
   chatViewProviderInstance: ChatViewProvider | undefined,
   outputChannel: vscode.OutputChannel,
+  whatsNewManager: WhatsNewManager,
   savedQueriesTreeProvider?: SavedQueriesTreeProvider,
   notebooksTreeProvider?: NotebooksTreeProvider
 ): void {
@@ -24,6 +26,7 @@ export function registerAllCommands(
     databaseTreeProvider,
     chatViewProviderInstance,
     outputChannel,
+    whatsNewManager,
     savedQueriesTreeProvider,
     notebooksTreeProvider
   );

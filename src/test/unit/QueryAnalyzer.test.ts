@@ -34,6 +34,7 @@ describe('QueryAnalyzer', () => {
       hasWhereClause: false,
       estimatedImpact: 'All rows will be deleted'
     });
+    expect(truncateResult.operations[0].reason).to.contain('Truncating table: audit_log');
     expect(truncateResult.riskScore).to.equal(40);
     expect(truncateResult.requiresConfirmation).to.be.true;
 
@@ -52,10 +53,12 @@ describe('QueryAnalyzer', () => {
       type: 'ALTER',
       severity: 'high',
       hasWhereClause: false,
-      estimatedImpact: 'Schema changes may affect dependent objects'
+      estimatedImpact: 'New column will be added to the table'
     });
+    expect(alterResult.operations[0].reason).to.contain('ADD COLUMN active boolean');
     expect(alterResult.riskScore).to.equal(25);
-    expect(alterResult.requiresConfirmation).to.be.false;
+    expect(alterResult.requiresConfirmation).to.be.true;
+    expect(alterResult.warningMessage).to.contain('ADD COLUMN active boolean');
 
     const createResult = analyzer.analyzeQuery('CREATE TABLE public.logs (id int)', production);
     expect(createResult.operations[0]).to.include({
@@ -83,7 +86,7 @@ describe('QueryAnalyzer', () => {
       hasWhereClause: false,
       estimatedImpact: 'Permission changes'
     });
-    expect(revokeResult.requiresConfirmation).to.be.false;
+    expect(revokeResult.requiresConfirmation).to.be.true;
   });
 
   it('distinguishes write queries with and without WHERE clauses', () => {
@@ -105,7 +108,7 @@ describe('QueryAnalyzer', () => {
       hasWhereClause: true
     });
     expect(deleteWithWhere.riskScore).to.equal(10);
-    expect(deleteWithWhere.requiresConfirmation).to.be.false;
+    expect(deleteWithWhere.requiresConfirmation).to.be.true;
 
     const updateWithoutWhere = analyzer.analyzeQuery('UPDATE public.users SET active = false', production);
     expect(updateWithoutWhere.operations[0]).to.include({
@@ -123,7 +126,7 @@ describe('QueryAnalyzer', () => {
       hasWhereClause: true
     });
     expect(updateWithWhere.riskScore).to.equal(20);
-    expect(updateWithWhere.requiresConfirmation).to.be.false;
+    expect(updateWithWhere.requiresConfirmation).to.be.true;
   });
 
   it('recognizes read-only queries after stripping comments and whitespace', () => {
@@ -208,7 +211,9 @@ describe('QueryAnalyzer', () => {
       maxExecutionTime: 120,
       stdDev: 5,
       sampleCount: 4,
-      lastUpdated: Date.now()
+      lastUpdated: Date.now(),
+      m2: 0,
+      schemaVersion: 0
     }, explainPlan);
     expect(degraded.isDegraded).to.be.true;
     expect(degraded.degradationPercent).to.equal(50);
@@ -221,7 +226,9 @@ describe('QueryAnalyzer', () => {
       maxExecutionTime: 120,
       stdDev: 5,
       sampleCount: 4,
-      lastUpdated: Date.now()
+      lastUpdated: Date.now(),
+      m2: 0,
+      schemaVersion: 0
     }, explainPlan);
     expect(withinBaseline.isDegraded).to.be.false;
     expect(withinBaseline.degradationPercent).to.equal(0);
@@ -234,8 +241,9 @@ describe('QueryAnalyzer', () => {
     const heavy = analyzer.analyzeQuery('DROP TABLE users; TRUNCATE audit_logs;', staging);
     expect(heavy.isDangerous).to.be.true;
     expect(heavy.operations).to.have.length.greaterThan(0);
-    expect(heavy.riskScore).to.equal(60);
+    expect(heavy.riskScore).to.equal(100);
     expect(heavy.warningMessage).to.contain('STAGING DATABASE');
+    expect(heavy.warningMessage).to.contain('Truncating table: audit_logs');
 
     const readOnly = analyzer.analyzeQuery('SELECT * FROM users WHERE id = 1');
     expect(readOnly.isDangerous).to.be.false;
@@ -246,5 +254,12 @@ describe('QueryAnalyzer', () => {
 
     expect(analyzer.isReadOnlyQuery('/* cleanup */\nWITH x AS (SELECT 1) SELECT * FROM x;')).to.be.true;
     expect(analyzer.isReadOnlyQuery('WITH d AS (DELETE FROM users WHERE id=1) SELECT * FROM d;')).to.be.false;
+  });
+
+  it('detects SET search_path as session metadata invalidating completion ordering', () => {
+    expect(analyzer.isSearchPathChangingSql('SET search_path TO foo, public')).to.be.true;
+    expect(analyzer.isSearchPathChangingSql('SET search_path = bar')).to.be.true;
+    expect(analyzer.isSearchPathChangingSql('SELECT set_search_path')).to.be.false;
+    expect(analyzer.isSearchPathChangingSql('SELECT 1')).to.be.false;
   });
 });

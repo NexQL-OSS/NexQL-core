@@ -237,4 +237,24 @@ describe('SqlParser', () => {
       expect(SqlParser.hasNamedParameters('SELECT 1::int')).to.be.false;
     });
   });
+
+  describe('stripCommentsAndStrings', () => {
+    it('removes comments and string literals while keeping code tokens', () => {
+      const sql = "SELECT 'value -- not comment', col /* block */ FROM \"My Table\" -- line comment\nWHERE name = $$literal$$;";
+      const stripped = SqlParser.stripCommentsAndStrings(sql);
+      expect(stripped).to.contain('SELECT');
+      expect(stripped).to.contain('FROM "My Table"');
+      expect(stripped).to.contain('WHERE name =');
+      expect(stripped).to.not.contain('value -- not comment');
+      expect(stripped).to.not.contain('block');
+      expect(stripped).to.not.contain('line comment');
+    });
+  });
+
+  describe('normalizeIdentifier', () => {
+    it('lowercases unquoted identifiers and preserves quoted identifiers', () => {
+      expect(SqlParser.normalizeIdentifier('Users')).to.equal('users');
+      expect(SqlParser.normalizeIdentifier('"CaseSensitive"')).to.equal('CaseSensitive');
+    });
+  });
 });

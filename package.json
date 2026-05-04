@@ -1,7 +1,7 @@
 {
   "name": "postgres-explorer",
   "displayName": "PgStudio (PostgreSQL Explorer)",
-  "version": "1.2.3-nightly",
+  "version": "1.2.4",
   "description": "PostgreSQL database explorer for VS Code with notebook support [Nightly]",
   "publisher": "ric-v",
   "private": false,
@@ -692,6 +692,12 @@
         "icon": "$(cloud-upload)"
       },
       {
+        "command": "postgres-explorer.openBackupWorkspace",
+        "title": "Backup & Restore Workspace: Choose Connection & Database…",
+        "category": "PostgreSQL",
+        "icon": "$(archive)"
+      },
+      {
         "command": "postgres-explorer.generateCreateScript",
         "title": "CREATE Script",
         "icon": "$(file-code)"
@@ -1120,6 +1126,18 @@
         "category": "PgStudio: Schema"
       },
       {
+        "command": "postgres-explorer.openErdMulti",
+        "title": "View ERD (pick schemas)…",
+        "icon": "$(type-hierarchy)",
+        "category": "PgStudio: Schema"
+      },
+      {
+        "command": "postgres-explorer.importDbml",
+        "title": "Import DBML → CREATE TABLE…",
+        "icon": "$(file-code)",
+        "category": "PgStudio: Schema"
+      },
+      {
         "command": "postgres-explorer.importData",
         "title": "Import Data…",
         "icon": "$(cloud-upload)",
@@ -1162,6 +1180,11 @@
       {
         "command": "postgres-explorer.telemetry.setModeDetailed",
         "title": "Telemetry: Detailed",
+        "category": "PgStudio"
+      },
+      {
+        "command": "postgres-explorer.showWhatsNew",
+        "title": "What's New in PgStudio",
         "category": "PgStudio"
       },
       {
@@ -1719,6 +1742,7 @@
           "enum": [
             "vscode-lm",
             "github",
+            "cursor",
             "openai",
             "anthropic",
             "gemini",
@@ -1837,6 +1861,16 @@
           "default": "hex0x",
           "description": "Display format for binary (bytea) columns in query results: 0x-prefixed hex, PostgreSQL \\x hex, or JSON Buffer shape (debug)."
         },
+        "postgresExplorer.query.executionFailureStrategy": {
+          "type": "string",
+          "enum": [
+            "continue-on-error",
+            "fail-on-error",
+            "prompt-on-error"
+          ],
+          "default": "continue-on-error",
+          "description": "Strategy when a statement fails in multi-statement execution: 'continue-on-error' (execute remaining, show summary), 'fail-on-error' (stop immediately), 'prompt-on-error' (ask user per failure)."
+        },
         "postgresExplorer.parameters.cacheLastValues": {
           "type": "boolean",
           "default": true,
@@ -1924,6 +1958,53 @@
         "editor.acceptSuggestionOnEnter": "on"
       }
     },
+    "taskDefinitions": [
+      {
+        "type": "pgstudio-pgdump",
+        "required": [
+          "connectionId",
+          "databaseName",
+          "outputPath"
+        ],
+        "properties": {
+          "connectionId": {
+            "type": "string",
+            "description": "Connection id (postgresExplorer.connections[].id)"
+          },
+          "databaseName": {
+            "type": "string",
+            "description": "Database to dump"
+          },
+          "outputPath": {
+            "type": "string",
+            "description": "Output file or directory path (supports ${workspaceFolder})"
+          },
+          "dumpFormat": {
+            "type": "string",
+            "enum": [
+              "custom",
+              "plain",
+              "directory",
+              "tar"
+            ],
+            "description": "pg_dump -F mapping",
+            "default": "custom"
+          },
+          "verbose": {
+            "type": "boolean",
+            "default": true
+          },
+          "schemaOnly": {
+            "type": "boolean",
+            "default": false
+          },
+          "dataOnly": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      }
+    ],
     "menus": {
       "notebook/toolbar": [
         {
@@ -2591,6 +2672,11 @@
           "group": "inline@2"
         },
         {
+          "command": "postgres-explorer.openErdMulti",
+          "when": "view == postgresExplorer && viewItem == database",
+          "group": "1_actions"
+        },
+        {
           "command": "postgres-explorer.psqlTool",
           "when": "viewItem == database",
           "group": "postgres-explorer-database@7"
@@ -3205,17 +3291,18 @@
   ],
   "main": "./dist/extension.js",
   "scripts": {
-    "vscode:prepublish": "npm run esbuild-base -- --minify && npm run esbuild-renderer -- --minify",
+    "vscode:prepublish": "npm run esbuild-base -- --minify && npm run esbuild-renderer -- --minify && npm run esbuild-erd-webview -- --minify",
     "prepare:nightly:manifests": "node ./scripts/prepare-nightly-manifests.js",
     "package:prerelease": "npx @vscode/vsce package --pre-release",
     "package:openvsx:nightly": "npx @vscode/vsce package",
-    "esbuild-base": "esbuild ./src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --external:ssh2 --external:pg --format=cjs --platform=node --main-fields=main",
-    "esbuild-renderer": "esbuild ./src/ui/renderer/renderer_v2.ts --bundle --outfile=dist/renderer_v2.js --format=esm --platform=browser",
+    "esbuild-base": "esbuild ./src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --external:ssh2 --external:pg --external:@cursor/sdk --format=cjs --platform=node --main-fields=main",
+    "esbuild-renderer": "esbuild ./src/ui/renderer/renderer_v2.ts --bundle --outdir=dist --format=esm --platform=browser --splitting",
+    "esbuild-erd-webview": "esbuild ./src/schemaDesigner/erd/webview/main.ts --bundle --outfile=dist/erd-webview.js --format=iife --platform=browser",
     "copy-templates": "cp -r templates dist/",
-    "compile": "tsc -p ./ && npm run esbuild-renderer && npm run copy-templates",
+    "compile": "tsc -p ./ && npm run esbuild-renderer && npm run esbuild-erd-webview && npm run copy-templates",
     "watch": "tsc -watch -p ./",
-    "esbuild": "npm run esbuild-base -- --sourcemap && npm run esbuild-renderer -- --sourcemap",
-    "esbuild-watch": "npm run esbuild-base -- --sourcemap --watch & npm run esbuild-renderer -- --sourcemap --watch",
+    "esbuild": "npm run esbuild-base -- --sourcemap && npm run esbuild-renderer -- --sourcemap && npm run esbuild-erd-webview -- --sourcemap",
+    "esbuild-watch": "npm run esbuild-base -- --sourcemap --watch & npm run esbuild-renderer -- --sourcemap --watch & npm run esbuild-erd-webview -- --sourcemap --watch",
     "test": "npm run compile && mocha --loader ./node_modules/ts-node/esm/transpile-only.mjs -r tsconfig-paths/register -r src/test/setup.ts 'src/test/unit/**/*.test.ts'",
     "test:unit": "npm run compile && TS_NODE_PROJECT=src/test/tsconfig.json node -r ts-node/register/transpile-only -r tsconfig-paths/register -r ./src/test/setup.ts ./node_modules/mocha/bin/mocha --exit 'src/test/unit/**/*.test.ts'",
     "test:integration": "npm run compile && ts-mocha -p src/test/tsconfig.json -r tsconfig-paths/register -r src/test/setup.ts 'src/test/integration/**/*.test.ts'",
@@ -3244,8 +3331,12 @@
     "coverage:report": "npx c8 report --temp-directory ./.nyc_output --config .c8rc.phase-report.json --reporter=html --reporter=text"
   },
   "dependencies": {
+    "@cursor/sdk": "^1.0.12",
+    "@dbml/core": "^7.1.2",
     "@types/pg-cursor": "^2.7.2",
     "chart.js": "^4.5.1",
+    "d3-force": "^3.0.0",
+    "d3-selection": "^3.0.0",
     "esbuild": ">=0.28.0",
     "pg": "^8.20.0",
     "pg-cursor": "^2.19.0",
@@ -3254,6 +3345,8 @@
   },
   "devDependencies": {
     "@types/chai": "^5.2.3",
+    "@types/d3-force": "^3.0.10",
+    "@types/d3-selection": "^3.0.11",
     "@types/jsdom": "^28.0.1",
     "@types/mocha": "^10.0.10",
     "@types/module-alias": "^2.0.4",

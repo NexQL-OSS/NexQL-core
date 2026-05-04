@@ -187,12 +187,7 @@ export class SaveQueryPanel {
       }
 
       // Call AI
-      let result: { text: string };
-      if (provider === 'vscode-lm') {
-        result = await this._aiService.callVsCodeLm(prompt, config, '');
-      } else {
-        result = await this._aiService.callDirectApi(provider, prompt, config, '');
-      }
+      const result = await this._aiService.callProvider(provider, prompt, config, '');
 
       // Clean up the response
       let generated = result.text.trim();
@@ -205,23 +200,17 @@ export class SaveQueryPanel {
       if (field === 'all') {
         // Generate title
         const titlePrompt = `Analyze this SQL query and generate a SHORT, DESCRIPTIVE title (max 6 words):\n\n${this._queryText}\n\nRespond with ONLY the title, nothing else.`;
-        const titleResult = provider === 'vscode-lm' 
-          ? await this._aiService.callVsCodeLm(titlePrompt, config, '')
-          : await this._aiService.callDirectApi(provider, titlePrompt, config, '');
+        const titleResult = await this._aiService.callProvider(provider, titlePrompt, config, '');
         const title = titleResult.text.trim().replace(/^["']|["']$/g, '').trim();
 
         // Generate description
         const descPrompt = `Analyze this SQL query and generate a brief description (1-2 sentences) explaining what it does:\n\n${this._queryText}\n\nRespond with ONLY the description, nothing else.`;
-        const descResult = provider === 'vscode-lm'
-          ? await this._aiService.callVsCodeLm(descPrompt, config, '')
-          : await this._aiService.callDirectApi(provider, descPrompt, config, '');
+        const descResult = await this._aiService.callProvider(provider, descPrompt, config, '');
         const description = descResult.text.trim().replace(/^["']|["']$/g, '').trim();
 
         // Generate tags
         const tagsPrompt = `Analyze this SQL query and generate 3-5 relevant tags (single words or short phrases) separated by commas:\n\n${this._queryText}\n\nRespond with ONLY the comma-separated tags, nothing else.`;
-        const tagsResult = provider === 'vscode-lm'
-          ? await this._aiService.callVsCodeLm(tagsPrompt, config, '')
-          : await this._aiService.callDirectApi(provider, tagsPrompt, config, '');
+        const tagsResult = await this._aiService.callProvider(provider, tagsPrompt, config, '');
         const tags = tagsResult.text.trim().replace(/^["']|["']$/g, '').trim();
 
         this._panel.webview.postMessage({

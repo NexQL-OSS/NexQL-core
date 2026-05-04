@@ -56,4 +56,22 @@ SELECT * FROM cron.job ORDER BY jobid DESC LIMIT 5;`,
 SELECT jobid, jobname, schedule, active, database, username
 FROM cron.job
 ORDER BY jobid;`,
+
+  /**
+   * Documents that pg_dump scheduling belongs on the server OS or VS Code tasks — not inside cron.schedule SQL.
+   * Includes a harmless maintenance example for pg_cron.
+   */
+  scheduleBackupShellExample: (): string =>
+    `-- pg_cron runs SQL inside PostgreSQL, not your developer machine shell.
+-- For pg_dump on a schedule use: OS cron/systemd on the DB host, or a VS Code task (type pgstudio-pgdump).
+--
+-- Example pg_cron maintenance job:
+
+SELECT cron.schedule(
+  'nightly_vacuum_example',
+  '0 3 * * *',
+  $$VACUUM ANALYZE public.my_table;$$
+);
+
+SELECT * FROM cron.job ORDER BY jobid DESC LIMIT 5;`,
 };

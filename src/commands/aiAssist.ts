@@ -160,15 +160,8 @@ export async function cmdAiAssist(cell: vscode.NotebookCell | undefined, context
       const systemPrompt = buildPrompt(userInput, cellContext);
       const userTrigger = "Please provide the SQL query based on the instructions above.";
 
-      let responseText = '';
-
-      if (provider === 'vscode-lm') {
-        const result = await aiService.callVsCodeLm(userTrigger, config, systemPrompt);
-        responseText = result.text;
-      } else {
-        const result = await aiService.callDirectApi(provider, userTrigger, config, systemPrompt);
-        responseText = result.text;
-      }
+      const result = await aiService.callProvider(provider, userTrigger, config, systemPrompt);
+      const responseText = result.text;
       const { query, placement } = parseAiResponse(responseText);
       const cleanedQuery = StringUtils.cleanMarkdownCodeBlocks(query);
 

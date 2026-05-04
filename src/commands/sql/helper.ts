@@ -4,6 +4,8 @@
  * that were previously in helpers/helper.ts
  */
 
+import { PG_VERSION_10, PG_VERSION_11 } from '../../lib/postgresServerVersion';
+
 /**
  * Common SQL query templates
  */
@@ -329,9 +331,12 @@ WHERE schemaname = '${schema}' AND relname = '${table}'`,
 
     /**
      * Build table info query
+     * @param serverVersionNum from `SHOW server_version_num` (default assumes PostgreSQL 16+ features).
      */
-    tableInfo: (schema: string, table: string): string =>
-        `SELECT 
+    tableInfo: (schema: string, table: string, serverVersionNum: number = 160_000): string => {
+        const isPartitionExpr =
+            serverVersionNum >= PG_VERSION_10 ? 'c.relispartition as is_partition' : 'false AS is_partition';
+        return `SELECT 
     c.relname as table_name,
     n.nspname as schema_name,
     pg_catalog.pg_get_userbyid(c.relowner) as owner,
@@ -339,10 +344,11 @@ WHERE schemaname = '${schema}' AND relname = '${table}'`,
     c.reltuples::bigint as row_estimate,
     c.relpages as page_count,
     c.relhasindex as has_indexes,
-    c.relispartition as is_partition
+    ${isPartitionExpr}
 FROM pg_class c
 JOIN pg_namespace n ON n.oid = c.relnamespace
-WHERE n.nspname = '${schema}' AND c.relname = '${table}'`,
+WHERE n.nspname = '${schema}' AND c.relname = '${table}'`;
+    },
 
     /**
      * Build view definition query
@@ -585,9 +591,14 @@ WHERE n.nspname = '${schema}'`,
 
     /**
      * Build schema object counts query
+     * @param serverVersionNum from `SHOW server_version_num` (default assumes PostgreSQL 16+).
      */
-    schemaObjectCounts: (schema: string): string =>
-        `SELECT 
+    schemaObjectCounts: (schema: string, serverVersionNum: number = 160_000): string => {
+        const procedureCountExpr =
+            serverVersionNum >= PG_VERSION_11
+                ? `(SELECT COUNT(*) FROM pg_proc p WHERE p.pronamespace = n.oid AND p.prokind = 'p') as procedure_count`
+                : `0::bigint as procedure_count`;
+        return `SELECT 
     COUNT(*) FILTER (WHERE c.relkind = 'r') as table_count,
     COUNT(*) FILTER (WHERE c.relkind = 'v') as view_count,
     COUNT(*) FILTER (WHERE c.relkind = 'm') as matview_count,
@@ -595,7 +606,7 @@ WHERE n.nspname = '${schema}'`,
     COUNT(*) FILTER (WHERE c.relkind = 'f') as foreign_table_count,
     COUNT(*) FILTER (WHERE c.relkind = 'p') as partitioned_table_count,
     (SELECT COUNT(*) FROM pg_proc p WHERE p.pronamespace = n.oid) as function_count,
-    (SELECT COUNT(*) FROM pg_proc p WHERE p.pronamespace = n.oid AND p.prokind = 'p') as procedure_count,
+    ${procedureCountExpr},
     (SELECT COUNT(*) FROM pg_type t WHERE t.typnamespace = n.oid AND t.typtype = 'c') as type_count,
     (SELECT COUNT(*) FROM pg_trigger t 
      JOIN pg_class tc ON t.tgrelid = tc.oid 
@@ -603,7 +614,8 @@ WHERE n.nspname = '${schema}'`,
 FROM pg_namespace n
 LEFT JOIN pg_class c ON c.relnamespace = n.oid
 WHERE n.nspname = '${schema}'
-GROUP BY n.oid`,
+GROUP BY n.oid`;
+    },
 
     /**
      * Build schema size query

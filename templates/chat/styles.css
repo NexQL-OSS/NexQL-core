@@ -69,12 +69,14 @@
           z-index: 100;
           opacity: 0;
           visibility: hidden;
+          pointer-events: none;
           transition: all var(--transition-normal);
         }
 
         .history-overlay.visible {
           opacity: 1;
           visibility: visible;
+          pointer-events: auto;
         }
 
         .history-panel {

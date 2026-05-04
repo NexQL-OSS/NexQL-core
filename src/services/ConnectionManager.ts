@@ -121,16 +121,20 @@ export class ConnectionManager {
     const telemetry = TelemetryService.getInstance();
     const key = this.getConnectionKey(config);
     let pool = this.pools.get(key);
+    let trackNewPooledConnection = false;
 
     if (!pool) {
       const clientConfig = await this.createClientConfig(config);
       pool = this.createPool(clientConfig, key);
       this.pools.set(key, pool);
+      trackNewPooledConnection = true;
     }
 
     try {
       const client = await pool.connect();
-      telemetry.trackEvent('connection_opened', { connectionKind: 'pooled' });
+      if (trackNewPooledConnection) {
+        telemetry.trackEvent('connection_opened', { connectionKind: 'pooled' });
+      }
 
       // Apply read-only mode if configured
       if (config.readOnlyMode) {

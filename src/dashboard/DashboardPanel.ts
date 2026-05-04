@@ -177,12 +177,7 @@ export class DashboardPanel {
       // Pass conversation history so the AI has multi-turn context
       this._aiService.setMessages(this._conversationMessages);
 
-      let result: { text: string };
-      if (provider === 'vscode-lm') {
-        result = await this._aiService.callVsCodeLm(question, config, systemPrompt);
-      } else {
-        result = await this._aiService.callDirectApi(provider, question, config, systemPrompt);
-      }
+      const result = await this._aiService.callProvider(provider, question, config, systemPrompt);
 
       // Persist this turn so follow-up questions have context
       this._conversationMessages.push({ role: 'user', content: question });

@@ -67,6 +67,22 @@ const SNIPPETS = [
   { prompt: 'Explain GROUP BY and aggregation', icon: '📊', text: 'Aggregations' }
 ];
 
+/** Full prompt text for quick-start snippet buttons (CSP: no inline handlers in HTML). */
+const SNIPPET_PROMPT_BY_KEY = {
+  innerJoin:
+    'Show me how INNER JOIN works in PostgreSQL with a practical example — join two tables and explain what rows are included vs excluded.',
+  withCte:
+    'Explain how to write a CTE using WITH cte AS (...) in PostgreSQL. Show a real example and explain when to use a CTE instead of a subquery.',
+  rowNumber:
+    'How does ROW_NUMBER() work as a window function in PostgreSQL? Show an example that numbers rows within a partition and explain PARTITION BY and ORDER BY.',
+  explainAnalyze:
+    'How do I use EXPLAIN ANALYZE in PostgreSQL to diagnose a slow query? Show what the output means and what to look for to find performance bottlenecks.',
+  onConflict:
+    'How does ON CONFLICT work in PostgreSQL for upserts? Show examples of DO NOTHING and DO UPDATE SET, and explain when to use each.',
+  jsonbAgg:
+    'How does jsonb_agg work in PostgreSQL? Show an example that aggregates rows into a JSON array, and explain how to use it with filters and ordering.'
+};
+
 // Hierarchy Navigation
 function navigateToRoot() {
   currentHierarchyPath = { connection: null, database: null, schema: null };
@@ -1211,12 +1227,6 @@ function handleKeyDown(event) {
     sendMessage();
   }
 }
-
-// Auto-resize textarea
-chatInput.addEventListener('input', function () {
-  this.style.height = 'auto';
-  this.style.height = Math.min(this.scrollHeight, 120) + 'px';
-});
 
 // Paste image from clipboard
 chatInput.addEventListener('paste', function (e) {
@@ -2500,5 +2510,64 @@ function groupSessionsByDate(sessions) {
   
   return groups;
 }
+
+/**
+ * Binds UI events in JS (required: CSP `script-src` nonce blocks HTML `onclick` / `oninput` etc.).
+ */
+function wireChatDomEvents() {
+  const historyPanel = document.getElementById('historyPanel');
+  if (historyOverlay) {
+    historyOverlay.addEventListener('click', closeHistory);
+  }
+  if (historyPanel) {
+    historyPanel.addEventListener('click', (e) => e.stopPropagation());
+  }
+  document.getElementById('historyCloseBtn')?.addEventListener('click', toggleHistory);
+  if (historySearch) {
+    historySearch.addEventListener('input', () => filterHistory(historySearch.value));
+  }
+  document.getElementById('btnChatHistory')?.addEventListener('click', toggleHistory);
+  document.getElementById('btnNewChat')?.addEventListener('click', newChat);
+  document.getElementById('aiModelBadge')?.addEventListener('click', openAiSettings);
+
+  document.querySelectorAll('.quick-card').forEach((btn) => {
+    const s = btn.getAttribute('data-suggestion');
+    if (s) {
+      btn.addEventListener('click', () => sendSuggestion(s));
+    }
+  });
+  document.querySelectorAll('.snippet-btn').forEach((btn) => {
+    const key = btn.getAttribute('data-snippet');
+    const text = key && SNIPPET_PROMPT_BY_KEY[key];
+    if (text) {
+      btn.addEventListener('click', () => runSnippet(text));
+    }
+  });
+
+  document.getElementById('errorRetryBtn')?.addEventListener('click', retryLastMessage);
+  document.getElementById('errorConfigureBtn')?.addEventListener('click', openAiSettings);
+  document.getElementById('errorDismissBtn')?.addEventListener('click', dismissError);
+
+  if (mentionSearch) {
+    mentionSearch.addEventListener('input', () => searchMentions(mentionSearch.value));
+    mentionSearch.addEventListener('keydown', handleMentionSearchKeydown);
+  }
+
+  if (chatInput) {
+    chatInput.addEventListener('input', handleChatInput);
+    chatInput.addEventListener('keydown', handleKeyDown);
+  }
+
+  attachBtn?.addEventListener('click', attachFile);
+  document.getElementById('imageBtn')?.addEventListener('click', attachImage);
+  document.getElementById('imageFileInput')?.addEventListener('change', handleImageFileInput);
+  mentionBtn?.addEventListener('click', toggleMentionPicker);
+  sendBtn?.addEventListener('click', sendMessage);
+  stopBtn?.addEventListener('click', cancelRequest);
+
+  document.getElementById('imageLightbox')?.addEventListener('click', closeLightbox);
+}
+
+wireChatDomEvents();
 
 

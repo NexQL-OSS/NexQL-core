@@ -6,6 +6,7 @@ import { getChatViewProvider } from '../../../extension';
 export interface AiSettings {
   provider: string;
   apiKey?: string;
+  cursorApiKey?: string;
   model?: string;
   endpoint?: string;
   githubAuth?: {
@@ -19,6 +20,12 @@ export interface AiSettings {
 const GITHUB_MODELS_SCOPES: string[] = [];
 const GITHUB_MODELS_API_VERSION = '2026-03-10';
 const DEFAULT_GITHUB_MODEL = 'openai/gpt-4.1';
+
+/** Webview `getFormData()` sends Cursor keys as `apiKey`; accept both shapes. */
+function cursorApiKeyFromSettings(settings: { cursorApiKey?: string; apiKey?: string }): string {
+  const raw = settings.cursorApiKey ?? settings.apiKey ?? '';
+  return typeof raw === 'string' ? raw.trim() : '';
+}
 
 export class AiSettingsPanel {
   public static currentPanel: AiSettingsPanel | undefined;
@@ -56,6 +63,13 @@ export class AiSettingsPanel {
               // Store API key in secret storage
               if (settings.provider === 'github') {
                 await this._extensionContext.secrets.delete('postgresExplorer.aiApiKey');
+              } else if (settings.provider === 'cursor') {
+                const ck = cursorApiKeyFromSettings(settings);
+                if (ck) {
+                  await this._extensionContext.secrets.store('postgresExplorer.cursorApiKey', ck);
+                } else {
+                  await this._extensionContext.secrets.delete('postgresExplorer.cursorApiKey');
+                }
               } else if (settings.apiKey) {
                 await this._extensionContext.secrets.store('postgresExplorer.aiApiKey', settings.apiKey);
               } else {
@@ -123,6 +137,8 @@ export class AiSettingsPanel {
               } else if (settings.provider === 'github') {
                 const session = await this._requestGitHubSession(true);
                 testResult = await this._testGitHubModels(session.accessToken, settings.model || DEFAULT_GITHUB_MODEL);
+              } else if (settings.provider === 'cursor') {
+                testResult = await this._testCursor(cursorApiKeyFromSettings(settings), settings.model || 'auto');
               } else if (settings.provider === 'openai') {
                 // Test OpenAI connection
                 if (!settings.apiKey) {
@@ -178,7 +194,7 @@ export class AiSettingsPanel {
           case 'listModels':
             try {
               const settings = message.settings;
-              let models: string[] = [];
+              let models: Array<string | { id: string; displayName?: string }> = [];
 
               if (settings.provider === 'vscode-lm') {
                 const availableModels = await vscode.lm.selectChatModels();
@@ -191,6 +207,8 @@ export class AiSettingsPanel {
               } else if (settings.provider === 'github') {
                 const session = await this._requestGitHubSession(true);
                 models = await this._listGitHubModels(session.accessToken);
+              } else if (settings.provider === 'cursor') {
+                models = await this._listCursorModels(cursorApiKeyFromSettings(settings));
               } else if (settings.provider === 'openai') {
                 if (!settings.apiKey) {
                   throw new Error('API Key is required to list models');
@@ -525,6 +543,7 @@ export class AiSettingsPanel {
   private async _sendSettingsLoaded(): Promise<void> {
     const config = vscode.workspace.getConfiguration('postgresExplorer');
     const apiKey = await this._extensionContext.secrets.get('postgresExplorer.aiApiKey');
+    const cursorApiKey = await this._extensionContext.secrets.get('postgresExplorer.cursorApiKey');
     const githubSession = await this._getGitHubSession();
 
     await this._panel.webview.postMessage({
@@ -532,6 +551,7 @@ export class AiSettingsPanel {
       settings: {
         provider: config.get('aiProvider', 'vscode-lm'),
         apiKey: apiKey || '',
+        cursorApiKey: cursorApiKey || '',
         model: config.get('aiModel', ''),
         endpoint: config.get('aiEndpoint', ''),
         githubAuth: {
@@ -602,6 +622,49 @@ export class AiSettingsPanel {
         reject(new Error(`Invalid endpoint URL: ${e.message}`));
       }
     });
+  }
+
+  private async _loadCursorSdk(): Promise<any> {
+    try {
+      return await import('@cursor/sdk');
+    } catch {
+      throw new Error('Cursor SDK is not installed. Install @cursor/sdk to use the Cursor provider.');
+    }
+  }
+
+  private _resolveCursorApiKey(apiKey: string): string {
+    return apiKey || process.env.CURSOR_API_KEY || '';
+  }
+
+  private async _listCursorModels(apiKey: string): Promise<Array<{ id: string; displayName?: string }>> {
+    const { Cursor } = await this._loadCursorSdk();
+    const resolvedApiKey = this._resolveCursorApiKey(apiKey);
+    const models = await Cursor.models.list({ apiKey: resolvedApiKey });
+
+    return (models || [])
+      .map((model: any) => ({
+        id: model.id,
+        displayName: model.displayName || model.id,
+      }))
+      .filter((model: { id: string }) => !!model.id)
+      .sort((left: { id: string }, right: { id: string }) => left.id.localeCompare(right.id));
+  }
+
+  private async _testCursor(apiKey: string, model: string): Promise<string> {
+    const { Cursor } = await this._loadCursorSdk();
+    const resolvedApiKey = this._resolveCursorApiKey(apiKey);
+    if (!resolvedApiKey) {
+      throw new Error('Cursor API key is required. Set CURSOR_API_KEY or save it in AI Settings.');
+    }
+
+    const user = await Cursor.me({ apiKey: resolvedApiKey });
+    const models = await Cursor.models.list({ apiKey: resolvedApiKey });
+    const matching = (models || []).find((entry: any) => entry.id === model || entry.displayName === model);
+    if (model && model !== 'auto' && !matching) {
+      throw new Error(`Configured Cursor model "${model}" not found. Available models: ${(models || []).map((entry: any) => entry.id).join(', ')}`);
+    }
+
+    return `Cursor connection successful${user.userEmail ? ` for ${user.userEmail}` : ''}${model && model !== 'auto' ? `! Model: ${model}` : '!'}`;
   }
 
   private async _testOpenAI(apiKey: string, model: string): Promise<string> {

@@ -29,3 +29,6 @@ docs/.next/
 roadmap.md
 FIXES_APPLIED.md
 .cursor/
+.agents/
+skills-lock.json
+graphify-out/

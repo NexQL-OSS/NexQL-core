@@ -157,6 +157,41 @@ describe('AiService', () => {
     expect(githubDefault).to.equal('openai/gpt-4.1');
   });
 
+  it('uses the Cursor SDK for model info and request execution', async () => {
+    const service = new AiService();
+    const cursorModels = [
+      { id: 'composer-2', displayName: 'Composer 2' },
+      { id: 'auto', displayName: 'Auto' }
+    ];
+    const loadCursorSdkStub = sandbox.stub(service as any, '_loadCursorSdk').resolves({
+      Cursor: {
+        me: sandbox.stub().resolves({ userEmail: 'user@example.com' }),
+        models: {
+          list: sandbox.stub().resolves(cursorModels)
+        }
+      },
+      Agent: {
+        create: sandbox.stub().resolves({
+          send: sandbox.stub().resolves({
+            wait: sandbox.stub().resolves({ status: 'finished', result: 'Cursor answer', durationMs: 1234 }),
+            cancel: sandbox.stub()
+          }),
+          close: sandbox.stub()
+        })
+      }
+    });
+    sandbox.stub(SecretStorageService, 'getInstance').returns({
+      getCursorApiKey: sandbox.stub().resolves('cursor-secret')
+    } as any);
+
+    const modelInfo = await service.getModelInfo('cursor', createConfig({}));
+    expect(modelInfo).to.equal('Composer 2');
+
+    const result = await service.callProvider('cursor', 'Summarize the query', createConfig({ aiModel: 'composer-2' }), 'Use concise SQL guidance');
+    expect(result.text).to.equal('Cursor answer');
+    expect(loadCursorSdkStub.called).to.be.true;
+  });
+
   it('calls VS Code LM with image attachments and streamed text', async () => {
     const service = new AiService();
     service.setMessages([createImageMessage() as any]);

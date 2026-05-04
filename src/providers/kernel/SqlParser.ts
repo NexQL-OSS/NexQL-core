@@ -182,6 +182,111 @@ export class SqlParser {
   private static escapePgIdentifier(value: string): string {
     return `"${value.replace(/"/g, '""')}"`;
   }
+
+  /**
+   * Strip SQL comments and string literals while preserving code-only text.
+   * Double-quoted identifiers are preserved.
+   */
+  public static stripCommentsAndStrings(sql: string): string {
+    let out = '';
+    let i = 0;
+    let inSingleQuote = false;
+    let inDollarQuote = false;
+    let dollarQuoteTag = '';
+    let inBlockComment = false;
+
+    while (i < sql.length) {
+      const char = sql[i];
+      const nextChar = i + 1 < sql.length ? sql[i + 1] : '';
+      const peek = sql.substring(i, i + 32);
+
+      if (!inSingleQuote && !inDollarQuote && char === '/' && nextChar === '*') {
+        inBlockComment = true;
+        out += '  ';
+        i += 2;
+        continue;
+      }
+
+      if (inBlockComment && char === '*' && nextChar === '/') {
+        inBlockComment = false;
+        out += '  ';
+        i += 2;
+        continue;
+      }
+
+      if (inBlockComment) {
+        out += ' ';
+        i++;
+        continue;
+      }
+
+      if (!inSingleQuote && !inDollarQuote && char === '-' && nextChar === '-') {
+        const lineEnd = sql.indexOf('\n', i);
+        if (lineEnd === -1) {
+          out += ' '.repeat(sql.length - i);
+          break;
+        }
+        out += ' '.repeat(lineEnd - i + 1);
+        i = lineEnd + 1;
+        continue;
+      }
+
+      if (!inSingleQuote) {
+        const dollarMatch = peek.match(SqlParser.DOLLAR_TAG_REGEX);
+        if (dollarMatch) {
+          const tag = dollarMatch[1];
+          if (!inDollarQuote) {
+            inDollarQuote = true;
+            dollarQuoteTag = tag;
+            out += ' '.repeat(tag.length);
+            i += tag.length;
+            continue;
+          }
+          if (tag === dollarQuoteTag) {
+            inDollarQuote = false;
+            dollarQuoteTag = '';
+            out += ' '.repeat(tag.length);
+            i += tag.length;
+            continue;
+          }
+        }
+      }
+
+      if (!inDollarQuote && char === "'") {
+        if (inSingleQuote && nextChar === "'") {
+          out += '  ';
+          i += 2;
+          continue;
+        }
+        inSingleQuote = !inSingleQuote;
+        out += ' ';
+        i++;
+        continue;
+      }
+
+      if (inSingleQuote || inDollarQuote) {
+        out += ' ';
+        i++;
+        continue;
+      }
+
+      out += char;
+      i++;
+    }
+
+    return out;
+  }
+
+  /**
+   * Normalize identifier casing: quoted identifiers preserve case; unquoted identifiers are lowercased.
+   */
+  public static normalizeIdentifier(identifier: string): string {
+    const trimmed = identifier.trim();
+    if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
+      return trimmed.slice(1, -1).replace(/""/g, '"');
+    }
+    return trimmed.toLowerCase();
+  }
   /**
    * Split SQL text into individual statements, respecting semicolons but ignoring them inside:
    * - String literals (single quotes)
