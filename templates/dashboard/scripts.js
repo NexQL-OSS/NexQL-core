@@ -819,35 +819,45 @@ function updateWalReplication(stats) {
     replBody.innerHTML = '';
     const rows = Array.isArray(w.replicas) ? w.replicas : [];
     if (rows.length === 0) {
-      const tr = document.createElement('tr');
-      const td = document.createElement('td');
-      td.colSpan = 6;
-      td.style.padding = '16px';
-      td.style.color = 'var(--muted-color)';
-      td.textContent = w.inRecovery
-        ? 'Not available on standby (pg_stat_replication is empty here).'
-        : 'No active replication connections.';
-      tr.appendChild(td);
-      replBody.appendChild(tr);
-    } else {
-      rows.forEach((r) => {
-        const tr = document.createElement('tr');
-        [r.application_name || '—', r.client_addr || '—', r.state || '—', r.replay_lag || '—', r.sync_state || '—', r.replay_lsn || '—'].forEach((cell) => {
-          const td = document.createElement('td');
-          td.textContent = cell;
-          tr.appendChild(td);
-        });
-        replBody.appendChild(tr);
-      });
-    }
-  }
+      const wrapper = document.createElement('div');
+      wrapper.className = 'ai-query-result';
 
-  if (recvBody) {
-    recvBody.innerHTML = '';
-    const wr = w.walReceiver;
-    if (!wr || (!wr.status && !wr.received_lsn)) {
-      const tr = document.createElement('tr');
-      const td = document.createElement('td');
+      if (data.error) {
+        const errDiv = document.createElement('div');
+        errDiv.className = 'ai-result-error';
+        const strongEl = document.createElement('strong');
+        strongEl.textContent = 'Query error:';
+        errDiv.appendChild(strongEl);
+        errDiv.appendChild(document.createTextNode(' ' + (data.error == null ? '' : String(data.error))));
+        wrapper.appendChild(errDiv);
+        aiResponseArea.appendChild(wrapper);
+        aiResponseArea.scrollTop = aiResponseArea.scrollHeight;
+        _requestAiAutoFixForQueryError(data);
+        return;
+      }
+
+      const hadAutoFixAttempt = _aiAutoFixState.history.length > 0;
+      _rememberExecutedSql(data.sql || '');
+      // Reset retry loop after any successful execution.
+      _resetAiAutoFixState();
+
+      const rowCount = data.rowCount ?? (data.rows ? data.rows.length : 0);
+      const metaDiv = document.createElement('div');
+      metaDiv.className = 'ai-result-meta';
+      metaDiv.appendChild(document.createTextNode('Query returned ' + rowCount + ' row' + (rowCount !== 1 ? 's' : '')));
+      if (data.columns && data.rows && data.rows.length > 0) {
+        // append an em-dash separator and a CSV button (safe textContent)
+        metaDiv.appendChild(document.createTextNode(' \u2014 '));
+        var csvBtn = document.createElement('button');
+        csvBtn.className = 'ai-csv-btn';
+        csvBtn.textContent = '⇩ Download CSV';
+        csvBtn.addEventListener('click', function() { _downloadQueryCsv(data); });
+        metaDiv.appendChild(csvBtn);
+      }
+      wrapper.appendChild(metaDiv);
+
+      aiResponseArea.appendChild(wrapper);
+      aiResponseArea.scrollTop = aiResponseArea.scrollHeight;
       td.colSpan = 4;
       td.style.padding = '16px';
       td.style.color = 'var(--muted-color)';
@@ -2337,7 +2347,13 @@ function _handleQueryResult(data) {
   wrapper.className = 'ai-query-result';
 
   if (data.error) {
-    wrapper.innerHTML = `<div class="ai-result-error"><strong>Query error:</strong> ${escHtml(data.error)}</div>`;
+    const errDiv = document.createElement('div');
+    errDiv.className = 'ai-result-error';
+    const strong = document.createElement('strong');
+    strong.textContent = 'Query error:';
+    errDiv.appendChild(strong);
+    errDiv.appendChild(document.createTextNode(' ' + (data.error == null ? '' : String(data.error))));
+    wrapper.appendChild(errDiv);
     aiResponseArea.appendChild(wrapper);
     aiResponseArea.scrollTop = aiResponseArea.scrollHeight;
     _requestAiAutoFixForQueryError(data);
@@ -2350,16 +2366,21 @@ function _handleQueryResult(data) {
   _resetAiAutoFixState();
 
   const rowCount = data.rowCount ?? (data.rows ? data.rows.length : 0);
-  let html = `<div class="ai-result-meta">Query returned ${rowCount} row${rowCount !== 1 ? 's' : ''}`;
+
+  // Build meta block safely without innerHTML
+  const meta = document.createElement('div');
+  meta.className = 'ai-result-meta';
+  meta.appendChild(document.createTextNode('Query returned ' + rowCount + ' row' + (rowCount !== 1 ? 's' : '')));
   if (data.columns && data.rows && data.rows.length > 0) {
-    html += ` &mdash; <button class="ai-csv-btn">&#8659; Download CSV</button>`;
+    meta.appendChild(document.createTextNode(' \u2014 '));
+    const csvBtn = document.createElement('button');
+    csvBtn.className = 'ai-csv-btn';
+    csvBtn.appendChild(document.createTextNode('\u21E9 Download CSV'));
+    csvBtn.addEventListener('click', () => _downloadQueryCsv(data));
+    meta.appendChild(csvBtn);
   }
-  html += `</div>`;
-  wrapper.innerHTML = html;
 
-  const csvBtn = wrapper.querySelector('.ai-csv-btn');
-  if (csvBtn) csvBtn.addEventListener('click', () => _downloadQueryCsv(data));
-
+  wrapper.appendChild(meta);
   aiResponseArea.appendChild(wrapper);
   aiResponseArea.scrollTop = aiResponseArea.scrollHeight;
 
