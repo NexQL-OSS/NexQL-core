@@ -97,6 +97,16 @@
   width: 380px;
 }
 
+/* Editor toolbar: collapse Explorer (activity + sidebar) / SQL Assistant */
+.workbench.panel-left-hidden .activity-bar,
+.workbench.panel-left-hidden .sidebar {
+  display: none;
+}
+
+.workbench.panel-right-hidden .right-panel {
+  display: none;
+}
+
 /* Header bar (SQL ASSISTANT + expand button) */
 .assistant-tab-bar {
   align-items: center;
@@ -571,8 +581,7 @@ html, body {
 /* ── Tour overlay & spotlight ─────────────────────────── */
 .tour-overlay {
   background: rgba(7, 11, 20, 0.72);
-  -webkit-backdrop-filter: blur(2px);
-  backdrop-filter: blur(2px);
+  /* No backdrop-filter: blur avoids muddy full-page blur during the tour; dimming comes from this scrim + .tour-spotlight ring shadow. */
   display: none;
   inset: 0;
   pointer-events: none;
@@ -720,8 +729,8 @@ html, body {
    PALETTE POLISH: Neon glow pass (dark mode, logo-aligned)
    ══════════════════════════════════════════════════════════ */
 
-/* h1 accent span — neon text glow */
-.hero-shell h1 span {
+/* h1 accent span — neon text glow (skip gradient-clipped accent line) */
+.hero-shell h1 span:not(.hero-line--accent) {
   text-shadow: 0 0 14px rgba(37, 99, 235, 0.45), 0 0 24px rgba(255, 107, 22, 0.18);
 }
 
@@ -1014,6 +1023,18 @@ html, body {
     flex-direction: column !important;
   }
 
+  /* Collapsed via editor toolbar overrides mobile overlay toggles */
+  .workbench.panel-left-hidden.show-left .activity-bar,
+  .workbench.panel-left-hidden.show-left .sidebar {
+    display: none !important;
+  }
+
+  .workbench.panel-right-hidden .right-panel,
+  .workbench.panel-right-hidden.show-right .right-panel,
+  .workbench.panel-right-hidden.show-right .right-panel.expanded {
+    display: none !important;
+  }
+
   /* When sidebars are open, we can dim the editor */
   .workbench.show-left .editor-region::after,
   .workbench.show-right .editor-region::after {
@@ -1052,6 +1073,7 @@ html, body {
   body.editor-minimized .hero-shell {
     height: auto;
     overflow-y: auto;
+    scroll-snap-type: none;
   }
 }
 

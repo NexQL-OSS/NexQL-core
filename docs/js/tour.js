@@ -3,16 +3,10 @@ let currentTourStep = 0;
 let pendingTourStartTimer = null;
 
 function openEditorViewForTour() {
-  const shell = document.querySelector(".shell");
-  const minimizedOverview = document.getElementById("minimized-overview");
   const wasMinimized = document.body.classList.contains("editor-minimized");
-
-  if (wasMinimized) {
-    document.body.classList.remove("editor-minimized");
-    shell?.setAttribute("aria-hidden", "false");
-    minimizedOverview?.setAttribute("aria-hidden", "true");
+  if (wasMinimized && typeof setEditorMinimizedState === "function") {
+    setEditorMinimizedState(false);
   }
-
   return wasMinimized;
 }
 

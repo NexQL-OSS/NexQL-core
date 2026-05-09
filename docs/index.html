@@ -30,7 +30,7 @@
   <meta name="theme-color" content="#4d5efc">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Fira+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Mono:wght@400;500&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
   <script type="application/ld+json">
     {
@@ -67,20 +67,30 @@
 <body class="editor-minimized">
   <main class="site-main">
     <section class="hero-shell" aria-label="PgStudio interactive homepage demo">
-      <div class="desktop-topbar" role="navigation" aria-label="PgStudio top navigation">
+      <div class="desktop-topbar landing-topbar" role="navigation" aria-label="PgStudio top navigation">
         <button class="mobile-menu-btn topbar-menu-btn" id="btn-toggle-topbar" aria-label="Toggle Navigation"><svg
             viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none">
             <line x1="3" y1="12" x2="21" y2="12"></line>
             <line x1="3" y1="6" x2="21" y2="6"></line>
             <line x1="3" y1="18" x2="21" y2="18"></line>
           </svg></button>
-        <p class="hero-intro"><b style="color:var(--vsc-orange); font-weight: 600; font-size: 15px;">PG Studio</b> · VS
-          Code Extension </p>
-        <div class="desktop-topbar-links">
+        <div class="topbar-brand immersive-brand" aria-hidden="false">
+          <div class="immersive-brand-mark" aria-hidden="true"></div>
+          <div class="immersive-brand-text">
+            <strong class="immersive-brand-title">PG Studio</strong>
+            <span class="immersive-brand-sub">VS Code Extension</span>
+          </div>
+        </div>
+        <div class="desktop-topbar-links landing-topbar-nav-collapsible">
+          <button type="button" id="btn-landing-home">Home</button>
+          <button type="button" id="btn-landing-live-demo">Live demo</button>
           <button type="button" data-open="doc-notebooks">Notebooks</button>
           <button type="button" data-open="doc-explorer">Explorer</button>
           <button type="button" data-open="doc-ai">AI Assistant</button>
-          <a href="https://github.com/dev-asterix/PgStudio" target="_blank" rel="noopener">GitHub ↗</a>
+          <a href="https://github.com/dev-asterix/PgStudio" target="_blank" rel="noopener noreferrer">GitHub</a>
+          <a class="landing-nav-install"
+            href="https://marketplace.visualstudio.com/items?itemName=ric-v.postgres-explorer" target="_blank"
+            rel="noopener noreferrer">Install Free</a>
         </div>
         <div class="topbar-actions">
           <button class="topbar-icon-btn" id="theme-toggle" type="button" aria-label="Switch to dark theme"
@@ -101,13 +111,8 @@
               <polygon points="9,7 18,12 9,17"></polygon>
             </svg>
           </button>
-          <a class="hero-install-btn topbar-install"
-            href="https://marketplace.visualstudio.com/items?itemName=ric-v.postgres-explorer">⬇ Install Free</a>
         </div>
       </div>
-      <h1>The VS Code-native <span>PostgreSQL</span> workspace</h1>
-      <p class="hero-subtitle">Connect, explore, query, and optimize - without leaving your editor. Powered by AI, built
-        for teams.</p>
 
       <!-- Immersive decorative layer: bg-grid, orbit ring, context nodes -->
       <div class="workbench-bg-grid" aria-hidden="true"></div>
@@ -127,6 +132,9 @@
         <span class="ctx-node-value">Index recommendation</span>
       </div>
 
+      <div class="demo-shell-stage">
+        <div class="demo-shell-frame">
+        <div class="demo-shell-halo" aria-hidden="true"></div>
       <div class="shell" role="application" aria-label="Mac style PgStudio editor demo" aria-hidden="true">
         <header class="titlebar">
           <div class="mobile-menu-btn" id="btn-toggle-left"><svg viewBox="0 0 24 24" width="16" stroke="currentColor"
@@ -437,13 +445,36 @@
           </aside>
 
           <section class="editor-region">
-            <div class="tabs" role="tablist" aria-label="Open files">
-              <button class="tab active" data-open="query" role="tab" aria-selected="true"><span class="tab-dot"></span>
-                query.pgsql <span class="tab-close" aria-label="Close tab" tabindex="-1">×</span></button>
-              <button class="tab" data-open="readme" role="tab" aria-selected="false">README.md <span class="tab-close"
-                  aria-label="Close tab" tabindex="-1">×</span></button>
-              <button class="tab" data-open="doc-notebooks" role="tab" aria-selected="false">notebooks.md <span
-                  class="tab-close" aria-label="Close tab" tabindex="-1">×</span></button>
+            <div class="editor-tab-strip">
+              <div class="tabs" role="tablist" aria-label="Open files">
+                <button class="tab active" data-open="query" role="tab" aria-selected="true"><span class="tab-dot"></span>
+                  query.pgsql <span class="tab-close" aria-label="Close tab" tabindex="-1">×</span></button>
+                <button class="tab" data-open="readme" role="tab" aria-selected="false">README.md <span class="tab-close"
+                    aria-label="Close tab" tabindex="-1">×</span></button>
+                <button class="tab" data-open="doc-notebooks" role="tab" aria-selected="false">notebooks.md <span
+                    class="tab-close" aria-label="Close tab" tabindex="-1">×</span></button>
+              </div>
+              <div class="editor-layout-actions" role="toolbar" aria-label="Side panel visibility">
+                <button type="button" class="layout-toggle-btn" id="btn-toggle-explorer-sidebar"
+                  aria-pressed="false" title="Hide Explorer sidebar"
+                  aria-label="Toggle Explorer sidebar">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <rect x="3" y="4" width="8" height="16" rx="1.5" stroke="currentColor" stroke-width="1.5" />
+                    <rect x="14" y="4" width="7" height="6" rx="1" stroke="currentColor" stroke-width="1.5" />
+                    <rect x="14" y="13" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5" />
+                  </svg>
+                </button>
+                <button type="button" class="layout-toggle-btn" id="btn-toggle-assistant-sidebar"
+                  aria-pressed="false" title="Hide SQL Assistant panel"
+                  aria-label="Toggle SQL Assistant panel">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+                    xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <rect x="14" y="4" width="8" height="16" rx="1.5" />
+                    <rect x="3" y="5" width="8" height="6" rx="1" />
+                    <rect x="3" y="13" width="8" height="7" rx="1" />
+                  </svg>
+                </button>
+              </div>
             </div>
             <div class="breadcrumb-bar" id="breadcrumb-bar" aria-label="File path">
               <span>PGSTUDIO</span>
@@ -474,6 +505,8 @@
           <span>PgStudio</span>
         </footer>
       </div><!-- /shell -->
+        </div><!-- /demo-shell-frame -->
+      </div><!-- /demo-shell-stage -->
 
       <div id="partial-minimized-overview" data-partial="html/minimized-overview.html"></div>
       <!-- Startup toast — positioned inside shell via absolute, but lives here for stacking -->
@@ -508,6 +541,7 @@
   <script src="js/assistant.js"></script>
   <script src="js/tour.js"></script>
   <script src="js/visuals.js"></script>
+  <script src="js/landing-capabilities.js"></script>
   <script src="js/bootstrap.js"></script>
 </body>
 

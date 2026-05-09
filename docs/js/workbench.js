@@ -1,3 +1,24 @@
+/** Keeps `.shell` / `#minimized-overview` aria-hidden in sync with `body.editor-minimized`. */
+function setEditorMinimizedState(minimized) {
+  const shell = document.querySelector(".shell");
+  const minimizedOverview = document.getElementById("minimized-overview");
+  document.body.classList.toggle("editor-minimized", minimized);
+  if (shell) {
+    shell.setAttribute("aria-hidden", minimized ? "true" : "false");
+    if (!minimized) {
+      shell.classList.add("shell-opening");
+      shell.addEventListener(
+        "animationend",
+        () => shell.classList.remove("shell-opening"),
+        { once: true }
+      );
+    }
+  }
+  if (minimizedOverview) {
+    minimizedOverview.setAttribute("aria-hidden", minimized ? "false" : "true");
+  }
+}
+
 function openFile(fileName) {
   ensureTabExists(fileName);
 
@@ -60,23 +81,10 @@ function wireWindowControls() {
   const terminalButtons = document.querySelectorAll(".mini-editor-preview button");
   if (!closeDot || !shell) return;
 
-  const setEditorMinimized = (minimized) => {
-    document.body.classList.toggle("editor-minimized", minimized);
-    shell.setAttribute("aria-hidden", minimized ? "true" : "false");
-    if (minimizedOverview) minimizedOverview.setAttribute("aria-hidden", minimized ? "false" : "true");
-    if (!minimized) {
-      shell.classList.add("shell-opening");
-      shell.addEventListener("animationend", () => shell.classList.remove("shell-opening"), { once: true });
-    }
-  };
-
-  let isClosing = false;
   closeDot.addEventListener("click", (e) => {
     e.preventDefault();
     e.stopPropagation()
-    setEditorMinimized(true);
-    // if (isClosing) return;
-    // isClosing = true;
+    setEditorMinimizedState(true);
 
     // shell.classList.add("closing");
     // const delayMs = CLOSE_REDIRECT_MIN_MS + Math.random() * (CLOSE_REDIRECT_MAX_MS - CLOSE_REDIRECT_MIN_MS);
@@ -88,27 +96,35 @@ function wireWindowControls() {
   minimizeDot?.addEventListener("click", (e) => {
     e.preventDefault();
     e.stopPropagation();
-    setEditorMinimized(true);
+    setEditorMinimizedState(true);
   });
 
   maximizeDot?.addEventListener("click", (e) => {
     e.preventDefault();
     e.stopPropagation();
-    setEditorMinimized(true);
+    setEditorMinimizedState(true);
   });
 
   restoreShortcut?.addEventListener("click", () => {
-    setEditorMinimized(false);
+    setEditorMinimizedState(false);
   });
 
   terminalButtons.forEach((button) => {
     button.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
-      setEditorMinimized(false);
+      setEditorMinimizedState(false);
       openFile("query");
       switchSidebarPanel("pgstudio");
     });
+  });
+
+  minimizedOverview?.querySelector(".mini-editor-preview")?.addEventListener("click", (e) => {
+    const el = e.target;
+    if (el instanceof Element && el.closest("button")) return;
+    setEditorMinimizedState(false);
+    openFile("query");
+    switchSidebarPanel("pgstudio");
   });
 }
 
@@ -203,15 +219,24 @@ function wireQueryRunAnimation() {
   const resultBody = document.getElementById("result-body");
   const resultMeta = resultContainer?.querySelector(".result-meta");
   const insightText = document.getElementById("insight-text");
+  const outputStack = document.getElementById("query-output-stack");
   if (!runButton || !resultContainer || !resultBody || !resultMeta || !insightText) return;
 
   runButton.addEventListener("click", () => {
+    const hintEl = document.getElementById("query-output-hint");
+    const awaitingFirstRun = outputStack?.classList.contains("query-output-stack--pending");
+    if (awaitingFirstRun && hintEl) {
+      hintEl.textContent = "Executing query…";
+    } else {
+      resultMeta.textContent = "Executing query…";
+    }
+
     resultContainer.classList.add("running");
-    resultMeta.textContent = "Executing query…";
     insightText.textContent = "Analyzing scan strategy and aggregations…";
     runButton.disabled = true;
 
     window.setTimeout(() => {
+      outputStack?.classList.remove("query-output-stack--pending");
       const dataRows = [
         ["2026-04-07", 142, "18,420.00"], ["2026-04-08", 158, "21,340.50"], ["2026-04-09", 131, "17,890.00"],
         ["2026-04-10", 177, "24,110.25"], ["2026-04-11", 191, "27,905.40"], ["2026-04-12", 168, "22,490.00"],
@@ -227,6 +252,9 @@ function wireQueryRunAnimation() {
       resultMeta.textContent = `✓ 7 rows in ${execMs}ms · ecommerce_demo`;
       insightText.textContent = "Suggestion: add an index on orders(created_at) and keep daily aggregation in a materialized view for dashboard latency under 100ms.";
       runButton.disabled = false;
+      window.setTimeout(() => {
+        if (typeof renderRevenueChart === "function") renderRevenueChart();
+      }, 100);
     }, RUN_RESULT_DELAY_MS);
   });
 
@@ -275,9 +303,9 @@ function wireQueryToolbarActions() {
 function wireFeatureCards() {
   const detail = document.getElementById("feature-detail");
   if (!detail) return;
-  document.querySelectorAll(".feature-card").forEach((card) => {
+  document.querySelectorAll(".feature-card[data-feature]").forEach((card) => {
     card.addEventListener("click", () => {
-      document.querySelectorAll(".feature-card").forEach((c) => c.classList.remove("active"));
+      document.querySelectorAll(".feature-card[data-feature]").forEach((c) => c.classList.remove("active"));
       card.classList.add("active");
       const key = card.getAttribute("data-feature");
       if (key && FEATURE_DETAILS[key]) detail.textContent = FEATURE_DETAILS[key];

@@ -1,22 +1,86 @@
+function wireLandingChrome() {
+  document.getElementById("btn-landing-home")?.addEventListener("click", () => {
+    const minimized = document.body.classList.contains("editor-minimized");
+    if (minimized) {
+      document.querySelector(".hero-shell")?.scrollTo({ top: 0, behavior: "smooth" });
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+    setEditorMinimizedState(true);
+  });
+
+  document.getElementById("btn-landing-live-demo")?.addEventListener("click", () => {
+    setEditorMinimizedState(false);
+    openFile("query");
+    switchSidebarPanel("pgstudio");
+  });
+
+  document.querySelectorAll("[data-landing-open-demo]").forEach((node) => {
+    node.addEventListener("click", (e) => {
+      e.preventDefault();
+      setEditorMinimizedState(false);
+      openFile("query");
+      switchSidebarPanel("pgstudio");
+    });
+  });
+}
+
+function wireEditorLayoutToggles() {
+  const wb = document.querySelector(".workbench");
+  const btnExplorer = document.getElementById("btn-toggle-explorer-sidebar");
+  const btnAssistant = document.getElementById("btn-toggle-assistant-sidebar");
+  if (!wb || !btnExplorer || !btnAssistant) return;
+
+  function syncLayoutToggleUi() {
+    const leftHidden = wb.classList.contains("panel-left-hidden");
+    const rightHidden = wb.classList.contains("panel-right-hidden");
+    btnExplorer.setAttribute("aria-pressed", leftHidden ? "true" : "false");
+    btnAssistant.setAttribute("aria-pressed", rightHidden ? "true" : "false");
+    btnExplorer.setAttribute("title", leftHidden ? "Show Explorer sidebar" : "Hide Explorer sidebar");
+    btnAssistant.setAttribute("title", rightHidden ? "Show SQL Assistant" : "Hide SQL Assistant");
+  }
+
+  btnExplorer.addEventListener("click", (e) => {
+    e.stopPropagation();
+    wb.classList.toggle("panel-left-hidden");
+    if (wb.classList.contains("panel-left-hidden")) {
+      wb.classList.remove("show-left");
+    }
+    syncLayoutToggleUi();
+  });
+
+  btnAssistant.addEventListener("click", (e) => {
+    e.stopPropagation();
+    wb.classList.toggle("panel-right-hidden");
+    if (wb.classList.contains("panel-right-hidden")) {
+      wb.classList.remove("show-right");
+    }
+    syncLayoutToggleUi();
+  });
+
+  syncLayoutToggleUi();
+}
+
 function initializeDesktopExperience() {
   wireThemeToggle();
   wireTour();
+  wireLandingChrome();
   wireWindowControls();
   wireActivityBar();
+  wireEditorLayoutToggles();
   wireNavigation();
   wireTabClose();
   wireSearch();
   wireQueryRunAnimation();
   wireQueryToolbarActions();
   wireFeatureCards();
+  if (typeof wireCapabilityModal === "function") wireCapabilityModal();
   wireConnectionSimulation();
   wireAssistant();
   hydrateMarketplaceStats();
   showStartupToast();
   preloadAssistantConversation();
   openFile("query");
-
-  window.setTimeout(renderRevenueChart, 500);
 
   document.addEventListener("click", (e) => {
     const tab = e.target.closest("[data-open='query']");
@@ -69,7 +133,8 @@ function wireMobileUiToggles() {
 
   if (btnCloseEditor && body) {
     btnCloseEditor.addEventListener("click", () => {
-      body.classList.toggle("editor-minimized");
+      const nextMinimized = !body.classList.contains("editor-minimized");
+      setEditorMinimizedState(nextMinimized);
     });
   }
 

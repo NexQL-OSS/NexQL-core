@@ -102,69 +102,38 @@
 <span class="kw">WHERE</span> created_at &gt;= <span class="fn">NOW</span>() - <span class="kw">INTERVAL</span> <span class="str">'7 days'</span>
 <span class="kw">GROUP BY</span> day <span class="kw">ORDER BY</span> day;</code><span class="editor-cursor" aria-hidden="true"></span></pre>
     </div>
-    <div class="query-result" id="query-result">
-      <div class="result-meta">✓ 7 rows in 43ms · demo_db</div>
-      <table>
-        <thead>
-          <tr>
-            <th data-col="0" class="sortable-th">day <span class="sort-ind">↕</span></th>
-            <th data-col="1" class="sortable-th">orders <span class="sort-ind">↕</span></th>
-            <th data-col="2" class="sortable-th">revenue <span class="sort-ind">↕</span></th>
-          </tr>
-        </thead>
-        <tbody id="result-body">
-          <tr>
-            <td>2026-04-07</td>
-            <td>142</td>
-            <td>18,420.00</td>
-          </tr>
-          <tr>
-            <td>2026-04-08</td>
-            <td>158</td>
-            <td>21,340.50</td>
-          </tr>
-          <tr>
-            <td>2026-04-09</td>
-            <td>131</td>
-            <td>17,890.00</td>
-          </tr>
-          <tr>
-            <td>2026-04-10</td>
-            <td>177</td>
-            <td>24,110.25</td>
-          </tr>
-          <tr>
-            <td>2026-04-11</td>
-            <td>191</td>
-            <td>27,905.40</td>
-          </tr>
-          <tr>
-            <td>2026-04-12</td>
-            <td>168</td>
-            <td>22,490.00</td>
-          </tr>
-          <tr>
-            <td>2026-04-13</td>
-            <td>182</td>
-            <td>26,331.75</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-  </div>
-  <div class="insight-panel" id="insight-panel">
-    <h3>Execution Insight</h3>
-    <p id="insight-text">Suggestion: add an index on orders(created_at) and keep daily aggregation in a materialized
-      view for dashboard latency under 100ms.</p>
   </div>
 
-  <div class="chart-cell" id="chart-cell">
-    <div class="chart-header">
-      <span>📊 Revenue by Day — Bar Chart</span>
-      <span style="margin-left:auto;font-size:10px">Chart.js</span>
-    </div>
-    <div class="chart-body">
-      <canvas id="revenue-chart" height="160"></canvas>
+  <div id="query-output-stack" class="query-output-stack query-output-stack--pending" aria-live="polite">
+    <p class="query-output-hint" id="query-output-hint">Click <strong>Run</strong> to execute this cell — the results table and chart appear below.</p>
+    <div class="query-output-inner">
+      <div class="query-result" id="query-result">
+        <div class="result-meta">✓ 7 rows · demo_db</div>
+        <table>
+          <thead>
+            <tr>
+              <th data-col="0" class="sortable-th">day <span class="sort-ind">↕</span></th>
+              <th data-col="1" class="sortable-th">orders <span class="sort-ind">↕</span></th>
+              <th data-col="2" class="sortable-th">revenue <span class="sort-ind">↕</span></th>
+            </tr>
+          </thead>
+          <tbody id="result-body"></tbody>
+        </table>
+      </div>
+      <div class="insight-panel" id="insight-panel">
+        <h3>Execution Insight</h3>
+        <p id="insight-text">Suggestion: add an index on orders(created_at) and keep daily aggregation in a materialized
+          view for dashboard latency under 100ms.</p>
+      </div>
+      <div class="chart-cell" id="chart-cell">
+        <div class="chart-header">
+          <span>📊 Revenue by Day — Bar Chart</span>
+          <span style="margin-left:auto;font-size:10px">Chart.js</span>
+        </div>
+        <div class="chart-body">
+          <canvas id="revenue-chart" height="160"></canvas>
+        </div>
+      </div>
     </div>
   </div>
 </article>
