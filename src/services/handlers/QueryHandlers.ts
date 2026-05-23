@@ -6,6 +6,7 @@ import { ErrorHandlers } from '../../commands/helper';
 import { ConnectionUtils } from '../../utils/connectionUtils';
 import { SqlExecutor } from '../../providers/kernel/SqlExecutor';
 import { safelyPostMessage } from './messaging';
+import { extensionContext } from '../../extension';
 export { FkLookupHandler } from './FkLookupHandler';
 
 function quoteIdentifier(identifier: string): string {
@@ -51,14 +52,32 @@ export class ExecuteUpdateBackgroundHandler implements IMessageHandler {
         throw new Error('No connection in notebook metadata');
       }
 
+      const connection = ConnectionUtils.findConnection(metadata.connectionId);
+      if (!connection) {
+        throw new Error('Connection not found');
+      }
+
+      const notebookKey = `activeProfile-${notebook.uri.toString()}`;
+      const activeProfileContext = extensionContext?.globalState.get<any>(notebookKey);
+
       const connectionConfig = {
-        id: metadata.connectionId,
-        name: metadata.host,
-        host: metadata.host,
-        port: metadata.port,
-        username: metadata.username,
-        database: metadata.databaseName
+        ...connection,
+        database: metadata.databaseName || connection.database
       };
+
+      // Apply profile overrides with floor protection
+      let readOnlyMode = connection.readOnlyMode === true;
+      if (metadata.readOnlyMode !== undefined) {
+        readOnlyMode = readOnlyMode || metadata.readOnlyMode;
+      }
+      if (activeProfileContext?.readOnlyMode !== undefined) {
+        readOnlyMode = readOnlyMode || activeProfileContext.readOnlyMode;
+      }
+      connectionConfig.readOnlyMode = readOnlyMode;
+
+      if (connectionConfig.readOnlyMode) {
+        throw new Error('Write operations are not allowed in read-only mode');
+      }
 
       client = await ConnectionManager.getInstance().getPooledClient(connectionConfig);
 
@@ -147,10 +166,27 @@ export class DeleteRowsHandler implements IMessageHandler {
       const connection = ConnectionUtils.findConnection(metadata.connectionId);
       if (!connection) throw new Error('Connection not found');
 
+      const notebookKey = `activeProfile-${notebook.uri.toString()}`;
+      const activeProfileContext = extensionContext?.globalState.get<any>(notebookKey);
+
       const config = {
         ...connection,
         database: metadata.databaseName || connection.database
       };
+
+      // Apply profile overrides with floor protection
+      let readOnlyMode = connection.readOnlyMode === true;
+      if (metadata.readOnlyMode !== undefined) {
+        readOnlyMode = readOnlyMode || metadata.readOnlyMode;
+      }
+      if (activeProfileContext?.readOnlyMode !== undefined) {
+        readOnlyMode = readOnlyMode || activeProfileContext.readOnlyMode;
+      }
+      config.readOnlyMode = readOnlyMode;
+
+      if (config.readOnlyMode) {
+        throw new Error('Write operations are not allowed in read-only mode');
+      }
 
       client = await ConnectionManager.getInstance().getSessionClient(config, notebook.uri.toString());
 
@@ -253,14 +289,30 @@ export class SaveChangesHandler implements IMessageHandler {
       }
 
       // Use ConnectionManager to get a pooled client
+      const connection = ConnectionUtils.findConnection(metadata.connectionId);
+      if (!connection) throw new Error('Connection not found');
+
+      const notebookKey = `activeProfile-${notebook.uri.toString()}`;
+      const activeProfileContext = extensionContext?.globalState.get<any>(notebookKey);
+
       const connectionConfig = {
-        id: metadata.connectionId,
-        name: metadata.host,
-        host: metadata.host,
-        port: metadata.port,
-        username: metadata.username,
-        database: metadata.databaseName
+        ...connection,
+        database: metadata.databaseName || connection.database
       };
+
+      // Apply profile overrides with floor protection
+      let readOnlyMode = connection.readOnlyMode === true;
+      if (metadata.readOnlyMode !== undefined) {
+        readOnlyMode = readOnlyMode || metadata.readOnlyMode;
+      }
+      if (activeProfileContext?.readOnlyMode !== undefined) {
+        readOnlyMode = readOnlyMode || activeProfileContext.readOnlyMode;
+      }
+      connectionConfig.readOnlyMode = readOnlyMode;
+
+      if (connectionConfig.readOnlyMode) {
+        throw new Error('Write operations are not allowed in read-only mode');
+      }
 
       client = await ConnectionManager.getInstance().getPooledClient(connectionConfig);
 

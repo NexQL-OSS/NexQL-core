@@ -342,7 +342,19 @@ export function renderPostgresNotebookResult(
         let text: string;
         if (slideMeta) {
           const lastRow = slideMeta.windowStartRow + Math.max(currentRows.length, 1) - 1;
-          text = `${slideMeta.windowStartRow.toLocaleString()}–${lastRow.toLocaleString()} · window ${slideMeta.windowSize.toLocaleString()} · streaming`;
+          if (typeof slideMeta.totalRows === 'number') {
+            text = `${slideMeta.windowStartRow.toLocaleString()}–${lastRow.toLocaleString()} of ${slideMeta.totalRows.toLocaleString()} · window ${slideMeta.windowSize.toLocaleString()} · streaming`;
+          } else {
+            text = `${slideMeta.windowStartRow.toLocaleString()}–${lastRow.toLocaleString()} · window ${slideMeta.windowSize.toLocaleString()} · streaming`;
+            // Add diagnostic info for why total is unknown
+            if ((slideMeta as any).countAttempted) {
+              if ((slideMeta as any).countError) {
+                text += ` (total count failed: ${(slideMeta as any).countError.substring(0, 50)})`;
+              } else {
+                text += ' (total row count in progress)';
+              }
+            }
+          }
           if (executionTime !== undefined) {
             const ms = Math.round(executionTime * 1000);
             text += ms >= 1000 ? ` · ${executionTime.toFixed(2)}s` : ` · ${ms}ms`;
@@ -363,7 +375,20 @@ export function renderPostgresNotebookResult(
           : slideMeta
             ? (() => {
                 const lastRow = slideMeta.windowStartRow + Math.max(rows?.length ?? 0, 1) - 1;
-                let t = `${slideMeta.windowStartRow.toLocaleString()}–${lastRow.toLocaleString()} · window ${slideMeta.windowSize.toLocaleString()} · streaming`;
+                let t: string;
+                if (typeof slideMeta.totalRows === 'number') {
+                  t = `${slideMeta.windowStartRow.toLocaleString()}–${lastRow.toLocaleString()} of ${slideMeta.totalRows.toLocaleString()} · window ${slideMeta.windowSize.toLocaleString()} · streaming`;
+                } else {
+                  t = `${slideMeta.windowStartRow.toLocaleString()}–${lastRow.toLocaleString()} · window ${slideMeta.windowSize.toLocaleString()} · streaming`;
+                  // Add diagnostic info for why total is unknown
+                  if ((slideMeta as any).countAttempted) {
+                    if ((slideMeta as any).countError) {
+                      t += ` (total count failed: ${(slideMeta as any).countError.substring(0, 50)})`;
+                    } else {
+                      t += ' (total row count in progress)';
+                    }
+                  }
+                }
                 if (executionTime !== undefined) {
                   const ms = Math.round(executionTime * 1000);
                   t += ms >= 1000 ? ` · ${executionTime.toFixed(2)}s` : ` · ${ms}ms`;
@@ -1072,6 +1097,7 @@ export function renderPostgresNotebookResult(
           windowSize: getSlideWindowSize(),
           hasMoreBefore: slideHasMoreBefore,
           hasMoreAfter: slideHasMoreAfter,
+          totalRows: slideMeta.totalRows,
         };
       };
 
@@ -1202,6 +1228,13 @@ export function renderPostgresNotebookResult(
           } else {
             slideHasMoreBefore = message.slidingWindow.hasMoreBefore;
             slideHasMoreAfter = message.slidingWindow.hasMoreAfter;
+          }
+          if (typeof message.slidingWindow.totalRows === 'number') {
+            // preserve known total rows on incoming window updates
+            slideMeta = {
+              ...(slideMeta ?? {}),
+              totalRows: message.slidingWindow.totalRows,
+            } as any;
           }
           if (slideBufferedStartRow > 1) {
             slideHasMoreBefore = true;

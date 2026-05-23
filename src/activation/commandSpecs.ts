@@ -61,6 +61,7 @@ import { setTelemetryMode, showTelemetryModePicker } from '../commands/telemetry
 import {
   cmdOpenTableDesigner,
   cmdCreateTableVisual,
+  cmdOpenRoleDesigner,
   cmdOpenSchemaDiff,
   cmdOpenSchemaDiffFromPalette,
   cmdOpenErd,
@@ -1383,6 +1384,10 @@ export function getCommandSpecs(
     {
       command: 'postgres-explorer.openTableDesigner',
       callback: (item: DatabaseTreeItem) => cmdOpenTableDesigner(item, context)
+    },
+    {
+      command: 'postgres-explorer.openRoleDesigner',
+      callback: (item: DatabaseTreeItem) => cmdOpenRoleDesigner(item, context)
     },
     {
       command: 'postgres-explorer.createTableVisual',

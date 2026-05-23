@@ -59,6 +59,7 @@ venv/**
 .cursor/
 .nightly/
 .kiro/
+.kilo/
 .c8rc.phase-handlers.json
 .c8rc.phase-utils.json
 .c8rc.phase-report.json
@@ -70,3 +71,5 @@ review-the-current-codebase-shimmering-bee.md
 .github/
 .coverage/
 .coverage-unit/
+packages/
+graphify-out/

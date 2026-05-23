@@ -361,16 +361,21 @@ export class SqlCompletionProvider implements vscode.CompletionItemProvider {
   }
 
   private static readonly CATALOG_COLUMNS_SQL = `
-                    SELECT
-                        table_schema as schema,
-                        table_name,
-                        column_name,
-                        data_type,
-                        udt_schema,
-                        udt_name
-                    FROM information_schema.columns
-                    WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
-                    ORDER BY table_schema, table_name, ordinal_position
+            SELECT
+              n.nspname as schema,
+              c.relname as table_name,
+              a.attname as column_name,
+              format_type(a.atttypid, a.atttypmod) as data_type,
+              tn.nspname as udt_schema,
+              t.typname as udt_name
+            FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
+            JOIN pg_type t ON t.oid = a.atttypid
+            JOIN pg_namespace tn ON tn.oid = t.typnamespace
+            WHERE c.relkind IN ('r', 'p', 'v', 'm', 'f')
+              AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+            ORDER BY n.nspname, c.relname, a.attnum
                 `;
 
   private static readonly CATALOG_COMPOSITE_SQL = `

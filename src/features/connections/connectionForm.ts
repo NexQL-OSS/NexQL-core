@@ -344,7 +344,7 @@ export class ConnectionFormPanel {
               err.code === "ECONNRESET" ||
               err.code === "EPROTO";
 
-            if ((sslMode === "prefer" || sslMode === "allow") && isSSLFailure) {
+            if (connection.environment !== "production" && (sslMode === "prefer" || sslMode === "allow") && isSSLFailure) {
               // Retry without SSL - keep using targetDb so .pgpass still matches
               config = buildClientConfig(
                 connection,
@@ -378,6 +378,14 @@ export class ConnectionFormPanel {
               } catch (sslErr: any) {
                 err = sslErr;
               }
+            } else if (connection.environment === "production" && isSSLFailure) {
+              const enrichedError = new Error(
+                `Production connection failed: ${err.message || "SSL connection failed"}.\n\n` +
+                `Security Alert: PgStudio blocked automatic SSL downgrade on a Production environment to protect your credentials. ` +
+                `If your database does not support SSL or you are using a secure SSH tunnel, please expand Advanced Options and explicitly set SSL Mode to "Disable — No SSL".`
+              );
+              (enrichedError as any).code = err.code;
+              err = enrichedError;
             }
 
             // Database fallback: if the configured database doesn't exist yet,

@@ -144,19 +144,114 @@ document.getElementById('cloudAuthKind').addEventListener('change', (event) => {
   });
 });
 
+// ── Production warning banner logic ───────────────────────────────────────────
+const environmentSelect = document.getElementById('environment');
+const readOnlyCheckbox = document.getElementById('readOnlyMode');
+const productionWarningDiv = document.getElementById('productionWarning');
+const enableReadOnlyLink = document.getElementById('enableReadOnlyLink');
+
+function updateProductionWarning() {
+  const env = environmentSelect.value;
+  const isReadOnly = readOnlyCheckbox.checked;
+  if (env === 'production' && !isReadOnly) {
+    productionWarningDiv.style.display = 'flex';
+  } else {
+    productionWarningDiv.style.display = 'none';
+  }
+}
+
+environmentSelect.addEventListener('change', updateProductionWarning);
+readOnlyCheckbox.addEventListener('change', updateProductionWarning);
+
+enableReadOnlyLink.addEventListener('click', (e) => {
+  e.preventDefault();
+  readOnlyCheckbox.checked = true;
+  updateProductionWarning();
+  // Trigger input listener on readOnlyMode to reset tested state if applicable
+  readOnlyCheckbox.dispatchEvent(new Event('input', { bubbles: true }));
+});
+
+// Run initial check (after form population or on page load)
+updateProductionWarning();
+
 // ── Message helpers ───────────────────────────────────────────────────────────
-function showMessage(text, type = 'info') {
-  const icons = { success: '✓', error: '✗', info: 'ℹ' };
+function showMessage(text, type = 'info', actions = []) {
+  const icons = { success: '✓', error: '✗', info: 'ℹ', warning: '⚠' };
   messageDiv.className = 'message ' + type;
   messageDiv.style.display = 'flex';
+  messageDiv.style.alignItems = actions.length ? 'flex-start' : 'center';
   while (messageDiv.firstChild) { messageDiv.removeChild(messageDiv.firstChild); }
+
   const iconSpan = document.createElement('span');
   iconSpan.className = 'message-icon';
-  iconSpan.textContent = icons[type];
+  iconSpan.textContent = icons[type] || icons.info;
+
+  const content = document.createElement('div');
+  content.className = 'message-content';
   const textSpan = document.createElement('span');
   textSpan.textContent = text;
+  content.appendChild(textSpan);
+
   messageDiv.appendChild(iconSpan);
-  messageDiv.appendChild(textSpan);
+  messageDiv.appendChild(content);
+
+  if (actions.length) {
+    const actionsDiv = document.createElement('div');
+    actionsDiv.className = 'message-actions';
+    for (const action of actions) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = action.className || 'btn-secondary';
+      button.textContent = action.label;
+      button.title = action.title || action.label;
+      button.addEventListener('click', action.onClick);
+      actionsDiv.appendChild(button);
+    }
+    messageDiv.appendChild(actionsDiv);
+  }
+}
+
+function ensureAdvancedOptionsVisible() {
+  const section = document.getElementById('advanced-section');
+  const arrow = document.getElementById('advanced-arrow');
+  if (section.style.display === 'none' || !section.style.display) {
+    section.style.display = 'block';
+    arrow.style.transform = 'rotate(180deg)';
+  }
+}
+
+function isSslDowngradeError(errorText) {
+  return /blocked automatic SSL downgrade/i.test(errorText || '') ||
+    /explicitly set SSL Mode to "Disable — No SSL"/i.test(errorText || '');
+}
+
+function showSslDisableFixMessage(rawError) {
+  const sslSelect = document.getElementById('sslmode');
+
+  showMessage(
+    rawError,
+    'error',
+    [
+      {
+        label: 'Set SSL Mode to Disable',
+        title: 'Switch SSL mode to Disable — No SSL',
+        onClick: () => {
+          sslSelect.value = 'disable';
+          ensureAdvancedOptionsVisible();
+          updateSSLCertFields();
+          isTested = false;
+          if (!isEditMode) {
+            addBtn.disabled = true;
+          }
+          showMessage(
+            'SSL mode set to Disable — No SSL. Retest the connection before saving.',
+            'warning'
+          );
+          sslSelect.focus();
+        }
+      }
+    ]
+  );
 }
 
 function hideMessage() {
@@ -257,7 +352,11 @@ window.addEventListener('message', event => {
       break;
     }
     case 'testError':
-      showMessage(message.error || 'Connection failed', 'error');
+      if (isSslDowngradeError(message.error)) {
+        showSslDisableFixMessage(message.error || 'Connection failed');
+      } else {
+        showMessage(message.error || 'Connection failed', 'error');
+      }
       isTested = false;
       // In edit mode keep save enabled even after a failed test
       if (!isEditMode) { addBtn.disabled = true; }

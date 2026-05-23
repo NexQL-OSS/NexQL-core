@@ -1,16 +1,18 @@
 # Docs Website Context
 
-Last updated: 2026-04-19
+Last updated: 2026-05-22
 Primary entry: docs/index.html
+Hosting: Vercel (migrated from GitHub Pages)
 
 ## What This Website Is
 
-This site is a product demo and marketing landing page for PgStudio, styled and behaved like a mini VS Code workbench.
+This site is a product demo and marketing landing page for PgStudio, styled and behaved like a mini VS Code workbench. It also includes a Razorpay payment checkout for sponsorship/pro support.
 
 The core concept is:
 - Show value by simulation, not by static brochure copy.
 - Let users interact with a realistic "editor + explorer + SQL assistant" shell.
 - Keep installation CTA visible from both full and minimized states.
+- Enable paid sponsorship via Razorpay checkout (requires server-side API).
 
 ## Visual and UX Concept
 
@@ -97,6 +99,23 @@ Primary conversion links:
 - GitHub repository
 - Open VSX listing
 
+## Deployment (Vercel)
+
+The site is deployed on Vercel with two components:
+- **Static site**: Served from `docs/` directory (configured via `vercel.json` `outputDirectory`)
+- **Serverless API**: Three functions in `api/` for Razorpay checkout:
+  - `GET /api/config` — serves the public Razorpay Key ID
+  - `POST /api/create-order` — creates a Razorpay order (uses `RAZORPAY_KEY_SECRET`)
+  - `POST /api/verify-payment` — verifies payment signatures
+
+Environment variables (`RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`) are configured in the Vercel Dashboard, not committed to the repo.
+
+The `api/package.json` declares serverless-specific dependencies (only `razorpay` SDK). This is separate from the root `package.json` which is for the VS Code extension.
+
+For local development, use `node scripts/dev-server.js` which serves `docs/` statically and mounts the `api/` handlers as Express routes, or use `npx vercel dev` for a full Vercel emulation.
+
+Custom domain (`pgstudio.astrx.dev`) is managed via Vercel Dashboard → Domains.
+
 ## Maintenance Rules
 
 When editing this site:
@@ -105,7 +124,10 @@ When editing this site:
 - Treat this as a simulated product experience; avoid replacing interaction with static text.
 - Maintain install CTAs in both topbar and minimized overview.
 - Verify both desktop and mobile toggle flows after major UI changes.
+- Never commit `RAZORPAY_KEY_SECRET` or live credentials; use Vercel environment variables.
+- When adding new API endpoints, add them to both `api/` and `scripts/dev-server.js`.
 
 ## Known Environment Note
 
 This review is based on source-level inspection in this workspace. Runtime browser introspection from the agent was unavailable because chat browser tools are not enabled in the current VS Code environment.
+

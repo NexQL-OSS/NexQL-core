@@ -5,6 +5,48 @@ All notable changes to the PostgreSQL Explorer extension will be documented in t
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.9] - 2026-05-23
+> Nightly releases - v1.3.11
+
+### Added
+
+- **Parameter comment completions** — Typing `--` in a SQL cell with `$1`/`:name` params now suggests missing `-- $1=` / `-- :name=` definitions. A Quick Fix action inserts all missing stubs at once.
+  - Example: 
+    ```sql
+    SELECT * FROM users WHERE id = $1 AND status = :status
+    ```
+    triggers suggestions for:
+    ```sql
+    -- $1=
+    -- :status=
+    ```
+- **Production safety banner** — Connection form shows a warning banner when environment is Production, prompting you to enable read-only mode. 
+  - **Environment tagging** is now clearer and more reliable, with badges on connection cards and a status bar indicator for active Production connections.
+  - **Query safety analyzer** now applies a Production risk multiplier to better catch dangerous queries and require confirmation.
+  - **Status bar risk indicator** now shows a warning icon whenever a Production connection is active.
+
+### Changed
+
+- SSL connections tagged as Production no longer silently downgrade to plaintext.
+- Explain Analyzer, Schema Designer, AI Assistant, and Saved Queries now route through Pro feature gates with freemium counters. 
+- Freemium model is 100% functional with clear upgrade paths, and Pro features are fully unlocked in development builds (coming soon).
+
+---
+
+## [1.2.7] - 2026-05-13
+> Nightly releases - v1.3.9 • v1.3.10
+
+### Added
+
+- **Role Designer** — Added a new visual role-management editor from the role context menu, with live SQL preview, notebook handoff, and membership controls for Inherit / Admin Option grants.
+- **Notebook parameter bank** — SQL parameter prompts now remember values per notebook, offer quick-pick reuse, and let you clear saved values without affecting other notebooks.
+- **Streaming row counts** — Sliding-window result rendering now shows the total row count when it is available, so streamed results read as `start–end of total` instead of only a range.
+
+### Changed
+
+- **SQL completion catalog** — Column completion warm-cache queries now read from PostgreSQL catalogs directly, which improves coverage for views and materialized views.
+- **Result cursor metadata** — Cursor window messages now carry optional total-row metadata through the renderer path.
+
 ## [1.2.5] - 2026-05-07
 > Nightly releases - v1.3.6 • v1.3.7 
 

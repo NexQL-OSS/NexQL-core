@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { DatabaseTreeItem } from '../providers/DatabaseTreeProvider';
 import { TableDesignerPanel } from '../schemaDesigner/TableDesignerPanel';
+import { RoleDesignerPanel } from '../schemaDesigner/RoleDesignerPanel';
 import { SchemaDiffPanel } from '../schemaDesigner/SchemaDiffPanel';
 import { ErdPanel } from '../schemaDesigner/ErdPanel';
 import { ImportDataPanel } from '../schemaDesigner/ImportDataPanel';
@@ -35,6 +36,16 @@ export async function cmdCreateTableVisual(
   context: vscode.ExtensionContext
 ): Promise<void> {
   await TableDesignerPanel.openForCreate(item, context);
+}
+
+/**
+ * Open the visual role designer for an existing role.
+ */
+export async function cmdOpenRoleDesigner(
+  item: DatabaseTreeItem,
+  context: vscode.ExtensionContext
+): Promise<void> {
+  await RoleDesignerPanel.openForRole(item, context);
 }
 
 /**

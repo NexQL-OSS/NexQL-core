@@ -179,6 +179,34 @@ describe('SqlCompletionProvider', () => {
     expect(getPooledClientStub.calledOnce).to.be.true;
   });
 
+  it('loads materialized view columns into qualified completions', async () => {
+    (getConfigurationStub as sinon.SinonStub).returns({
+      get: (key: string) => (key === 'postgresExplorer.connections'
+        ? [{ id: 'conn-1', name: 'Main', host: 'localhost', port: 5432, username: 'postgres' }]
+        : undefined)
+    } as any);
+
+    setupCacheResults(
+      [
+        { schema: 'public', object_name: 'sales_mv', object_type: 'materialized view' }
+      ],
+      [
+        { schema: 'public', table_name: 'sales_mv', column_name: 'id', data_type: 'integer' },
+        { schema: 'public', table_name: 'sales_mv', column_name: 'total', data_type: 'numeric' }
+      ]
+    );
+
+    const provider = new SqlCompletionProvider();
+    const sql = 'SELECT * FROM public.sales_mv m WHERE m.';
+    const document = createNotebookCellDocument(sql);
+    attachNotebook(document, { connectionId: 'conn-1', databaseName: 'appdb' });
+
+    await provider.warmCache('conn-1', 'appdb');
+
+    const columnQuery = queryStub.getCalls().map(call => String(call.args[0])).find(sql => sql.includes('pg_attribute'));
+    expect(columnQuery).to.contain("c.relkind IN ('r', 'p', 'v', 'm', 'f')");
+  });
+
   it('deduplicates repeated database objects before returning completions', async () => {
     (getConfigurationStub as sinon.SinonStub).returns({
       get: (key: string) => (key === 'postgresExplorer.connections'

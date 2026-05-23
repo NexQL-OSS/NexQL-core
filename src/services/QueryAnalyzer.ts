@@ -266,7 +266,8 @@ export class QueryAnalyzer {
     const isDangerous = operations.length > 0;
     const requiresConfirmation = this.shouldRequireConfirmation(
       operations,
-      connection
+      connection,
+      query
     );
 
     return {
@@ -275,7 +276,7 @@ export class QueryAnalyzer {
       riskScore,
       requiresConfirmation,
       warningMessage: requiresConfirmation
-        ? this.buildWarningMessage(operations, connection)
+        ? this.buildWarningMessage(operations, connection, query)
         : undefined,
     };
   }
@@ -356,8 +357,14 @@ export class QueryAnalyzer {
    */
   private shouldRequireConfirmation(
     operations: DangerousOperation[],
-    connection?: ConnectionConfig
+    connection?: ConnectionConfig,
+    query?: string
   ): boolean {
+    // Require confirmation for all non-read-only queries (writes) on production connections.
+    if (connection?.environment === 'production' && query && !this.isReadOnlyQuery(query)) {
+      return true;
+    }
+
     // Always require confirmation for destructive operations.
     if (operations.some((op) => ['DROP', 'TRUNCATE', 'DELETE', 'UPDATE', 'ALTER'].includes(op.type))) {
       return true;
@@ -416,7 +423,8 @@ export class QueryAnalyzer {
    */
   private buildWarningMessage(
     operations: DangerousOperation[],
-    connection?: ConnectionConfig
+    connection?: ConnectionConfig,
+    query?: string
   ): string {
     const envPrefix =
       connection?.environment === 'production'
@@ -433,6 +441,10 @@ export class QueryAnalyzer {
       return `• ${op.reason}${objectList}\n  Impact: ${op.estimatedImpact}`;
     });
 
+    if (opMessages.length === 0 && connection?.environment === 'production' && query && !this.isReadOnlyQuery(query)) {
+      opMessages.push('• Write/execution operation on a production database\n  Impact: Potential modification to production data');
+    }
+
     return (
       envPrefix +
       'This query contains potentially dangerous operations:\n\n' +
@@ -445,18 +457,12 @@ export class QueryAnalyzer {
    * Check if a query is safe for read-only mode
    */
   public isReadOnlyQuery(query: string): boolean {
-    const normalizedQuery = this.normalizeQuery(query);
-
-    // Check for any write operations
-    const writePatterns = [
-      /\b(INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|TRUNCATE|GRANT|REVOKE)\b/i,
-    ];
-
-    const hasWriteOperation = writePatterns.some((pattern) =>
-      pattern.test(normalizedQuery)
-    );
-
-    return !hasWriteOperation;
+    const clean = SqlParser.stripCommentsAndStrings(query).trim();
+    if (!clean) {
+      return true;
+    }
+    // Whitelist approach: only allow SELECT, WITH, EXPLAIN, SHOW, VALUES
+    return /^\s*(SELECT|WITH|EXPLAIN|SHOW|VALUES)\b/i.test(clean);
   }
 
   /**

@@ -12,6 +12,9 @@ export interface SlidingWindowPayload {
   windowSize: number;
   hasMoreBefore: boolean;
   hasMoreAfter: boolean;
+  totalRows?: number;
+  countAttempted?: boolean;
+  countError?: string;
 }
 
 interface SessionRecord {
@@ -20,6 +23,9 @@ interface SessionRecord {
   windowSize: number;
   notebookUri: string;
   cellUri: string;
+  totalRows?: number;
+  countAttempted?: boolean;
+  countError?: string;
   idleTimer?: NodeJS.Timeout;
 }
 
@@ -156,14 +162,58 @@ export class ResultCursorService {
         beganOwnReadOnlyTx = false;
       }
 
+      // store session early so refreshIdleTimer can work if count/fetch takes long
       ResultCursorService.sessions.set(sessionId, {
         cursorQuoted,
         client,
         windowSize,
         notebookUri: options.notebookUri,
         cellUri: options.cellUri,
+        totalRows: undefined,
+        countAttempted: false,
+        countError: undefined,
       });
       ResultCursorService.refreshIdleTimer(sessionId);
+
+      // Attempt to estimate total rows for UI (best-effort; errors ignored)
+      const countStartTime = Date.now();
+      let sessionRecord = ResultCursorService.sessions.get(sessionId);
+      if (sessionRecord) sessionRecord.countAttempted = true;
+
+      let countSql: string | undefined;
+      try {
+        console.log(`[ResultCursorService] Starting row count for session ${sessionId.substring(0, 8)}`);
+        // Strip comments from inner SQL to avoid syntax errors in wrapped COUNT query
+        const innerSqlClean = stripSqlComments(innerSql);
+        countSql = `SELECT COUNT(*) AS cnt FROM (${innerSqlClean}) AS pgstudio_count`;
+        console.log(`[ResultCursorService] COUNT query: ${countSql.substring(0, 120)}...`);
+        
+        const cres = await client.query(countSql);
+        const countDuration = Date.now() - countStartTime;
+        
+        const cntVal = cres?.rows?.[0]?.cnt ?? cres?.rows?.[0]?.count;
+        const n = cntVal !== undefined && cntVal !== null ? Number(cntVal) : undefined;
+        
+        sessionRecord = ResultCursorService.sessions.get(sessionId);
+        if (sessionRecord) {
+          sessionRecord.totalRows = Number.isFinite(n) ? n : undefined;
+          console.log(`[ResultCursorService] Row count succeeded: ${sessionRecord.totalRows} rows (${countDuration}ms) for session ${sessionId.substring(0, 8)}`);
+        }
+      } catch (e) {
+        const countDuration = Date.now() - countStartTime;
+        const errorMsg = e instanceof Error ? e.message : String(e);
+        sessionRecord = ResultCursorService.sessions.get(sessionId);
+        if (sessionRecord) {
+          sessionRecord.countError = errorMsg;
+          const queryPreview = countSql ? countSql.substring(0, 150) : 'unknown';
+          console.warn(
+            `[ResultCursorService] Row count failed after ${countDuration}ms for session ${sessionId.substring(0, 8)}:\n` +
+            `  Error: ${errorMsg}\n` +
+            `  Query: ${queryPreview}...`,
+            e instanceof Error ? e.stack : ''
+          );
+        }
+      }
 
       let page: { rows: any[]; fields: Array<{ name: string; dataTypeID: number }> } | null;
       try {
@@ -181,6 +231,11 @@ export class ResultCursorService {
       const hasMoreBefore = false;
       const hasMoreAfter = page.rows.length === windowSize;
 
+      const srec = ResultCursorService.sessions.get(sessionId);
+      const totalRows = srec?.totalRows;
+      const countAttempted = srec?.countAttempted ?? false;
+      const countError = srec?.countError;
+
       return {
         sessionId,
         rows: page.rows,
@@ -191,6 +246,9 @@ export class ResultCursorService {
           windowSize,
           hasMoreBefore,
           hasMoreAfter,
+          totalRows,
+          countAttempted,
+          countError,
         },
       };
     } catch (e) {
@@ -239,6 +297,9 @@ export class ResultCursorService {
     windowSize: number;
     hasMoreBefore: boolean;
     hasMoreAfter: boolean;
+    totalRows?: number;
+    countAttempted?: boolean;
+    countError?: string;
   } | null> {
     const s = ResultCursorService.sessions.get(sessionId);
     if (!s) {
@@ -259,6 +320,9 @@ export class ResultCursorService {
         windowSize: s.windowSize,
         hasMoreBefore,
         hasMoreAfter,
+        totalRows: s.totalRows,
+        countAttempted: s.countAttempted,
+        countError: s.countError,
       };
     } catch (e) {
       console.error('[ResultCursorService] fetchPage failed:', e);

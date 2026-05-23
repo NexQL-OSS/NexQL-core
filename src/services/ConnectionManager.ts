@@ -179,6 +179,17 @@ export class ConnectionManager {
 
         return client;
       }
+
+      if (config.environment === 'production' && this.isSSLFailure(err)) {
+        const enrichedError = new Error(
+          `Production connection failed: ${err.message || 'SSL connection failed'}.\n\n` +
+          `Security Alert: PgStudio blocked automatic SSL downgrade on a Production environment to protect your credentials. ` +
+          `If your database does not support SSL or you are using a secure SSH tunnel, please open Connection Settings, expand Advanced Options, and explicitly set SSL Mode to "Disable — No SSL".`
+        );
+        (enrichedError as any).code = (err as any).code;
+        throw enrichedError;
+      }
+
       throw err;
     }
   }
@@ -239,6 +250,15 @@ export class ConnectionManager {
         }
       } else {
         telemetry.trackEvent('connection_error', { errorCategory: this.categorizeConnectionError(err) });
+        if (config.environment === 'production' && this.isSSLFailure(err)) {
+          const enrichedError = new Error(
+            `Production connection failed: ${err.message || 'SSL connection failed'}.\n\n` +
+            `Security Alert: PgStudio blocked automatic SSL downgrade on a Production environment to protect your credentials. ` +
+            `If your database does not support SSL or you are using a secure SSH tunnel, please open Connection Settings, expand Advanced Options, and explicitly set SSL Mode to "Disable — No SSL".`
+          );
+          (enrichedError as any).code = (err as any).code;
+          throw enrichedError;
+        }
         throw err;
       }
     }

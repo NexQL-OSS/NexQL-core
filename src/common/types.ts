@@ -140,6 +140,9 @@ export interface QueryResults {
     windowSize: number;
     hasMoreBefore: boolean;
     hasMoreAfter: boolean;
+    totalRows?: number | null;
+    countAttempted?: boolean;
+    countError?: string;
   };
   /** When true with slidingWindow, show the streaming hint banner (policy-gated). */
   showSlidingCursorBanner?: boolean;
