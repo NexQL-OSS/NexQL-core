@@ -41,3 +41,4 @@ docs/plan/
 test/
 .vercel
 .env
+.env.local
