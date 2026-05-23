@@ -3301,6 +3301,7 @@
   ],
   "main": "./dist/extension.js",
   "scripts": {
+    "dev:site": "node scripts/dev-server.js",
     "vscode:prepublish": "npm run esbuild-base -- --minify && npm run esbuild-renderer -- --minify && npm run esbuild-erd-webview -- --minify",
     "prepare:nightly:manifests": "node ./scripts/prepare-nightly-manifests.js",
     "package:prerelease": "npx @vscode/vsce package --pre-release",
@@ -3348,8 +3349,10 @@
     "d3-force": "^3.0.0",
     "d3-selection": "^3.0.0",
     "esbuild": ">=0.28.0",
+    "express": "^5.2.1",
     "pg": "^8.20.0",
     "pg-cursor": "^2.19.0",
+    "razorpay": "^2.9.6",
     "sql-formatter": "^15.7.3",
     "ssh2": "^1.17.0"
   },

@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { CompletionProvider } from './kernel/CompletionProvider';
+import { ParamCommentCodeActionProvider } from './kernel/ParamCommentCodeActionProvider';
 import { SqlExecutor } from './kernel/SqlExecutor';
 import { getTransactionManager } from '../services/TransactionManager';
 import { MessageHandlerRegistry } from '../services/MessageHandler';
@@ -33,6 +34,8 @@ export class PostgresKernel implements vscode.Disposable {
   readonly label = 'PostgreSQL';
   readonly supportedLanguages = ['sql'];
 
+  private static _languageProvidersRegistered = false;
+
   private readonly _controller: vscode.NotebookController;
   private readonly _executor: SqlExecutor;
 
@@ -54,15 +57,26 @@ export class PostgresKernel implements vscode.Disposable {
 
     this._executor = new SqlExecutor(this._controller);
 
-    // Register completion provider
-    const completionProvider = new CompletionProvider();
-    context.subscriptions.push(
-      vscode.languages.registerCompletionItemProvider(
-        { scheme: 'vscode-notebook-cell', language: 'sql' },
-        completionProvider,
-        ' ', '.', '"' // Trigger characters
-      )
-    );
+    // Register language providers once across all kernel instances
+    if (!PostgresKernel._languageProvidersRegistered) {
+      PostgresKernel._languageProvidersRegistered = true;
+
+      context.subscriptions.push(
+        vscode.languages.registerCompletionItemProvider(
+          { scheme: 'vscode-notebook-cell', language: 'sql' },
+          new CompletionProvider(),
+          ' ', '.', '"', '-' // - enables -- param comment suggestions
+        )
+      );
+
+      context.subscriptions.push(
+        vscode.languages.registerCodeActionsProvider(
+          { scheme: 'vscode-notebook-cell', language: 'sql' },
+          new ParamCommentCodeActionProvider(),
+          { providedCodeActionKinds: ParamCommentCodeActionProvider.providedKinds }
+        )
+      );
+    }
 
     // Handle messages from renderer
     const registry = MessageHandlerRegistry.getInstance();

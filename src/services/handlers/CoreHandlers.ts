@@ -6,6 +6,8 @@ import { PostgresMetadata } from '../../common/types';
 import { DatabaseTreeItem } from '../../providers/DatabaseTreeProvider';
 import { ConnectionManager } from '../ConnectionManager';
 import { errorResponse, okResponse } from './messaging';
+import { extensionContext } from '../../extension';
+import { QueryAnalyzer } from '../../services/QueryAnalyzer';
 
 export class ShowConnectionSwitcherHandler implements IMessageHandler {
   constructor(private statusBar: any) { }
@@ -278,7 +280,7 @@ export class ImportRequestHandler implements IMessageHandler {
   async handle(message: any, context: { editor: vscode.NotebookEditor }) {
     if (!context.editor) return;
 
-    const metadata = context.editor.notebook.metadata;
+    const metadata = context.editor.notebook.metadata as PostgresMetadata;
     const connectionId = metadata?.connectionId;
     if (!connectionId) {
       vscode.window.showErrorMessage('No active connection found for this notebook.');
@@ -291,13 +293,36 @@ export class ImportRequestHandler implements IMessageHandler {
       return;
     }
 
+    const notebookKey = `activeProfile-${context.editor.notebook.uri.toString()}`;
+    const activeProfileContext = extensionContext?.globalState.get<any>(notebookKey);
+
+    const connectionConfig = {
+      ...connection,
+      database: metadata?.databaseName || connection.database
+    };
+
+    // Apply profile overrides with floor protection
+    let readOnlyMode = connection.readOnlyMode === true;
+    if (metadata?.readOnlyMode !== undefined) {
+      readOnlyMode = readOnlyMode || metadata.readOnlyMode;
+    }
+    if (activeProfileContext?.readOnlyMode !== undefined) {
+      readOnlyMode = readOnlyMode || activeProfileContext.readOnlyMode;
+    }
+    connectionConfig.readOnlyMode = readOnlyMode;
+
+    if (connectionConfig.readOnlyMode) {
+      vscode.window.showErrorMessage('Import operations are not allowed in read-only mode');
+      return;
+    }
+
     const { data } = message;
     if (!data || !Array.isArray(data) || data.length === 0) {
       vscode.window.showWarningMessage('No data received for import.');
       return;
     }
 
-    await performImport(message, connection);
+    await performImport(message, connectionConfig);
   }
 }
 
@@ -532,11 +557,6 @@ export class ShowErrorMessageHandler implements IMessageHandler {
 }
 
 export class RunDerivedQueryHandler implements IMessageHandler {
-  private isReadOnlyQuery(query: string): boolean {
-    const clean = query.replace(/--.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '').trim();
-    return /^\s*(SELECT|WITH)\b/i.test(clean);
-  }
-
   async handle(message: any, context: { editor?: vscode.NotebookEditor }) {
     if (!context.editor) {
       return;
@@ -547,7 +567,7 @@ export class RunDerivedQueryHandler implements IMessageHandler {
       vscode.window.showErrorMessage('No derived query provided.');
       return;
     }
-    if (!this.isReadOnlyQuery(sql)) {
+    if (!QueryAnalyzer.getInstance().isReadOnlyQuery(sql)) {
       vscode.window.showErrorMessage('Only SELECT/WITH derived queries are allowed.');
       return;
     }

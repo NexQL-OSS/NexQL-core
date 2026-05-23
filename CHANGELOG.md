@@ -5,6 +5,34 @@ All notable changes to the PostgreSQL Explorer extension will be documented in t
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.9] - 2026-05-23
+> Nightly releases - v1.3.11
+
+### Added
+
+- **Parameter comment completions** — Typing `--` in a SQL cell with `$1`/`:name` params now suggests missing `-- $1=` / `-- :name=` definitions. A Quick Fix action inserts all missing stubs at once.
+  - Example: 
+    ```sql
+    SELECT * FROM users WHERE id = $1 AND status = :status
+    ```
+    triggers suggestions for:
+    ```sql
+    -- $1=
+    -- :status=
+    ```
+- **Production safety banner** — Connection form shows a warning banner when environment is Production, prompting you to enable read-only mode. 
+  - **Environment tagging** is now clearer and more reliable, with badges on connection cards and a status bar indicator for active Production connections.
+  - **Query safety analyzer** now applies a Production risk multiplier to better catch dangerous queries and require confirmation.
+  - **Status bar risk indicator** now shows a warning icon whenever a Production connection is active.
+
+### Changed
+
+- SSL connections tagged as Production no longer silently downgrade to plaintext.
+- Explain Analyzer, Schema Designer, AI Assistant, and Saved Queries now route through Pro feature gates with freemium counters. 
+- Freemium model is 100% functional with clear upgrade paths, and Pro features are fully unlocked in development builds (coming soon).
+
+---
+
 ## [1.2.7] - 2026-05-13
 > Nightly releases - v1.3.9 • v1.3.10
 

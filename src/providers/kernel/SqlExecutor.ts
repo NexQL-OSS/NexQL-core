@@ -234,11 +234,12 @@ export class SqlExecutor {
       return undefined;
     }
 
-    if (cacheLastValues && workspaceState && input !== nullSentinel) {
+    const isNull = Boolean(nullSentinel && input.toLowerCase() === nullSentinel.toLowerCase());
+    if (cacheLastValues && workspaceState && !isNull) {
       await rememberNotebookParameterValue(workspaceState, options.notebookUri, options.parameterKey, input);
     }
 
-    return nullSentinel && input === nullSentinel ? null : input;
+    return isNull ? null : input;
   }
 
   private getSqlParameterContextSnippet(sql: string, parameterIndex: number): string | undefined {
@@ -271,11 +272,16 @@ export class SqlExecutor {
   private async promptForPositionalParameterValues(
     notebookUri: string,
     indices: number[],
-    sql: string
+    sql: string,
+    commentValues?: Map<number, string | null>
   ): Promise<unknown[] | undefined> {
     const values: unknown[] = [];
 
     for (const parameterIndex of indices) {
+      if (commentValues?.has(parameterIndex)) {
+        values.push(commentValues.get(parameterIndex) ?? null);
+        continue;
+      }
       const contextSnippet = this.getSqlParameterContextSnippet(sql, parameterIndex);
       const input = await this.promptForNotebookParameterValue({
         notebookUri,
@@ -329,11 +335,16 @@ export class SqlExecutor {
    */
   private async promptForNamedParameterValues(
     notebookUri: string,
-    paramNames: string[]
+    paramNames: string[],
+    commentValues?: Map<string, string | null>
   ): Promise<unknown[] | undefined> {
     const values: unknown[] = [];
 
     for (const name of paramNames) {
+      if (commentValues?.has(name)) {
+        values.push(commentValues.get(name) ?? null);
+        continue;
+      }
       const input = await this.promptForNotebookParameterValue({
         notebookUri,
         parameterKey: this.makeNotebookParameterKey('named', name),
@@ -478,6 +489,27 @@ export class SqlExecutor {
     }
   }
 
+  private async persistPromptedParamComments(
+    cell: vscode.NotebookCell,
+    keys: (number | string)[],
+    vals: unknown[],
+    commentDefined: Map<number | string, string | null>,
+    kind: 'positional' | 'named'
+  ): Promise<void> {
+    const lines: string[] = [];
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i];
+      if ((commentDefined as Map<any, any>).has(key)) { continue; }
+      const v = vals[i];
+      const valStr = v === null ? 'NULL' : String(v);
+      lines.push(kind === 'positional' ? `-- $${key}=${valStr}` : `-- :${key}=${valStr}`);
+    }
+    if (lines.length === 0) { return; }
+    const edit = new vscode.WorkspaceEdit();
+    edit.insert(cell.document.uri, new vscode.Position(0, 0), lines.join('\n') + '\n');
+    await vscode.workspace.applyEdit(edit);
+  }
+
   /**
    * Optional execution directives embedded as SQL comments at top-level.
    * - pgstudio:full-dataset => disable streaming + disable auto-limit for this statement.
@@ -525,17 +557,15 @@ export class SqlExecutor {
         throw new Error('Connection not found');
       }
 
-      // Apply profile settings from metadata to connection (metadata takes precedence)
+      // Apply profile settings with floor protection (connection level readOnly cannot be downgraded)
+      let readOnlyMode = connection.readOnlyMode === true;
       if (metadata.readOnlyMode !== undefined) {
-        connection.readOnlyMode = metadata.readOnlyMode;
+        readOnlyMode = readOnlyMode || metadata.readOnlyMode;
       }
-
-      // Apply profile settings from globalState if available
-      if (activeProfileContext) {
-        if (activeProfileContext.readOnlyMode !== undefined) {
-          connection.readOnlyMode = activeProfileContext.readOnlyMode;
-        }
+      if (activeProfileContext?.readOnlyMode !== undefined) {
+        readOnlyMode = readOnlyMode || activeProfileContext.readOnlyMode;
       }
+      connection.readOnlyMode = readOnlyMode;
 
       const client = await ConnectionManager.getInstance().getSessionClient({
         id: connection.id,
@@ -602,6 +632,14 @@ export class SqlExecutor {
       const queryAnalyzer = QueryAnalyzer.getInstance();
       let userConfirmedDangerousOps: 'Execute' | 'Execute in Transaction' | 'Cancelled' | null = null;
 
+      // Resolve autoApplySafetyCheck (activeProfileContext has precedence over notebook metadata)
+      let autoApplySafetyCheck = true;
+      if (activeProfileContext?.autoApplySafetyCheck !== undefined) {
+        autoApplySafetyCheck = !!activeProfileContext.autoApplySafetyCheck;
+      } else if (metadata?.autoApplySafetyCheck !== undefined) {
+        autoApplySafetyCheck = !!metadata.autoApplySafetyCheck;
+      }
+
       // Collect all dangerous operations and perform read-only checks
       const allDangerousOps: Array<{ stmt: string; analysis: any }> = [];
       for (const stmt of statements) {
@@ -612,7 +650,7 @@ export class SqlExecutor {
 
         // Analyze for dangerous operations
         const analysis = queryAnalyzer.analyzeQuery(stmt, connection);
-        if (analysis.requiresConfirmation) {
+        if (analysis.requiresConfirmation && autoApplySafetyCheck) {
           allDangerousOps.push({ stmt, analysis });
         }
       }
@@ -675,6 +713,7 @@ export class SqlExecutor {
           throw new Error('Mixing $N and :name parameters in the same statement is not supported. Use one style per query.');
         }
 
+        const commentParams = SqlParser.parseCommentParameters(query);
         let pgParamValues: unknown[] | undefined;
 
         if (params.quoted.length > 0) {
@@ -689,7 +728,7 @@ export class SqlExecutor {
 
         if (hasNamed) {
           const named = SqlParser.substituteNamedParametersWithPgPlaceholders(query);
-          const vals = await this.promptForNamedParameterValues(notebookUri, named.paramNames);
+          const vals = await this.promptForNamedParameterValues(notebookUri, named.paramNames, commentParams.named);
           if (vals === undefined) {
             client.removeListener('notice', noticeListener);
             execution.end(false, Date.now());
@@ -697,12 +736,14 @@ export class SqlExecutor {
           }
           query = named.text;
           pgParamValues = vals;
+          await this.persistPromptedParamComments(cell, named.paramNames, vals, commentParams.named, 'named');
         } else if (hasPositional) {
-          const maxN = Math.max(...params.positional);
+          const indices = Array.from({ length: Math.max(...params.positional) }, (_, i) => i + 1);
           const vals = await this.promptForPositionalParameterValues(
             notebookUri,
-            Array.from({ length: maxN }, (_, i) => i + 1),
-            query
+            indices,
+            query,
+            commentParams.positional
           );
           if (vals === undefined) {
             client.removeListener('notice', noticeListener);
@@ -710,6 +751,7 @@ export class SqlExecutor {
             return;
           }
           pgParamValues = vals;
+          await this.persistPromptedParamComments(cell, indices, vals, commentParams.positional, 'positional');
         }
 
         const directives = this.consumeExecutionDirectives(query);
@@ -977,8 +1019,6 @@ export class SqlExecutor {
             });
           }
 
-          await this.maybePromptForReview();
-
         } catch (err: any) {
           const stmtEndTime = Date.now();
           const executionTime = (stmtEndTime - stmtStartTime) / 1000;
@@ -1093,14 +1133,37 @@ export class SqlExecutor {
 
       client.removeListener('notice', noticeListener);
       execution.end(true, Date.now());
+      void this.maybePromptForReview();
       // Update notebook title after successful cell execution
       updateNotebookTitle(cell.notebook).catch(err => console.warn('Failed to update notebook title:', err));
 
     } catch (err: any) {
       console.error('SqlExecutor: Execution failed:', err);
+      const pgErrorCode: string | undefined = err.code;
+      const errorData = {
+        success: false,
+        error: err.message || String(err),
+        query: cell.document.getText(),
+        executionTime: 0,
+        slowQuery: false,
+        canExplain: false,
+        errorCode: pgErrorCode,
+        errorExplanation: pgErrorCode ? getErrorExplanation(pgErrorCode) : undefined,
+        sourceCellIndex: cell.index,
+      };
+
       await execution.replaceOutput(new NotebookCellOutput([
-        new NotebookCellOutputItem(Buffer.from(String(err), 'utf8'), 'application/vnd.code.notebook.error')
+        new NotebookCellOutputItem(
+          Buffer.from(JSON.stringify(errorData), 'utf8'),
+          'application/vnd.postgres-notebook.error',
+        ),
       ]));
+
+      // Update execution time pill in CodeLens bar (failure)
+      QueryCodeLensProvider.getInstance()?.updatePill(cell.document.uri.toString(), {
+        success: false
+      });
+
       execution.end(false, Date.now());
       // Update notebook title even after failed execution (cell content may have changed)
       updateNotebookTitle(cell.notebook).catch(err => console.warn('Failed to update notebook title:', err));

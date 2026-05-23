@@ -543,4 +543,37 @@ export class SqlParser {
 
     return { text: out, paramNames: ordered };
   }
+
+  public static parseCommentParameters(sql: string): {
+    positional: Map<number, string | null>;
+    named: Map<string, string | null>;
+  } {
+    const positional = new Map<number, string | null>();
+    const named = new Map<string, string | null>();
+    const lineRe = /^--\s*(\$(\d+)|:([a-zA-Z_][a-zA-Z0-9_]*))=(.*?)\s*$/;
+
+    for (const line of sql.split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed) { continue; }
+      if (!trimmed.startsWith('--')) { break; }
+      const m = lineRe.exec(trimmed);
+      if (!m) { continue; }
+      const val = SqlParser.parseCommentParamValue(m[4].trim());
+      if (m[2]) {
+        positional.set(Number(m[2]), val);
+      } else if (m[3]) {
+        named.set(m[3], val);
+      }
+    }
+
+    return { positional, named };
+  }
+
+  private static parseCommentParamValue(raw: string): string | null {
+    if (/^null$/i.test(raw)) { return null; }
+    if (raw.length >= 2 && raw.startsWith("'") && raw.endsWith("'")) {
+      return raw.slice(1, -1).replace(/''/g, "'");
+    }
+    return raw;
+  }
 }
