@@ -1,133 +1,116 @@
 # Docs Website Context
 
-Last updated: 2026-05-22
+Last updated: 2026-05-31
 Primary entry: docs/index.html
 Hosting: Vercel (migrated from GitHub Pages)
+Design reference: nexql.html (palette/copy only — **not** the inline IDE demo)
 
 ## What This Website Is
 
-This site is a product demo and marketing landing page for PgStudio, styled and behaved like a mini VS Code workbench. It also includes a Razorpay payment checkout for sponsorship/pro support.
+This site is a product demo and marketing landing page for PgStudio, styled with the **NexQL** spectrum (blue → indigo → magenta → amber on `#07080E`). It includes Razorpay subscription checkout for **Sponsor** and **Singularity** paid tiers.
 
-The core concept is:
-- Show value by simulation, not by static brochure copy.
-- Let users interact with a realistic "editor + explorer + SQL assistant" shell.
-- Keep installation CTA visible from both full and minimized states.
-- Enable paid sponsorship via Razorpay checkout (requires server-side API).
+The **canonical interactive demo** is the full VS Code workbench shell in `docs/index.html` (minimized hero preview → expandable workbench with tour, assistant, query simulation). Do not replace it with nexql.html’s simpler inline IDE.
 
-## Visual and UX Concept
+Core concept:
+- Show value by simulation, not static brochure copy.
+- Let users interact with a realistic editor + explorer + SQL assistant shell.
+- Keep install CTA visible from minimized and expanded states.
+- Paid subscriptions via Razorpay (server API + Razorpay Plans in dashboard).
 
-The page intentionally mirrors VS Code interaction patterns:
-- Top bar with docs sections and install CTA.
-- Workbench shell with titlebar, activity bar, sidebar, editor tabs, breadcrumb, status bar.
-- Right assistant panel with action cards and chat-like interaction.
-- Query file tab with runnable SQL result simulation and chart.
+## Design tokens (NexQL)
 
-The experience starts in minimized hero mode (`body.editor-minimized`) and expands to the interactive shell when users click open/demo controls.
+Defined in `docs/styles/base-theme.css`:
 
-## Information Architecture
+| Token | Value |
+|-------|--------|
+| `--nex-blue` | `#3D6BFF` |
+| `--nex-indigo` | `#6C4CF0` |
+| `--nex-magenta` | `#E0379E` |
+| `--nex-amber` | `#FF8A3D` |
+| `--nex-bg` | `#07080E` |
+| `--nex-grad` | 110° blue → indigo → magenta → amber |
+| Fonts | **Sora** (display), **Inter** (body), **JetBrains Mono** (code) |
 
-Main content is split into three runtime partials injected into index placeholders:
-- `docs/html/editor-file-views.html`
-- `docs/html/assistant-panel.html`
-- `docs/html/minimized-overview.html`
+Utilities: `.grad-text`, `.eyebrow`. Landing aurora + grain on `.hero-shell` (CSS; `prefers-reduced-motion` disables drift).
 
-Editor file views model the narrative in this sequence:
-1. README/product value
-2. Query live demo
-3. Feature catalog
-4. Connection safety workflow
-5. Install quick start
-6. Deeper docs pages (notebooks/explorer/ai/schema/safety)
+## Landing information architecture
 
-## Runtime Behavior (How It Works)
+Scroll container: `.hero-shell` (scroll-snap in minimized mode).
 
-Startup flow:
-1. `DOMContentLoaded`
-2. `loadHtmlPartials()` fetches `data-partial` fragments and replaces placeholder roots.
-3. Desktop behaviors are wired (navigation, search, tabs, query simulation, tour, assistant, stats).
-4. Mobile toggles are wired.
+1. **Hero** — centered nexql layout: pill, headline, lede, trust KPIs, CTAs (Install primary · Run demo → full workbench), mini preview below
+2. **Marquee** — capability chips
+3. **Features** (`#features`) — metrics strip + 4×5 area tile grids (nexql structure)
+4. **AI showcase** (`#ai`) — plain-English → SQL + provider chips + parallel chats copy
+5. **Comparison** (`#compare`) — PgStudio vs pgAdmin / DBeaver / TablePlus
+6. **Workflow** — Connect → Explore → Query → Analyze
+7. **FAQ** (`#faq`) — six `<details>` items (nexql copy)
+8. **Pricing** — Free / Sponsor / Singularity (Razorpay)
+9. **Install CTA** (`#install`) — nexql card: Marketplace + Open VSX + CLI
+10. **Footer** — Resources · Community · Install (nexql columns)
 
-Script load order in `index.html` is intentionally dependency-safe:
-1. `js/partials.js`
-2. `js/core-state.js`
-3. `js/workbench.js`
-4. `js/assistant.js`
-5. `js/tour.js`
-6. `js/visuals.js`
-7. `js/bootstrap.js`
+Top nav: **Features · AI · Compare · FAQ · Pricing · GitHub · Install — free** — smooth scroll via `scrollToLandingAnchor()` in `bootstrap.js`.
 
-Behavior highlights:
-- File switching and tab state: `openFile()`
-- Sidebar panel switching: `switchSidebarPanel()`
-- Product tour overlay and spotlight: `wireTour()` + `renderTourStep()`
-- Query run simulation and result animation: `wireQueryRunAnimation()`
-- SQL assistant canned responses and snippet actions: `wireAssistant()`
-- Marketplace stat hydration and chart rendering: `hydrateMarketplaceStats()`, `renderRevenueChart()`
+## Pricing tiers
 
-## Styling System
+| Tier | Key | Audience | Payment |
+|------|-----|----------|---------|
+| Free | — | Everyone | $0 — Marketplace |
+| Sponsor | `sponsor` | Individual pro | Razorpay subscription |
+| Singularity | `singularity` | Teams / org | Razorpay subscription, flat org license |
 
-The stylesheet is layered for maintainability and cascade control:
-- `docs/styles/base-theme.css`: tokens, global shell/hero/minimized fundamentals
-- `docs/styles/workbench-layout.css`: workbench/chrome/layout primitives
-- `docs/styles/content-panels.css`: doc pages and content-focused blocks
-- `docs/styles/interactive.css`: assistants, tour, animations, mobile toggles
+Pricing UI: monthly/annual + INR/USD toggles (`docs/js/pricing.js`); checkout uses `data-tier="sponsor"` / `"singularity"`.
 
-Aggregator:
-- `docs/styles.css` imports all four in that order.
+## Runtime behavior
 
-## Product Messaging Strategy
+Startup: `DOMContentLoaded` → `loadHtmlPartials()` → `partials-loaded` → wire pricing/checkout.
 
-The page positions PgStudio around five practical outcomes:
-- Safe connections and environment labeling
-- Explorer-driven schema navigation
-- Notebook-first SQL workflows
-- AI-assisted SQL reasoning and optimization
-- Flexible SQL Assistant placement (sidebar or editor tabs) with multi-tab workflows
-- Performance tooling and explainability
+Script order in `index.html`:
+1. `partials.js` → `core-state.js` → `workbench.js` → `assistant.js` → `tour.js` → `visuals.js` → `landing-capabilities.js` → `pricing.js` → `checkout.js` → `bootstrap.js`
 
-The assistant panel is designed as a guided onboarding surface, not a full chatbot backend. Responses are curated to demonstrate capabilities and funnel to installation.
+## Styling layers
 
-## SEO and Distribution Notes
+- `base-theme.css` — tokens, hero, minimized layout, aurora
+- `workbench-layout.css` — demo chrome (reskinned via tokens)
+- `content-panels.css` — in-demo doc pages
+- `interactive.css` — tour, assistant, mobile
+- `landing-sections.css` — marquee, metrics, tiles, AI, compare, workflow, FAQ, pricing, footer
 
-`index.html` includes:
-- Canonical URL, OpenGraph, Twitter cards
-- `SoftwareApplication` JSON-LD
-- Marketplace icon assets
-
-Primary conversion links:
-- VS Code Marketplace install
-- GitHub repository
-- Open VSX listing
+Aggregator: `docs/styles.css`
 
 ## Deployment (Vercel)
 
-The site is deployed on Vercel with two components:
-- **Static site**: Served from `docs/` directory (configured via `vercel.json` `outputDirectory`)
-- **Serverless API**: Three functions in `api/` for Razorpay checkout:
-  - `GET /api/config` — serves the public Razorpay Key ID
-  - `POST /api/create-order` — creates a Razorpay order (uses `RAZORPAY_KEY_SECRET`)
-  - `POST /api/verify-payment` — verifies payment signatures
+- Static: `docs/`
+- API: `api/config`, `api/create-subscription`, `api/verify-payment`
+- Plan config: `api/plan-config.js`
 
-Environment variables (`RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`) are configured in the Vercel Dashboard, not committed to the repo.
+Environment (see `.env.example`):
+- `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`
+- `RAZORPAY_PLAN_{SPONSOR|SINGULARITY}_{MONTHLY|ANNUAL}_{INR|USD}` — eight plan IDs
+- Optional `RAZORPAY_DISPLAY_*` overrides
 
-The `api/package.json` declares serverless-specific dependencies (only `razorpay` SDK). This is separate from the root `package.json` which is for the VS Code extension.
+Local dev:
 
-For local development, use `node scripts/dev-server.js` which serves `docs/` statically and mounts the `api/` handlers as Express routes, or use `npx vercel dev` for a full Vercel emulation.
+```bash
+cp .env.example .env
+cd api && npm install
+npm run dev:site   # http://localhost:3000
+```
 
-Custom domain (`pgstudio.astrx.dev`) is managed via Vercel Dashboard → Domains.
+**Post-rebrand deploy:** Recreate or rename Razorpay Plans and update Vercel env vars. Old `RAZORPAY_PLAN_STUDIO_*` / `TEAM_*` keys will not resolve until migrated.
 
-## Maintenance Rules
+## Razorpay dashboard (manual)
 
-When editing this site:
-- Keep partial placeholders and paths stable unless updating both HTML and loader.
-- Preserve script ordering; modules depend on global symbols from earlier files.
-- Treat this as a simulated product experience; avoid replacing interaction with static text.
-- Maintain install CTAs in both topbar and minimized overview.
-- Verify both desktop and mobile toggle flows after major UI changes.
-- Never commit `RAZORPAY_KEY_SECRET` or live credentials; use Vercel environment variables.
-- When adding new API endpoints, add them to both `api/` and `scripts/dev-server.js`.
+1. Create **8 Plans**: Sponsor + Singularity × monthly/annual × INR/USD.
+2. Paste `plan_...` IDs into env.
+3. Enable international payments for USD plans.
+4. Test mode cards for INR/USD.
 
-## Known Environment Note
+License activation / webhooks remain follow-up (`docs/roadmap/license-implementation.md`).
 
-This review is based on source-level inspection in this workspace. Runtime browser introspection from the agent was unavailable because chat browser tools are not enabled in the current VS Code environment.
+## Maintenance rules
 
+- Keep partial paths and script order stable.
+- Preserve interactive demo behavior; reskin via CSS tokens only.
+- After pricing/API changes, confirm `partials-loaded` still fires.
+- Mobile: test 375px / 640px / 980px — no horizontal body overflow; pricing nav in collapsible topbar.
+- `nexql.html` is reference-only; do not port its inline IDE into docs.

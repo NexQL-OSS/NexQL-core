@@ -6,6 +6,23 @@ import { Client, PoolClient } from 'pg';
 import { ConnectionManager } from '../../services/ConnectionManager';
 import { getSchemaCache, SchemaCache } from '../../lib/schema-cache';
 import { DbObject } from './types';
+import {
+  ColumnInfo,
+  ForeignKeyInfo,
+  IndexInfo,
+  TableSchema,
+  renderTableSchema,
+} from './schemaRender';
+
+/** P1.5 — schema-fetch retry policy. */
+const SCHEMA_FETCH_MAX_ATTEMPTS = 3;
+const SCHEMA_FETCH_BASE_DELAY_MS = 200;
+const SCHEMA_FETCH_MAX_DELAY_MS = 1500;
+
+/** Optional per-request render context (relevance ranking against the user message). */
+export interface SchemaRenderContext {
+  userMessage?: string;
+}
 
 export class DbObjectService {
   private _cache: DbObject[] = [];
@@ -539,75 +556,105 @@ export class DbObjectService {
     return objects;
   }
 
-  private _objectSchemaCache: Map<string, string> = new Map();
+  /**
+   * Cache holds the STRUCTURED {@link TableSchema} for tables (so relevance ranking +
+   * truncation re-run per request) and rendered markdown strings for other object types.
+   */
+  private _objectSchemaCache: Map<string, TableSchema | string> = new Map();
   private readonly MAX_CACHE_SIZE = 50;
 
-  async getObjectSchema(obj: DbObject): Promise<string> {
+  /**
+   * Resolve schema context for an `@mention`. For tables the structured schema is cached and
+   * re-rendered per request (ranked against {@link ctx}.userMessage and byte-capped). Other
+   * object types are cached as rendered markdown.
+   *
+   * On fetch failure, retries with backoff (P1.5) and finally returns a structured
+   * `<schema unavailable for …>` marker instead of a raw error string.
+   */
+  async getObjectSchema(obj: DbObject, ctx?: SchemaRenderContext): Promise<string> {
     const cacheKey = `${obj.connectionId}:${obj.schema}:${obj.name}:${obj.type}`;
 
     // Check cache first
     if (this._objectSchemaCache.has(cacheKey)) {
       console.log('[ChatView] Cache hit for:', cacheKey);
+      const cached = this._objectSchemaCache.get(cacheKey)!;
       // Refresh LRU order (delete and re-add)
-      const content = this._objectSchemaCache.get(cacheKey)!;
       this._objectSchemaCache.delete(cacheKey);
-      this._objectSchemaCache.set(cacheKey, content);
-      return content;
+      this._objectSchemaCache.set(cacheKey, cached);
+      return typeof cached === 'string'
+        ? cached
+        : renderTableSchema(cached, { userMessage: ctx?.userMessage });
     }
 
     const connections = vscode.workspace.getConfiguration().get<any[]>('postgresExplorer.connections') || [];
     const conn = connections.find(c => c.id === obj.connectionId);
     if (!conn) { return 'Connection not found'; }
 
-    let client: PoolClient | undefined;
     try {
-      client = await ConnectionManager.getInstance().getPooledClient({
-        id: conn.id,
-        host: conn.host,
-        port: conn.port,
-        username: conn.username,
-        database: obj.database,
-        name: conn.name
-      });
-
-      let schemaInfo = '';
-      switch (obj.type) {
-        case 'table':
-          schemaInfo = await this._getTableSchema(client, obj.schema, obj.name);
-          break;
-        case 'view':
-          schemaInfo = await this._getViewSchema(client, obj.schema, obj.name);
-          break;
-        case 'function':
-          schemaInfo = await this._getFunctionSchema(client, obj.schema, obj.name);
-          break;
-        case 'materialized-view':
-          schemaInfo = await this._getMaterializedViewSchema(client, obj.schema, obj.name);
-          break;
-        case 'type':
-          schemaInfo = await this._getTypeSchema(client, obj.schema, obj.name);
-          break;
-        case 'schema':
-          schemaInfo = await this._getSchemaInfo(client, obj.schema);
-          break;
-        default:
-          schemaInfo = 'Unknown object type';
-      }
+      const fetched = await this._fetchObjectSchemaWithRetry(conn, obj);
 
       // Update cache with LRU eviction
       if (this._objectSchemaCache.size >= this.MAX_CACHE_SIZE) {
         const firstKey = this._objectSchemaCache.keys().next().value;
         if (firstKey) this._objectSchemaCache.delete(firstKey);
       }
-      this._objectSchemaCache.set(cacheKey, schemaInfo);
+      this._objectSchemaCache.set(cacheKey, fetched);
 
-      return schemaInfo;
-
+      return typeof fetched === 'string'
+        ? fetched
+        : renderTableSchema(fetched, { userMessage: ctx?.userMessage });
     } catch (e) {
-      return 'Error fetching schema: ' + e;
-    } finally {
-      if (client) client.release();
+      // P1.5: structured marker, never a raw error string injected into the prompt.
+      const reason = (e instanceof Error ? e.message : String(e)).replace(/\s+/g, ' ').trim().slice(0, 120);
+      return `<schema unavailable for ${obj.schema}.${obj.name}: ${reason}>`;
     }
+  }
+
+  /** Fetch one object's schema (structured for tables, markdown otherwise) with retry + backoff. */
+  private async _fetchObjectSchemaWithRetry(conn: any, obj: DbObject): Promise<TableSchema | string> {
+    let lastErr: unknown;
+    for (let attempt = 0; attempt < SCHEMA_FETCH_MAX_ATTEMPTS; attempt++) {
+      let client: PoolClient | undefined;
+      try {
+        client = await ConnectionManager.getInstance().getPooledClient({
+          id: conn.id,
+          host: conn.host,
+          port: conn.port,
+          username: conn.username,
+          database: obj.database,
+          name: conn.name
+        });
+        if (!client) {
+          throw new Error('Failed to acquire database client');
+        }
+
+        switch (obj.type) {
+          case 'table':
+            return await this._fetchTableSchema(client, obj.schema, obj.name);
+          case 'view':
+            return await this._getViewSchema(client, obj.schema, obj.name);
+          case 'function':
+            return await this._getFunctionSchema(client, obj.schema, obj.name);
+          case 'materialized-view':
+            return await this._getMaterializedViewSchema(client, obj.schema, obj.name);
+          case 'type':
+            return await this._getTypeSchema(client, obj.schema, obj.name);
+          case 'schema':
+            return await this._getSchemaInfo(client, obj.schema);
+          default:
+            return 'Unknown object type';
+        }
+      } catch (e) {
+        lastErr = e;
+        if (attempt < SCHEMA_FETCH_MAX_ATTEMPTS - 1) {
+          const delay = Math.min(SCHEMA_FETCH_BASE_DELAY_MS * 2 ** attempt, SCHEMA_FETCH_MAX_DELAY_MS);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      } finally {
+        if (client) client.release();
+      }
+    }
+    throw lastErr;
   }
 
   clearCache(): void {
@@ -616,66 +663,83 @@ export class DbObjectService {
     console.log('[ChatView] Schema caches cleared');
   }
 
-  private async _getTableSchema(client: any, schema: string, table: string): Promise<string> {
-    let info = `## Table: ${schema}.${table}\n\n`;
+  /**
+   * Fetch a table's structured schema. P1.2: the four catalog reads (columns, combined
+   * PK+FK constraints, indexes, row estimate) run concurrently via `Promise.all`, collapsing
+   * what used to be five sequential round-trips into a single round-trip's worth of latency.
+   * All SQL stays parameterized.
+   */
+  private async _fetchTableSchema(client: any, schema: string, table: string): Promise<TableSchema> {
+    const [colsRes, constraintsRes, idxRes, countRes] = await Promise.all([
+      client.query(
+        'SELECT column_name, data_type, is_nullable, column_default, character_maximum_length, numeric_precision, numeric_scale FROM information_schema.columns WHERE table_schema = $1 AND table_name = $2 ORDER BY ordinal_position',
+        [schema, table]
+      ),
+      // Combined PK + FK constraints (one round-trip instead of two).
+      client.query(
+        `SELECT tc.constraint_type, tc.constraint_name, kcu.column_name, kcu.ordinal_position,
+                ccu.table_schema AS ref_schema, ccu.table_name AS ref_table, ccu.column_name AS ref_column
+         FROM information_schema.table_constraints tc
+         JOIN information_schema.key_column_usage kcu
+           ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
+         LEFT JOIN information_schema.constraint_column_usage ccu
+           ON tc.constraint_name = ccu.constraint_name AND tc.constraint_type = 'FOREIGN KEY'
+         WHERE tc.table_schema = $1 AND tc.table_name = $2
+           AND tc.constraint_type IN ('PRIMARY KEY', 'FOREIGN KEY')
+         ORDER BY tc.constraint_type, kcu.ordinal_position`,
+        [schema, table]
+      ),
+      client.query(
+        'SELECT i.relname as index_name, ix.indisunique, ix.indisprimary, array_agg(a.attname ORDER BY array_position(ix.indkey, a.attnum)) as columns FROM pg_index ix JOIN pg_class i ON i.oid = ix.indexrelid JOIN pg_class t ON t.oid = ix.indrelid JOIN pg_namespace n ON n.oid = t.relnamespace JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ANY(ix.indkey) WHERE n.nspname = $1 AND t.relname = $2 GROUP BY i.relname, ix.indisunique, ix.indisprimary',
+        [schema, table]
+      ),
+      client.query(
+        'SELECT reltuples::bigint as estimate FROM pg_class WHERE relname = $1 AND relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = $2)',
+        [table, schema]
+      ),
+    ]);
 
-    const cols = await client.query(
-      'SELECT column_name, data_type, is_nullable, column_default, character_maximum_length, numeric_precision, numeric_scale FROM information_schema.columns WHERE table_schema = $1 AND table_name = $2 ORDER BY ordinal_position',
-      [schema, table]
-    );
-
-    info += '### Columns\n| Column | Type | Nullable | Default |\n|--------|------|----------|---------|\n';
-    for (const col of cols.rows) {
+    const columns: ColumnInfo[] = colsRes.rows.map((col: any) => {
       let dtype = col.data_type;
       if (col.character_maximum_length) { dtype += `(${col.character_maximum_length})`; }
       else if (col.numeric_precision) { dtype += `(${col.numeric_precision},${col.numeric_scale || 0})`; }
-      info += `| ${col.column_name} | ${dtype} | ${col.is_nullable} | ${col.column_default || '-'} |\n`;
-    }
+      return {
+        name: col.column_name,
+        dataType: dtype,
+        isNullable: col.is_nullable,
+        default: col.column_default ?? null,
+      };
+    });
 
-    const pk = await client.query(
-      "SELECT kcu.column_name FROM information_schema.table_constraints tc JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name WHERE tc.table_schema = $1 AND tc.table_name = $2 AND tc.constraint_type = 'PRIMARY KEY' ORDER BY kcu.ordinal_position",
-      [schema, table]
-    );
-    if (pk.rows.length > 0) {
-      info += `\n### Primary Key\n${pk.rows.map((r: any) => r.column_name).join(', ')}\n`;
-    }
-
-    const fks = await client.query(
-      "SELECT tc.constraint_name, kcu.column_name, ccu.table_schema AS ref_schema, ccu.table_name AS ref_table, ccu.column_name AS ref_column FROM information_schema.table_constraints tc JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name JOIN information_schema.constraint_column_usage ccu ON tc.constraint_name = ccu.constraint_name WHERE tc.table_schema = $1 AND tc.table_name = $2 AND tc.constraint_type = 'FOREIGN KEY'",
-      [schema, table]
-    );
-    if (fks.rows.length > 0) {
-      info += '\n### Foreign Keys\n';
-      for (const fk of fks.rows) {
-        info += `- ${fk.constraint_name}: ${fk.column_name} → ${fk.ref_schema}.${fk.ref_table}(${fk.ref_column})\n`;
+    const pk: string[] = [];
+    const fks: ForeignKeyInfo[] = [];
+    for (const row of constraintsRes.rows) {
+      if (row.constraint_type === 'PRIMARY KEY') {
+        pk.push(row.column_name);
+      } else if (row.constraint_type === 'FOREIGN KEY') {
+        fks.push({
+          constraintName: row.constraint_name,
+          column: row.column_name,
+          refSchema: row.ref_schema,
+          refTable: row.ref_table,
+          refColumn: row.ref_column,
+        });
       }
     }
 
-    const idxs = await client.query(
-      'SELECT i.relname as index_name, ix.indisunique, ix.indisprimary, array_agg(a.attname ORDER BY array_position(ix.indkey, a.attnum)) as columns FROM pg_index ix JOIN pg_class i ON i.oid = ix.indexrelid JOIN pg_class t ON t.oid = ix.indrelid JOIN pg_namespace n ON n.oid = t.relnamespace JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ANY(ix.indkey) WHERE n.nspname = $1 AND t.relname = $2 GROUP BY i.relname, ix.indisunique, ix.indisprimary',
-      [schema, table]
-    );
-    if (idxs.rows.length > 0) {
-      info += '\n### Indexes\n';
-      for (const idx of idxs.rows) {
-        const flags = [];
-        if (idx.indisprimary) { flags.push('PRIMARY'); }
-        if (idx.indisunique && !idx.indisprimary) { flags.push('UNIQUE'); }
-        // Handle columns - could be array or string depending on pg driver version
-        const columns = Array.isArray(idx.columns) ? idx.columns.join(', ') : String(idx.columns || '');
-        info += `- ${idx.index_name} (${columns})${flags.length ? ' [' + flags.join(', ') + ']' : ''}\n`;
-      }
-    }
+    const indexes: IndexInfo[] = idxRes.rows.map((idx: any) => ({
+      name: idx.index_name,
+      // pg driver may return an array or a brace-wrapped string depending on version.
+      columns: Array.isArray(idx.columns)
+        ? idx.columns
+        : String(idx.columns || '').replace(/^\{|\}$/g, '').split(',').filter(Boolean),
+      isUnique: !!idx.indisunique,
+      isPrimary: !!idx.indisprimary,
+    }));
 
-    const count = await client.query(
-      'SELECT reltuples::bigint as estimate FROM pg_class WHERE relname = $1 AND relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = $2)',
-      [table, schema]
-    );
-    if (count.rows.length > 0) {
-      info += `\n### Estimated Row Count: ~${Number(count.rows[0].estimate).toLocaleString()}\n`;
-    }
+    const rowEstimate = countRes.rows.length > 0 ? Number(countRes.rows[0].estimate) : null;
 
-    return info;
+    return { schema, table, columns, pk, fks, indexes, rowEstimate };
   }
 
   private async _getViewSchema(client: any, schema: string, view: string): Promise<string> {

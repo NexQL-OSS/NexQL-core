@@ -6,7 +6,13 @@ import * as https from 'https';
 import * as http from 'http';
 import { ChatMessage } from './types';
 import { SecretStorageService } from '../../services/SecretStorageService';
+import { AiCredentialsService } from '../../features/aiAssistant/AiCredentialsService';
+import { readAiScopeSettings } from '../../features/aiAssistant/aiConfig';
+import { resolveVsCodeLanguageModel } from '../../features/aiAssistant/modelListing';
+import { AiConfigScope } from '../../features/aiAssistant/types';
+import { DirectApiKeyProvider } from '../../features/aiAssistant/types';
 import { TelemetryService } from '../../services/TelemetryService';
+import { AiCapability, buildSystemPrompt as composeSystemPrompt } from './prompts';
 
 // GitHub Models permission applies to fine-grained tokens/GitHub Apps.
 // For VS Code OAuth sessions, request no explicit scope.
@@ -27,6 +33,19 @@ const DIRECT_API_PROVIDERS = new Set([
 
 /** Heuristic for VS Code LM when the host does not report token usage (UI hint only). */
 const ROUGH_CHARS_PER_TOKEN = 4;
+
+/**
+ * Current-generation default model IDs per provider (P1.6). Users override via
+ * `postgresExplorer.aiModel`. See CHANGELOG 1.4.0 for the rationale behind each pick.
+ */
+const DEFAULT_OPENAI_MODEL = 'gpt-4.1';
+const DEFAULT_ANTHROPIC_MODEL = 'claude-sonnet-4-20250514';
+const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
+
+/** Token budget (P1.3): default context window shared across system + schema + history. */
+const DEFAULT_MAX_CONTEXT_TOKENS = 8000;
+/** Hard floor so a misconfigured tiny budget still keeps the system + current turn. */
+const MIN_CONTEXT_TOKENS = 512;
 
 /** Transient HTTP failures for direct API providers (OpenAI-compatible, Anthropic, etc.). */
 const HTTP_RETRY_MAX_ATTEMPTS = 3;
@@ -82,206 +101,70 @@ export class AiService {
     this._connectionContext = ctx;
   }
 
-  async callProvider(provider: string, userMessage: string, config: vscode.WorkspaceConfiguration, customSystemPrompt?: string): Promise<{ text: string, usage?: string }> {
+  async callProvider(
+    provider: string,
+    userMessage: string,
+    config: vscode.WorkspaceConfiguration,
+    customSystemPrompt?: string,
+    scope: AiConfigScope = 'notebook',
+  ): Promise<{ text: string; usage?: string }> {
     if (provider === 'vscode-lm') {
-      return await this.callVsCodeLm(userMessage, config, customSystemPrompt);
+      return await this.callVsCodeLm(userMessage, config, customSystemPrompt, scope);
     }
 
     if (provider === 'cursor') {
-      return await this.callCursorAgent(userMessage, config, customSystemPrompt);
+      return await this.callCursorAgent(userMessage, config, customSystemPrompt, scope);
     }
 
-    return await this.callDirectApi(provider, userMessage, config, customSystemPrompt);
+    return await this.callDirectApi(provider, userMessage, config, customSystemPrompt, scope);
   }
 
-  buildSystemPrompt(): string {
-    const ctx = this._connectionContext;
-    const isProduction = ctx?.environment === 'production';
-    const isReadOnly = ctx?.readOnlyMode === true;
-
-    // ── Production safety header (injected first so model sees it immediately) ──
-    let productionBlock = '';
-    if (isProduction) {
-      productionBlock = `
-⚠️ **PRODUCTION CONNECTION ACTIVE** ⚠️
-The user is connected to a **PRODUCTION** database${ctx?.connectionName ? ` (${ctx.connectionName})` : ''}.
-Apply the following guardrails to every response WITHOUT EXCEPTION:
-
-1. **NEVER generate bare DELETE, UPDATE, or TRUNCATE statements** without a WHERE clause.
-2. **Always wrap destructive SQL in a transaction** with ROLLBACK as a comment option.
-3. **Prefix every write query** with a comment: \`-- ⚠️ PRODUCTION — review carefully before running\`
-4. **Recommend SELECT first** to preview affected rows before any write operation.
-5. **Flag careless patterns** such as UPDATE without WHERE or DELETE without WHERE with a bold warning.
-6. If asked to generate a migration, include \`BEGIN;\` and end with \`-- COMMIT; -- Uncomment after review\`.
-7. **Never auto-apply** suggested SQL — always remind the user to review and run explicitly.
-
-`;
-    } else if (isReadOnly) {
-      productionBlock = `
-ℹ️ **READ-ONLY CONNECTION** — This connection is configured as read-only.
-Only generate SELECT / EXPLAIN / read queries. If the user requests a write operation,
-explain that the connection is read-only and suggest switching to a write-capable connection.
-
-`;
+  private _resolveConfiguredModel(
+    config: vscode.WorkspaceConfiguration,
+    scope: AiConfigScope,
+  ): string | undefined {
+    const scoped = readAiScopeSettings(config, scope).model;
+    if (scoped) {
+      return scoped;
     }
-
-    return `${productionBlock}You are an expert PostgreSQL database assistant. You help users with:
-- Writing and optimizing SQL queries
-- Understanding database concepts and best practices
-- Debugging query issues
-- Explaining query execution plans
-- Schema design recommendations
-- PostgreSQL-specific features and extensions
-
-**IMPORTANT - DATABASE SCHEMA CONTEXT:**
-When the user references database objects (tables, views, functions, etc.), I will provide you with the actual schema information in a section marked "=== DATABASE SCHEMA CONTEXT ===". 
-- ALWAYS use this provided schema information when answering questions
-- The schema context includes real column names, data types, constraints, indexes, and relationships
-- Reference the exact column names and types from the provided schema
-- Do NOT say you don't have access to the schema when it's provided in the context
-
-**SQL QUALITY CHECKLIST (MANDATORY - Follow before every SQL response):**
-Before providing any SQL query, you MUST verify:
-1. ✓ All table names exist in the provided schema context or user input
-2. ✓ All column names are EXACTLY as shown in the schema (case-sensitive)
-3. ✓ All data types are compatible with the operations performed
-4. ✓ JOIN conditions use correct column names from both tables
-5. ✓ WHERE conditions reference existing columns
-6. ✓ GROUP BY includes all non-aggregated columns in SELECT
-7. ✓ No syntax errors (matching parentheses, proper comma placement, semicolon at end)
-8. ✓ Aliases are used consistently throughout the query
-9. ✓ Foreign key relationships are correctly referenced
-10. ✓ The query is complete and can be executed as-is
-
-**SQL FORMATTING RULES (MANDATORY):**
-When providing SQL code, ALWAYS format it for maximum readability:
-1. Use proper indentation (4 spaces) for nested clauses
-2. Put each major clause (SELECT, FROM, WHERE, JOIN, GROUP BY, ORDER BY, etc.) on a new line
-3. Put each column in SELECT on its own line for queries with more than 3 columns
-4. Put each condition in WHERE/AND/OR on its own line
-5. Align JOIN conditions properly
-6. Use UPPERCASE for SQL keywords
-7. Use lowercase for table/column names (unless schema shows otherwise)
-8. Add blank lines between CTEs and main query
-9. Break long lines at logical points (operators, commas)
-10. Always end queries with a semicolon
-
-Example of properly formatted SQL:
-\`\`\`sql
-SELECT
-    u.id,
-    u.username,
-    u.email,
-    COUNT(o.id) AS order_count,
-    SUM(o.total_amount) AS total_spent
-FROM
-    users u
-LEFT JOIN
-    orders o ON o.user_id = u.id
-WHERE
-    u.created_at >= '2024-01-01'
-    AND u.status = 'active'
-GROUP BY
-    u.id,
-    u.username,
-    u.email
-HAVING
-    COUNT(o.id) > 5
-ORDER BY
-    total_spent DESC
-LIMIT 100;
-\`\`\`
-
-**RESPONSE QUALITY:**
-- Double-check all SQL for correctness before responding
-- If schema context is provided, ONLY use columns that exist in that schema
-- If you're unsure about a column name, ask the user to clarify
-- Provide complete, executable SQL - never truncate or abbreviate
-- If a query is complex, break it down and explain each part
-- NEVER include HTML tags, CSS classes, or any markup in SQL code
-- SQL strings should use single quotes like 'value', not any special formatting
-- Your output is plain markdown only - no HTML
-
-IMPORTANT: At the end of each response, provide 2-4 numbered follow-up questions the user might want to ask next. Format them as:
-
-**Follow-up questions:**
-1. [First question]
-2. [Second question]
-3. [Third question]
-
-Make these questions relevant to the topic discussed and progressively more advanced.
-
-IMPORTANT: If there is a genuinely good factoid or contextual joke, add it immediately before the follow-up questions as a short Markdown blockquote.
-- Use your judgment: this is mainly for general-knowledge, conceptual, or exploratory answers.
-- For simple fix, error, or query-generation tasks, usually omit it unless there is a truly apt one-liner.
-- You may include a factoid, a joke, both, or neither.
-- Keep it short, self-contained, and clearly relevant to the current answer.
-- Format it as quote style markdown using blockquote lines only; do not add a heading.
-
-IMPORTANT: Follow-up questions are distinct from next-step suggestion bubbles.
-- If the user's latest message is only a number, treat it as selecting that numbered question from the immediately previous assistant response's "Follow-up questions:" list.
-- Answer the selected follow-up question directly.
-- Do not confuse this with next-step bubbles, which are optional model suggestions and not user selections.
-
-**PHASE D: NEXT STEPS SUGGESTION BUBBLES (Optional):**
-After your response, you MAY optionally provide suggested follow-up actions the user might want to take. If you do, append them as a raw JSON object at the very end of your response (after the follow-up questions). Do not wrap the JSON in markdown or code fences.
-
-{
-  "next_steps": [
-    "Short action phrase, 3 to 6 words max",
-    "Short action phrase, 3 to 6 words max",
-    "Short action phrase, 3 to 6 words max"
-  ]
-}
-
-
-IMPORTANT: Only include this JSON block if you have 2-3 truly valuable next-step suggestions. The suggestions should be:
-- Actionable and relevant to the current conversation
-- Phrased as concise, self-contained action phrases or prompts (ideally 3-6 words, max 40 characters each)
-- Progressive in complexity or depth
-- Examples: "Review query plan", "Add missing index", "Compare join options"
-
-Do NOT include the JSON block if:
-- There are no clear follow-up actions
-- The suggestions are obvious or trivial
-- You're uncertain about what would be helpful next
-- Do not invent filler suggestions just to reach 3 entries
-- Do not repeat the follow-up questions in this JSON block
-- If only 1 or 2 actions are appropriate, provide only those
-- If no actions are appropriate, omit the JSON block entirely
-
-The UI will automatically parse this and show clickable suggestion bubbles.`;
+    return config.get<string>('aiModel') || undefined;
   }
 
-  async callVsCodeLm(userMessage: string, config: vscode.WorkspaceConfiguration, customSystemPrompt?: string): Promise<{ text: string, usage?: string }> {
+  /**
+   * Build the capability-gated system prompt. Defaults to `chat` so existing callers
+   * (and the customSystemPrompt fallback) behave as before. The heavy lifting lives in
+   * the {@link composeSystemPrompt} composer under `prompts/`.
+   */
+  buildSystemPrompt(capability: AiCapability = 'chat'): string {
+    return composeSystemPrompt(capability, this._connectionContext);
+  }
+
+  async callVsCodeLm(
+    userMessage: string,
+    config: vscode.WorkspaceConfiguration,
+    customSystemPrompt?: string,
+    scope: AiConfigScope = 'notebook',
+  ): Promise<{ text: string; usage?: string }> {
     const telemetry = TelemetryService.getInstance();
-    const configuredModel = config.get<string>('aiModel');
-    let models: vscode.LanguageModelChat[];
+    const configuredModel = this._resolveConfiguredModel(config, scope);
+    let model: vscode.LanguageModelChat | undefined;
 
     if (configuredModel) {
-      // Extract base name if format is "name (family)"
-      const baseName = configuredModel.replace(/\s*\(.*\)$/, '').trim();
-
-      // Try to find the specific model by name/id/family
-      const allModels = await vscode.lm.selectChatModels({});
-      const matchingModels = allModels.filter(m =>
-        m.id === baseName ||
-        m.name === baseName ||
-        m.family === baseName ||
-        m.id === configuredModel ||
-        m.name === configuredModel ||
-        m.family === configuredModel
-      );
-      models = matchingModels.length > 0 ? matchingModels : allModels;
+      model = await resolveVsCodeLanguageModel(configuredModel);
+      if (!model) {
+        throw new Error(
+          `Configured VS Code language model "${configuredModel}" was not found. ` +
+            'Open PgStudio AI settings, list models, and save your selection again.',
+        );
+      }
     } else {
-      // Default: try gpt-4o family first
-      models = await vscode.lm.selectChatModels({ family: 'gpt-4o' });
+      let models = await vscode.lm.selectChatModels({ family: 'gpt-4o' });
       if (models.length === 0) {
         models = await vscode.lm.selectChatModels({});
       }
+      model = models[0];
     }
 
-    const model = models[0];
     if (!model) {
       throw new Error('No AI models available via VS Code API. Please ensure GitHub Copilot Chat is installed or switch provider.');
     }
@@ -309,7 +192,7 @@ The UI will automatically parse this and show clickable suggestion bubbles.`;
       }
     }
 
-    const history = this._messages.slice(-10);
+    const history = this._budgetedHistory(systemPrompt, userMessage, config);
 
     messages.push(
       ...history.map(msg => {
@@ -479,8 +362,12 @@ The UI will automatically parse this and show clickable suggestion bubbles.`;
       .filter((model: { id: string }) => !!model.id);
   }
 
-  private async _resolveCursorModel(config: vscode.WorkspaceConfiguration, apiKey: string): Promise<string> {
-    const configuredModel = config.get<string>('aiModel');
+  private async _resolveCursorModel(
+    config: vscode.WorkspaceConfiguration,
+    apiKey: string,
+    scope: AiConfigScope = 'notebook',
+  ): Promise<string> {
+    const configuredModel = this._resolveConfiguredModel(config, scope);
     if (configuredModel) {
       try {
         const models = await this._listCursorModels(apiKey);
@@ -502,8 +389,8 @@ The UI will automatically parse this and show clickable suggestion bubbles.`;
     }
   }
 
-  private _buildCursorPrompt(userMessage: string, systemPrompt: string): string {
-    const history = this._messages.slice(-10).map((msg, index) => {
+  private _buildCursorPrompt(userMessage: string, systemPrompt: string, config: vscode.WorkspaceConfiguration): string {
+    const history = this._budgetedHistory(systemPrompt, userMessage, config).map((msg, index) => {
       const role = msg.role === 'assistant' ? 'Assistant' : 'User';
       const content = this._sanitizeContent(this._getMessageContent(msg)).trim();
       return `${index + 1}. ${role}: ${content}`;
@@ -518,7 +405,12 @@ The UI will automatically parse this and show clickable suggestion bubbles.`;
     return sections.join('\n\n');
   }
 
-  private async callCursorAgent(userMessage: string, config: vscode.WorkspaceConfiguration, customSystemPrompt?: string): Promise<{ text: string, usage?: string }> {
+  private async callCursorAgent(
+    userMessage: string,
+    config: vscode.WorkspaceConfiguration,
+    customSystemPrompt?: string,
+    scope: AiConfigScope = 'notebook',
+  ): Promise<{ text: string; usage?: string }> {
     const telemetry = TelemetryService.getInstance();
     if (!userMessage || !userMessage.trim()) {
       throw new Error('User message is required for AI requests.');
@@ -530,9 +422,9 @@ The UI will automatically parse this and show clickable suggestion bubbles.`;
     }
 
     const { Agent } = await this._loadCursorSdk();
-    const model = await this._resolveCursorModel(config, apiKey);
+    const model = await this._resolveCursorModel(config, apiKey, scope);
     const systemPrompt = customSystemPrompt !== undefined ? customSystemPrompt : this.buildSystemPrompt();
-    const prompt = this._buildCursorPrompt(userMessage, systemPrompt);
+    const prompt = this._buildCursorPrompt(userMessage, systemPrompt, config);
     const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.cwd();
 
     this._cancellationTokenSource = new vscode.CancellationTokenSource();
@@ -651,6 +543,146 @@ The UI will automatically parse this and show clickable suggestion bubbles.`;
     const outTok = Math.max(1, Math.round(completionChars / ROUGH_CHARS_PER_TOKEN));
     const total = inTok + outTok;
     return `~${total} tokens (est. · ${inTok} in + ${outTok} out)`;
+  }
+
+  // ==================== P1.3 — Token budgeter ====================
+
+  /** Rough char→token estimate reusing the shared {@link ROUGH_CHARS_PER_TOKEN} heuristic. */
+  static estimateTokens(text: string | undefined | null): number {
+    if (!text) {
+      return 0;
+    }
+    return Math.ceil(text.length / ROUGH_CHARS_PER_TOKEN);
+  }
+
+  private static _historyContent(msg: ChatMessage): string {
+    let content = msg.content || '';
+    if (msg.attachments && msg.attachments.length > 0) {
+      for (const att of msg.attachments) {
+        if (att.type !== 'image' && att.content) {
+          content += `\n${att.content}`;
+        }
+      }
+    }
+    return content;
+  }
+
+  /**
+   * Pure, DB-/IO-free message assembler that fits a request inside a token budget.
+   *
+   * Priority (highest first): system → current user message → schema → attachments → history.
+   * Trimming order (lowest priority first): drop oldest history, then truncate the schema tail
+   * (schema is pre-ranked least-relevant-last by {@link DbObjectService}). The system prompt and
+   * the current user message are never dropped.
+   */
+  static assembleMessages(
+    parts: {
+      system: string;
+      schema?: string;
+      currentUser: string;
+      attachments?: string[];
+      history: ChatMessage[];
+    },
+    budgetTokens: number,
+  ): {
+    system: string;
+    schema: string;
+    currentUser: string;
+    attachments: string[];
+    history: ChatMessage[];
+    trimmed: boolean;
+    estimatedTokens: number;
+  } {
+    const budget = Math.max(
+      Number.isFinite(budgetTokens) ? budgetTokens : DEFAULT_MAX_CONTEXT_TOKENS,
+      MIN_CONTEXT_TOKENS,
+    );
+
+    const system = parts.system || '';
+    const currentUser = parts.currentUser || '';
+    const attachments = [...(parts.attachments || [])];
+    let schema = parts.schema || '';
+    let history = [...parts.history];
+    let trimmed = false;
+
+    const mandatory = AiService.estimateTokens(system) + AiService.estimateTokens(currentUser);
+    const attachmentTokens = attachments.reduce((sum, a) => sum + AiService.estimateTokens(a), 0);
+
+    const fixedExclHistory = () =>
+      mandatory + AiService.estimateTokens(schema) + attachmentTokens;
+
+    let historyTokens = history.reduce(
+      (sum, m) => sum + AiService.estimateTokens(AiService._historyContent(m)),
+      0,
+    );
+
+    // 1) Drop oldest history first until everything fits (or history is exhausted).
+    while (history.length > 0 && fixedExclHistory() + historyTokens > budget) {
+      const removed = history.shift();
+      historyTokens -= AiService.estimateTokens(AiService._historyContent(removed as ChatMessage));
+      trimmed = true;
+    }
+
+    // 2) Still over budget with no history left → truncate the schema tail (least relevant).
+    if (schema && fixedExclHistory() > budget) {
+      const overflowTokens = fixedExclHistory() - budget;
+      const keepChars = Math.max(0, schema.length - overflowTokens * ROUGH_CHARS_PER_TOKEN);
+      if (keepChars < schema.length) {
+        const truncatedNote = '\n…(schema truncated to fit context budget)';
+        schema = keepChars > 0
+          ? schema.slice(0, keepChars).trimEnd() + truncatedNote
+          : truncatedNote.trimStart();
+        trimmed = true;
+      }
+    }
+
+    const estimatedTokens = fixedExclHistory() + historyTokens;
+    return { system, schema, currentUser, attachments, history, trimmed, estimatedTokens };
+  }
+
+  /** Resolve the configured context budget (config-relative key `ai.maxContextTokens`). */
+  private _maxContextTokens(config: vscode.WorkspaceConfiguration): number {
+    const configured = config.get<number>('ai.maxContextTokens');
+    if (typeof configured === 'number' && configured > 0) {
+      return Math.max(configured, MIN_CONTEXT_TOKENS);
+    }
+    return DEFAULT_MAX_CONTEXT_TOKENS;
+  }
+
+  /**
+   * Budget-aware replacement for the former hardcoded `this._messages.slice(-10)`.
+   * Returns the history suffix that fits the remaining context window after the system
+   * prompt + current user message are reserved.
+   */
+  private _budgetedHistory(
+    systemPrompt: string,
+    currentUser: string,
+    config: vscode.WorkspaceConfiguration,
+  ): ChatMessage[] {
+    const budget = this._maxContextTokens(config);
+    const assembled = AiService.assembleMessages(
+      { system: systemPrompt, currentUser, history: this._messages },
+      budget,
+    );
+    if (assembled.trimmed) {
+      this._logTrim(
+        `[AiService] Context budget (${budget} tokens) exceeded — trimmed history ` +
+          `from ${this._messages.length} to ${assembled.history.length} message(s).`,
+      );
+    }
+    return assembled.history;
+  }
+
+  /** Debug-channel log that is safe before activation / in unit tests (lazy, guarded). */
+  private _logTrim(message: string): void {
+    try {
+      const ext = require('../../extension');
+      if (ext && ext.outputChannel && typeof ext.outputChannel.appendLine === 'function') {
+        ext.outputChannel.appendLine(message);
+      }
+    } catch {
+      // outputChannel unavailable outside the extension host — safe to ignore.
+    }
   }
 
   private async _findAlternateModel(currentModelId: string): Promise<vscode.LanguageModelChat | undefined> {
@@ -914,7 +946,13 @@ The UI will automatically parse this and show clickable suggestion bubbles.`;
     return parts;
   }
 
-  async callDirectApi(provider: string, userMessage: string, config: vscode.WorkspaceConfiguration, customSystemPrompt?: string): Promise<{ text: string, usage?: string }> {
+  async callDirectApi(
+    provider: string,
+    userMessage: string,
+    config: vscode.WorkspaceConfiguration,
+    customSystemPrompt?: string,
+    scope: AiConfigScope = 'notebook',
+  ): Promise<{ text: string; usage?: string }> {
     const telemetry = TelemetryService.getInstance();
     if (!DIRECT_API_PROVIDERS.has(provider)) {
       throw new Error(`Unsupported provider: ${provider}`);
@@ -922,7 +960,7 @@ The UI will automatically parse this and show clickable suggestion bubbles.`;
     if (!userMessage || !userMessage.trim()) {
       throw new Error('User message is required for AI requests.');
     }
-    const apiKey = await this._getDirectApiKey(config);
+    const apiKey = await this._getDirectApiKey(config, provider);
     const githubSession = provider === 'github' ? await this._getGitHubSession() : undefined;
     
     // API key is required for most providers, but optional for custom endpoints
@@ -931,7 +969,7 @@ The UI will automatically parse this and show clickable suggestion bubbles.`;
     }
 
     let endpoint = '';
-    let model = config.get<string>('aiModel');
+    let model = this._resolveConfiguredModel(config, scope);
     let headers: any = {
       'Content-Type': 'application/json'
     };
@@ -945,22 +983,25 @@ The UI will automatically parse this and show clickable suggestion bubbles.`;
 
     const systemPrompt = customSystemPrompt !== undefined ? customSystemPrompt : this.buildSystemPrompt();
 
+    // P1.3: budget-aware history shared across all direct-API provider payloads.
+    const budgetedHistory = this._budgetedHistory(systemPrompt, userMessage, config);
+
     // Sanitize conversation history to remove any HTML artifacts
-    const conversationHistory = this._messages.slice(-10).map(msg => ({
+    const conversationHistory = budgetedHistory.map(msg => ({
       role: msg.role,
       content: this._sanitizeContent(this._getMessageContent(msg))
     }));
 
     if (provider === 'openai') {
       endpoint = 'https://api.openai.com/v1/chat/completions';
-      model = model || 'gpt-4o';
+      model = model || DEFAULT_OPENAI_MODEL;
 
       const messages: any[] = [];
       if (systemPrompt) {
         messages.push({ role: 'system', content: systemPrompt });
       }
       // History with vision support
-      for (const msg of this._messages.slice(-10)) {
+      for (const msg of budgetedHistory) {
         const multipart = this._buildMultipartContent(msg);
         messages.push({
           role: msg.role,
@@ -979,13 +1020,13 @@ The UI will automatically parse this and show clickable suggestion bubbles.`;
       };
     } else if (provider === 'anthropic') {
       endpoint = 'https://api.anthropic.com/v1/messages';
-      model = model || 'claude-3-5-sonnet-20241022';
+      model = model || DEFAULT_ANTHROPIC_MODEL;
       headers['x-api-key'] = apiKey;
       headers['anthropic-version'] = '2023-06-01';
       delete headers['Authorization'];
 
       const anthropicMessages: any[] = [];
-      for (const msg of this._messages.slice(-10)) {
+      for (const msg of budgetedHistory) {
         anthropicMessages.push({
           role: msg.role === 'assistant' ? 'assistant' : 'user',
           content: this._buildAnthropicContent(msg)
@@ -1004,13 +1045,13 @@ The UI will automatically parse this and show clickable suggestion bubbles.`;
         max_tokens: 4096
       };
     } else if (provider === 'gemini') {
-      model = model || 'gemini-1.5-flash';
+      model = model || DEFAULT_GEMINI_MODEL;
       endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
       headers['X-goog-api-key'] = apiKey;
       delete headers['Authorization'];
 
       const geminiContents: any[] = [];
-      for (const msg of this._messages.slice(-10)) {
+      for (const msg of budgetedHistory) {
         geminiContents.push({
           role: msg.role === 'assistant' ? 'model' : 'user',
           parts: this._buildGeminiParts(msg)
@@ -1181,8 +1222,24 @@ The UI will automatically parse this and show clickable suggestion bubbles.`;
     );
   }
 
-  private async _getDirectApiKey(config: vscode.WorkspaceConfiguration): Promise<string> {
+  private async _getDirectApiKey(
+    config: vscode.WorkspaceConfiguration,
+    provider: string,
+  ): Promise<string> {
     try {
+      if (
+        provider === 'openai' ||
+        provider === 'anthropic' ||
+        provider === 'gemini' ||
+        provider === 'custom'
+      ) {
+        const scopedKey = await AiCredentialsService.getInstance().getApiKey(
+          provider as DirectApiKeyProvider,
+        );
+        if (scopedKey) {
+          return scopedKey;
+        }
+      }
       const secretApiKey = await SecretStorageService.getInstance().getAiApiKey();
       return secretApiKey || config.get<string>('aiApiKey') || '';
     } catch {
@@ -1329,21 +1386,21 @@ The UI will automatically parse this and show clickable suggestion bubbles.`;
     }
   }
 
-  async getModelInfo(provider: string, config: vscode.WorkspaceConfiguration): Promise<string> {
+  async getModelInfo(
+    provider: string,
+    config: vscode.WorkspaceConfiguration,
+    scope: AiConfigScope = 'notebook',
+  ): Promise<string> {
     try {
-      const configuredModel = config.get<string>('aiModel');
+      const configuredModel = this._resolveConfiguredModel(config, scope);
 
       if (provider === 'vscode-lm') {
         if (configuredModel) {
-          const baseName = configuredModel.replace(/\s*\(.*\)$/, '').trim();
-          const allModels = await this._selectChatModelsWithTimeout({});
-          const matchingModels = allModels.filter((m: vscode.LanguageModelChat) =>
-            m.id === baseName || m.name === baseName || m.family === baseName ||
-            m.id === configuredModel || m.name === configuredModel || m.family === configuredModel
-          );
-          if (matchingModels.length > 0) {
-            return matchingModels[0].name || matchingModels[0].id;
+          const resolved = await resolveVsCodeLanguageModel(configuredModel);
+          if (resolved) {
+            return resolved.name || resolved.id;
           }
+          return configuredModel;
         }
         const models = await this._selectChatModelsWithTimeout({ family: 'gpt-4o' });
         if (models.length > 0) {
@@ -1384,9 +1441,9 @@ The UI will automatically parse this and show clickable suggestion bubbles.`;
     switch (provider) {
       case 'github': return DEFAULT_GITHUB_MODEL;
       case 'cursor': return DEFAULT_CURSOR_MODEL;
-      case 'openai': return 'gpt-4o';
-      case 'anthropic': return 'claude-3-5-sonnet-20241022';
-      case 'gemini': return 'gemini-1.5-flash';
+      case 'openai': return DEFAULT_OPENAI_MODEL;
+      case 'anthropic': return DEFAULT_ANTHROPIC_MODEL;
+      case 'gemini': return DEFAULT_GEMINI_MODEL;
       case 'custom': return 'custom-model';
       case 'ollama': return 'ollama';
       case 'lmstudio': return 'lm-studio';

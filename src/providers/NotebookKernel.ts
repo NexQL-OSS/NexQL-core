@@ -28,6 +28,7 @@ import { CursorWindowHandler } from '../services/handlers/CursorWindowHandler';
 import { InsertRowHandler } from '../services/handlers/InsertRowHandler';
 import { TelemetryService } from '../services/TelemetryService';
 import { WEBVIEW_MESSAGE_TYPES } from '../common/messageTypes';
+import { ConnectionUtils } from '../utils/connectionUtils';
 
 export class PostgresKernel implements vscode.Disposable {
   readonly id = 'postgres-kernel';
@@ -55,7 +56,7 @@ export class PostgresKernel implements vscode.Disposable {
     this._controller.supportsExecutionOrder = true;
     this._controller.executeHandler = this._executeAll.bind(this);
 
-    this._executor = new SqlExecutor(this._controller);
+    this._executor = new SqlExecutor(this._controller, this.messaging);
 
     // Register language providers once across all kernel instances
     if (!PostgresKernel._languageProvidersRegistered) {
@@ -147,12 +148,11 @@ export class PostgresKernel implements vscode.Disposable {
       if (msg.type === 'showConnectionInfo') {
         const notebook = event.editor?.notebook;
         if (notebook) {
-          const metadata = notebook.metadata as any;
-          const connections = vscode.workspace.getConfiguration().get<any[]>('postgresExplorer.connections') || [];
-          const conn = connections.find(c => c.id === metadata?.connectionId);
+          const effectiveMetadata = ConnectionUtils.getEffectiveMetadata(notebook.metadata);
+          const conn = ConnectionUtils.findConnectionWithFallback(effectiveMetadata?.connectionId, notebook.metadata);
           if (conn) {
             vscode.window.showInformationMessage(
-              `Connection: ${conn.name || conn.host} | Host: ${conn.host}:${conn.port} | Database: ${metadata?.databaseName || conn.database}`
+              `Connection: ${conn.name || conn.host} | Host: ${conn.host}:${conn.port} | Database: ${effectiveMetadata?.databaseName || conn.database}`
             );
           } else {
             vscode.window.showInformationMessage('No active connection for this notebook.');

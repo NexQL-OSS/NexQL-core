@@ -3,6 +3,7 @@ import { DatabaseTreeItem } from '../providers/DatabaseTreeProvider';
 import { resolveTreeItemConnection } from '../schemaDesigner/connectionHelper';
 import { ErrorHandlers } from '../commands/helper';
 import { MODERN_WEBVIEW_BASE_CSS } from '../common/htmlStyles';
+import { disposePooledOwner, WebviewPool } from '../utils/WebviewPool';
 
 interface ColumnInfo {
   column_name: string;
@@ -33,16 +34,17 @@ export class MockDataPanel {
   public static readonly viewType = 'pgStudio.mockData';
 
   private static _panels = new Map<string, MockDataPanel>();
-  private readonly _panel: vscode.WebviewPanel;
+  public readonly _panel: vscode.WebviewPanel;
   private _disposables: vscode.Disposable[] = [];
 
   private constructor(panel: vscode.WebviewPanel) {
     this._panel = panel;
-    this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
   }
 
-  private dispose(): void {
-    this._panel.dispose();
+  public dispose(isRecycling = false): void {
+    if (!isRecycling) {
+      this._panel.dispose();
+    }
     for (const d of this._disposables) { d.dispose(); }
     this._disposables = [];
   }
@@ -84,16 +86,25 @@ export class MockDataPanel {
         return;
       }
 
-      const panel = vscode.window.createWebviewPanel(
+      const { panel, commit } = WebviewPool.getInstance().getOrCreate(
         MockDataPanel.viewType,
+        panelKey,
         `Mock Data: ${schema}.${table}`,
         vscode.ViewColumn.One,
-        { enableScripts: true, retainContextWhenHidden: true }
+        { enableScripts: true, retainContextWhenHidden: true },
+        {
+          onDispose: () => {
+            disposePooledOwner(MockDataPanel._panels, panel, false);
+          },
+          onRecycle: (recycled) => {
+            disposePooledOwner(MockDataPanel._panels, recycled.panel, true);
+          },
+        }
       );
 
       const instance = new MockDataPanel(panel);
       MockDataPanel._panels.set(panelKey, instance);
-      panel.onDidDispose(() => MockDataPanel._panels.delete(panelKey));
+      commit?.();
 
       // Fetch PK columns to exclude
       const pkColumns = await MockDataPanel._fetchPkColumns(client, schema, table);

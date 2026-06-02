@@ -24,6 +24,15 @@
                     <div class="section-title">AI Provider Configuration</div>
                 </div>
 
+                <div class="form-group">
+                    <label for="configScope">Configure for</label>
+                    <select id="configScope" required>
+                        <option value="notebook">Notebook &amp; dashboard AI</option>
+                        <option value="chat">SQL Assistant chat</option>
+                    </select>
+                    <p class="field-hint">API keys are shared; provider and model are saved per scope.</p>
+                </div>
+
                 <div id="githubAuthBanner" class="info-box info hidden">
                     <span class="info-box-icon">🔐</span>
                     <div>

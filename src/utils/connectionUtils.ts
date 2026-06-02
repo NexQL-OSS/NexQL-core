@@ -17,6 +17,59 @@ export class ConnectionUtils {
     return this.getConnections().find(c => c.id === connectionId);
   }
 
+  /** Walk down nested custom metadata if present to get the actual PostgresMetadata object */
+  static getEffectiveMetadata(metadata: any): any | undefined {
+    if (!metadata) return undefined;
+    let current = metadata;
+    while (current && !current.connectionId && current.custom?.metadata) {
+      current = current.custom.metadata;
+    }
+    return current;
+  }
+
+  /** Find a connection by ID or by metadata fallback (e.g. host, port, username, or single connection) */
+  static findConnectionWithFallback(connectionId: string | undefined, metadata?: any): any | undefined {
+    const connections = this.getConnections();
+    if (connections.length === 0) return undefined;
+
+    const effectiveMetadata = this.getEffectiveMetadata(metadata);
+    const targetId = connectionId || effectiveMetadata?.connectionId;
+
+    if (targetId) {
+      const conn = connections.find(c => c.id === targetId);
+      if (conn) return conn;
+    }
+
+    if (effectiveMetadata) {
+      // Fallback A: Match by host, port, username
+      if (effectiveMetadata.host && effectiveMetadata.port) {
+        const conn = connections.find(c =>
+          c.host === effectiveMetadata.host &&
+          Number(c.port) === Number(effectiveMetadata.port) &&
+          (!effectiveMetadata.username || c.username === effectiveMetadata.username)
+        );
+        if (conn) return conn;
+      }
+
+      // Fallback B: Match by host and databaseName/database
+      if (effectiveMetadata.host && (effectiveMetadata.databaseName || effectiveMetadata.database)) {
+        const dbName = effectiveMetadata.databaseName || effectiveMetadata.database;
+        const conn = connections.find(c =>
+          c.host === effectiveMetadata.host &&
+          (c.database === dbName || c.name === dbName)
+        );
+        if (conn) return conn;
+      }
+    }
+
+    // Fallback C: If there is exactly one configured connection, use it
+    if (connections.length === 1) {
+      return connections[0];
+    }
+
+    return undefined;
+  }
+
   /** Get the active notebook editor if it's a PostgreSQL notebook */
   static getActivePostgresNotebook(): vscode.NotebookEditor | undefined {
     const editor = vscode.window.activeNotebookEditor;
@@ -28,15 +81,21 @@ export class ConnectionUtils {
     return editor;
   }
 
-  /** Update notebook metadata */
+  /** Update notebook metadata. Returns false if the workspace edit was not applied. */
   static async updateNotebookMetadata(
     notebook: vscode.NotebookDocument,
     updates: Partial<Record<string, any>>
-  ): Promise<void> {
+  ): Promise<boolean> {
     const newMetadata = { ...notebook.metadata, ...updates };
     const edit = new vscode.WorkspaceEdit();
-    edit.set(notebook.uri, [vscode.NotebookEdit?.updateNotebookMetadata(newMetadata)]);
-    await vscode.workspace.applyEdit(edit);
+    edit.set(notebook.uri, [vscode.NotebookEdit.updateNotebookMetadata(newMetadata)]);
+    const applied = await vscode.workspace.applyEdit(edit);
+    if (!applied) {
+      console.warn(
+        `ConnectionUtils.updateNotebookMetadata: workspace edit not applied for ${notebook.uri.toString()}`,
+      );
+    }
+    return applied;
   }
 
   /** List all databases for a connection */

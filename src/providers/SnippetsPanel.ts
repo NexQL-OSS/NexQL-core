@@ -6,6 +6,7 @@
  * search/filter, copy-to-clipboard, and insert-into-active-notebook.
  */
 import * as vscode from 'vscode';
+import { WebviewPool } from '../utils/WebviewPool';
 
 // ─── Data Model ──────────────────────────────────────────────────────────────
 
@@ -163,6 +164,14 @@ const CUSTOM_SNIPPETS_KEY = 'pgStudio.customSnippets';
 
 export class SnippetsPanel {
   private static _panel: vscode.WebviewPanel | undefined;
+  private static _disposables: vscode.Disposable[] = [];
+
+  private static _disposeWebviewSubscriptions(): void {
+    for (const d of SnippetsPanel._disposables) {
+      d.dispose();
+    }
+    SnippetsPanel._disposables = [];
+  }
 
   /** Show (or reveal) the Snippets Library panel */
   static show(context: vscode.ExtensionContext): void {
@@ -171,22 +180,35 @@ export class SnippetsPanel {
       return;
     }
 
-    const panel = vscode.window.createWebviewPanel(
+    SnippetsPanel._disposeWebviewSubscriptions();
+    const { panel, commit } = WebviewPool.getInstance().getOrCreate(
       'pgStudio.snippetsLibrary',
+      'snippetsLibrary',
       'SQL Snippets Library',
       vscode.ViewColumn.One,
       {
         enableScripts: true,
         retainContextWhenHidden: true,
         localResourceRoots: []
+      },
+      {
+        onDispose: () => {
+          if (SnippetsPanel._panel === panel) {
+            SnippetsPanel._disposeWebviewSubscriptions();
+            SnippetsPanel._panel = undefined;
+          }
+        },
+        onRecycle: (recycled) => {
+          if (SnippetsPanel._panel === recycled.panel) {
+            SnippetsPanel._disposeWebviewSubscriptions();
+            SnippetsPanel._panel = undefined;
+          }
+        },
       }
     );
 
     SnippetsPanel._panel = panel;
-
-    panel.onDidDispose(() => {
-      SnippetsPanel._panel = undefined;
-    });
+    commit?.();
 
     // Initial render
     const customSnippets: Snippet[] = context.globalState.get(CUSTOM_SNIPPETS_KEY, []);
@@ -229,7 +251,7 @@ export class SnippetsPanel {
           break;
         }
       }
-    });
+    }, null, SnippetsPanel._disposables);
   }
 
   // ── Insert snippet into the active .pgsql notebook ────────────────────────

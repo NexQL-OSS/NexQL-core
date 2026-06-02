@@ -3,6 +3,7 @@ import { ErrorHandlers, StringUtils } from './helper';
 import { ConnectionManager } from '../services/ConnectionManager';
 import { PostgresMetadata } from '../common/types';
 import { AiService } from '../providers/chat/AiService';
+import { SQL_SELF_CHECK_RULE } from '../providers/chat/prompts';
 import { QueryCodeLensProvider } from '../providers/QueryCodeLensProvider';
 
 interface TableSchemaInfo {
@@ -141,10 +142,12 @@ export async function cmdAiAssist(cell: vscode.NotebookCell | undefined, context
 
   try {
     const config = vscode.workspace.getConfiguration('postgresExplorer');
-    const provider = config.get<string>('aiProvider') || 'vscode-lm';
+    const { readAiScopeSettings } = await import('../features/aiAssistant/aiConfig');
+    const notebookSettings = readAiScopeSettings(config, 'notebook');
+    const provider = notebookSettings.provider;
 
     const aiService = new AiService();
-    const modelInfo = await aiService.getModelInfo(provider, config);
+    const modelInfo = await aiService.getModelInfo(provider, config, 'notebook');
 
     await vscode.window.withProgress({
       location: vscode.ProgressLocation.Notification,
@@ -160,7 +163,7 @@ export async function cmdAiAssist(cell: vscode.NotebookCell | undefined, context
       const systemPrompt = buildPrompt(userInput, cellContext);
       const userTrigger = "Please provide the SQL query based on the instructions above.";
 
-      const result = await aiService.callProvider(provider, userTrigger, config, systemPrompt);
+      const result = await aiService.callProvider(provider, userTrigger, config, systemPrompt, 'notebook');
       const responseText = result.text;
       const { query, placement } = parseAiResponse(responseText);
       const cleanedQuery = StringUtils.cleanMarkdownCodeBlocks(query);
@@ -573,6 +576,7 @@ You are an expert PostgreSQL database developer and query optimizer. Your task i
    - Leverage existing indexes for better performance
    - Respect foreign key relationships
    - Understand nullability constraints
+7. **Self-check (P1.7)**: ${SQL_SELF_CHECK_RULE}
 
 ## Placement Decision
 

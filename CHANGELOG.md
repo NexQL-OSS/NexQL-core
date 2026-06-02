@@ -2,8 +2,36 @@
 
 All notable changes to the PostgreSQL Explorer extension will be documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
+
+---
+
+## [1.2.10] - 2026-06-01
+> Nightly releases — v1.3.10 • v1.3.11 • v1.3.15
+
+### Added
+
+- **Full dataset toggle** — Switch result cells between preview and full dataset rendering.
+- **Smarter AI assistant** — Task-specific prompts (fix, optimize, explain, analyze, generate); `@mention` schema ranked to your question with per-object caps; configurable context budget (`postgresExplorer.ai.maxContextTokens`, default 8000); self-check against provided schema to reduce invented columns.
+- **Sampled data analysis** — Large result sets analyzed from the first 200 rows with a `(sampled X of Y rows)` note.
+- **Per-provider AI API keys** — OpenAI, Anthropic, Gemini, and custom keys are stored separately in Secret Storage; switching providers in AI Settings restores each key.
+- **Scoped AI configuration** — `postgresExplorer.ai.chat.*` vs `postgresExplorer.ai.notebook.*` for SQL Assistant chat vs notebook/dashboard/saved-query AI (CodeLens **Ask AI** uses the notebook scope).
+- **Chat model picker** — Header dropdown lists models from all configured providers; **Configure AI…** opens AI Settings.
+
+### Changed
+
+- **Notebook toolbar** — Updated cell commands, labels, and icons for the query workflow.
+- **AI quick-actions** — Optimize/explain use an attached plan directly instead of asking you to re-run `EXPLAIN`; schema fetches are faster and retry on failure.
+- **Default AI models** — OpenAI `gpt-4.1`, Anthropic `claude-sonnet-4-20250514`, Gemini `gemini-2.5-flash` (override via scoped `ai.chat.model` / `ai.notebook.model` or legacy `postgresExplorer.aiModel`).
+- **AI Settings** — “Configure for” scope selector (chat vs notebook); saving persists all provider key fields without overwriting other providers; VS Code LM model list stores model **id** (display name in the label).
+
+### Fixed
+
+- **Dashboard AI Insights** — Ask AI opens the sidebar reliably; metric brain icons and in-panel quick-actions/Send append messages and call the assistant; close/backdrop no longer block dashboard clicks (body-level panel, no transform hit-testing).
+- **VS Code LM model selection** — Notebook/CodeLens/dashboard AI no longer silently falls back to the first available model (e.g. Haiku) when the saved display string did not match; resolves by model id and errors if the configured model is missing.
+- **Dashboard WAL tab** — Restored replication table rendering after AI query-result code was merged into `updateWalReplication` (fixed load-time error that broke dashboard script init).
+
+---
 
 ## [1.2.9] - 2026-05-23
 > Nightly releases - v1.3.11

@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { MODERN_WEBVIEW_BASE_CSS } from '../common/htmlStyles';
+import { WebviewPool } from '../utils/WebviewPool';
 
 interface ExplainNode {
   name: string;
@@ -15,27 +16,39 @@ export class ExplainProvider {
   private static panel: vscode.WebviewPanel | undefined;
 
   public static show(extensionUri: vscode.Uri, planJson: any, query?: string): void {
-    if (!ExplainProvider.panel) {
-      ExplainProvider.panel = vscode.window.createWebviewPanel(
-        'postgres-explain-plan',
-        'EXPLAIN ANALYZE Plan',
-        vscode.ViewColumn.Beside,
-        { enableScripts: true, retainContextWhenHidden: true }
-      );
-      ExplainProvider.panel.onDidDispose(() => (ExplainProvider.panel = undefined));
-    }
+    const { panel, commit } = WebviewPool.getInstance().getOrCreate(
+      'postgres-explain-plan',
+      'explainPlan',
+      'EXPLAIN ANALYZE Plan',
+      vscode.ViewColumn.Beside,
+      { enableScripts: true, retainContextWhenHidden: true },
+      {
+        onDispose: () => {
+          if (ExplainProvider.panel === panel) {
+            ExplainProvider.panel = undefined;
+          }
+        },
+        onRecycle: (recycled) => {
+          if (ExplainProvider.panel === recycled.panel) {
+            ExplainProvider.panel = undefined;
+          }
+        },
+      },
+    );
+    ExplainProvider.panel = panel;
+    commit?.();
 
     try {
       const plan = ExplainProvider.parsePlan(planJson);
-      ExplainProvider.panel.webview.html = ExplainProvider.renderHtml(plan, query);
+      panel.webview.html = ExplainProvider.renderHtml(plan, query);
     } catch (err: any) {
-      ExplainProvider.panel.webview.html = ExplainProvider.renderHtml(
+      panel.webview.html = ExplainProvider.renderHtml(
         null,
         query,
-        `Could not render explain plan: ${err?.message || String(err)}`
+        `Could not render explain plan: ${err?.message || String(err)}`,
       );
     }
-    ExplainProvider.panel.reveal(vscode.ViewColumn.Beside);
+    panel.reveal(vscode.ViewColumn.Beside);
   }
 
   private static parsePlan(planJson: any): ExplainNode | null {

@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { SecretStorageService } from '../services/SecretStorageService';
 import { ConnectionManager } from '../services/ConnectionManager';
 import { MODERN_WEBVIEW_BASE_CSS } from '../common/htmlStyles';
+import { disposePooledOwner, WebviewPool } from '../utils/WebviewPool';
 
 /**
  * pg_activity Real-Time Monitor Panel (Phase 6.2)
@@ -19,7 +20,7 @@ export class ActivityMonitorPanel {
   /** One panel per connection+database combination */
   private static _panels = new Map<string, ActivityMonitorPanel>();
 
-  private readonly _panel: vscode.WebviewPanel;
+  public readonly _panel: vscode.WebviewPanel;
   private _disposables: vscode.Disposable[] = [];
   private _pollTimer: NodeJS.Timeout | undefined;
   private _client: any;
@@ -28,10 +29,9 @@ export class ActivityMonitorPanel {
 
   private constructor(panel: vscode.WebviewPanel) {
     this._panel = panel;
-    this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
   }
 
-  private dispose(): void {
+  public dispose(isRecycling = false): void {
     this._isDisposed = true;
     if (this._pollTimer) {
       clearInterval(this._pollTimer);
@@ -41,7 +41,9 @@ export class ActivityMonitorPanel {
       try { this._client.release(); } catch { /* ignore */ }
       this._client = undefined;
     }
-    this._panel.dispose();
+    if (!isRecycling) {
+      this._panel.dispose();
+    }
     for (const d of this._disposables) { d.dispose(); }
     this._disposables = [];
   }
@@ -90,17 +92,26 @@ export class ActivityMonitorPanel {
       return;
     }
 
-    const panel = vscode.window.createWebviewPanel(
+    const { panel, commit } = WebviewPool.getInstance().getOrCreate(
       ActivityMonitorPanel.viewType,
+      panelKey,
       `Activity: ${connName}/${database}`,
       vscode.ViewColumn.One,
-      { enableScripts: true, retainContextWhenHidden: true }
+      { enableScripts: true, retainContextWhenHidden: true },
+      {
+        onDispose: () => {
+          disposePooledOwner(ActivityMonitorPanel._panels, panel, false);
+        },
+        onRecycle: (recycled) => {
+          disposePooledOwner(ActivityMonitorPanel._panels, recycled.panel, true);
+        },
+      }
     );
 
     const instance = new ActivityMonitorPanel(panel);
     instance._client = client;
     ActivityMonitorPanel._panels.set(panelKey, instance);
-    panel.onDidDispose(() => ActivityMonitorPanel._panels.delete(panelKey));
+    commit?.();
 
     panel.webview.html = ActivityMonitorPanel._buildHtml(connName, database);
 

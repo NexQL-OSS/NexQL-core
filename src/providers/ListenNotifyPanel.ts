@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { Client } from 'pg';
 import { SecretStorageService } from '../services/SecretStorageService';
 import { MODERN_WEBVIEW_BASE_CSS } from '../common/htmlStyles';
+import { disposePooledOwner, WebviewPool } from '../utils/WebviewPool';
 
 /** A single received NOTIFY notification. */
 interface PgNotification {
@@ -32,11 +33,17 @@ export class ListenNotifyPanel {
   // One panel instance per connection:database
   private static _panels = new Map<string, ListenNotifyPanel>();
 
-  private readonly _panel: vscode.WebviewPanel;
+  public readonly _panel: vscode.WebviewPanel;
   private _disposables: vscode.Disposable[] = [];
 
   /** The dedicated (non-pooled) pg client for LISTEN. */
-  private _pgClient: Client;
+  private _pgClient: Client | null;
+  /** Stable listener refs so removeListener matches addListener on this instance. */
+  private _pgListenerRefs: {
+    notification: (msg: { channel: string; payload?: string | null }) => void;
+    error: (err: Error) => void;
+    end: () => void;
+  } | null = null;
   /** Connected flag – updated by pg client events. */
   private _connected = false;
   /** Channels currently LISTENed on. */
@@ -46,39 +53,95 @@ export class ListenNotifyPanel {
   /** setInterval handle for the poll-and-forward loop. */
   private _pollTimer: NodeJS.Timeout | null = null;
 
-  private constructor(panel: vscode.WebviewPanel, pgClient: Client) {
+  private constructor(panel: vscode.WebviewPanel) {
     this._panel = panel;
-    this._pgClient = pgClient;
-
-    this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
+    this._pgClient = null;
 
     // Forward buffered notifications to the webview every 500 ms
     this._pollTimer = setInterval(() => this._flushNotifications(), ListenNotifyPanel.POLL_INTERVAL_MS);
   }
 
-  private dispose(): void {
-    // Clean up the poll timer
+  public dispose(isRecycling = false): void {
     if (this._pollTimer) {
       clearInterval(this._pollTimer);
       this._pollTimer = null;
     }
 
-    // Terminate the dedicated pg connection
-    try {
-      this._pgClient.end().catch(() => { /* ignore errors on cleanup */ });
-    } catch {
-      // ignore
-    }
+    this._detachPgClient();
 
-    // Remove from registry
+    this._channels.clear();
+    this._pendingNotifications = [];
+    this._connected = false;
+
     const key = [...ListenNotifyPanel._panels.entries()]
       .find(([, v]) => v === this)?.[0];
     if (key) { ListenNotifyPanel._panels.delete(key); }
 
-    // Dispose VS Code disposables
-    this._panel.dispose();
+    if (!isRecycling) {
+      this._panel.dispose();
+    }
     for (const d of this._disposables) { d.dispose(); }
     this._disposables = [];
+  }
+
+  /** Remove pg client listeners before end(); safe to call multiple times. */
+  private _detachPgClient(): void {
+    const client = this._pgClient;
+    if (!client) {
+      return;
+    }
+    this._pgClient = null;
+    const refs = this._pgListenerRefs;
+    this._pgListenerRefs = null;
+    if (refs) {
+      client.removeListener('notification', refs.notification);
+      client.removeListener('error', refs.error);
+      client.removeListener('end', refs.end);
+    }
+    try {
+      client.end().catch(() => { /* ignore errors on cleanup */ });
+    } catch {
+      // ignore
+    }
+  }
+
+  private _attachPgClient(client: Client): void {
+    this._detachPgClient();
+    const notification = (msg: { channel: string; payload?: string | null }) => {
+      const note: PgNotification = {
+        channel: msg.channel,
+        payload: msg.payload ?? '',
+        receivedAt: new Date(),
+      };
+      this._pendingNotifications.push(note);
+      if (this._pendingNotifications.length > ListenNotifyPanel.MAX_FEED_ENTRIES) {
+        this._pendingNotifications.splice(
+          0,
+          this._pendingNotifications.length - ListenNotifyPanel.MAX_FEED_ENTRIES,
+        );
+      }
+    };
+    const error = (err: Error) => {
+      this._connected = false;
+      try {
+        this._panel.webview.postMessage({ type: 'status', connected: false, error: err.message });
+      } catch {
+        // panel disposed
+      }
+    };
+    const end = () => {
+      this._connected = false;
+      try {
+        this._panel.webview.postMessage({ type: 'status', connected: false });
+      } catch {
+        // panel disposed
+      }
+    };
+    this._pgListenerRefs = { notification, error, end };
+    this._pgClient = client;
+    client.on('notification', notification);
+    client.on('error', error);
+    client.on('end', end);
   }
 
   // ---------------------------------------------------------------------------
@@ -99,7 +162,7 @@ export class ListenNotifyPanel {
   }
 
   private async _handleSubscribe(channel: string): Promise<void> {
-    if (!channel || this._channels.has(channel)) { return; }
+    if (!channel || this._channels.has(channel) || !this._pgClient) { return; }
     try {
       await this._pgClient.query(`LISTEN ${this._pgClient.escapeIdentifier(channel)}`);
       this._channels.add(channel);
@@ -110,7 +173,7 @@ export class ListenNotifyPanel {
   }
 
   private async _handleUnsubscribe(channel: string): Promise<void> {
-    if (!channel || !this._channels.has(channel)) { return; }
+    if (!channel || !this._channels.has(channel) || !this._pgClient) { return; }
     try {
       await this._pgClient.query(`UNLISTEN ${this._pgClient.escapeIdentifier(channel)}`);
       this._channels.delete(channel);
@@ -121,7 +184,7 @@ export class ListenNotifyPanel {
   }
 
   private async _handleNotify(channel: string, payload: string): Promise<void> {
-    if (!channel) { return; }
+    if (!channel || !this._pgClient) { return; }
     try {
       await this._pgClient.query('SELECT pg_notify($1, $2)', [channel, payload ?? '']);
       this._panel.webview.postMessage({ type: 'notifySent', channel, payload });
@@ -188,17 +251,27 @@ export class ListenNotifyPanel {
 
     // Create the webview panel
     const connLabel = conn.name || `${conn.host}:${conn.port ?? 5432}`;
-    const panel = vscode.window.createWebviewPanel(
+
+    const { panel, commit } = WebviewPool.getInstance().getOrCreate(
       ListenNotifyPanel.viewType,
+      panelKey,
       `LISTEN/NOTIFY – ${connLabel}`,
       vscode.ViewColumn.Beside,
-      { enableScripts: true, retainContextWhenHidden: true }
+      { enableScripts: true, retainContextWhenHidden: true },
+      {
+        onDispose: () => {
+          disposePooledOwner(ListenNotifyPanel._panels, panel, false);
+        },
+        onRecycle: (recycled) => {
+          disposePooledOwner(ListenNotifyPanel._panels, recycled.panel, true);
+        },
+      }
     );
 
-    const lnPanel = new ListenNotifyPanel(panel, pgClient);
+    const lnPanel = new ListenNotifyPanel(panel);
     lnPanel._connected = true;
     ListenNotifyPanel._panels.set(panelKey, lnPanel);
-    panel.onDidDispose(() => ListenNotifyPanel._panels.delete(panelKey));
+    commit?.();
 
     // Render initial HTML
     panel.webview.html = ListenNotifyPanel._buildHtml(connLabel, database);
@@ -207,40 +280,7 @@ export class ListenNotifyPanel {
     // (the webview will request state via 'ready' message)
     panel.webview.postMessage({ type: 'status', connected: true });
 
-    // Wire up pg notification listener
-    pgClient.on('notification', (msg) => {
-      const note: PgNotification = {
-        channel: msg.channel,
-        payload: msg.payload ?? '',
-        receivedAt: new Date(),
-      };
-      lnPanel._pendingNotifications.push(note);
-      // Cap the buffer
-      if (lnPanel._pendingNotifications.length > ListenNotifyPanel.MAX_FEED_ENTRIES) {
-        lnPanel._pendingNotifications.splice(
-          0,
-          lnPanel._pendingNotifications.length - ListenNotifyPanel.MAX_FEED_ENTRIES
-        );
-      }
-    });
-
-    pgClient.on('error', (err) => {
-      lnPanel._connected = false;
-      try {
-        panel.webview.postMessage({ type: 'status', connected: false, error: err.message });
-      } catch {
-        // panel disposed
-      }
-    });
-
-    pgClient.on('end', () => {
-      lnPanel._connected = false;
-      try {
-        panel.webview.postMessage({ type: 'status', connected: false });
-      } catch {
-        // panel disposed
-      }
-    });
+    lnPanel._attachPgClient(pgClient);
 
     // Handle messages from the webview
     panel.webview.onDidReceiveMessage(

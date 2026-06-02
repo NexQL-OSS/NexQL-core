@@ -18,36 +18,50 @@ export class SecretStorageService {
     return await this.context.secrets.get(`postgres-password-${connectionId}`);
   }
 
+  /** @deprecated Use AiCredentialsService.getApiKey(provider) */
   public async getAiApiKey(): Promise<string | undefined> {
-    return await this.context.secrets.get('postgresExplorer.aiApiKey');
+    const legacy = await this.context.secrets.get('postgresExplorer.aiApiKey');
+    if (legacy) {
+      return legacy;
+    }
+    const { AiCredentialsService } = await import('../features/aiAssistant/AiCredentialsService');
+    return (await AiCredentialsService.getInstance().getApiKey('openai')) || undefined;
   }
 
   public async getCursorApiKey(): Promise<string | undefined> {
-    return await this.context.secrets.get('postgresExplorer.cursorApiKey');
+    const { AiCredentialsService } = await import('../features/aiAssistant/AiCredentialsService');
+    return await AiCredentialsService.getInstance().getCursorApiKey();
   }
 
   public async setPassword(connectionId: string, password: string): Promise<void> {
     await this.context.secrets.store(`postgres-password-${connectionId}`, password);
   }
 
+  /** @deprecated Use AiCredentialsService.setApiKey(provider, key) */
   public async setAiApiKey(apiKey: string): Promise<void> {
-    await this.context.secrets.store('postgresExplorer.aiApiKey', apiKey);
+    const { AiCredentialsService } = await import('../features/aiAssistant/AiCredentialsService');
+    await AiCredentialsService.getInstance().setApiKey('openai', apiKey);
   }
 
   public async setCursorApiKey(apiKey: string): Promise<void> {
-    await this.context.secrets.store('postgresExplorer.cursorApiKey', apiKey);
+    const { AiCredentialsService } = await import('../features/aiAssistant/AiCredentialsService');
+    await AiCredentialsService.getInstance().setCursorApiKey(apiKey);
   }
 
   public async deletePassword(connectionId: string): Promise<void> {
     await this.context.secrets.delete(`postgres-password-${connectionId}`);
   }
 
+  /** @deprecated Use AiCredentialsService.setApiKey(provider, undefined) */
   public async deleteAiApiKey(): Promise<void> {
     await this.context.secrets.delete('postgresExplorer.aiApiKey');
+    const { AiCredentialsService } = await import('../features/aiAssistant/AiCredentialsService');
+    await AiCredentialsService.getInstance().setApiKey('openai', undefined);
   }
 
   public async deleteCursorApiKey(): Promise<void> {
-    await this.context.secrets.delete('postgresExplorer.cursorApiKey');
+    const { AiCredentialsService } = await import('../features/aiAssistant/AiCredentialsService');
+    await AiCredentialsService.getInstance().setCursorApiKey(undefined);
   }
 
   /** GitHub PAT with `gist` scope — used only for “Publish notebook to Gist”. */

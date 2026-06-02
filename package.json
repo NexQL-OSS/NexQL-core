@@ -1,7 +1,7 @@
 {
   "name": "postgres-explorer",
   "displayName": "PgStudio (PostgreSQL Explorer)",
-  "version": "1.3.11",
+  "version": "1.4.0",
   "description": "PostgreSQL database explorer for VS Code with notebook support [Nightly]",
   "publisher": "ric-v",
   "private": false,
@@ -749,8 +749,13 @@
       },
       {
         "command": "postgres-explorer.aiAssist",
-        "title": "Put AI to work",
+        "title": "Ask AI",
         "icon": "$(sparkle)"
+      },
+      {
+        "command": "postgres-explorer.chatWithQuery",
+        "title": "Chat with Query",
+        "icon": "$(comment)"
       },
       {
         "command": "postgres-explorer.attachToChat",
@@ -938,6 +943,17 @@
         "icon": "$(graph)"
       },
       {
+        "command": "postgres-explorer.explainQueryFromCell",
+        "title": "Explain Analyze",
+        "category": "PgStudio",
+        "icon": "$(type-hierarchy-sub)"
+      },
+      {
+        "command": "postgres-explorer.toggleFullDatasetForCell",
+        "title": "Toggle Full Dataset Mode",
+        "icon": "$(database)"
+      },
+      {
         "command": "postgres-explorer.tableProfile",
         "title": "View Table Profile",
         "icon": "$(graph)"
@@ -1030,9 +1046,15 @@
       },
       {
         "command": "postgres-explorer.saveQueryToLibraryUI",
-        "title": "💾 Save Query (UI Form)",
-        "icon": "$(save)",
+        "title": "Save Query to Library",
+        "icon": "$(bookmark)",
         "category": "PgStudio: Queries"
+      },
+      {
+        "command": "postgres-explorer.toggleFullDatasetFromCell",
+        "title": "Toggle Full Dataset Mode",
+        "icon": "$(table)",
+        "category": "PgStudio"
       },
       {
         "command": "postgres-explorer.loadSavedQuery",
@@ -1754,22 +1776,70 @@
             "custom"
           ],
           "default": "vscode-lm",
-          "description": "AI Provider to use for query assistance"
+          "description": "Deprecated: use ai.notebook.provider or ai.chat.provider. Kept for migration."
         },
         "postgresExplorer.aiApiKey": {
           "type": "string",
           "default": "",
-          "description": "API Key for direct AI providers (OpenAI/Anthropic/Gemini/custom)"
+          "description": "Deprecated: API keys are stored in Secret Storage per provider via AI Settings."
         },
         "postgresExplorer.aiModel": {
           "type": "string",
           "default": "",
-          "description": "Model name (e.g., gpt-4, claude-3-opus). Leave empty for defaults."
+          "description": "Deprecated: use ai.notebook.model or ai.chat.model."
+        },
+        "postgresExplorer.ai.chat.provider": {
+          "type": "string",
+          "enum": [
+            "vscode-lm",
+            "github",
+            "cursor",
+            "openai",
+            "anthropic",
+            "gemini",
+            "ollama",
+            "lmstudio",
+            "custom"
+          ],
+          "default": "vscode-lm",
+          "description": "AI provider for the SQL Assistant chat panel"
+        },
+        "postgresExplorer.ai.chat.model": {
+          "type": "string",
+          "default": "",
+          "description": "Model for chat. Leave empty for provider default."
+        },
+        "postgresExplorer.ai.notebook.provider": {
+          "type": "string",
+          "enum": [
+            "vscode-lm",
+            "github",
+            "cursor",
+            "openai",
+            "anthropic",
+            "gemini",
+            "ollama",
+            "lmstudio",
+            "custom"
+          ],
+          "default": "vscode-lm",
+          "description": "AI provider for notebook assist, dashboard, and saved-query AI"
+        },
+        "postgresExplorer.ai.notebook.model": {
+          "type": "string",
+          "default": "",
+          "description": "Model for notebook AI features. Leave empty for provider default."
         },
         "postgresExplorer.aiEndpoint": {
           "type": "string",
           "default": "",
           "description": "Custom API endpoint (optional)"
+        },
+        "postgresExplorer.ai.maxContextTokens": {
+          "type": "number",
+          "default": 8000,
+          "minimum": 512,
+          "description": "Approximate token budget for AI requests (system prompt + schema context + chat history). Oldest history is dropped first, then schema is trimmed, to keep requests within this budget."
         },
         "postgresExplorer.streaming.enabled": {
           "type": "boolean",
@@ -3236,8 +3306,28 @@
       "notebook/cell/title": [
         {
           "command": "postgres-explorer.aiAssist",
-          "when": "notebookType == postgres-notebook",
-          "group": "inline"
+          "when": "notebookType == postgres-notebook && notebookCellType == code",
+          "group": "inline/cell@10"
+        },
+        {
+          "command": "postgres-explorer.chatWithQuery",
+          "when": "notebookType == postgres-notebook && notebookCellType == code",
+          "group": "inline/cell@11"
+        },
+        {
+          "command": "postgres-explorer.saveQueryToLibraryUI",
+          "when": "notebookType == postgres-notebook && notebookCellType == code",
+          "group": "inline/cell@12"
+        },
+        {
+          "command": "postgres-explorer.toggleFullDatasetFromCell",
+          "when": "notebookType == postgres-notebook && notebookCellType == code",
+          "group": "inline/cell@13"
+        },
+        {
+          "command": "postgres-explorer.explainQueryFromCell",
+          "when": "notebookType == postgres-notebook && notebookCellType == code",
+          "group": "inline/cell@14"
         }
       ]
     },
@@ -3307,8 +3397,8 @@
     "prepare:nightly:manifests": "node ./scripts/prepare-nightly-manifests.js",
     "package:prerelease": "npx @vscode/vsce package --pre-release",
     "package:openvsx:nightly": "npx @vscode/vsce package",
-    "esbuild-base": "esbuild ./src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --external:ssh2 --external:pg --external:@cursor/sdk --format=cjs --platform=node --main-fields=main",
-    "esbuild-renderer": "esbuild ./src/ui/renderer/renderer_v2.ts --bundle --outdir=dist --format=esm --platform=browser --splitting",
+    "esbuild-base": "esbuild ./src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --external:ssh2 --external:pg --external:@cursor/sdk --external:@dbml/core --format=cjs --platform=node --main-fields=main",
+    "esbuild-renderer": "node scripts/clean-dist-chunks.js && esbuild ./src/ui/renderer/renderer_v2.ts --bundle --outdir=dist --format=esm --platform=browser --splitting",
     "esbuild-erd-webview": "esbuild ./src/schemaDesigner/erd/webview/main.ts --bundle --outfile=dist/erd-webview.js --format=iife --platform=browser",
     "copy-templates": "cp -r templates dist/",
     "compile": "tsc -p ./ && npm run esbuild-renderer && npm run esbuild-erd-webview && npm run copy-templates",

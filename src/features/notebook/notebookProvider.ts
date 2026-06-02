@@ -68,12 +68,14 @@ export class PostgresNotebookProvider implements vscode.NotebookSerializer {
 
     const notebookData = new vscode.NotebookData(cells);
     if (metadata) {
+      const cleanMetadata = { ...metadata };
+      delete (cleanMetadata as any).custom;
       notebookData.metadata = {
-        ...metadata,
+        ...cleanMetadata,
         custom: {
           cells: [],
           metadata: {
-            ...metadata,
+            ...cleanMetadata,
             enableScripts: true
           }
         }
@@ -92,12 +94,15 @@ export class PostgresNotebookProvider implements vscode.NotebookSerializer {
       language: cell.kind === vscode.NotebookCellKind.Markup ? 'markdown' : 'sql'
     }));
 
+    const cleanMetadata = data.metadata ? { ...data.metadata } : {};
+    delete (cleanMetadata as any).custom;
+
     const metadata = {
-      ...data.metadata,
+      ...cleanMetadata,
       custom: {
         cells: cells,
         metadata: {
-          ...data.metadata,
+          ...cleanMetadata,
           enableScripts: true
         }
       }

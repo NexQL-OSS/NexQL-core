@@ -73,15 +73,15 @@ export class NotebookStatusBar implements vscode.Disposable {
 
     this.workspaceDefaultItem.hide();
 
-    const metadata = editor!.notebook.metadata as PostgresMetadata;
-    const connection = this.getConnection(metadata?.connectionId);
+    const effectiveMetadata = ConnectionUtils.getEffectiveMetadata(editor!.notebook.metadata) as PostgresMetadata;
+    const connection = ConnectionUtils.findConnectionWithFallback(effectiveMetadata?.connectionId, editor!.notebook.metadata);
 
-    if (!metadata?.connectionId) {
+    if (!effectiveMetadata?.connectionId || !connection) {
       this.showNoConnection();
       return;
     }
 
-    this.showConnection(connection, metadata);
+    this.showConnection(connection, effectiveMetadata);
   }
 
   private isPostgresNotebook(editor: vscode.NotebookEditor | undefined): boolean {

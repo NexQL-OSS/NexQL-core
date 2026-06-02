@@ -4,3 +4,5 @@ export * from './AiService';
 export * from './SessionService';
 export * from './webviewHtml';
 export * from './backupToolsAssistantPrompt';
+export * from './prompts';
+export * from './schemaRender';

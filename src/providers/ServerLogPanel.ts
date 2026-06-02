@@ -13,6 +13,7 @@ import * as vscode from 'vscode';
 import { ConnectionManager } from '../services/ConnectionManager';
 import { SecretStorageService } from '../services/SecretStorageService';
 import { MODERN_WEBVIEW_BASE_CSS } from '../common/htmlStyles';
+import { disposePooledOwner, WebviewPool } from '../utils/WebviewPool';
 
 export class ServerLogPanel {
   public static readonly viewType = 'pgStudio.serverLogViewer';
@@ -20,7 +21,7 @@ export class ServerLogPanel {
   /** Active panel instances keyed by "{connectionId}:{database}" */
   private static _panels = new Map<string, ServerLogPanel>();
 
-  private readonly _panel: vscode.WebviewPanel;
+  public readonly _panel: vscode.WebviewPanel;
   private _disposables: vscode.Disposable[] = [];
 
   /** Interval handle for polling new log lines */
@@ -40,7 +41,6 @@ export class ServerLogPanel {
 
   private constructor(panel: vscode.WebviewPanel) {
     this._panel = panel;
-    this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
   }
 
   // ---------------------------------------------------------------------------
@@ -141,12 +141,20 @@ export class ServerLogPanel {
       }
     );
 
-    // Create the webview panel
-    const panel = vscode.window.createWebviewPanel(
+    const { panel, commit } = WebviewPool.getInstance().getOrCreate(
       ServerLogPanel.viewType,
+      panelKey,
       `Server Logs: ${conn.name}`,
       vscode.ViewColumn.One,
-      { enableScripts: true, retainContextWhenHidden: true }
+      { enableScripts: true, retainContextWhenHidden: true },
+      {
+        onDispose: () => {
+          disposePooledOwner(ServerLogPanel._panels, panel, false);
+        },
+        onRecycle: (recycled) => {
+          disposePooledOwner(ServerLogPanel._panels, recycled.panel, true);
+        },
+      }
     );
 
     const instance = new ServerLogPanel(panel);
@@ -157,10 +165,7 @@ export class ServerLogPanel {
     instance._byteOffset = logFiles[0]?.size ?? 0;
 
     ServerLogPanel._panels.set(panelKey, instance);
-    panel.onDidDispose(() => {
-      ServerLogPanel._panels.delete(panelKey);
-      instance._stopPolling();
-    });
+    commit?.();
 
     // Build and set the initial HTML
     panel.webview.html = ServerLogPanel._buildHtml(
@@ -301,13 +306,15 @@ export class ServerLogPanel {
   // Disposal
   // ---------------------------------------------------------------------------
 
-  private dispose(): void {
+  public dispose(isRecycling = false): void {
     this._stopPolling();
     while (this._disposables.length) {
       const d = this._disposables.pop();
       if (d) { d.dispose(); }
     }
-    this._panel.dispose();
+    if (!isRecycling) {
+      this._panel.dispose();
+    }
   }
 
   // ---------------------------------------------------------------------------

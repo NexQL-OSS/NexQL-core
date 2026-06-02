@@ -4,6 +4,7 @@ import * as vscode from 'vscode';
 
 import { AiService } from '../../providers/chat/AiService';
 import { SecretStorageService } from '../../services/SecretStorageService';
+import { AiCredentialsService } from '../../features/aiAssistant/AiCredentialsService';
 
 class MockTextPart {
   constructor(public value: string) { }
@@ -98,10 +99,12 @@ describe('AiService', () => {
     (service as any)._cancellationTokenSource = { cancel: cancelStub, dispose: disposeStub };
     (service as any)._abortController = { abort: abortStub };
 
+    // v1.4.0: the default (chat) prompt is slimmed — the SQL quality checklist now only
+    // attaches to SQL-producing capabilities, not conceptual chat.
     const prompt = service.buildSystemPrompt();
     expect(prompt).to.contain('PostgreSQL database assistant');
-    expect(prompt).to.contain('SQL QUALITY CHECKLIST');
-    expect(prompt).to.contain('DATABASE SCHEMA CONTEXT');
+    expect(prompt).to.contain('treat it as ground truth');
+    expect(prompt).to.not.contain('SQL QUALITY CHECKLIST');
 
     service.cancel();
 
@@ -272,8 +275,12 @@ describe('AiService', () => {
     const service = new AiService();
     const makeHttpRequestStub = sandbox.stub(service as any, '_makeHttpRequest').resolves({ text: 'ok', usage: '1 token' });
     const getAiApiKeyStub = sandbox.stub();
+    const getProviderApiKeyStub = sandbox.stub().resolves(undefined);
     const secretService = { getAiApiKey: getAiApiKeyStub } as any;
     sandbox.stub(SecretStorageService, 'getInstance').returns(secretService);
+    sandbox.stub(AiCredentialsService, 'getInstance').returns({
+      getApiKey: getProviderApiKeyStub,
+    } as any);
 
     const getSessionStub = (vscode as any).authentication.getSession as sinon.SinonStub;
     const imageMessage = createImageMessage();
@@ -281,13 +288,16 @@ describe('AiService', () => {
     const cases = [
       {
         provider: 'openai',
-        secretBehavior: () => getAiApiKeyStub.rejects(new Error('missing secret')),
+        secretBehavior: () => {
+          getProviderApiKeyStub.withArgs('openai').resolves(undefined);
+          getAiApiKeyStub.rejects(new Error('missing secret'));
+        },
         config: createConfig({ aiApiKey: 'config-key' }),
         messages: [imageMessage],
         expectedEndpoint: 'https://api.openai.com/v1/chat/completions',
         assert: (headers: any, body: any) => {
           expect(headers.Authorization).to.equal('Bearer config-key');
-          expect(body.model).to.equal('gpt-4o');
+          expect(body.model).to.equal('gpt-4.1');
           expect(body.messages[1].role).to.equal('user');
           expect(Array.isArray(body.messages[1].content)).to.be.true;
           expect(body.messages[1].content.some((part: any) => part.type === 'image_url')).to.be.true;
@@ -295,14 +305,14 @@ describe('AiService', () => {
       },
       {
         provider: 'anthropic',
-        secretBehavior: () => getAiApiKeyStub.resolves('secret-key'),
+        secretBehavior: () => getProviderApiKeyStub.withArgs('anthropic').resolves('secret-key'),
         config: createConfig({}),
         messages: [imageMessage],
         expectedEndpoint: 'https://api.anthropic.com/v1/messages',
         assert: (headers: any, body: any) => {
           expect(headers['x-api-key']).to.equal('secret-key');
           expect(headers.Authorization).to.be.undefined;
-          expect(body.model).to.equal('claude-3-5-sonnet-20241022');
+          expect(body.model).to.equal('claude-sonnet-4-20250514');
           expect(body.system).to.contain('PostgreSQL database assistant');
           expect(Array.isArray(body.messages[0].content)).to.be.true;
           expect(body.messages[0].content.some((part: any) => part.type === 'image')).to.be.true;
@@ -310,10 +320,10 @@ describe('AiService', () => {
       },
       {
         provider: 'gemini',
-        secretBehavior: () => getAiApiKeyStub.resolves('secret-key'),
+        secretBehavior: () => getProviderApiKeyStub.withArgs('gemini').resolves('secret-key'),
         config: createConfig({}),
         messages: [imageMessage],
-        expectedEndpoint: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent',
+        expectedEndpoint: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
         assert: (headers: any, body: any) => {
           expect(headers['X-goog-api-key']).to.equal('secret-key');
           expect(body.contents[0].role).to.equal('user');
@@ -340,6 +350,9 @@ describe('AiService', () => {
     for (const testCase of cases) {
       getAiApiKeyStub.resetBehavior();
       getAiApiKeyStub.resetHistory();
+      getProviderApiKeyStub.resetBehavior();
+      getProviderApiKeyStub.resetHistory();
+      getProviderApiKeyStub.resolves(undefined);
       getSessionStub.resetHistory();
       getSessionStub.resolves(testCase.authSession);
       testCase.secretBehavior();

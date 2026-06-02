@@ -26,6 +26,10 @@ const mentionPicker = document.getElementById('mentionPicker');
 const mentionSearch = document.getElementById('mentionSearch');
 const mentionList = document.getElementById('mentionList');
 const mentionBtn = document.getElementById('mentionBtn');
+const aiModelPicker = document.getElementById('aiModelPicker');
+const aiModelTrigger = document.getElementById('aiModelTrigger');
+const aiModelTriggerLabel = document.getElementById('aiModelTriggerLabel');
+const aiModelMenu = document.getElementById('aiModelMenu');
 
 const CHAT_INPUT_MIN_HEIGHT = 38;
 const CHAT_INPUT_MAX_VISIBLE_LINES = 5;
@@ -40,6 +44,10 @@ let mentionPickerVisible = false;
 let selectedMentionIndex = -1;
 let searchDebounceTimer = null;
 let currentMessages = [];
+let currentModelCatalog = [];
+let currentModelSelectionId = '';
+let currentModelLabel = 'Loading models…';
+let modelMenuVisible = false;
 let currentHierarchyPath = {
   connection: null,
   database: null,
@@ -285,6 +293,186 @@ function newChat() {
 
 function openAiSettings() {
   vscode.postMessage({ type: 'openAiSettings' });
+}
+
+function setAiModelPickerLabel(label, title) {
+  currentModelLabel = label || 'Loading models…';
+  if (aiModelTriggerLabel) {
+    aiModelTriggerLabel.textContent = currentModelLabel;
+  }
+  if (aiModelTrigger) {
+    aiModelTrigger.title = title || currentModelLabel || 'AI model';
+  }
+}
+
+function closeAiModelMenu() {
+  modelMenuVisible = false;
+  if (aiModelPicker) {
+    aiModelPicker.classList.remove('open');
+  }
+  if (aiModelTrigger) {
+    aiModelTrigger.setAttribute('aria-expanded', 'false');
+  }
+  if (aiModelMenu) {
+    aiModelMenu.setAttribute('aria-hidden', 'true');
+  }
+}
+
+function openAiModelMenu() {
+  if (!aiModelPicker || !aiModelMenu || !aiModelTrigger) {
+    return;
+  }
+  modelMenuVisible = true;
+  aiModelPicker.classList.add('open');
+  aiModelTrigger.setAttribute('aria-expanded', 'true');
+  aiModelMenu.setAttribute('aria-hidden', 'false');
+}
+
+function toggleAiModelMenu() {
+  if (modelMenuVisible) {
+    closeAiModelMenu();
+  } else {
+    openAiModelMenu();
+  }
+}
+
+function selectAiModel(selectionId) {
+  if (!selectionId) {
+    return;
+  }
+
+  closeAiModelMenu();
+
+  if (selectionId === '__configure__') {
+    openAiSettings();
+    vscode.postMessage({ type: 'getModelCatalog' });
+    return;
+  }
+
+  vscode.postMessage({ type: 'switchChatModel', selectionId });
+}
+
+function renderAiModelGroup(groupLabel, entries, activeSelectionId) {
+  const group = document.createElement('div');
+  group.className = 'ai-model-menu-group';
+
+  const heading = document.createElement('div');
+  heading.className = 'ai-model-menu-group-title';
+  heading.textContent = groupLabel;
+  group.appendChild(heading);
+
+  entries.forEach((entry) => {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'ai-model-menu-item';
+    item.setAttribute('role', 'menuitemradio');
+    item.setAttribute('aria-checked', entry.selectionId === activeSelectionId ? 'true' : 'false');
+    item.dataset.selectionId = entry.selectionId;
+    if (entry.selectionId === activeSelectionId) {
+      item.classList.add('is-active');
+    }
+
+    const label = document.createElement('span');
+    label.className = 'ai-model-menu-item-label';
+    label.textContent = entry.label;
+    item.appendChild(label);
+
+    if (entry.selectionId === activeSelectionId) {
+      const check = document.createElement('span');
+      check.className = 'ai-model-menu-item-check';
+      check.textContent = '✓';
+      item.appendChild(check);
+    }
+
+    item.addEventListener('click', () => selectAiModel(entry.selectionId));
+    group.appendChild(item);
+  });
+
+  return group;
+}
+
+function applyModelCatalog(message) {
+  if (!aiModelMenu || !Array.isArray(message.catalog)) {
+    return;
+  }
+
+  const previous = currentModelSelectionId;
+  currentModelCatalog = message.catalog.slice();
+  currentModelSelectionId = message.activeSelectionId || previous || '';
+
+  aiModelMenu.innerHTML = '';
+
+  const groups = new Map();
+  for (const entry of currentModelCatalog) {
+    const group = entry.groupLabel || entry.provider;
+    if (!groups.has(group)) {
+      groups.set(group, []);
+    }
+    groups.get(group).push(entry);
+  }
+
+  if (groups.size === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'ai-model-menu-empty';
+    empty.textContent = 'No models found';
+    aiModelMenu.appendChild(empty);
+  } else {
+    for (const [groupLabel, entries] of groups) {
+      aiModelMenu.appendChild(renderAiModelGroup(groupLabel, entries, currentModelSelectionId));
+    }
+  }
+
+  const divider = document.createElement('div');
+  divider.className = 'ai-model-menu-divider';
+  aiModelMenu.appendChild(divider);
+
+  const actionGroup = document.createElement('div');
+  actionGroup.className = 'ai-model-menu-action';
+
+  const configureOption = document.createElement('button');
+  configureOption.type = 'button';
+  configureOption.className = 'ai-model-menu-item';
+  configureOption.setAttribute('role', 'menuitem');
+  configureOption.dataset.selectionId = '__configure__';
+  configureOption.addEventListener('click', () => selectAiModel('__configure__'));
+
+  const configureLabel = document.createElement('span');
+  configureLabel.className = 'ai-model-menu-item-label';
+  configureLabel.textContent = 'Configure AI…';
+  configureOption.appendChild(configureLabel);
+  actionGroup.appendChild(configureOption);
+  aiModelMenu.appendChild(actionGroup);
+
+  if (message.activeModelLabel) {
+    setAiModelPickerLabel(message.activeModelLabel, message.activeModelLabel);
+  }
+
+  if (!modelMenuVisible) {
+    closeAiModelMenu();
+  }
+}
+
+function onAiModelTriggerClick(event) {
+  event.stopPropagation();
+  toggleAiModelMenu();
+}
+
+function onAiModelTriggerKeyDown(event) {
+  if (event.key === 'ArrowDown' || event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault();
+    openAiModelMenu();
+  } else if (event.key === 'Escape') {
+    closeAiModelMenu();
+  }
+}
+
+function onDocumentClick(event) {
+  if (!aiModelPicker || !modelMenuVisible) {
+    return;
+  }
+  if (!aiModelPicker.contains(event.target)) {
+    closeAiModelMenu();
+  }
 }
 
 function formatDate(timestamp) {
@@ -1807,14 +1995,18 @@ window.addEventListener('message', event => {
       // Show a toast notification about schema fetch error
       showToast('⚠️ Could not fetch schema for ' + message.object + ': ' + message.error, 'warning');
       break;
+    case 'updateModelCatalog':
+      applyModelCatalog(message);
+      break;
     case 'updateModelInfo':
-      const aiModelNameEl = document.getElementById('aiModelName');
-      const aiModelBadgeEl = document.getElementById('aiModelBadge');
-      if (aiModelNameEl) {
-        aiModelNameEl.textContent = message.modelName || 'Unknown';
-      }
-      if (aiModelBadgeEl) {
-        aiModelBadgeEl.title = message.modelName || 'Unknown';
+      {
+        if (message.modelName) {
+          if (currentModelLabel === 'Loading models…') {
+            setAiModelPickerLabel(message.modelName, message.modelName);
+          } else if (aiModelTrigger) {
+            aiModelTrigger.title = message.modelName;
+          }
+        }
       }
       break;
 
@@ -2528,7 +2720,15 @@ function wireChatDomEvents() {
   }
   document.getElementById('btnChatHistory')?.addEventListener('click', toggleHistory);
   document.getElementById('btnNewChat')?.addEventListener('click', newChat);
-  document.getElementById('aiModelBadge')?.addEventListener('click', openAiSettings);
+  aiModelTrigger?.addEventListener('click', onAiModelTriggerClick);
+  aiModelTrigger?.addEventListener('keydown', onAiModelTriggerKeyDown);
+  document.addEventListener('click', onDocumentClick);
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      closeAiModelMenu();
+    }
+  });
+  vscode.postMessage({ type: 'getModelCatalog' });
 
   document.querySelectorAll('.quick-card').forEach((btn) => {
     const s = btn.getAttribute('data-suggestion');

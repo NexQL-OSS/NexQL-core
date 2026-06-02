@@ -4,10 +4,31 @@ import * as http from 'http';
 import { getChatViewProvider } from '../../../extension';
 import { MODERN_WEBVIEW_BASE_CSS } from '../../../common/htmlStyles';
 import { readSharedTemplateCss } from '../../../lib/template-loader';
+import { AiCredentialsService } from '../AiCredentialsService';
+import { AiModelCatalogService } from '../AiModelCatalogService';
+import {
+  readAiScopeSettings,
+  rememberLastModelForProvider,
+  writeAiScopeSettings,
+} from '../aiConfig';
+import { AiConfigScope, DirectApiKeyProvider, AiProviderId } from '../types';
+import {
+  getGitHubSession,
+  listAnthropicModels,
+  listCursorModels,
+  listCustomModels,
+  listGeminiModels,
+  listGitHubModels,
+  listOpenAIModels,
+  listVsCodeLanguageModels,
+  resolveVsCodeLanguageModel,
+} from '../modelListing';
 
 export interface AiSettings {
+  configScope?: AiConfigScope;
   provider: string;
   apiKey?: string;
+  apiKeys?: Partial<Record<DirectApiKeyProvider, string>>;
   cursorApiKey?: string;
   model?: string;
   endpoint?: string;
@@ -29,11 +50,26 @@ function cursorApiKeyFromSettings(settings: { cursorApiKey?: string; apiKey?: st
   return typeof raw === 'string' ? raw.trim() : '';
 }
 
+function directApiKeyFromSettings(
+  settings: AiSettings,
+  provider: DirectApiKeyProvider,
+): string {
+  const fromMap = settings.apiKeys?.[provider];
+  if (fromMap) {
+    return fromMap;
+  }
+  if (settings.provider === provider && settings.apiKey) {
+    return settings.apiKey;
+  }
+  return '';
+}
+
 export class AiSettingsPanel {
   public static currentPanel: AiSettingsPanel | undefined;
   private readonly _panel: vscode.WebviewPanel;
   private readonly _extensionUri: vscode.Uri;
   private _disposables: vscode.Disposable[] = [];
+  private _configScope: AiConfigScope = 'notebook';
 
   private constructor(
     panel: vscode.WebviewPanel,
@@ -59,30 +95,40 @@ export class AiSettingsPanel {
 
           case 'saveSettings':
             try {
-              const settings = message.settings;
-              await this._setProvider(settings.provider, settings.model || '', settings.endpoint || '');
+              const settings = message.settings as AiSettings;
+              const scope: AiConfigScope =
+                settings.configScope === 'chat' ? 'chat' : 'notebook';
+              this._configScope = scope;
 
-              // Store API key in secret storage
-              if (settings.provider === 'github') {
-                await this._extensionContext.secrets.delete('postgresExplorer.aiApiKey');
-              } else if (settings.provider === 'cursor') {
-                const ck = cursorApiKeyFromSettings(settings);
-                if (ck) {
-                  await this._extensionContext.secrets.store('postgresExplorer.cursorApiKey', ck);
-                } else {
-                  await this._extensionContext.secrets.delete('postgresExplorer.cursorApiKey');
-                }
-              } else if (settings.apiKey) {
-                await this._extensionContext.secrets.store('postgresExplorer.aiApiKey', settings.apiKey);
-              } else {
-                await this._extensionContext.secrets.delete('postgresExplorer.aiApiKey');
+              await this._setScopedProvider(
+                scope,
+                settings.provider,
+                settings.model || '',
+                settings.endpoint || '',
+              );
+
+              const credentials = AiCredentialsService.getInstance(this._extensionContext);
+              if (settings.apiKeys) {
+                await credentials.saveAllApiKeys(settings.apiKeys);
               }
 
+              const ck = cursorApiKeyFromSettings(settings);
+              await credentials.setCursorApiKey(ck || undefined);
+
+              if (settings.model) {
+                await rememberLastModelForProvider(
+                  this._extensionContext,
+                  settings.provider as AiProviderId,
+                  settings.model,
+                );
+              }
+
+              AiModelCatalogService.getInstance(this._extensionContext).invalidateCache();
+
               this._panel.webview.postMessage({
-                type: 'saveSuccess'
+                type: 'saveSuccess',
               });
 
-              // Notify chat view to refresh model info
               const chatViewProvider = getChatViewProvider();
               if (chatViewProvider) {
                 chatViewProvider.refreshModelInfo();
@@ -92,7 +138,7 @@ export class AiSettingsPanel {
             } catch (err: any) {
               this._panel.webview.postMessage({
                 type: 'saveError',
-                error: err.message
+                error: err.message,
               });
             }
             break;
@@ -107,24 +153,12 @@ export class AiSettingsPanel {
                 let models: vscode.LanguageModelChat[];
 
                 if (settings.model) {
-                  // Extract base name if format is "name (family)"
-                  const baseName = settings.model.replace(/\s*\(.*\)$/, '').trim();
-
-                  // Try to find the specific configured model
-                  const allModels = await vscode.lm.selectChatModels({});
-                  const matchingModels = allModels.filter(m =>
-                    m.id === baseName ||
-                    m.name === baseName ||
-                    m.family === baseName ||
-                    m.id === settings.model ||
-                    m.name === settings.model ||
-                    m.family === settings.model
-                  );
-
-                  if (matchingModels.length > 0) {
-                    models = matchingModels;
-                    testResult = `VS Code Language Model available: ${models[0].name || models[0].id}`;
+                  const resolved = await resolveVsCodeLanguageModel(settings.model);
+                  if (resolved) {
+                    models = [resolved];
+                    testResult = `VS Code Language Model available: ${resolved.name || resolved.id}`;
                   } else {
+                    const allModels = await vscode.lm.selectChatModels({});
                     testResult = `Configured model "${settings.model}" not found. Available models: ${allModels.map(m => m.name || m.id).join(', ')}`;
                   }
                 } else {
@@ -142,23 +176,26 @@ export class AiSettingsPanel {
               } else if (settings.provider === 'cursor') {
                 testResult = await this._testCursor(cursorApiKeyFromSettings(settings), settings.model || 'auto');
               } else if (settings.provider === 'openai') {
-                // Test OpenAI connection
-                if (!settings.apiKey) {
+                const openaiKey = directApiKeyFromSettings(settings, 'openai');
+                if (!openaiKey) {
                   throw new Error('API Key is required for OpenAI');
                 }
-                testResult = await this._testOpenAI(settings.apiKey, settings.model || 'gpt-4');
+                testResult = await this._testOpenAI(openaiKey, settings.model || 'gpt-4.1');
               } else if (settings.provider === 'anthropic') {
-                // Test Anthropic connection
-                if (!settings.apiKey) {
+                const anthropicKey = directApiKeyFromSettings(settings, 'anthropic');
+                if (!anthropicKey) {
                   throw new Error('API Key is required for Anthropic');
                 }
-                testResult = await this._testAnthropic(settings.apiKey, settings.model || 'claude-3-5-sonnet-20241022');
+                testResult = await this._testAnthropic(
+                  anthropicKey,
+                  settings.model || 'claude-sonnet-4-20250514',
+                );
               } else if (settings.provider === 'gemini') {
-                // Test Gemini connection
-                if (!settings.apiKey) {
+                const geminiKey = directApiKeyFromSettings(settings, 'gemini');
+                if (!geminiKey) {
                   throw new Error('API Key is required for Gemini');
                 }
-                testResult = await this._testGemini(settings.apiKey, settings.model || 'gemini-pro');
+                testResult = await this._testGemini(geminiKey, settings.model || 'gemini-2.5-flash');
               } else if (settings.provider === 'custom') {
                 // Test custom endpoint
                 if (!settings.endpoint) {
@@ -187,6 +224,9 @@ export class AiSettingsPanel {
 
           case 'loadSettings':
             try {
+              if (message.configScope === 'chat' || message.configScope === 'notebook') {
+                this._configScope = message.configScope;
+              }
               await this._sendSettingsLoaded();
             } catch (err: any) {
               console.error('Failed to load settings:', err);
@@ -199,47 +239,43 @@ export class AiSettingsPanel {
               let models: Array<string | { id: string; displayName?: string }> = [];
 
               if (settings.provider === 'vscode-lm') {
-                const availableModels = await vscode.lm.selectChatModels();
-                models = availableModels.map(m => {
-                  // Show model name with family info if available
-                  const name = m.name || m.id;
-                  const family = m.family;
-                  return family && family !== name ? `${name} (${family})` : name;
-                });
+                models = await listVsCodeLanguageModels();
               } else if (settings.provider === 'github') {
                 const session = await this._requestGitHubSession(true);
-                models = await this._listGitHubModels(session.accessToken);
+                models = await listGitHubModels(session.accessToken);
               } else if (settings.provider === 'cursor') {
-                models = await this._listCursorModels(cursorApiKeyFromSettings(settings));
+                models = await listCursorModels(cursorApiKeyFromSettings(settings));
               } else if (settings.provider === 'openai') {
-                if (!settings.apiKey) {
+                const openaiKey = directApiKeyFromSettings(settings, 'openai');
+                if (!openaiKey) {
                   throw new Error('API Key is required to list models');
                 }
-                models = await this._listOpenAIModels(settings.apiKey);
+                models = await listOpenAIModels(openaiKey);
               } else if (settings.provider === 'anthropic') {
-                // Use Anthropic's models API when an API key is provided
-                if (!settings.apiKey) {
+                const anthropicKey = directApiKeyFromSettings(settings, 'anthropic');
+                if (!anthropicKey) {
                   throw new Error('API Key is required to list models for Anthropic');
                 }
-                models = await this._listAnthropicModels(settings.apiKey);
+                models = await listAnthropicModels(anthropicKey);
               } else if (settings.provider === 'gemini') {
-                if (!settings.apiKey) {
+                const geminiKey = directApiKeyFromSettings(settings, 'gemini');
+                if (!geminiKey) {
                   throw new Error('API Key is required to list models');
                 }
-                models = await this._listGeminiModels(settings.apiKey);
+                models = await listGeminiModels(geminiKey);
               } else if (settings.provider === 'custom') {
-                // Try to list models from custom endpoint using OpenAI-compatible API
-                if (settings.endpoint && settings.apiKey) {
-                  models = await this._listCustomModels(settings.endpoint, settings.apiKey);
+                const customKey = directApiKeyFromSettings(settings, 'custom');
+                if (settings.endpoint && customKey) {
+                  models = await listCustomModels(settings.endpoint, customKey);
                 } else {
                   models = ['custom-model'];
                 }
               } else if (settings.provider === 'ollama') {
                 const ep = settings.endpoint || 'http://localhost:11434/v1/chat/completions';
-                models = await this._listCustomModels(ep, '');
+                models = await listCustomModels(ep, '');
               } else if (settings.provider === 'lmstudio') {
                 const ep = settings.endpoint || 'http://localhost:1234/v1/chat/completions';
-                models = await this._listCustomModels(ep, '');
+                models = await listCustomModels(ep, '');
               }
 
               this._panel.webview.postMessage({
@@ -544,36 +580,50 @@ export class AiSettingsPanel {
 
   private async _sendSettingsLoaded(): Promise<void> {
     const config = vscode.workspace.getConfiguration('postgresExplorer');
-    const apiKey = await this._extensionContext.secrets.get('postgresExplorer.aiApiKey');
-    const cursorApiKey = await this._extensionContext.secrets.get('postgresExplorer.cursorApiKey');
-    const githubSession = await this._getGitHubSession();
+    const credentials = AiCredentialsService.getInstance(this._extensionContext);
+    const apiKeys = await credentials.getAllApiKeys();
+    const cursorApiKey = (await credentials.getCursorApiKey()) || '';
+    const githubSession = await getGitHubSession();
+    const scoped = readAiScopeSettings(config, this._configScope);
 
     await this._panel.webview.postMessage({
       type: 'settingsLoaded',
       settings: {
-        provider: config.get('aiProvider', 'vscode-lm'),
-        apiKey: apiKey || '',
-        cursorApiKey: cursorApiKey || '',
-        model: config.get('aiModel', ''),
+        configScope: this._configScope,
+        provider: scoped.provider,
+        apiKeys,
+        cursorApiKey,
+        model: scoped.model,
         endpoint: config.get('aiEndpoint', ''),
         githubAuth: {
           connected: !!githubSession,
-          accountLabel: githubSession?.account.label
-        }
-      }
+          accountLabel: githubSession?.account?.label,
+        },
+      },
     });
   }
 
-  private async _setProvider(provider: string, model: string, endpoint: string): Promise<void> {
+  private async _setScopedProvider(
+    scope: AiConfigScope,
+    provider: string,
+    model: string,
+    endpoint: string,
+  ): Promise<void> {
+    await writeAiScopeSettings(scope, {
+      provider: provider as AiProviderId,
+      model,
+    });
     const config = vscode.workspace.getConfiguration('postgresExplorer');
-    await config.update('aiProvider', provider, vscode.ConfigurationTarget.Global);
-    await config.update('aiModel', model, vscode.ConfigurationTarget.Global);
     await config.update('aiEndpoint', endpoint, vscode.ConfigurationTarget.Global);
+    if (scope === 'notebook') {
+      await config.update('aiProvider', provider, vscode.ConfigurationTarget.Global);
+      await config.update('aiModel', model, vscode.ConfigurationTarget.Global);
+    }
   }
 
   private async _connectGitHub(): Promise<void> {
     const session = await this._requestGitHubSession(true);
-    await this._setProvider('github', '', '');
+    await this._setScopedProvider(this._configScope, 'github', '', '');
     await this._panel.webview.postMessage({
       type: 'githubConnected',
       accountLabel: session.account.label,
@@ -584,7 +634,7 @@ export class AiSettingsPanel {
   }
 
   private async _disconnectGitHub(): Promise<void> {
-    await this._setProvider('vscode-lm', '', '');
+    await this._setScopedProvider(this._configScope, 'vscode-lm', '', '');
     await this._panel.webview.postMessage({
       type: 'githubDisconnected'
     });

@@ -317,19 +317,36 @@ describe('DbObjectService', () => {
                 character_maximum_length: null,
                 numeric_precision: null,
                 numeric_scale: null
+              },
+              {
+                column_name: 'account_id',
+                data_type: 'integer',
+                is_nullable: 'YES',
+                column_default: null,
+                character_maximum_length: null,
+                numeric_precision: null,
+                numeric_scale: null
               }
             ]
           },
           {
-            match: "constraint_type = 'PRIMARY KEY'",
-            rows: [{ column_name: 'id' }]
-          },
-          {
-            match: "constraint_type = 'FOREIGN KEY'",
+            // v1.4.0: PK + FK are fetched in one combined constraint query (P1.2 batching).
+            match: "IN ('PRIMARY KEY', 'FOREIGN KEY')",
             rows: [
               {
+                constraint_type: 'PRIMARY KEY',
+                constraint_name: 'users_pkey',
+                column_name: 'id',
+                ordinal_position: 1,
+                ref_schema: null,
+                ref_table: null,
+                ref_column: null
+              },
+              {
+                constraint_type: 'FOREIGN KEY',
                 constraint_name: 'users_account_id_fkey',
                 column_name: 'account_id',
+                ordinal_position: 1,
                 ref_schema: 'public',
                 ref_table: 'accounts',
                 ref_column: 'id'

@@ -19,11 +19,22 @@ import {
   DbObjectService,
   AiService,
   SessionService,
-  getWebviewHtml
+  getWebviewHtml,
+  AiCapability
 } from './chat';
 import type { ConnectionConfig, NoticeLogEntry } from '../common/types';
 import { buildBackupToolsSystemPrompt, buildBackupToolsUserMessage } from './chat/backupToolsAssistantPrompt';
 import { ErrorService } from '../services/ErrorService';
+import {
+  parseSelectionId,
+  readAiScopeSettings,
+  rememberLastModelForProvider,
+  writeAiScopeSettings,
+} from '../features/aiAssistant/aiConfig';
+import { AiModelCatalogService } from '../features/aiAssistant/AiModelCatalogService';
+
+/** P1.4 — max rows sampled into the AI prompt for "Analyze Data" on large result sets. */
+const AI_ANALYZE_MAX_SAMPLE_ROWS = 200;
 
 /** Params for {@link ChatViewProvider.openBackupToolsAssistant} (Backup & Restore panel). */
 export interface OpenBackupToolsAssistantParams {
@@ -79,11 +90,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
   constructor(
     private readonly _extensionUri: vscode.Uri,
-    context: vscode.ExtensionContext
+    private readonly _extensionContext: vscode.ExtensionContext,
   ) {
     this._dbObjectService = new DbObjectService();
     this._aiService = new AiService();
-    this._sessionService = new SessionService(context);
+    this._sessionService = new SessionService(_extensionContext);
   }
 
   /**
@@ -91,7 +102,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
    * Called when AI settings are changed
    */
   public refreshModelInfo(): void {
-    this._updateModelInfo();
+    void this._pushModelCatalogToWebview();
   }
 
   public async openInEditor(column: vscode.ViewColumn = vscode.ViewColumn.Beside): Promise<void> {
@@ -122,7 +133,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     this._sendHistoryToWebview();
     this._updateChatHistory();
     this._sendContextUpdate();
-    await this._updateModelInfo();
+    await this._pushModelCatalogToWebview();
   }
 
   private _getTargetWebview(): vscode.Webview | undefined {
@@ -229,6 +240,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           break;
         case 'openAiSettings':
           vscode.commands.executeCommand('postgres-explorer.aiSettings');
+          break;
+        case 'getModelCatalog':
+          await this._pushModelCatalogToWebview();
+          break;
+        case 'switchChatModel':
+          await this._handleSwitchChatModel(data.selectionId);
           break;
         case 'openInNotebook':
           await this._handleOpenInNotebook(data.code);
@@ -452,7 +469,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       this._sendHistoryToWebview();
       this._updateChatHistory();
       this._sendContextUpdate();
-      this._updateModelInfo();
+      void this._pushModelCatalogToWebview();
     }, 100);
   }
 
@@ -531,7 +548,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         this._sendContextUpdate();
       }
 
-      let schemaContext = '\n\n=== DATABASE SCHEMA CONTEXT (Use this information to answer the question) ===\n';
+      // P1.2: single clean delimiter block. The schema-usage rule now lives once in the
+      // system prompt, so we no longer re-state instructions around the schema here.
+      let schemaContext = '\n\n--- SCHEMA CONTEXT ---\n';
 
       for (const mention of mentions) {
         console.log('[ChatView] Fetching schema for:', mention.schema + '.' + mention.name, 'type:', mention.type, 'connectionId:', mention.connectionId);
@@ -545,30 +564,25 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           breadcrumb: mention.breadcrumb
         };
 
-        try {
-          const schemaInfo = await this._dbObjectService.getObjectSchema(obj);
-          mention.schemaInfo = schemaInfo;
-          schemaContext += `\n### ${mention.type.toUpperCase()}: ${mention.schema}.${mention.name}\n`;
-          schemaContext += schemaInfo;
-          schemaContext += '\n';
-          console.log('[ChatView] Added schema context for:', mention.schema + '.' + mention.name);
-          console.log('[ChatView] Schema info received:', schemaInfo.substring(0, 500) + '...');
-        } catch (e) {
-          const errorMsg = e instanceof Error ? e.message : String(e);
-          console.error('[ChatView] Failed to get schema for mention:', mention.name, e);
+        // P1.2: rank schema columns/indexes against the live user message.
+        const schemaInfo = await this._dbObjectService.getObjectSchema(obj, { userMessage: message });
+        mention.schemaInfo = schemaInfo;
+        schemaContext += `\n### ${mention.type.toUpperCase()}: ${mention.schema}.${mention.name}\n`;
+        schemaContext += schemaInfo;
+        schemaContext += '\n';
 
+        // P1.5: getObjectSchema now returns a structured `<schema unavailable …>` marker on
+        // failure instead of throwing, so surface that to the UI without a raw error string.
+        if (schemaInfo.startsWith('<schema unavailable')) {
           this._getTargetWebview()?.postMessage({
             type: 'schemaError',
             object: `${mention.schema}.${mention.name}`,
-            error: errorMsg
+            error: schemaInfo
           });
-
-          schemaContext += `\n### ${mention.type.toUpperCase()}: ${mention.schema}.${mention.name}\n`;
-          schemaContext += `[Schema could not be retrieved: ${errorMsg}]\n`;
         }
       }
 
-      schemaContext += '\n=== END DATABASE SCHEMA CONTEXT ===\n\n';
+      schemaContext += '\n--- END SCHEMA CONTEXT ---\n\n';
 
       aiMessage = schemaContext + fullMessage;
       console.log('[ChatView] AI message with schema context length:', aiMessage.length);
@@ -580,14 +594,15 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     return { fullMessage, aiMessage };
   }
 
-  private async _runAiRequest(aiMessage: string): Promise<void> {
+  private async _runAiRequest(aiMessage: string, capability: AiCapability = 'chat'): Promise<void> {
     try {
       const config = vscode.workspace.getConfiguration('postgresExplorer');
-      const provider = config.get<string>('aiProvider') || 'vscode-lm';
-      const modelInfo = await this._aiService.getModelInfo(provider, config);
+      const chatSettings = readAiScopeSettings(config, 'chat');
+      const provider = chatSettings.provider;
+      const modelInfo = await this._aiService.getModelInfo(provider, config, 'chat');
       console.log('[ChatView] Using AI provider:', provider, 'Model:', modelInfo);
 
-      this._updateModelInfo();
+      void this._pushModelCatalogToWebview();
 
       vscode.window.setStatusBarMessage(`$(sparkle) AI: ${modelInfo}`, 3000);
 
@@ -597,6 +612,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       const aiStartTime = Date.now();
 
       console.log('[ChatView] Calling AI provider:', provider);
+      // Reuse the existing customSystemPrompt channel: ChatViewProvider selects the
+      // capability-specific prompt; AiService provider methods stay prompt-agnostic.
       const customSystem =
         this._chatSystemPromptMode === 'backup_tools'
           ? buildBackupToolsSystemPrompt({
@@ -605,9 +622,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
               environment: this._currentEnvironment,
               readOnlyMode: this._currentReadOnlyMode
             })
-          : undefined;
+          : this._aiService.buildSystemPrompt(capability);
 
-      const result = await this._aiService.callProvider(provider, aiMessage, config, customSystem);
+      const result = await this._aiService.callProvider(provider, aiMessage, config, customSystem, 'chat');
       responseText = result.text;
       usageInfo = result.usage;
 
@@ -708,7 +725,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  private async _handleUserMessage(message: string, attachments?: FileAttachment[], mentions?: DbMention[]) {
+  private async _handleUserMessage(message: string, attachments?: FileAttachment[], mentions?: DbMention[], capability: AiCapability = 'chat') {
     if (this._isProcessing) {
       return;
     }
@@ -731,7 +748,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
       this._setTypingIndicator(true);
       try {
-        await this._runAiRequest(aiMessage);
+        await this._runAiRequest(aiMessage, capability);
       } finally {
         this._setTypingIndicator(false);
         this._updateChatHistory();
@@ -946,7 +963,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
   private async _saveCurrentSession(): Promise<void> {
     const config = vscode.workspace.getConfiguration('postgresExplorer');
-    const provider = config.get<string>('aiProvider') || 'vscode-lm';
+    const chatSettings = readAiScopeSettings(config, 'chat');
+    const provider = chatSettings.provider;
 
     // Phase C: Pass metadata to session service
     await this._sessionService.saveSession(
@@ -1018,63 +1036,115 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     });
   }
 
-  private async _updateModelInfo(): Promise<void> {
+  private async _pushModelCatalogToWebview(): Promise<void> {
     const webview = this._getTargetWebview();
     if (!webview) {
       return;
     }
 
-    const config = vscode.workspace.getConfiguration('postgresExplorer');
-    const provider = config.get<string>('aiProvider') || 'vscode-lm';
-    const modelInfo = await this._aiService.getModelInfo(provider, config);
+    const payload = await AiModelCatalogService.getInstance(this._extensionContext).buildChatCatalog();
+
+    webview.postMessage({
+      type: 'updateModelCatalog',
+      catalog: payload.catalog,
+      activeSelectionId: payload.activeSelectionId,
+      activeModelLabel: payload.activeModelLabel,
+    });
 
     webview.postMessage({
       type: 'updateModelInfo',
-      modelName: modelInfo
+      modelName: payload.activeModelLabel,
     });
+  }
+
+  private async _handleSwitchChatModel(selectionId: string): Promise<void> {
+    if (selectionId === '__configure__') {
+      await vscode.commands.executeCommand('postgres-explorer.aiSettings');
+      return;
+    }
+
+    const parsed = parseSelectionId(selectionId);
+    if (!parsed) {
+      return;
+    }
+
+    await writeAiScopeSettings('chat', {
+      provider: parsed.provider,
+      model: parsed.modelId,
+    });
+    await rememberLastModelForProvider(
+      this._extensionContext,
+      parsed.provider,
+      parsed.modelId,
+    );
+    AiModelCatalogService.getInstance(this._extensionContext).invalidateCache();
+    await this._pushModelCatalogToWebview();
   }
 
   public async handleExplainError(error: string, query: string): Promise<void> {
     const prompt = `I ran this SQL query:\n\`\`\`sql\n${query}\n\`\`\`\n\nI got this error:\n${error}\n\nCan you explain why this error occurred and how to fix it? Provide the corrected SQL query.`;
-    await this._handleUserMessage(prompt);
+    await this._handleUserMessage(prompt, undefined, undefined, 'explainError');
   }
 
   public async handleFixQuery(error: string, query: string): Promise<void> {
     const prompt = `Fix this SQL query which caused an error:\n\nQuery:\n\`\`\`sql\n${query}\n\`\`\`\n\nError:\n${error}\n\nPlease provide only the corrected SQL code and a brief explanation.`;
-    await this._handleUserMessage(prompt);
+    await this._handleUserMessage(prompt, undefined, undefined, 'fixQuery');
   }
 
   public async handleAnalyzeData(dataCsv: string, query: string, totalRows: number): Promise<void> {
+    // P1.4: cap the sample fed to the model. For large result sets, send only the first
+    // AI_ANALYZE_MAX_SAMPLE_ROWS rows inline and skip writing the full CSV to a temp file.
+    const isSampled = totalRows > AI_ANALYZE_MAX_SAMPLE_ROWS;
+    const sampledCsv = isSampled ? this._sampleCsv(dataCsv, AI_ANALYZE_MAX_SAMPLE_ROWS) : dataCsv;
+    const sampleNote = isSampled
+      ? `\n\n(sampled ${AI_ANALYZE_MAX_SAMPLE_ROWS} of ${totalRows} rows)`
+      : '';
+
+    if (isSampled) {
+      // Over cap: keep the payload small — inline the sampled rows, no temp file.
+      const prompt = `I ran this query:\n\`\`\`sql\n${query}\n\`\`\`\n\nIt returned ${totalRows} rows. Here is a sample of the data (CSV):\n\n${sampledCsv}${sampleNote}\n\nPlease analyze this data. Look for patterns, outliers, or interesting insights. Summarize what this data represents.`;
+      await this._handleUserMessage(prompt, undefined, undefined, 'analyzeData');
+      return;
+    }
+
     try {
-      // Create temp file for the data
+      // Within cap: attach the full CSV as a temp file (unchanged behavior).
       const tempDir = os.tmpdir();
       const fileName = `analysis_${Date.now()}.csv`;
       const filePath = path.join(tempDir, fileName);
 
-      await fs.promises.writeFile(filePath, dataCsv, 'utf8');
+      await fs.promises.writeFile(filePath, sampledCsv, 'utf8');
 
       const prompt = `I ran this query:\n\`\`\`sql\n${query}\n\`\`\`\n\nIt returned ${totalRows} rows. I have attached the data as a CSV file.\n\nPlease analyze this data. Look for patterns, outliers, or interesting insights. Summarize what this data represents.`;
 
-      // Send with attachment
       await this._handleUserMessage(prompt, [{
         name: fileName,
-        content: dataCsv,
+        content: sampledCsv,
         type: 'csv',
         path: filePath
-      }]);
+      }], undefined, 'analyzeData');
     } catch (error) {
       console.error('Failed to create temp file for analysis:', error);
       ErrorService.getInstance().showError('Failed to prepare data for analysis. Using inline data instead.');
-      // Fallback to old behavior if file writing fails
-      const prompt = `I ran this query:\n\`\`\`sql\n${query}\n\`\`\`\n\nIt returned ${totalRows} rows. Here is the data:\n\n${dataCsv}\n\nPlease analyze this data.`;
-      await this._handleUserMessage(prompt);
+      const prompt = `I ran this query:\n\`\`\`sql\n${query}\n\`\`\`\n\nIt returned ${totalRows} rows. Here is the data:\n\n${sampledCsv}\n\nPlease analyze this data.`;
+      await this._handleUserMessage(prompt, undefined, undefined, 'analyzeData');
     }
   }
 
+  /** Keep the CSV header plus the first `maxRows` data rows. */
+  private _sampleCsv(csv: string, maxRows: number): string {
+    const lines = csv.split('\n');
+    if (lines.length <= maxRows + 1) {
+      return csv;
+    }
+    // Header + first maxRows data rows.
+    return lines.slice(0, maxRows + 1).join('\n');
+  }
+
   public async handleOptimizeQuery(query: string, executionTime?: number): Promise<void> {
-    const timeInfo = executionTime ? `The query took ${executionTime.toFixed(3)}ms to execute.` : '';
-    const prompt = `I want to optimize this SQL query:\n\`\`\`sql\n${query}\n\`\`\`\n\n${timeInfo}\n\nPlease help me optimize this.\n\n1. First, provide the SQL command to run \`EXPLAIN (ANALYZE, BUFFERS, VERBOSE, SETTINGS)\` (or best equivalent) for this query so I can get the execution plan.\n2. Then, provide any immediate optimization suggestions you can spot just by looking at the query structure (e.g., missing indexes, N+1 issues, unnecessary joins).\n\nWait for me to run the EXPLAIN command and paste the results before doing a deep dive.`;
-    await this._handleUserMessage(prompt);
+    const timeInfo = executionTime ? `\n\nThe query took ${executionTime.toFixed(3)}ms to execute.` : '';
+    const prompt = `Optimize this SQL query:\n\`\`\`sql\n${query}\n\`\`\`${timeInfo}`;
+    await this._handleUserMessage(prompt, undefined, undefined, 'optimizeQuery');
   }
 
   /**
@@ -1119,7 +1189,7 @@ ${metricsContext}${planContext}
 
 Can you explain what this query is doing, how efficient it is, and what the execution plan tells us about its performance? What are the key performance factors?`;
 
-    await this._handleUserMessage(prompt);
+    await this._handleUserMessage(prompt, undefined, undefined, 'optimizeQuery');
   }
 
   /**
@@ -1169,7 +1239,7 @@ This might indicate table bloat or stale statistics affecting query planning.`;
 
 Why is this query running slower than its historical baseline? What could have changed (table growth, missing statistics, index bloat, lock contention, etc.)? Please provide specific next steps to diagnose and fix the performance regression.`;
 
-    await this._handleUserMessage(prompt);
+    await this._handleUserMessage(prompt, undefined, undefined, 'optimizeQuery');
   }
 
   /**
@@ -1276,6 +1346,6 @@ Why is this query running slower than its historical baseline? What could have c
       prompt += '\n\nNote: No specific schema context provided. Please ask for table/column names if needed.';
     }
 
-    await this._handleUserMessage(prompt);
+    await this._handleUserMessage(prompt, undefined, undefined, 'generateQuery');
   }
 }

@@ -18,6 +18,7 @@ import { cmdCallFunction, cmdCreateFunction, cmdDropFunction, cmdEditFunction, c
 import { cmdCallProcedure, cmdCreateProcedure, cmdDropProcedure, cmdEditProcedure, cmdProcedureOperations, cmdRefreshProcedure, cmdShowProcedureProperties } from '../commands/procedures';
 import { cmdCreateMaterializedView, cmdDropMatView, cmdEditMatView, cmdMatViewOperations, cmdRefreshMatView, cmdViewMatViewData, cmdViewMatViewProperties } from '../commands/materializedViews';
 import { cmdNewNotebook, cmdExplainQuery, cmdJumpToSection } from '../commands/notebook';
+import { toggleFullDatasetForCell, toggleFullDatasetFromCell } from '../commands/fullDataset';
 import { cmdExportNotebook } from '../commands/notebookExport';
 import { cmdCreateObjectInSchema, cmdCreateSchema, cmdSchemaOperations, cmdShowSchemaProperties, cmdPasteTable } from '../commands/schema';
 import {
@@ -208,6 +209,35 @@ export function getCommandSpecs(
       callback: async (cellUri: vscode.Uri, analyze: boolean) => {
         await cmdExplainQuery(cellUri, analyze);
       }
+    },
+    {
+      command: 'postgres-explorer.explainQueryFromCell',
+      callback: async (cell?: vscode.NotebookCell) => {
+        let target = cell;
+        if (!target) {
+          const editor = vscode.window.activeNotebookEditor;
+          if (editor?.selection && editor.selection.start < editor.notebook.cellCount) {
+            target = editor.notebook.cellAt(editor.selection.start);
+          }
+        }
+        if (!target) {
+          vscode.window.showErrorMessage('No cell selected');
+          return;
+        }
+        await cmdExplainQuery(target.document.uri, true);
+      },
+    },
+    {
+      command: 'postgres-explorer.toggleFullDatasetForCell',
+      callback: async (cellUri?: vscode.Uri) => {
+        await toggleFullDatasetForCell(cellUri);
+      },
+    },
+    {
+      command: 'postgres-explorer.toggleFullDatasetFromCell',
+      callback: async (cell?: vscode.NotebookCell) => {
+        await toggleFullDatasetFromCell(cell);
+      },
     },
     {
       command: 'postgres-explorer.tableProfile',

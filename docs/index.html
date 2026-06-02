@@ -17,20 +17,20 @@
   <meta property="og:description"
     content="Run PostgreSQL workflows in VS Code with notebooks, explorer tree, AI SQL help, schema tools, and query performance insights.">
   <meta property="og:url" content="https://pgstudio.astrx.dev/">
-  <meta property="og:image" content="https://pgstudio.astrx.dev/assets/postgres-vsc-icon.png">
-  <meta property="og:image:alt" content="PgStudio PostgreSQL VS Code extension logo">
+  <meta property="og:image" content="https://pgstudio.astrx.dev/assets/NexQL.png">
+  <meta property="og:image:alt" content="NexQL database management logo">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="PgStudio - PostgreSQL VS Code Extension with SQL Notebooks and AI">
   <meta name="twitter:description"
     content="Connect, query, analyze, and optimize PostgreSQL in VS Code with AI assistance and notebook workflows.">
-  <meta name="twitter:image" content="https://pgstudio.astrx.dev/assets/postgres-vsc-icon.png">
-  <link rel="icon" type="image/png" sizes="32x32" href="assets/postgres-vsc-icon.png">
-  <link rel="icon" type="image/png" sizes="16x16" href="assets/postgres-vsc-icon.png">
-  <link rel="apple-touch-icon" href="assets/postgres-vsc-icon.png">
-  <meta name="theme-color" content="#4d5efc">
+  <meta name="twitter:image" content="https://pgstudio.astrx.dev/assets/NexQL.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/NexQL.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="assets/NexQL.png">
+  <link rel="apple-touch-icon" href="assets/NexQL.png">
+  <meta name="theme-color" content="#07080E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Fira+Mono:wght@400;500&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
   <script type="application/ld+json">
     {
@@ -75,22 +75,20 @@
             <line x1="3" y1="18" x2="21" y2="18"></line>
           </svg></button>
         <div class="topbar-brand immersive-brand" aria-hidden="false">
-          <div class="immersive-brand-mark" aria-hidden="true"></div>
+          <img class="immersive-brand-mark" src="assets/NexQL.png" alt="NexQL" aria-hidden="true">
           <div class="immersive-brand-text">
             <strong class="immersive-brand-title">PG Studio</strong>
             <span class="immersive-brand-sub">VS Code Extension</span>
           </div>
         </div>
         <div class="desktop-topbar-links landing-topbar-nav-collapsible">
-          <button type="button" id="btn-landing-home">Home</button>
-          <button type="button" id="btn-landing-live-demo">Live demo</button>
-          <button type="button" data-open="doc-notebooks">Notebooks</button>
-          <button type="button" data-open="doc-explorer">Explorer</button>
-          <button type="button" data-open="doc-ai">AI Assistant</button>
+          <button type="button" data-landing-scroll="features">Features</button>
+          <button type="button" data-landing-scroll="ai">AI</button>
+          <button type="button" data-landing-scroll="compare">Compare</button>
+          <button type="button" data-landing-scroll="faq">FAQ</button>
+          <button type="button" id="btn-landing-pricing">Pricing</button>
           <a href="https://github.com/dev-asterix/PgStudio" target="_blank" rel="noopener noreferrer">GitHub</a>
-          <a class="landing-nav-install"
-            href="https://marketplace.visualstudio.com/items?itemName=ric-v.postgres-explorer" target="_blank"
-            rel="noopener noreferrer">Install Free</a>
+          <a class="landing-nav-install" href="#install">Install — free</a>
         </div>
         <div class="topbar-actions">
           <button class="topbar-icon-btn" id="theme-toggle" type="button" aria-label="Switch to dark theme"
@@ -143,6 +141,7 @@
               <line x1="3" y1="6" x2="21" y2="6"></line>
               <line x1="3" y1="18" x2="21" y2="18"></line>
             </svg></div>
+          <img class="titlebar-brand-icon" src="assets/NexQL.png" alt="NexQL" aria-hidden="true">
           <div class="window-controls" aria-hidden="true">
             <span class="dot red"></span>
             <span class="dot yellow"></span>
@@ -221,7 +220,7 @@
             <!-- PgStudio icon: shows PgStudio panel + opens query.pgsql -->
             <button class="activity-icon pgstudio" type="button" data-panel="pgstudio" data-open="query"
               title="PgStudio" aria-label="PgStudio">
-              <img src="assets/postgres-vsc-icon.png" alt="PgStudio icon">
+              <img src="assets/NexQL.png" alt="PgStudio icon">
               <span class="activity-badge" aria-label="1 notification">1</span>
             </button>
             <span class="activity-spacer"></span>
@@ -511,7 +510,7 @@
       <div id="partial-minimized-overview" data-partial="html/minimized-overview.html"></div>
       <!-- Startup toast — positioned inside shell via absolute, but lives here for stacking -->
       <div class="toast" id="startup-toast" role="status" aria-live="polite">
-        <span class="toast-icon">🐘</span>
+        <img class="toast-icon toast-icon-image" src="assets/NexQL.png" alt="">
         <span>PgStudio activated — demo_db connected</span>
         <button class="toast-close" id="toast-close-btn" aria-label="Dismiss notification">×</button>
       </div>
@@ -544,6 +543,7 @@
   <script src="js/landing-capabilities.js"></script>
   <!-- Razorpay Checkout Integration -->
   <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+  <script src="js/pricing.js"></script>
   <script src="js/checkout.js"></script>
   <script src="js/bootstrap.js"></script>
 </body>

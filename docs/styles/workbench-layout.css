@@ -1,11 +1,19 @@
 .titlebar {
   align-items: center;
-  background: #070c13;
+  background: var(--nex-panel);
   border-bottom: 1px solid var(--vsc-border);
   display: flex;
   gap: 8px;
   height: 34px;
   padding: 0 12px;
+}
+
+.titlebar-brand-icon {
+  border-radius: 5px;
+  flex-shrink: 0;
+  height: 22px;
+  object-fit: contain;
+  width: 22px;
 }
 
 .window-controls {
@@ -109,11 +117,12 @@
 .activity-icon.pgstudio img {
   border-radius: 6px;
   height: 20px;
+  object-fit: cover;
   width: 20px;
 }
 
 .activity-icon.pgstudio img {
-  filter: brightness(0) invert(1) saturate(0.2);
+  filter: none;
 }
 
 .activity-spacer {

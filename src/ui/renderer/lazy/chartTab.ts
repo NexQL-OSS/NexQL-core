@@ -4,19 +4,12 @@ import { ChartRenderer } from '../../../renderer/components/chart/ChartRenderer'
 export interface MountChartTabOptions {
   columns: string[];
   rows: unknown[];
-  /** Banner when sliding-window streaming applies */
-  createStreamingWarning: () => HTMLElement | null;
 }
 
 export function mountChartTab(
   viewContainer: HTMLElement,
   opts: MountChartTabOptions,
 ): { chartRenderer: ChartRenderer; chartCanvas: HTMLCanvasElement } {
-  const streamingHint = opts.createStreamingWarning();
-  if (streamingHint) {
-    viewContainer.appendChild(streamingHint);
-  }
-
   const chartCanvas = document.createElement('canvas');
   const chartRenderer = new ChartRenderer(chartCanvas);
 

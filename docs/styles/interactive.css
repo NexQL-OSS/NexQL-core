@@ -566,6 +566,12 @@ html, body {
 }
 .toast.visible { opacity: 1; transform: translateY(0); }
 .toast-icon { color: var(--vsc-orange); flex-shrink: 0; font-size: 13px; }
+.toast-icon-image {
+  border-radius: 4px;
+  height: 16px;
+  object-fit: cover;
+  width: 16px;
+}
 .toast-close {
   background: transparent;
   border: 0;

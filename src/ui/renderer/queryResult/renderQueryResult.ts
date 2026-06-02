@@ -68,11 +68,140 @@ type NotebookRendererContext = Parameters<ActivationFunction>[0];
 const chartInstances = new WeakMap<HTMLElement, ChartRenderer>();
 const tableInstances = new WeakMap<HTMLElement, TableRenderer>();
 
+const LARGE_RESULTS_CACHE_MAX_ENTRIES = 8;
+const LARGE_RESULT_TRANSFER_TIMEOUT_MS = 10_000;
+
+const largeResultsCache = new Map<string, any[]>();
+interface LargeResultPendingEntry {
+  resolves: Array<(rows: any[]) => void>;
+  rejects: Array<(error: Error) => void>;
+  timeoutId: ReturnType<typeof setTimeout>;
+}
+const largeResultsPendingResolves = new Map<string, LargeResultPendingEntry>();
+/** Tracks which resultId belongs to each output element so re-renders can evict stale SAB data. */
+const largeResultIdByElement = new WeakMap<HTMLElement, string>();
+let isGlobalMessageListenerRegistered = false;
+
+function releaseLargeResult(resultId: string): void {
+  largeResultsCache.delete(resultId);
+  const pending = largeResultsPendingResolves.get(resultId);
+  if (pending) {
+    clearTimeout(pending.timeoutId);
+    largeResultsPendingResolves.delete(resultId);
+  }
+}
+
+function touchLargeResultCache(resultId: string, rows: any[]): void {
+  if (largeResultsCache.has(resultId)) {
+    largeResultsCache.delete(resultId);
+  }
+  largeResultsCache.set(resultId, rows);
+  while (largeResultsCache.size > LARGE_RESULTS_CACHE_MAX_ENTRIES) {
+    const oldest = largeResultsCache.keys().next().value;
+    if (oldest === undefined) {
+      break;
+    }
+    releaseLargeResult(oldest);
+  }
+}
+
+function bindLargeResultToElement(element: HTMLElement, resultId: string): void {
+  const previousId = largeResultIdByElement.get(element);
+  if (previousId && previousId !== resultId) {
+    releaseLargeResult(previousId);
+  }
+  largeResultIdByElement.set(element, resultId);
+}
+
+function resolveLargeResultPending(resultId: string, rows: any[]): void {
+  const pending = largeResultsPendingResolves.get(resultId);
+  if (!pending) {
+    return;
+  }
+  clearTimeout(pending.timeoutId);
+  for (const resolve of pending.resolves) {
+    resolve(rows);
+  }
+  largeResultsPendingResolves.delete(resultId);
+}
+
+function rejectLargeResultPending(resultId: string, reason: Error): void {
+  const pending = largeResultsPendingResolves.get(resultId);
+  if (!pending) {
+    return;
+  }
+  clearTimeout(pending.timeoutId);
+  for (const reject of pending.rejects) {
+    reject(reason);
+  }
+  largeResultsPendingResolves.delete(resultId);
+}
+
+function registerLargeResultPending(
+  resultId: string,
+  onResolve: (rows: any[]) => void,
+  onReject: (error: Error) => void,
+): void {
+  const existing = largeResultsPendingResolves.get(resultId);
+  if (existing) {
+    existing.resolves.push(onResolve);
+    existing.rejects.push(onReject);
+    return;
+  }
+  const timeoutId = setTimeout(() => {
+    rejectLargeResultPending(
+      resultId,
+      new Error(`Timed out waiting for large result payload after ${LARGE_RESULT_TRANSFER_TIMEOUT_MS}ms`),
+    );
+  }, LARGE_RESULT_TRANSFER_TIMEOUT_MS);
+  largeResultsPendingResolves.set(resultId, {
+    resolves: [onResolve],
+    rejects: [onReject],
+    timeoutId,
+  });
+}
+
+const LARGE_RESULT_ROW_COUNT_FALLBACK = '>50,000';
+
+/** Safe row-count label for UI copy; avoids calling toLocaleString on nullish/non-numeric values. */
+function formatRowCountForDisplay(
+  rowCount: number | null | undefined,
+  fallback: string,
+): string {
+  if (rowCount == null || typeof rowCount !== 'number' || !Number.isFinite(rowCount)) {
+    return fallback;
+  }
+  return rowCount.toLocaleString();
+}
+
 export function renderPostgresNotebookResult(
   context: NotebookRendererContext,
   data: { mime: string; json: () => unknown },
   element: HTMLElement,
 ): void {
+      if (!isGlobalMessageListenerRegistered) {
+        isGlobalMessageListenerRegistered = true;
+        context.onDidReceiveMessage?.((message: any) => {
+          if (message.type === 'largeResultRows' && message.resultId && message.sharedBuffer) {
+            const sab = message.sharedBuffer;
+            const view = new Uint8Array(sab);
+            const decoder = new TextDecoder();
+            const jsonStr = decoder.decode(view);
+            try {
+              const parsedRows = JSON.parse(jsonStr);
+              touchLargeResultCache(message.resultId, parsedRows);
+              resolveLargeResultPending(message.resultId, parsedRows);
+            } catch (e) {
+              console.error('Failed to parse large result SharedArrayBuffer rows:', e);
+              rejectLargeResultPending(
+                message.resultId,
+                new Error('Failed to decode large result payload from renderer message'),
+              );
+            }
+          }
+        });
+      }
+
       const json = data.json() as Partial<QueryResults> & { error?: string } | null;
 
       if (!json) {
@@ -122,16 +251,17 @@ export function renderPostgresNotebookResult(
       const pendingCommit: boolean = !!json.pendingCommit;
 
       // Data Management
-      let originalRows: any[] = rows ? JSON.parse(JSON.stringify(rows)) : [];
-      let currentRows: any[] = rows ? JSON.parse(JSON.stringify(rows)) : [];
-      let slideBufferedStartRow = slideMeta?.windowStartRow ?? 1;
-      let slideHasMoreBefore = slideMeta?.hasMoreBefore ?? false;
-      let slideHasMoreAfter = slideMeta?.hasMoreAfter ?? false;
-      let localFilterState: FilterState = { globalQuery: '', clauses: [] };
-      let localSortState: SortState = { column: null, direction: 'none' };
-      const selectedIndices = new Set<number>();
-      const modifiedCells = new Map<string, { originalValue: any; newValue: any }>();
-      const rowsMarkedForDeletion = new Set<number>();
+      const renderMain = (resolvedRows: any[]) => {
+        let originalRows: any[] = resolvedRows ? JSON.parse(JSON.stringify(resolvedRows)) : [];
+        let currentRows: any[] = resolvedRows ? JSON.parse(JSON.stringify(resolvedRows)) : [];
+        let slideBufferedStartRow = slideMeta?.windowStartRow ?? 1;
+        let slideHasMoreBefore = slideMeta?.hasMoreBefore ?? false;
+        let slideHasMoreAfter = slideMeta?.hasMoreAfter ?? false;
+        let localFilterState: FilterState = { globalQuery: '', clauses: [] };
+        let localSortState: SortState = { column: null, direction: 'none' };
+        const selectedIndices = new Set<number>();
+        const modifiedCells = new Map<string, { originalValue: any; newValue: any }>();
+        const rowsMarkedForDeletion = new Set<number>();
 
       // FK lookup pending callbacks — keyed by requestId
       const fkCallbacks = new Map<string, (rows: any[], cols: string[]) => void>();
@@ -228,36 +358,21 @@ export function renderPostgresNotebookResult(
         return base.endsWith(';') ? base : `${base};`;
       };
 
-      const createAnalyticsStreamingWarning = (
-        modeLabel: 'Chart' | 'Analyst',
-      ): HTMLElement | null => {
-        if (!slideMeta?.sessionId) {
-          return null;
+      const runFullDatasetRerun = (source: string): void => {
+        const rerunQuery = buildFullDatasetRerunQuery();
+        if (!rerunQuery) {
+          context.postMessage?.({
+            type: 'showErrorMessage',
+            message: 'No query available to rerun for full dataset.',
+          });
+          return;
         }
-        const banner = createInlineBanner({
-          severity: 'warning',
-          message: `${modeLabel} in streaming mode uses loaded rows only. Run on full dataset for accurate results; this may have performance impact depending on local machine capacity.`,
-          actionLabel: 'Run on full dataset',
-          onAction: () => {
-            const rerunQuery = buildFullDatasetRerunQuery();
-            if (!rerunQuery) {
-              context.postMessage?.({
-                type: 'showErrorMessage',
-                message: 'No query available to rerun for full dataset.',
-              });
-              return;
-            }
-            context.postMessage?.({
-              type: 'runDerivedQuery',
-              query: rerunQuery,
-              source: `streaming-${modeLabel.toLowerCase()}-full-dataset`,
-              fullDataset: true,
-            });
-          },
-          dismissible: false,
+        context.postMessage?.({
+          type: 'runDerivedQuery',
+          query: rerunQuery,
+          source,
+          fullDataset: true,
         });
-        banner.setAttribute('data-streaming-analytics-hint', modeLabel.toLowerCase());
-        return banner;
       };
 
       const refreshStreamingScopeNotice = (): void => {
@@ -418,17 +533,19 @@ export function renderPostgresNotebookResult(
       if (autoLimitApplied) {
         const limitMsg =
           autoLimitValue !== undefined
-            ? `Auto-LIMIT applied: showing ${rowCount?.toLocaleString() ?? '?'} rows (limit ${autoLimitValue})`
+            ? `Auto-LIMIT applied: showing ${formatRowCountForDisplay(rowCount, '?')} rows (limit ${autoLimitValue})`
             : 'A row limit was appended to this SELECT.';
         mainContainer.appendChild(createInlineBanner({ severity: 'info', message: limitMsg }));
       }
 
-      if (slideMeta && json.showSlidingCursorBanner === true && !json.error) {
+      if (slideMeta?.sessionId && json.showSlidingCursorBanner === true && !json.error) {
         mainContainer.appendChild(
           createInlineBanner({
-            severity: 'info',
+            severity: 'warning',
             message:
-              'Server-side cursor: only one window of rows is loaded at a time. Scroll the grid near the top or bottom edge to fetch the previous or next page.',
+              'Server-side cursor: one window loaded. Scroll edges to paginate, or run on full dataset for accurate analysis/export (may impact local performance).',
+            actionLabel: 'Run on full dataset',
+            onAction: () => runFullDatasetRerun('streaming-table-full-dataset'),
             onDismiss: () => context.postMessage?.({ type: 'cursorStreamBannerDismiss' }),
             onMuteForever: () => context.postMessage?.({ type: 'cursorStreamBannerMute' }),
           }),
@@ -1452,10 +1569,6 @@ export function renderPostgresNotebookResult(
           });
         } else if (mode === 'analyst') {
           updateActionsVisibility();
-          const streamingHint = createAnalyticsStreamingWarning('Analyst');
-          if (streamingHint) {
-            viewContainer.appendChild(streamingHint);
-          }
           void import('../lazy/analystTab').then(({ mountAnalystTab }) => {
             if (viewGen !== lazyViewGeneration) {
               return;
@@ -1489,7 +1602,6 @@ export function renderPostgresNotebookResult(
             const { chartRenderer: cr } = mountChartTab(viewContainer, {
               columns,
               rows: currentRows,
-              createStreamingWarning: () => createAnalyticsStreamingWarning('Chart'),
             });
             chartRenderer = cr;
             chartInstances.set(element, cr);
@@ -1844,4 +1956,65 @@ export function renderPostgresNotebookResult(
         // Transaction closed — clear all transaction UI
         clearTransactionUI();
       }
+    };
+
+    const resultId: string | undefined = (json as any).resultId;
+    if (resultId) {
+      bindLargeResultToElement(element, resultId);
+      if (largeResultsCache.has(resultId)) {
+        const cachedRows = largeResultsCache.get(resultId)!;
+        touchLargeResultCache(resultId, cachedRows);
+        renderMain(cachedRows);
+      } else {
+        // Show gorgeous premium loading spinner
+        const loader = document.createElement('div');
+        loader.className = 'large-result-loader';
+        loader.style.padding = '24px';
+        loader.style.margin = '12px 0';
+        loader.style.textAlign = 'center';
+        loader.style.background = 'var(--vscode-editorWidget-background, #252526)';
+        loader.style.border = '1px solid var(--vscode-widget-border, #444)';
+        loader.style.borderRadius = '6px';
+        loader.style.color = 'var(--vscode-editor-foreground)';
+        loader.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.15)';
+        loader.innerHTML = `
+          <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;">
+            <div class="loader-spinner" style="
+              width: 28px;
+              height: 28px;
+              border: 3px solid rgba(0, 120, 212, 0.15);
+              border-top-color: #0078d4;
+              border-radius: 50%;
+              animation: spin 0.8s linear infinite;
+            "></div>
+            <div style="font-size: 13px; font-weight: 500; letter-spacing: 0.02em;">
+              Transferring ${formatRowCountForDisplay(rowCount, LARGE_RESULT_ROW_COUNT_FALLBACK)} rows via zero-copy SAB...
+            </div>
+          </div>
+          <style>
+            @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+          </style>
+        `;
+        element.appendChild(loader);
+
+        registerLargeResultPending(
+          resultId,
+          (resolvedRows) => {
+            element.innerHTML = '';
+            renderMain(resolvedRows);
+          },
+          (error) => {
+            element.innerHTML = '';
+            const errorPanel = document.createElement('div');
+            errorPanel.style.cssText =
+              'padding:14px 16px;margin:12px 0;border:1px solid var(--vscode-widget-border,#444);border-left:3px solid var(--vscode-errorForeground,#f14c4c);border-radius:6px;background:var(--vscode-editorWidget-background,#252526);color:var(--vscode-editor-foreground);';
+            errorPanel.textContent =
+              `Large result transfer failed: ${error.message}. Please re-run the query.`;
+            element.appendChild(errorPanel);
+          },
+        );
+      }
+    } else {
+      renderMain(rows || []);
+    }
 }

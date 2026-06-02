@@ -28,6 +28,8 @@ import { QueryCodeLensProvider } from '../QueryCodeLensProvider';
 import { updateNotebookTitle } from '../../utils/notebookTitle';
 import { ResultCursorService } from '../../services/ResultCursorService';
 import { CursorStreamBannerPolicy } from '../../services/CursorStreamBannerPolicy';
+import { FullDatasetPreferenceService } from '../../services/FullDatasetPreferenceService';
+import { ConnectionUtils } from '../../utils/connectionUtils';
 
 /** Streaming NOTICE feed during a single-statement cell run (replaced by final result output). */
 const MIME_NOTICES_LIVE = 'application/vnd.postgres-notebook.notices-live';
@@ -59,7 +61,14 @@ export class SqlExecutor {
   private static readonly REVIEW_SHOWN_KEY = 'postgresExplorer.reviewPrompt.shown';
   private static readonly REVIEW_THRESHOLD = 3;
 
-  constructor(private readonly _controller: vscode.NotebookController) { }
+  private readonly _messaging?: vscode.NotebookRendererMessaging;
+
+  constructor(
+    private readonly _controller: vscode.NotebookController,
+    messaging?: vscode.NotebookRendererMessaging
+  ) {
+    this._messaging = messaging;
+  }
 
   /**
    * Get the configured failure strategy from settings.
@@ -540,8 +549,8 @@ export class SqlExecutor {
     await execution.clearOutput();
 
     try {
-      const metadata = cell.notebook.metadata as PostgresMetadata;
-      if (!metadata || !metadata.connectionId) {
+      let metadata = ConnectionUtils.getEffectiveMetadata(cell.notebook.metadata) as PostgresMetadata;
+      if (!metadata) {
         throw new Error('No connection metadata found');
       }
 
@@ -550,11 +559,30 @@ export class SqlExecutor {
       const notebookKey = `activeProfile-${cell.notebook.uri.toString()}`;
       const activeProfileContext = extensionContext?.globalState.get<any>(notebookKey);
 
-      // Get connection info
-      const connections = vscode.workspace.getConfiguration().get<any[]>('postgresExplorer.connections') || [];
-      const connection = connections.find(c => c.id === metadata.connectionId);
+      // Get connection info using robust fallback
+      const connection = ConnectionUtils.findConnectionWithFallback(metadata.connectionId, cell.notebook.metadata);
       if (!connection) {
         throw new Error('Connection not found');
+      }
+
+      // If we matched the connection via fallback, correct the metadata in the notebook
+      if (metadata.connectionId !== connection.id) {
+        metadata = {
+          ...metadata,
+          connectionId: connection.id
+        };
+        try {
+          const persisted = await ConnectionUtils.updateNotebookMetadata(cell.notebook, {
+            connectionId: connection.id,
+          });
+          if (!persisted) {
+            console.warn(
+              'Notebook metadata connectionId corrected in memory only; workspace edit was not applied.',
+            );
+          }
+        } catch (err) {
+          console.warn('Failed to update notebook metadata with correct connection ID:', err);
+        }
       }
 
       // Apply profile settings with floor protection (connection level readOnly cannot be downgraded)
@@ -760,6 +788,9 @@ export class SqlExecutor {
           continue;
         }
 
+        const fullDatasetPref = FullDatasetPreferenceService.isEnabled(cell.document.uri.toString());
+        const useFullDataset = directives.disableStreaming || fullDatasetPref;
+
         const originalQuery = query;
         let queryForExecution = query;
         let autoLimitApplied = false;
@@ -769,7 +800,7 @@ export class SqlExecutor {
 
         const windowSize = ResultCursorService.getWindowSizeCap();
         const trySliding =
-          !directives.disableStreaming &&
+          !useFullDataset &&
           ResultCursorService.isGloballyEnabled() &&
           pgParamValues === undefined &&
           ResultCursorService.isEligibleQuery(query);
@@ -790,7 +821,7 @@ export class SqlExecutor {
           }
         }
 
-        if (!usedSlidingWindow && !directives.disableAutoLimit) {
+        if (!usedSlidingWindow && !useFullDataset) {
           queryForExecution = this.applyAutoLimit(query, connection, metadata, activeProfileContext);
           autoLimitApplied = queryForExecution !== originalQuery;
         }
@@ -964,6 +995,31 @@ export class SqlExecutor {
             },
             sourceCellIndex: cell.index,
           };
+
+          if (rows && rows.length > 50000 && this._messaging) {
+            const resultId = `result-${Date.now()}-${Math.random()}`;
+            try {
+              const jsonStr = JSON.stringify(rows);
+              const encoder = new TextEncoder();
+              const encoded = encoder.encode(jsonStr);
+              const sab = new SharedArrayBuffer(encoded.byteLength);
+              const sabView = new Uint8Array(sab);
+              sabView.set(encoded);
+
+              this._messaging.postMessage({
+                type: 'largeResultRows',
+                resultId,
+                sharedBuffer: sab,
+              });
+
+              (outputData as any).resultId = resultId;
+              outputData.rows = [];
+            } catch (sabError) {
+              // Some renderer/runtime configurations can reject SAB usage.
+              // Fall back to inline rows so result rendering still succeeds.
+              console.warn('SqlExecutor: SharedArrayBuffer transport unavailable, using inline rows.', sabError);
+            }
+          }
 
           // Clear notices for next statement
           notices.length = 0;
@@ -1238,12 +1294,31 @@ export class SqlExecutor {
     let done: any = null;
 
     try {
-      const metadata = notebook.metadata as PostgresMetadata;
-      if (!metadata?.connectionId) throw new Error('No connection found');
+      let metadata = ConnectionUtils.getEffectiveMetadata(notebook.metadata) as PostgresMetadata;
+      if (!metadata) throw new Error('No connection found');
 
-      const connections = vscode.workspace.getConfiguration().get<any[]>('postgresExplorer.connections') || [];
-      const connection = connections.find(c => c.id === metadata.connectionId);
+      const connection = ConnectionUtils.findConnectionWithFallback(metadata.connectionId, notebook.metadata);
       if (!connection) throw new Error('Connection not found');
+
+      // If we matched the connection via fallback, correct the metadata in the notebook
+      if (metadata.connectionId !== connection.id) {
+        metadata = {
+          ...metadata,
+          connectionId: connection.id
+        };
+        try {
+          const persisted = await ConnectionUtils.updateNotebookMetadata(notebook, {
+            connectionId: connection.id,
+          });
+          if (!persisted) {
+            console.warn(
+              'Notebook metadata connectionId corrected in memory only; workspace edit was not applied.',
+            );
+          }
+        } catch (err) {
+          console.warn('Failed to update notebook metadata with correct connection ID:', err);
+        }
+      }
 
       // We need a dedicated client for the transaction, not a pooled one that might be shared if we're not careful,
       // though getSessionClient typically returns a pool client. 

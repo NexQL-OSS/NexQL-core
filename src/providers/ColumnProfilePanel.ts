@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { ConnectionManager } from '../services/ConnectionManager';
 import { SecretStorageService } from '../services/SecretStorageService';
+import { disposePooledOwner, WebviewPool } from '../utils/WebviewPool';
 
 /**
  * Column Profiling Panel (Phase 3.4)
@@ -22,19 +23,20 @@ export class ColumnProfilePanel {
   // One panel per (connectionId + database + schema + table + column)
   private static _panels = new Map<string, ColumnProfilePanel>();
 
-  private readonly _panel: vscode.WebviewPanel;
+  public readonly _panel: vscode.WebviewPanel;
   private _disposables: vscode.Disposable[] = [];
 
   private constructor(panel: vscode.WebviewPanel) {
     this._panel = panel;
-    this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
   }
 
-  private dispose(): void {
+  public dispose(isRecycling = false): void {
     const key = [...ColumnProfilePanel._panels.entries()]
       .find(([, v]) => v === this)?.[0];
     if (key) { ColumnProfilePanel._panels.delete(key); }
-    this._panel.dispose();
+    if (!isRecycling) {
+      this._panel.dispose();
+    }
     for (const d of this._disposables) { d.dispose(); }
     this._disposables = [];
   }
@@ -211,16 +213,25 @@ export class ColumnProfilePanel {
           // -------------------------------------------------------------------
           // Build the webview panel
           // -------------------------------------------------------------------
-          const panel = vscode.window.createWebviewPanel(
+          const { panel, commit } = WebviewPool.getInstance().getOrCreate(
             ColumnProfilePanel.viewType,
+            panelKey,
             `Column: ${table}.${column}`,
             vscode.ViewColumn.Beside,
-            { enableScripts: true, retainContextWhenHidden: true }
+            { enableScripts: true, retainContextWhenHidden: true },
+            {
+              onDispose: () => {
+                disposePooledOwner(ColumnProfilePanel._panels, panel, false);
+              },
+              onRecycle: (recycled) => {
+                disposePooledOwner(ColumnProfilePanel._panels, recycled.panel, true);
+              },
+            }
           );
 
           const cpPanel = new ColumnProfilePanel(panel);
           ColumnProfilePanel._panels.set(panelKey, cpPanel);
-          panel.onDidDispose(() => ColumnProfilePanel._panels.delete(panelKey));
+          commit?.();
 
           panel.webview.html = ColumnProfilePanel._buildHtml({
             schema,

@@ -54,14 +54,14 @@ let aiResponseArea = null;
 let aiAutoNotify = null;
 
 function cacheAiDomRefs() {
-  aiPanel = aiPanel || document.getElementById('ai-panel');
-  aiToggleBtn = aiToggleBtn || document.getElementById('ai-toggle-btn');
-  aiCloseBtn = aiCloseBtn || document.getElementById('ai-panel-close');
-  aiClearBtn = aiClearBtn || document.getElementById('ai-clear-btn');
-  aiSendBtn = aiSendBtn || document.getElementById('ai-send-btn');
-  aiQuestionInput = aiQuestionInput || document.getElementById('ai-question');
-  aiResponseArea = aiResponseArea || document.getElementById('ai-response-area');
-  aiAutoNotify = aiAutoNotify || document.getElementById('ai-auto-notify');
+  aiPanel = document.getElementById('ai-panel');
+  aiToggleBtn = document.getElementById('ai-toggle-btn');
+  aiCloseBtn = document.getElementById('ai-panel-close');
+  aiClearBtn = document.getElementById('ai-clear-btn');
+  aiSendBtn = document.getElementById('ai-send-btn');
+  aiQuestionInput = document.getElementById('ai-question');
+  aiResponseArea = document.getElementById('ai-response-area');
+  aiAutoNotify = document.getElementById('ai-auto-notify');
 }
 
 const timeLabels = [];
@@ -819,45 +819,35 @@ function updateWalReplication(stats) {
     replBody.innerHTML = '';
     const rows = Array.isArray(w.replicas) ? w.replicas : [];
     if (rows.length === 0) {
-      const wrapper = document.createElement('div');
-      wrapper.className = 'ai-query-result';
+      const tr = document.createElement('tr');
+      const td = document.createElement('td');
+      td.colSpan = 6;
+      td.style.padding = '16px';
+      td.style.color = 'var(--muted-color)';
+      td.textContent = w.inRecovery
+        ? 'Not available on standby (pg_stat_replication is empty here).'
+        : 'No active replication connections.';
+      tr.appendChild(td);
+      replBody.appendChild(tr);
+    } else {
+      rows.forEach((r) => {
+        const tr = document.createElement('tr');
+        [r.application_name || '—', r.client_addr || '—', r.state || '—', r.replay_lag || '—', r.sync_state || '—', r.replay_lsn || '—'].forEach((cell) => {
+          const td = document.createElement('td');
+          td.textContent = cell;
+          tr.appendChild(td);
+        });
+        replBody.appendChild(tr);
+      });
+    }
+  }
 
-      if (data.error) {
-        const errDiv = document.createElement('div');
-        errDiv.className = 'ai-result-error';
-        const strongEl = document.createElement('strong');
-        strongEl.textContent = 'Query error:';
-        errDiv.appendChild(strongEl);
-        errDiv.appendChild(document.createTextNode(' ' + (data.error == null ? '' : String(data.error))));
-        wrapper.appendChild(errDiv);
-        aiResponseArea.appendChild(wrapper);
-        aiResponseArea.scrollTop = aiResponseArea.scrollHeight;
-        _requestAiAutoFixForQueryError(data);
-        return;
-      }
-
-      const hadAutoFixAttempt = _aiAutoFixState.history.length > 0;
-      _rememberExecutedSql(data.sql || '');
-      // Reset retry loop after any successful execution.
-      _resetAiAutoFixState();
-
-      const rowCount = data.rowCount ?? (data.rows ? data.rows.length : 0);
-      const metaDiv = document.createElement('div');
-      metaDiv.className = 'ai-result-meta';
-      metaDiv.appendChild(document.createTextNode('Query returned ' + rowCount + ' row' + (rowCount !== 1 ? 's' : '')));
-      if (data.columns && data.rows && data.rows.length > 0) {
-        // append an em-dash separator and a CSV button (safe textContent)
-        metaDiv.appendChild(document.createTextNode(' \u2014 '));
-        var csvBtn = document.createElement('button');
-        csvBtn.className = 'ai-csv-btn';
-        csvBtn.textContent = '⇩ Download CSV';
-        csvBtn.addEventListener('click', function() { _downloadQueryCsv(data); });
-        metaDiv.appendChild(csvBtn);
-      }
-      wrapper.appendChild(metaDiv);
-
-      aiResponseArea.appendChild(wrapper);
-      aiResponseArea.scrollTop = aiResponseArea.scrollHeight;
+  if (recvBody) {
+    recvBody.innerHTML = '';
+    const wr = w.walReceiver;
+    if (!wr || (!wr.status && !wr.received_lsn)) {
+      const tr = document.createElement('tr');
+      const td = document.createElement('td');
       td.colSpan = 4;
       td.style.padding = '16px';
       td.style.color = 'var(--muted-color)';
@@ -1617,8 +1607,26 @@ function _findInEventPath(event, selector) {
 }
 
 document.addEventListener('click', event => {
-  /* Brain buttons live inside .interactive tiles; don't treat the click as "tile" navigation. */
-  if (_findInEventPath(event, '.card-ai-btn')) {
+  if (_findInEventPath(event, '#ai-panel-backdrop')) {
+    event.preventDefault();
+    closeAiPanel();
+    return;
+  }
+
+  if (_findInEventPath(event, '#ai-panel')) {
+    if (_handleAiPanelClick(event)) {
+      return;
+    }
+    return;
+  }
+
+  const cardAiBtn = _findInEventPath(event, '.card-ai-btn');
+  if (cardAiBtn) {
+    event.preventDefault();
+    event.stopPropagation();
+    const metric = cardAiBtn.dataset.metric;
+    const prompt = metricPromptMap[metric] || `Analyze the ${metric} metric and explain what I should know.`;
+    sendAiQuestion(prompt);
     return;
   }
 
@@ -1643,6 +1651,16 @@ document.addEventListener('click', event => {
     else if (action === 'hideDetails') hideDetails();
     else if (action === 'jumpToQueries') jumpToQueries();
     else if (action === 'jumpToLocks') jumpToLocks();
+    else if (action === 'toggleAiPanel') {
+      cacheAiDomRefs();
+      if (aiPanel && aiPanel.classList.contains('open')) {
+        closeAiPanel();
+      } else {
+        openAiPanel();
+      }
+    } else if (action === 'closeAiPanel') {
+      closeAiPanel();
+    }
     return;
   }
 
@@ -1987,6 +2005,11 @@ function openAiPanel() {
   cacheAiDomRefs();
   if (!aiPanel) return;
   aiPanel.classList.add('open');
+  const backdrop = document.getElementById('ai-panel-backdrop');
+  if (backdrop) {
+    backdrop.removeAttribute('hidden');
+    backdrop.setAttribute('aria-hidden', 'false');
+  }
   document.body.classList.add('ai-panel-open');
 }
 
@@ -1994,7 +2017,75 @@ function closeAiPanel() {
   cacheAiDomRefs();
   if (!aiPanel) return;
   aiPanel.classList.remove('open');
+  const backdrop = document.getElementById('ai-panel-backdrop');
+  if (backdrop) {
+    backdrop.setAttribute('hidden', '');
+    backdrop.setAttribute('aria-hidden', 'true');
+  }
   document.body.classList.remove('ai-panel-open');
+}
+
+function _handleAiPanelClick(event) {
+  const closeTarget = _findInEventPath(event, '[data-action="closeAiPanel"]');
+  if (closeTarget) {
+    event.preventDefault();
+    closeAiPanel();
+    return true;
+  }
+
+  const clearTarget = _findInEventPath(event, '[data-action="clearAiConversation"]');
+  if (clearTarget) {
+    event.preventDefault();
+    clearConversation();
+    return true;
+  }
+
+  const sendTarget = _findInEventPath(event, '[data-action="sendAiQuestion"], #ai-send-btn');
+  if (sendTarget) {
+    event.preventDefault();
+    sendAiQuestion(aiQuestionInput ? aiQuestionInput.value : '');
+    return true;
+  }
+
+  const chip = _findInEventPath(event, '.ai-chip');
+  if (chip && chip.dataset.prompt) {
+    event.preventDefault();
+    const prompt = quickPromptMap[chip.dataset.prompt];
+    if (prompt) {
+      sendAiQuestion(prompt);
+    }
+    return true;
+  }
+
+  const suggestionChip = _findInEventPath(event, '.ai-suggestion-chip');
+  if (suggestionChip) {
+    event.preventDefault();
+    const label = suggestionChip.textContent || '';
+    const followUpMatch = label.match(/^\d+\.\s*(.+)$/);
+    const q = followUpMatch ? String(followUpMatch[1]).trim() : label.trim();
+    if (q) {
+      sendAiQuestion(q);
+    }
+    return true;
+  }
+
+  const copyBtn = _findInEventPath(event, '.ai-copy-btn');
+  if (copyBtn) {
+    event.preventDefault();
+    const codeId = copyBtn.dataset.codeId;
+    const codeEl = codeId && document.getElementById(codeId);
+    if (codeEl) {
+      navigator.clipboard.writeText(codeEl.textContent || '').then(() => {
+        copyBtn.textContent = 'Copied!';
+        setTimeout(() => {
+          copyBtn.innerHTML = '<svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z"/><path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z"/></svg> Copy';
+        }, 1500);
+      });
+    }
+    return true;
+  }
+
+  return false;
 }
 
 function buildContextSummary() {
@@ -2508,6 +2599,7 @@ function normalizeResultValue(value) {
 
 function sendAiQuestion(question) {
   if (!question || !question.trim()) return;
+  cacheAiDomRefs();
   openAiPanel();
   const q = question.trim();
   const contextSummary = buildContextSummary();
@@ -2515,6 +2607,7 @@ function sendAiQuestion(question) {
   _rememberQuestion(q);
   _lastAiQuestion = q;
   _appendAiMessage('user', escHtml(q).replace(/\n/g, '<br>'), { contextSummary });
+  renderAiLoading(true);
   vscode.postMessage({
     command: 'askAI',
     question: q,
@@ -2728,30 +2821,6 @@ function _parseAiMarkdown(text) {
 
 cacheAiDomRefs();
 
-if (aiToggleBtn) {
-  aiToggleBtn.addEventListener('click', () => {
-    if (aiPanel && aiPanel.classList.contains('open')) {
-      closeAiPanel();
-    } else {
-      openAiPanel();
-    }
-  });
-}
-
-if (aiCloseBtn) {
-  aiCloseBtn.addEventListener('click', closeAiPanel);
-}
-
-if (aiClearBtn) {
-  aiClearBtn.addEventListener('click', clearConversation);
-}
-
-if (aiSendBtn) {
-  aiSendBtn.addEventListener('click', () => {
-    sendAiQuestion(aiQuestionInput ? aiQuestionInput.value : '');
-  });
-}
-
 if (aiQuestionInput) {
   aiQuestionInput.addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -2766,40 +2835,6 @@ if (aiAutoNotify) {
     vscode.postMessage({ command: 'toggleAutoNotify', enabled: aiAutoNotify.checked });
   });
 }
-
-document.querySelectorAll('.ai-chip').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const prompt = quickPromptMap[btn.dataset.prompt];
-    if (prompt) sendAiQuestion(prompt);
-  });
-});
-
-document.addEventListener('click', e => {
-  const btn = _findInEventPath(e, '.card-ai-btn');
-  if (btn) {
-    e.preventDefault();
-    e.stopPropagation();
-    const metric = btn.dataset.metric;
-    const prompt = metricPromptMap[metric] || `Analyze the ${metric} metric and explain what I should know.`;
-    sendAiQuestion(prompt);
-    return;
-  }
-
-  // Copy button inside AI code blocks
-  const copyBtn = _findInEventPath(e, '.ai-copy-btn');
-  if (copyBtn) {
-    const codeId = copyBtn.dataset.codeId;
-    const codeEl = codeId && document.getElementById(codeId);
-    if (codeEl) {
-      navigator.clipboard.writeText(codeEl.textContent || '').then(() => {
-        copyBtn.textContent = 'Copied!';
-        setTimeout(() => {
-          copyBtn.innerHTML = `<svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z"/><path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z"/></svg> Copy`;
-        }, 1500);
-      });
-    }
-  }
-});
 
 // Cache stats for AI context
 const _origUpdateDashboard = updateDashboard;

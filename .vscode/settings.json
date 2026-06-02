@@ -1,5 +1,18 @@
 {
   "typescript.tsdk": "node_modules/typescript/lib",
   "typescript.enablePromptUseWorkspaceTsdk": true,
-  "makefile.configureOnOpen": true
+  "makefile.configureOnOpen": true,
+  "sqltools.connections": [
+    {
+      "ssh": "Disabled",
+      "previewLimit": 50,
+      "server": "localhost",
+      "port": 5432,
+      "driver": "PostgreSQL",
+      "name": "Dev",
+      "group": "LOCAL",
+      "database": "postgres",
+      "username": "ric-v"
+    }
+  ]
 }

@@ -710,12 +710,11 @@ export class ShowConnectionInfoHandler implements IMessageHandler {
   async handle(message: any, context: { editor?: vscode.NotebookEditor }) {
     if (!context.editor) return;
     const notebook = context.editor.notebook;
-    const metadata = notebook.metadata as any;
-    const connections = vscode.workspace.getConfiguration().get<any[]>('postgresExplorer.connections') || [];
-    const conn = connections.find(c => c.id === metadata?.connectionId);
+    const effectiveMetadata = ConnectionUtils.getEffectiveMetadata(notebook.metadata);
+    const conn = ConnectionUtils.findConnectionWithFallback(effectiveMetadata?.connectionId, notebook.metadata);
     if (conn) {
       vscode.window.showInformationMessage(
-        `Connection: ${conn.name || conn.host} | Host: ${conn.host}:${conn.port} | Database: ${metadata?.databaseName || conn.database}`
+        `Connection: ${conn.name || conn.host} | Host: ${conn.host}:${conn.port} | Database: ${effectiveMetadata?.databaseName || conn.database}`
       );
     } else {
       vscode.window.showInformationMessage('No active connection for this notebook.');

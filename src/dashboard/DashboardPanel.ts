@@ -8,12 +8,13 @@ import { createMetadata, createAndShowNotebook } from '../commands/connection';
 import { AiService } from '../providers/chat/AiService';
 import { ChatMessage } from '../providers/chat/types';
 import { TelemetryService } from '../services/TelemetryService';
+import { disposePooledOwner, WebviewPool } from '../utils/WebviewPool';
 
 export class DashboardPanel {
   private static panels: Map<string, DashboardPanel> = new Map();
-  private readonly _panel: vscode.WebviewPanel;
+  public readonly _panel: vscode.WebviewPanel;
   private readonly _disposables: vscode.Disposable[] = [];
-  private readonly _panelKey: string;
+  public _panelKey: string;
   private _aiService: AiService | null = null;
   private _lastStats: DashboardStats | null = null;
   private _autoNotifyEnabled = false;
@@ -21,9 +22,23 @@ export class DashboardPanel {
   private _conversationMessages: ChatMessage[] = [];
   private _lastSuccessfulRefreshAt = 0;
   private _staleWarningShown = false;
+  private _isDisposed = false;
+  /** Bumped on recycle / param change so in-flight async work cannot post stale state. */
+  private _sessionGeneration = 0;
 
-  private constructor(panel: vscode.WebviewPanel, private readonly config: ConnectionConfig, private readonly dbName: string, panelKey: string, private readonly extensionUri: vscode.Uri) {
+  private _config: ConnectionConfig;
+  private _dbName: string;
+
+  private constructor(
+    panel: vscode.WebviewPanel,
+    config: ConnectionConfig,
+    dbName: string,
+    panelKey: string,
+    private readonly extensionUri: vscode.Uri,
+  ) {
     this._panel = panel;
+    this._config = config;
+    this._dbName = dbName;
     this._panelKey = panelKey;
     this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
     this._panel.webview.html = getLoadingHtml();
@@ -41,7 +56,7 @@ export class DashboardPanel {
           case 'explainQuery':
             // Open a new notebook with the query, prefixed with EXPLAIN ANALYZE
             // and connected to the current database
-            const metadata = createMetadata(this.config, this.dbName);
+            const metadata = createMetadata(this._config, this._dbName);
             const cell = new vscode.NotebookCellData(
               vscode.NotebookCellKind.Code,
               'EXPLAIN ANALYZE ' + message.query,
@@ -93,6 +108,31 @@ export class DashboardPanel {
     this._update();
   }
 
+  public updateParams(config: ConnectionConfig, dbName: string, panelKey: string) {
+    this._resetSessionState();
+    this._config = config;
+    this._dbName = dbName;
+    this._panelKey = panelKey;
+    this._panel.webview.html = getLoadingHtml();
+    this._update();
+  }
+
+  /** Invalidate in-flight work and clear session-scoped state (pool recycle / DB switch). */
+  private _resetSessionState(): void {
+    this._sessionGeneration += 1;
+    this._conversationMessages = [];
+    this._lastStats = null;
+    this._autoNotifyEnabled = false;
+    this._lastHealthCritical = false;
+    this._lastSuccessfulRefreshAt = 0;
+    this._staleWarningShown = false;
+    this._aiService = null;
+  }
+
+  private _isSessionCurrent(generation: number): boolean {
+    return generation === this._sessionGeneration;
+  }
+
   public static async show(extensionUri: vscode.Uri, config: ConnectionConfig, dbName: string, connectionId?: string) {
     const column = vscode.window.activeTextEditor
       ? vscode.window.activeTextEditor.viewColumn
@@ -102,28 +142,69 @@ export class DashboardPanel {
     TelemetryService.getInstance().trackDashboardOpened();
 
     // Create unique key for this dashboard (connection + database)
-    // Use timestamp to allow multiple dashboards for the same database
-    const timestamp = Date.now();
-    const panelKey = `${connectionId || 'default'}-${dbName}-${timestamp}`;
+    const connId = connectionId || 'default';
+    const panelKey = `${connId}-${dbName}`;
 
-    // Always create a new panel to allow multiple dashboards
-    const panel = vscode.window.createWebviewPanel(
+    // If an existing panel map already has this exact panelKey, reveal it
+    const existing = DashboardPanel.panels.get(panelKey);
+    if (existing) {
+      existing._panel.reveal(column || vscode.ViewColumn.One);
+      return;
+    }
+
+    const { panel, isNew, commit } = WebviewPool.getInstance().getOrCreate(
       'postgresDashboard',
+      panelKey,
       `Dashboard: ${dbName}`,
       column || vscode.ViewColumn.One,
       {
         enableScripts: true,
         retainContextWhenHidden: true
+      },
+      {
+        onDispose: () => {
+          disposePooledOwner(DashboardPanel.panels, panel, false);
+        },
+        onRecycle: (recycled) => {
+          disposePooledOwner(DashboardPanel.panels, recycled.panel, true);
+        },
       }
     );
 
-    const dashboardPanel = new DashboardPanel(panel, config, dbName, panelKey, extensionUri);
-    DashboardPanel.panels.set(panelKey, dashboardPanel);
+    if (isNew) {
+      const dashboardPanel = new DashboardPanel(panel, config, dbName, panelKey, extensionUri);
+      DashboardPanel.panels.set(panelKey, dashboardPanel);
+      (panel as any).owner = dashboardPanel;
+    } else {
+      // Recycled! Update params on the owner of the recycled panel
+      const oldOwner = (panel as any).owner as DashboardPanel;
+      if (oldOwner) {
+        // Delete old panelKey from the panels map
+        DashboardPanel.panels.delete(oldOwner._panelKey);
+
+        // Update its params for the new db
+        oldOwner.updateParams(config, dbName, panelKey);
+
+        // Set new key in map
+        DashboardPanel.panels.set(panelKey, oldOwner);
+      } else {
+        const dashboardPanel = new DashboardPanel(panel, config, dbName, panelKey, extensionUri);
+        DashboardPanel.panels.set(panelKey, dashboardPanel);
+        (panel as any).owner = dashboardPanel;
+      }
+    }
+    commit?.();
   }
 
-  public dispose() {
+  public dispose(isRecycling = false): void {
+    if (this._isDisposed) {
+      return;
+    }
+    this._isDisposed = true;
     DashboardPanel.panels.delete(this._panelKey);
-    this._panel.dispose();
+    if (!isRecycling) {
+      this._panel.dispose();
+    }
     while (this._disposables.length) {
       const x = this._disposables.pop();
       if (x) {
@@ -133,32 +214,50 @@ export class DashboardPanel {
   }
 
   private async getClient(): Promise<PoolClient> {
-    return await ConnectionManager.getInstance().getPooledClient(this.config);
+    return await ConnectionManager.getInstance().getPooledClient(this._config);
   }
 
   private async _terminateQuery(pid: number) {
+    const generation = this._sessionGeneration;
     let client;
     try {
       client = await this.getClient();
+      if (!this._isSessionCurrent(generation)) {
+        return;
+      }
       await client.query('SELECT pg_terminate_backend($1)', [pid]);
+      if (!this._isSessionCurrent(generation)) {
+        return;
+      }
       vscode.window.showInformationMessage(`Terminated query with PID ${pid}`);
       this._update();
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Failed to terminate query: ${error.message}`);
+      if (this._isSessionCurrent(generation)) {
+        vscode.window.showErrorMessage(`Failed to terminate query: ${error.message}`);
+      }
     } finally {
       if (client) client.release();
     }
   }
 
   private async _cancelQuery(pid: number) {
+    const generation = this._sessionGeneration;
     let client;
     try {
       client = await this.getClient();
+      if (!this._isSessionCurrent(generation)) {
+        return;
+      }
       await client.query('SELECT pg_cancel_backend($1)', [pid]);
+      if (!this._isSessionCurrent(generation)) {
+        return;
+      }
       vscode.window.showInformationMessage(`Cancelled query with PID ${pid}`);
       this._update();
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Failed to cancel query: ${error.message}`);
+      if (this._isSessionCurrent(generation)) {
+        vscode.window.showErrorMessage(`Failed to cancel query: ${error.message}`);
+      }
     } finally {
       if (client) client.release();
     }
@@ -167,13 +266,16 @@ export class DashboardPanel {
 
 
   private async _handleAskAI(question: string, context: string) {
+    const generation = this._sessionGeneration;
     if (!this._aiService) {
       this._aiService = new AiService();
     }
     this._panel.webview.postMessage({ command: 'aiLoading', loading: true });
     try {
       const config = vscode.workspace.getConfiguration('postgresExplorer');
-      const provider = config.get<string>('aiProvider') ?? 'vscode-lm';
+      const { readAiScopeSettings } = await import('../features/aiAssistant/aiConfig');
+      const notebookSettings = readAiScopeSettings(config, 'notebook');
+      const provider = notebookSettings.provider;
 
       // Refresh system prompt with latest stats context each turn
       const systemPrompt = this._buildDashboardSystemPrompt(context);
@@ -181,7 +283,11 @@ export class DashboardPanel {
       // Pass conversation history so the AI has multi-turn context
       this._aiService.setMessages(this._conversationMessages);
 
-      const result = await this._aiService.callProvider(provider, question, config, systemPrompt);
+      const result = await this._aiService.callProvider(provider, question, config, systemPrompt, 'notebook');
+
+      if (!this._isSessionCurrent(generation)) {
+        return;
+      }
 
       // Persist this turn so follow-up questions have context
       this._conversationMessages.push({ role: 'user', content: question });
@@ -193,13 +299,18 @@ export class DashboardPanel {
 
       this._panel.webview.postMessage({ command: 'aiResponse', text: result.text });
     } catch (err: any) {
-      this._panel.webview.postMessage({ command: 'aiResponse', text: `**Error:** ${err.message}` });
+      if (this._isSessionCurrent(generation)) {
+        this._panel.webview.postMessage({ command: 'aiResponse', text: `**Error:** ${err.message}` });
+      }
     } finally {
-      this._panel.webview.postMessage({ command: 'aiLoading', loading: false });
+      if (this._isSessionCurrent(generation)) {
+        this._panel.webview.postMessage({ command: 'aiLoading', loading: false });
+      }
     }
   }
 
   private async _executeQueryForAI(sql: string, question: string) {
+    const generation = this._sessionGeneration;
     const trimmed = sql.trim();
     const sqlWithoutLeadingComments = trimmed
       .replace(/^\s*\/\*[\s\S]*?\*\//, '')
@@ -219,6 +330,9 @@ export class DashboardPanel {
       client = await this.getClient();
       await client.query('SET statement_timeout = 10000');
       const result = await client.query(trimmed);
+      if (!this._isSessionCurrent(generation)) {
+        return;
+      }
       const normalizedRows = result.rows
         .slice(0, 100)
         .map((row: Record<string, any>) => this._normalizeQueryRow(row));
@@ -231,12 +345,14 @@ export class DashboardPanel {
         rowCount: result.rowCount ?? result.rows.length,
       });
     } catch (err: any) {
-      this._panel.webview.postMessage({
-        command: 'queryForAIResult',
-        sql: trimmed,
-        question,
-        error: err.message,
-      });
+      if (this._isSessionCurrent(generation)) {
+        this._panel.webview.postMessage({
+          command: 'queryForAIResult',
+          sql: trimmed,
+          question,
+          error: err.message,
+        });
+      }
     } finally {
       if (client) client.release();
     }
@@ -490,10 +606,14 @@ IMPORTANT: When the user sends a bare number (1, 2, or 3), treat it as selecting
   }
 
   private async _update() {
+    const generation = this._sessionGeneration;
     let client;
     try {
       client = await this.getClient();
-      const stats = await fetchStats(client as unknown as Client, this.dbName);
+      const stats = await fetchStats(client as unknown as Client, this._dbName);
+      if (!this._isSessionCurrent(generation)) {
+        return;
+      }
       this._lastStats = stats;
       this._lastSuccessfulRefreshAt = Date.now();
       this._staleWarningShown = false;
@@ -519,6 +639,9 @@ IMPORTANT: When the user sends a bare number (1, 2, or 3), treat it as selecting
         this._lastHealthCritical = nowCritical;
       }
     } catch (error: any) {
+      if (!this._isSessionCurrent(generation)) {
+        return;
+      }
       const staleMs =
         this._lastSuccessfulRefreshAt > 0 ? Date.now() - this._lastSuccessfulRefreshAt : 0;
       const stale =
@@ -532,7 +655,7 @@ IMPORTANT: When the user sends a bare number (1, 2, or 3), treat it as selecting
       if (stale && !this._staleWarningShown) {
         this._staleWarningShown = true;
         vscode.window.showWarningMessage(
-          `Dashboard data may be stale for ${this.dbName}. Last successful refresh was ${
+          `Dashboard data may be stale for ${this._dbName}. Last successful refresh was ${
             this._lastSuccessfulRefreshAt
               ? `${Math.round(staleMs / 1000)}s ago`
               : 'never'
@@ -563,9 +686,13 @@ IMPORTANT: When the user sends a bare number (1, 2, or 3), treat it as selecting
   }
 
   private async _showDetails(type: string) {
+    const generation = this._sessionGeneration;
     let client;
     try {
       client = await this.getClient();
+      if (!this._isSessionCurrent(generation)) {
+        return;
+      }
       let data: any[] = [];
       let columns: string[] = [];
 
@@ -626,9 +753,13 @@ IMPORTANT: When the user sends a bare number (1, 2, or 3), treat it as selecting
         // Add other cases as needed
       }
 
-      this._panel.webview.postMessage({ command: 'showDetails', type, data, columns });
+      if (this._isSessionCurrent(generation)) {
+        this._panel.webview.postMessage({ command: 'showDetails', type, data, columns });
+      }
     } catch (error: any) {
-      console.error('Failed to fetch details:', error);
+      if (this._isSessionCurrent(generation)) {
+        console.error('Failed to fetch details:', error);
+      }
     } finally {
       if (client) client.release();
     }
