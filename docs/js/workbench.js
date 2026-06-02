@@ -107,6 +107,8 @@ function wireWindowControls() {
 
   restoreShortcut?.addEventListener("click", () => {
     setEditorMinimizedState(false);
+    openFile("query");
+    switchSidebarPanel("pgstudio");
   });
 
   terminalButtons.forEach((button) => {

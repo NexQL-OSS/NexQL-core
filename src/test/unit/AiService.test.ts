@@ -4,6 +4,7 @@ import * as vscode from 'vscode';
 
 import { AiService } from '../../providers/chat/AiService';
 import { SecretStorageService } from '../../services/SecretStorageService';
+import { AiCredentialsService } from '../../features/aiAssistant/AiCredentialsService';
 
 class MockTextPart {
   constructor(public value: string) { }
@@ -274,8 +275,12 @@ describe('AiService', () => {
     const service = new AiService();
     const makeHttpRequestStub = sandbox.stub(service as any, '_makeHttpRequest').resolves({ text: 'ok', usage: '1 token' });
     const getAiApiKeyStub = sandbox.stub();
+    const getProviderApiKeyStub = sandbox.stub().resolves(undefined);
     const secretService = { getAiApiKey: getAiApiKeyStub } as any;
     sandbox.stub(SecretStorageService, 'getInstance').returns(secretService);
+    sandbox.stub(AiCredentialsService, 'getInstance').returns({
+      getApiKey: getProviderApiKeyStub,
+    } as any);
 
     const getSessionStub = (vscode as any).authentication.getSession as sinon.SinonStub;
     const imageMessage = createImageMessage();
@@ -283,7 +288,10 @@ describe('AiService', () => {
     const cases = [
       {
         provider: 'openai',
-        secretBehavior: () => getAiApiKeyStub.rejects(new Error('missing secret')),
+        secretBehavior: () => {
+          getProviderApiKeyStub.withArgs('openai').resolves(undefined);
+          getAiApiKeyStub.rejects(new Error('missing secret'));
+        },
         config: createConfig({ aiApiKey: 'config-key' }),
         messages: [imageMessage],
         expectedEndpoint: 'https://api.openai.com/v1/chat/completions',
@@ -297,7 +305,7 @@ describe('AiService', () => {
       },
       {
         provider: 'anthropic',
-        secretBehavior: () => getAiApiKeyStub.resolves('secret-key'),
+        secretBehavior: () => getProviderApiKeyStub.withArgs('anthropic').resolves('secret-key'),
         config: createConfig({}),
         messages: [imageMessage],
         expectedEndpoint: 'https://api.anthropic.com/v1/messages',
@@ -312,7 +320,7 @@ describe('AiService', () => {
       },
       {
         provider: 'gemini',
-        secretBehavior: () => getAiApiKeyStub.resolves('secret-key'),
+        secretBehavior: () => getProviderApiKeyStub.withArgs('gemini').resolves('secret-key'),
         config: createConfig({}),
         messages: [imageMessage],
         expectedEndpoint: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
@@ -342,6 +350,9 @@ describe('AiService', () => {
     for (const testCase of cases) {
       getAiApiKeyStub.resetBehavior();
       getAiApiKeyStub.resetHistory();
+      getProviderApiKeyStub.resetBehavior();
+      getProviderApiKeyStub.resetHistory();
+      getProviderApiKeyStub.resolves(undefined);
       getSessionStub.resetHistory();
       getSessionStub.resolves(testCase.authSession);
       testCase.secretBehavior();

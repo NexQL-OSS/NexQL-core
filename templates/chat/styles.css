@@ -314,41 +314,170 @@
           gap: 6px;
         }
 
-        .ai-model-badge {
-          display: none; /* replaced by ai-model-icon-btn */
-        }
-
-        .ai-model-icon-btn {
-          position: relative;
+        .ai-model-picker {
           display: inline-flex;
           align-items: center;
-          gap: 5px;
-          padding: 4px 8px;
+          gap: 6px;
+          padding: 2px 6px 2px 4px;
           border-radius: 999px;
           border: 1px solid var(--ui-border);
           background: var(--ui-surface);
-          opacity: 0.95;
+          max-width: min(260px, 48vw);
+          position: relative;
         }
 
-        .ai-model-icon-btn:hover {
-          opacity: 1;
-          border-color: var(--ui-border-strong);
-        }
-
-        .ai-model-icon-btn svg {
+        .ai-model-picker-icon {
           width: 12px;
           height: 12px;
           flex-shrink: 0;
+          opacity: 0.85;
         }
 
-        .ai-model-name-tooltip {
-          font-size: 10px;
+        .ai-model-trigger {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          border: none;
+          background: transparent;
+          color: var(--vscode-foreground);
+          font-size: 11px;
           font-weight: 500;
-          color: var(--vscode-descriptionForeground);
-          white-space: nowrap;
-          max-width: 100px;
+          min-width: 0;
+          max-width: 200px;
+          padding: 2px 0;
+          cursor: pointer;
+          text-align: left;
+          flex: 1;
+          overflow: hidden;
+        }
+
+        .ai-model-trigger-label {
           overflow: hidden;
           text-overflow: ellipsis;
+          white-space: nowrap;
+          min-width: 0;
+          flex: 1;
+        }
+
+        .ai-model-trigger-caret {
+          width: 11px;
+          height: 11px;
+          flex-shrink: 0;
+          opacity: 0.7;
+        }
+
+        .ai-model-trigger:focus {
+          outline: none;
+        }
+
+        .ai-model-trigger:focus-visible {
+          outline: 1px solid var(--vscode-focusBorder);
+          outline-offset: 2px;
+          border-radius: 4px;
+        }
+
+        .ai-model-picker.open {
+          border-color: var(--ui-border-strong);
+          box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+        }
+
+        .ai-model-menu {
+          position: absolute;
+          top: calc(100% + 6px);
+          right: 0;
+          min-width: min(320px, 72vw);
+          max-width: min(420px, 80vw);
+          max-height: min(420px, 60vh);
+          overflow: auto;
+          background: var(--vscode-menu-background);
+          color: var(--vscode-menu-foreground);
+          border: 1px solid var(--vscode-menu-border);
+          border-radius: 10px;
+          box-shadow: 0 18px 36px rgba(0, 0, 0, 0.28);
+          z-index: 30;
+          padding: 6px;
+          display: none;
+        }
+
+        .ai-model-picker.open .ai-model-menu {
+          display: block;
+        }
+
+        .ai-model-menu-empty {
+          padding: 12px 10px;
+          font-size: 12px;
+          color: var(--vscode-descriptionForeground);
+        }
+
+        .ai-model-menu-group + .ai-model-menu-group {
+          margin-top: 6px;
+        }
+
+        .ai-model-menu-group-title {
+          font-size: 10px;
+          font-weight: 700;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+          color: var(--vscode-descriptionForeground);
+          padding: 8px 10px 6px;
+        }
+
+        .ai-model-menu-item {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          width: 100%;
+          border: none;
+          background: transparent;
+          color: inherit;
+          padding: 9px 10px;
+          border-radius: 8px;
+          cursor: pointer;
+          text-align: left;
+          font: inherit;
+        }
+
+        .ai-model-menu-item:hover,
+        .ai-model-menu-item:focus-visible {
+          background: var(--vscode-list-hoverBackground);
+          outline: none;
+        }
+
+        .ai-model-menu-item.is-active {
+          background: color-mix(in srgb, var(--vscode-list-activeSelectionBackground) 28%, transparent);
+          color: var(--vscode-list-activeSelectionForeground);
+        }
+
+        .ai-model-menu-item-label {
+          min-width: 0;
+          flex: 1;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          font-size: 12px;
+        }
+
+        .ai-model-menu-item-check {
+          flex-shrink: 0;
+          font-size: 12px;
+          opacity: 0.8;
+        }
+
+        .ai-model-menu-divider {
+          height: 1px;
+          margin: 6px 4px;
+          background: var(--vscode-widget-border);
+          opacity: 0.8;
+        }
+
+        .ai-model-menu-action {
+          border-top: 1px solid var(--vscode-widget-border);
+          margin-top: 6px;
+          padding-top: 6px;
+        }
+
+        .ai-model-menu-action .ai-model-menu-item {
+          color: var(--vscode-button-secondaryForeground);
         }
 
         .clear-btn {

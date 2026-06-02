@@ -1,8 +1,11 @@
-// Self-contained Razorpay Checkout Integration for PgStudio
-// Features: Event Delegation, Dynamic Public Key Resolution, Custom Premium Glassmorphism Alerts.
+// Razorpay Subscription Checkout for PgStudio (Sponsor + Singularity tiers)
 
 (function () {
-  // Inject toast alert styles dynamically to keep checkout styling modular and visually premium
+  const TIER_LABELS = {
+    sponsor: 'Sponsor',
+    singularity: 'Singularity',
+  };
+
   const style = document.createElement('style');
   style.textContent = `
     .payment-toast {
@@ -32,91 +35,50 @@
       transform: translateY(0);
       opacity: 1;
     }
-    .payment-toast.success {
-      border-left: 4px solid #10b981;
-    }
-    .payment-toast.error {
-      border-left: 4px solid #ef4444;
-    }
-    .payment-toast.warning {
-      border-left: 4px solid #f59e0b;
-    }
-    .payment-toast-icon {
-      font-size: 22px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .payment-toast-content {
-      flex: 1;
-      line-height: 1.4;
-    }
+    .payment-toast.success { border-left: 4px solid #10b981; }
+    .payment-toast.error { border-left: 4px solid #ef4444; }
+    .payment-toast.warning { border-left: 4px solid #f59e0b; }
+    .payment-toast-icon { font-size: 22px; }
+    .payment-toast-content { flex: 1; line-height: 1.4; }
     .payment-toast-close {
-      background: none;
-      border: none;
-      color: #9ca3af;
-      cursor: pointer;
-      font-weight: bold;
-      font-size: 18px;
-      margin-left: 12px;
-      padding: 0 4px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: color 0.2s ease;
+      background: none; border: none; color: #9ca3af; cursor: pointer;
+      font-size: 18px; margin-left: 12px; padding: 0 4px;
     }
-    .payment-toast-close:hover {
-      color: #f3f4f6;
-    }
-    
-    /* Loading Spinner */
+    .payment-toast-close:hover { color: #f3f4f6; }
     .spinner-dot {
-      width: 14px;
-      height: 14px;
+      width: 14px; height: 14px;
       border: 2px solid rgba(255, 255, 255, 0.3);
-      border-top-color: white;
-      border-radius: 50%;
+      border-top-color: white; border-radius: 50%;
       animation: spin-anim 0.8s linear infinite;
       display: inline-block;
     }
-    @keyframes spin-anim {
-      to { transform: rotate(360deg); }
-    }
+    @keyframes spin-anim { to { transform: rotate(360deg); } }
   `;
   document.head.appendChild(style);
 
-  // Custom Toast Alert System
+  let configCache = null;
+
   function showCheckoutAlert(type, message) {
-    // Remove existing toast if any
     const existing = document.querySelector('.payment-toast');
     if (existing) existing.remove();
 
     const toast = document.createElement('div');
     toast.className = `payment-toast ${type}`;
 
-    let icon = '⚡';
-    if (type === 'success') icon = '🎉';
-    if (type === 'error') icon = '❌';
-    if (type === 'warning') icon = 'ℹ️';
-
+    const icons = { success: '🎉', error: '❌', warning: 'ℹ️' };
     toast.innerHTML = `
-      <div class="payment-toast-icon">${icon}</div>
+      <div class="payment-toast-icon">${icons[type] || '⚡'}</div>
       <div class="payment-toast-content">${message}</div>
       <button class="payment-toast-close" aria-label="Close notification">&times;</button>
     `;
-
     document.body.appendChild(toast);
-
-    // Fade-in animation
     setTimeout(() => toast.classList.add('show'), 50);
 
-    // Auto dismiss after 6 seconds
     const dismissTimer = setTimeout(() => {
       toast.classList.remove('show');
       setTimeout(() => toast.remove(), 400);
     }, 6000);
 
-    // Close button click handler
     toast.querySelector('.payment-toast-close').addEventListener('click', () => {
       clearTimeout(dismissTimer);
       toast.classList.remove('show');
@@ -124,18 +86,26 @@
     });
   }
 
-  // Use Event Delegation to capture clicks on #btn-razorpay-checkout (since the html is loaded as a dynamic partial)
+  async function fetchConfig() {
+    if (configCache) return configCache;
+    const res = await fetch('/api/config');
+    if (!res.ok) throw new Error('Failed to fetch API configurations');
+    configCache = await res.json();
+    return configCache;
+  }
+
   document.addEventListener('click', async (event) => {
-    const btn = event.target.closest('#btn-razorpay-checkout');
-    if (!btn) return;
+    const btn = event.target.closest('[data-tier]');
+    if (!btn || btn.tagName !== 'BUTTON') return;
+
+    const tier = btn.getAttribute('data-tier');
+    if (!tier || tier === 'free') return;
 
     event.preventDefault();
     if (btn.disabled) return;
 
-    // Save original button content and disable
     const originalContent = btn.innerHTML;
-    const originalText = btn.textContent.trim();
-    
+
     function setBtnLoading(text) {
       btn.disabled = true;
       btn.style.opacity = '0.7';
@@ -148,77 +118,60 @@
       btn.innerHTML = originalContent;
     }
 
+    const pricing = window.PgStudioPricing;
+    const currency = pricing?.getCurrency?.() || 'INR';
+    const period = pricing?.getPeriod?.() || 'monthly';
+    const tierLabel = TIER_LABELS[tier] || tier;
+
     try {
-      setBtnLoading('Initializing Payment...');
-
-      // 1. Fetch Razorpay Key ID from config endpoint
-      const configRes = await fetch('/api/config');
-      if (!configRes.ok) throw new Error('Failed to fetch API configurations');
-      const configData = await configRes.json();
-      const keyId = configData.key_id;
-
+      setBtnLoading('Initializing…');
+      const config = await fetchConfig();
+      const keyId = config.key_id;
       if (!keyId) throw new Error('Razorpay Key ID is missing');
 
-      setBtnLoading('Creating Order...');
+      setBtnLoading('Creating subscription…');
 
-      // 2. Call backend endpoint to create order (amount: 100 paise = ₹1.00)
-      const orderRes = await fetch('/api/create-order', {
+      const subRes = await fetch('/api/create-subscription', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          amount: 100,
-          currency: 'INR',
-          receipt: `receipt_sponsor_${Date.now()}`
-        })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tier, period, currency }),
       });
 
-      if (!orderRes.ok) {
-        const errorData = await orderRes.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Failed to create order');
+      if (!subRes.ok) {
+        const errorData = await subRes.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to create subscription');
       }
 
-      const orderData = await orderRes.json();
+      const subData = await subRes.json();
 
-      setBtnLoading('Launching Checkout...');
+      setBtnLoading('Launching checkout…');
 
-      // 3. Configure Razorpay Standard Checkout Options
+      const periodLabel = period === 'annual' ? 'Annual' : 'Monthly';
+      const displayPrice = subData.display || '';
+
       const options = {
         key: keyId,
-        amount: orderData.amount,
-        currency: orderData.currency,
-        name: 'PgStudio Pro',
-        description: 'One-time Pro Sponsorship Support',
-        order_id: orderData.order_id,
-        image: 'assets/NexQL.png',
-        prefill: {
-          name: 'PostgreSQL Developer',
-          email: 'developer@pgstudio.astrx.dev',
-          contact: '9999999999'
-        },
+        subscription_id: subData.subscription_id,
+        name: 'PgStudio',
+        description: `${tierLabel} — ${periodLabel} subscription`,
+        image: '/assets/NexQL.png',
         notes: {
-          sponsorship_tier: 'Pro Support Plan'
+          tier,
+          period,
+          currency,
         },
-        theme: {
-          color: '#4d5efc' // Matching PgStudio's brand color
-        },
+        theme: { color: '#6C4CF0' },
         handler: async function (response) {
-          // On Payment Success:
-          // Receive razorpay_payment_id, razorpay_order_id, razorpay_signature
-          setBtnLoading('Verifying Transaction...');
-          
+          setBtnLoading('Verifying payment…');
           try {
             const verifyRes = await fetch('/api/verify-payment', {
               method: 'POST',
-              headers: {
-                'Content-Type': 'application/json'
-              },
+              headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 razorpay_order_id: response.razorpay_order_id,
                 razorpay_payment_id: response.razorpay_payment_id,
-                razorpay_signature: response.razorpay_signature
-              })
+                razorpay_signature: response.razorpay_signature,
+              }),
             });
 
             const verifyData = await verifyRes.json();
@@ -226,7 +179,7 @@
             if (verifyRes.ok && verifyData.success) {
               showCheckoutAlert(
                 'success',
-                '<strong>Thank you for your support!</strong><br>Your payment of ₹1.00 has been verified successfully. Welcome to PgStudio Pro!'
+                `<strong>Welcome to PgStudio ${tierLabel}!</strong><br>Your ${displayPrice} subscription payment was verified.`
               );
             } else {
               showCheckoutAlert(
@@ -235,44 +188,37 @@
               );
             }
           } catch (err) {
-            console.error('Signature verification call failed:', err);
-            showCheckoutAlert(
-              'error',
-              'Connection error during transaction signature verification.'
-            );
+            console.error('Signature verification failed:', err);
+            showCheckoutAlert('error', 'Connection error during payment verification.');
           } finally {
             resetButton();
           }
         },
         modal: {
           ondismiss: function () {
-            // Handle modal dismiss (user cancelled)
-            showCheckoutAlert('warning', 'Sponsorship checkout cancelled by user.');
+            showCheckoutAlert('warning', `${tierLabel} checkout cancelled.`);
             resetButton();
-          }
-        }
+          },
+        },
       };
 
-      // 4. Open Razorpay Payment Modal
       const rzp = new Razorpay(options);
-      
-      // Handle payment.failed event
+
       rzp.on('payment.failed', function (response) {
-        console.error('Payment failure event:', response.error);
+        console.error('Payment failure:', response.error);
         showCheckoutAlert(
           'error',
-          `<strong>Payment Failed:</strong> ${response.error.description || 'Transaction unsuccessful'}`
+          `<strong>Payment failed:</strong> ${response.error.description || 'Transaction unsuccessful'}`
         );
         resetButton();
       });
 
       rzp.open();
-
     } catch (error) {
       console.error('Checkout initialization failed:', error);
       showCheckoutAlert(
         'error',
-        `<strong>Checkout Error:</strong> ${error.message || 'Initialization failed'}`
+        `<strong>Checkout error:</strong> ${error.message || 'Initialization failed'}`
       );
       resetButton();
     }

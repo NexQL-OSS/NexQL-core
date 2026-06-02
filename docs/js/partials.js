@@ -17,4 +17,6 @@ async function loadHtmlPartials() {
       root.innerHTML = "";
     }
   }));
+
+  document.dispatchEvent(new CustomEvent('partials-loaded'));
 }

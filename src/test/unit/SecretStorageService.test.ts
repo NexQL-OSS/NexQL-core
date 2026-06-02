@@ -71,9 +71,9 @@ describe('SecretStorageService', () => {
     expect(await service.getAiApiKey()).to.equal(undefined);
 
     expect(context.secrets.store.calledWithExactly('postgres-password-conn1', 'pw-1')).to.be.true;
-    expect(context.secrets.store.calledWithExactly('postgresExplorer.aiApiKey', 'api-key-1')).to.be.true;
+    expect(context.secrets.store.calledWithExactly('postgresExplorer.aiApiKey.openai', 'api-key-1')).to.be.true;
     expect(context.secrets.delete.calledWithExactly('postgres-password-conn1')).to.be.true;
-    expect(context.secrets.delete.calledWithExactly('postgresExplorer.aiApiKey')).to.be.true;
+    expect(context.secrets.delete.calledWithExactly('postgresExplorer.aiApiKey.openai')).to.be.true;
   });
 
   it('migrates stored passwords and updates the connection list', async () => {

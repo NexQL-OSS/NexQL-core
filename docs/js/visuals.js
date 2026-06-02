@@ -40,10 +40,12 @@ async function hydrateMarketplaceStats() {
     const dlEl = document.getElementById("stat-downloads");
     const rtEl = document.getElementById("stat-rating");
     const landingDlEl = document.getElementById("landing-stat-downloads");
+    const landingRtEl = document.getElementById("landing-stat-rating");
     const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
     set("stat-version", `v${version}`);
     set("badge-version", `v${version}`);
     set("min-overview-version", `v${version}`);
+    set("min-overview-version-pill", `v${version}`);
 
     const landingVerMeta = document.getElementById("landing-software-version-meta");
     if (landingVerMeta?.tagName === "META") {
@@ -54,6 +56,7 @@ async function hydrateMarketplaceStats() {
       animateCountUp(dlEl, installs >= 1e3 ? installs / 1e3 : installs, installs >= 1e3 ? "K" : "", 1200);
       animateCountUp(rtEl, rating, "", 800);
       animateCountUp(landingDlEl, installs >= 1e3 ? installs / 1e3 : installs, installs >= 1e3 ? "K" : "", 1200);
+      animateCountUp(landingRtEl, rating, "★", 800);
     }, 600);
   } catch (e) {
     console.error("Marketplace stats failed", e);

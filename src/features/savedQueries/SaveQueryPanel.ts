@@ -160,11 +160,12 @@ export class SaveQueryPanel {
   private async _handleAIGeneration(field: 'title' | 'description' | 'tags' | 'all') {
     try {
       const config = vscode.workspace.getConfiguration('postgresExplorer');
-      const provider = config.get<string>('aiProvider') || 'vscode-lm';
-      
+      const { readAiScopeSettings } = await import('../aiAssistant/aiConfig');
+      const provider = readAiScopeSettings(config, 'notebook').provider;
+
       // Check if AI is available
       try {
-        await this._aiService.getModelInfo(provider, config);
+        await this._aiService.getModelInfo(provider, config, 'notebook');
       } catch (error) {
         this._panel.webview.postMessage({
           command: 'aiError',
@@ -187,7 +188,7 @@ export class SaveQueryPanel {
       }
 
       // Call AI
-      const result = await this._aiService.callProvider(provider, prompt, config, '');
+      const result = await this._aiService.callProvider(provider, prompt, config, '', 'notebook');
 
       // Clean up the response
       let generated = result.text.trim();
@@ -200,17 +201,17 @@ export class SaveQueryPanel {
       if (field === 'all') {
         // Generate title
         const titlePrompt = `Analyze this SQL query and generate a SHORT, DESCRIPTIVE title (max 6 words):\n\n${this._queryText}\n\nRespond with ONLY the title, nothing else.`;
-        const titleResult = await this._aiService.callProvider(provider, titlePrompt, config, '');
+        const titleResult = await this._aiService.callProvider(provider, titlePrompt, config, '', 'notebook');
         const title = titleResult.text.trim().replace(/^["']|["']$/g, '').trim();
 
         // Generate description
         const descPrompt = `Analyze this SQL query and generate a brief description (1-2 sentences) explaining what it does:\n\n${this._queryText}\n\nRespond with ONLY the description, nothing else.`;
-        const descResult = await this._aiService.callProvider(provider, descPrompt, config, '');
+        const descResult = await this._aiService.callProvider(provider, descPrompt, config, '', 'notebook');
         const description = descResult.text.trim().replace(/^["']|["']$/g, '').trim();
 
         // Generate tags
         const tagsPrompt = `Analyze this SQL query and generate 3-5 relevant tags (single words or short phrases) separated by commas:\n\n${this._queryText}\n\nRespond with ONLY the comma-separated tags, nothing else.`;
-        const tagsResult = await this._aiService.callProvider(provider, tagsPrompt, config, '');
+        const tagsResult = await this._aiService.callProvider(provider, tagsPrompt, config, '', 'notebook');
         const tags = tagsResult.text.trim().replace(/^["']|["']$/g, '').trim();
 
         this._panel.webview.postMessage({

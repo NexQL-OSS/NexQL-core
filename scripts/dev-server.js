@@ -39,7 +39,7 @@ app.use(express.static(path.join(__dirname, '../docs')));
 
 // Import Serverless function modules
 const configHandler = require('../api/config');
-const createOrderHandler = require('../api/create-order');
+const createSubscriptionHandler = require('../api/create-subscription');
 const verifyPaymentHandler = require('../api/verify-payment');
 
 // Standard Express wrapper for Serverless function signature (req, res)
@@ -55,7 +55,7 @@ const wrapServerless = (handler) => {
 
 // API Endpoints
 app.get('/api/config', wrapServerless(configHandler));
-app.post('/api/create-order', wrapServerless(createOrderHandler));
+app.post('/api/create-subscription', wrapServerless(createSubscriptionHandler));
 app.post('/api/verify-payment', wrapServerless(verifyPaymentHandler));
 
 // Global Error Handler

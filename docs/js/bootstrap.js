@@ -1,18 +1,40 @@
+function scrollToLandingAnchor(anchorId) {
+  const target = document.getElementById(anchorId);
+  if (!target) return;
+
+  const scrollTarget = () => {
+    target.scrollIntoView({ behavior: "smooth", block: "start" });
+    document.querySelector(".desktop-topbar-links")?.classList.remove("show");
+  };
+
+  if (document.body.classList.contains("editor-minimized")) {
+    scrollTarget();
+    return;
+  }
+  setEditorMinimizedState(true);
+  window.setTimeout(scrollTarget, 400);
+}
+
+function scrollToLandingPricing() {
+  scrollToLandingAnchor("landing-price-title");
+}
+
 function wireLandingChrome() {
-  document.getElementById("btn-landing-home")?.addEventListener("click", () => {
-    const minimized = document.body.classList.contains("editor-minimized");
-    if (minimized) {
-      document.querySelector(".hero-shell")?.scrollTo({ top: 0, behavior: "smooth" });
-      window.scrollTo({ top: 0, behavior: "smooth" });
-      return;
-    }
-    setEditorMinimizedState(true);
+  document.querySelectorAll("[data-landing-scroll]").forEach((node) => {
+    node.addEventListener("click", () => {
+      const anchor = node.getAttribute("data-landing-scroll");
+      if (anchor) scrollToLandingAnchor(anchor);
+    });
   });
 
-  document.getElementById("btn-landing-live-demo")?.addEventListener("click", () => {
-    setEditorMinimizedState(false);
-    openFile("query");
-    switchSidebarPanel("pgstudio");
+  document.getElementById("btn-landing-pricing")?.addEventListener("click", () => scrollToLandingPricing());
+  document.getElementById("footer-landing-pricing")?.addEventListener("click", () => scrollToLandingPricing());
+
+  document.querySelectorAll('a[href="#install"]').forEach((link) => {
+    link.addEventListener("click", (e) => {
+      e.preventDefault();
+      scrollToLandingAnchor("install");
+    });
   });
 
   document.querySelectorAll("[data-landing-open-demo]").forEach((node) => {

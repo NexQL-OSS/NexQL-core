@@ -6,6 +6,8 @@ import * as vscode from 'vscode';
 import { ChatViewProvider } from '../../providers/ChatViewProvider';
 import { ErrorService } from '../../services/ErrorService';
 import { QueryAnalyzer } from '../../services/QueryAnalyzer';
+import { AiModelCatalogService } from '../../features/aiAssistant/AiModelCatalogService';
+import * as aiConfig from '../../features/aiAssistant/aiConfig';
 
 function createExtensionContext(): vscode.ExtensionContext {
   return {
@@ -99,14 +101,31 @@ describe('ChatViewProvider', () => {
 
   beforeEach(() => {
     sandbox = sinon.createSandbox();
+    sandbox.stub(AiModelCatalogService, 'getInstance').returns({
+      buildChatCatalog: sandbox.stub().resolves({
+        catalog: [],
+        activeSelectionId: 'vscode-lm:default',
+        activeModelLabel: 'VS Code LM',
+      }),
+      invalidateCache: sandbox.stub(),
+    } as any);
     sandbox.stub(vscode.workspace, 'getConfiguration').callsFake((section?: string) => {
       if (section === 'postgresExplorer') {
         return {
-          get: (key: string) => {
-            if (key === 'aiProvider') return 'vscode-lm';
-            if (key === 'aiModel') return '';
-            return undefined;
-          }
+          get: (key: string, defaultValue?: unknown) => {
+            if (
+              key === 'aiProvider' ||
+              key === 'ai.chat.provider' ||
+              key === 'ai.notebook.provider'
+            ) {
+              return 'vscode-lm';
+            }
+            if (key === 'aiModel' || key === 'ai.chat.model' || key === 'ai.notebook.model') {
+              return '';
+            }
+            return defaultValue;
+          },
+          update: sandbox.stub().resolves(),
         } as any;
       }
       return {
@@ -303,6 +322,19 @@ describe('ChatViewProvider', () => {
 
     await messageHandler!({ type: 'openAiSettings' });
     expect(executeCommandStub.calledOnceWithExactly('postgres-explorer.aiSettings')).to.be.true;
+
+    const writeScopeStub = sandbox.stub(aiConfig, 'writeAiScopeSettings').resolves();
+    sandbox.stub(aiConfig, 'rememberLastModelForProvider').resolves();
+    await messageHandler!({
+      type: 'switchChatModel',
+      selectionId: 'anthropic:claude-sonnet-4-20250514',
+    });
+    expect(
+      writeScopeStub.calledOnceWith('chat', {
+        provider: 'anthropic',
+        model: 'claude-sonnet-4-20250514',
+      }),
+    ).to.be.true;
 
     await messageHandler!({ type: 'openInNotebook', code: 'SELECT 1;' });
     expect(handleOpenInNotebookStub.calledOnceWithExactly('SELECT 1;')).to.be.true;

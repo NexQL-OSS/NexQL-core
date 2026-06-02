@@ -1,6 +1,6 @@
 .titlebar {
   align-items: center;
-  background: #070c13;
+  background: var(--nex-panel);
   border-bottom: 1px solid var(--vsc-border);
   display: flex;
   gap: 8px;
@@ -12,7 +12,7 @@
   border-radius: 5px;
   flex-shrink: 0;
   height: 22px;
-  object-fit: cover;
+  object-fit: contain;
   width: 22px;
 }
 

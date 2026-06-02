@@ -25,6 +25,13 @@ import {
 import type { ConnectionConfig, NoticeLogEntry } from '../common/types';
 import { buildBackupToolsSystemPrompt, buildBackupToolsUserMessage } from './chat/backupToolsAssistantPrompt';
 import { ErrorService } from '../services/ErrorService';
+import {
+  parseSelectionId,
+  readAiScopeSettings,
+  rememberLastModelForProvider,
+  writeAiScopeSettings,
+} from '../features/aiAssistant/aiConfig';
+import { AiModelCatalogService } from '../features/aiAssistant/AiModelCatalogService';
 
 /** P1.4 — max rows sampled into the AI prompt for "Analyze Data" on large result sets. */
 const AI_ANALYZE_MAX_SAMPLE_ROWS = 200;
@@ -83,11 +90,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
   constructor(
     private readonly _extensionUri: vscode.Uri,
-    context: vscode.ExtensionContext
+    private readonly _extensionContext: vscode.ExtensionContext,
   ) {
     this._dbObjectService = new DbObjectService();
     this._aiService = new AiService();
-    this._sessionService = new SessionService(context);
+    this._sessionService = new SessionService(_extensionContext);
   }
 
   /**
@@ -95,7 +102,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
    * Called when AI settings are changed
    */
   public refreshModelInfo(): void {
-    this._updateModelInfo();
+    void this._pushModelCatalogToWebview();
   }
 
   public async openInEditor(column: vscode.ViewColumn = vscode.ViewColumn.Beside): Promise<void> {
@@ -126,7 +133,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     this._sendHistoryToWebview();
     this._updateChatHistory();
     this._sendContextUpdate();
-    await this._updateModelInfo();
+    await this._pushModelCatalogToWebview();
   }
 
   private _getTargetWebview(): vscode.Webview | undefined {
@@ -233,6 +240,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           break;
         case 'openAiSettings':
           vscode.commands.executeCommand('postgres-explorer.aiSettings');
+          break;
+        case 'getModelCatalog':
+          await this._pushModelCatalogToWebview();
+          break;
+        case 'switchChatModel':
+          await this._handleSwitchChatModel(data.selectionId);
           break;
         case 'openInNotebook':
           await this._handleOpenInNotebook(data.code);
@@ -456,7 +469,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       this._sendHistoryToWebview();
       this._updateChatHistory();
       this._sendContextUpdate();
-      this._updateModelInfo();
+      void this._pushModelCatalogToWebview();
     }, 100);
   }
 
@@ -584,11 +597,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private async _runAiRequest(aiMessage: string, capability: AiCapability = 'chat'): Promise<void> {
     try {
       const config = vscode.workspace.getConfiguration('postgresExplorer');
-      const provider = config.get<string>('aiProvider') || 'vscode-lm';
-      const modelInfo = await this._aiService.getModelInfo(provider, config);
+      const chatSettings = readAiScopeSettings(config, 'chat');
+      const provider = chatSettings.provider;
+      const modelInfo = await this._aiService.getModelInfo(provider, config, 'chat');
       console.log('[ChatView] Using AI provider:', provider, 'Model:', modelInfo);
 
-      this._updateModelInfo();
+      void this._pushModelCatalogToWebview();
 
       vscode.window.setStatusBarMessage(`$(sparkle) AI: ${modelInfo}`, 3000);
 
@@ -610,7 +624,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             })
           : this._aiService.buildSystemPrompt(capability);
 
-      const result = await this._aiService.callProvider(provider, aiMessage, config, customSystem);
+      const result = await this._aiService.callProvider(provider, aiMessage, config, customSystem, 'chat');
       responseText = result.text;
       usageInfo = result.usage;
 
@@ -949,7 +963,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
   private async _saveCurrentSession(): Promise<void> {
     const config = vscode.workspace.getConfiguration('postgresExplorer');
-    const provider = config.get<string>('aiProvider') || 'vscode-lm';
+    const chatSettings = readAiScopeSettings(config, 'chat');
+    const provider = chatSettings.provider;
 
     // Phase C: Pass metadata to session service
     await this._sessionService.saveSession(
@@ -1021,20 +1036,49 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     });
   }
 
-  private async _updateModelInfo(): Promise<void> {
+  private async _pushModelCatalogToWebview(): Promise<void> {
     const webview = this._getTargetWebview();
     if (!webview) {
       return;
     }
 
-    const config = vscode.workspace.getConfiguration('postgresExplorer');
-    const provider = config.get<string>('aiProvider') || 'vscode-lm';
-    const modelInfo = await this._aiService.getModelInfo(provider, config);
+    const payload = await AiModelCatalogService.getInstance(this._extensionContext).buildChatCatalog();
+
+    webview.postMessage({
+      type: 'updateModelCatalog',
+      catalog: payload.catalog,
+      activeSelectionId: payload.activeSelectionId,
+      activeModelLabel: payload.activeModelLabel,
+    });
 
     webview.postMessage({
       type: 'updateModelInfo',
-      modelName: modelInfo
+      modelName: payload.activeModelLabel,
     });
+  }
+
+  private async _handleSwitchChatModel(selectionId: string): Promise<void> {
+    if (selectionId === '__configure__') {
+      await vscode.commands.executeCommand('postgres-explorer.aiSettings');
+      return;
+    }
+
+    const parsed = parseSelectionId(selectionId);
+    if (!parsed) {
+      return;
+    }
+
+    await writeAiScopeSettings('chat', {
+      provider: parsed.provider,
+      model: parsed.modelId,
+    });
+    await rememberLastModelForProvider(
+      this._extensionContext,
+      parsed.provider,
+      parsed.modelId,
+    );
+    AiModelCatalogService.getInstance(this._extensionContext).invalidateCache();
+    await this._pushModelCatalogToWebview();
   }
 
   public async handleExplainError(error: string, query: string): Promise<void> {

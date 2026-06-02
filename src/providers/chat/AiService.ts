@@ -6,6 +6,11 @@ import * as https from 'https';
 import * as http from 'http';
 import { ChatMessage } from './types';
 import { SecretStorageService } from '../../services/SecretStorageService';
+import { AiCredentialsService } from '../../features/aiAssistant/AiCredentialsService';
+import { readAiScopeSettings } from '../../features/aiAssistant/aiConfig';
+import { resolveVsCodeLanguageModel } from '../../features/aiAssistant/modelListing';
+import { AiConfigScope } from '../../features/aiAssistant/types';
+import { DirectApiKeyProvider } from '../../features/aiAssistant/types';
 import { TelemetryService } from '../../services/TelemetryService';
 import { AiCapability, buildSystemPrompt as composeSystemPrompt } from './prompts';
 
@@ -96,16 +101,33 @@ export class AiService {
     this._connectionContext = ctx;
   }
 
-  async callProvider(provider: string, userMessage: string, config: vscode.WorkspaceConfiguration, customSystemPrompt?: string): Promise<{ text: string, usage?: string }> {
+  async callProvider(
+    provider: string,
+    userMessage: string,
+    config: vscode.WorkspaceConfiguration,
+    customSystemPrompt?: string,
+    scope: AiConfigScope = 'notebook',
+  ): Promise<{ text: string; usage?: string }> {
     if (provider === 'vscode-lm') {
-      return await this.callVsCodeLm(userMessage, config, customSystemPrompt);
+      return await this.callVsCodeLm(userMessage, config, customSystemPrompt, scope);
     }
 
     if (provider === 'cursor') {
-      return await this.callCursorAgent(userMessage, config, customSystemPrompt);
+      return await this.callCursorAgent(userMessage, config, customSystemPrompt, scope);
     }
 
-    return await this.callDirectApi(provider, userMessage, config, customSystemPrompt);
+    return await this.callDirectApi(provider, userMessage, config, customSystemPrompt, scope);
+  }
+
+  private _resolveConfiguredModel(
+    config: vscode.WorkspaceConfiguration,
+    scope: AiConfigScope,
+  ): string | undefined {
+    const scoped = readAiScopeSettings(config, scope).model;
+    if (scoped) {
+      return scoped;
+    }
+    return config.get<string>('aiModel') || undefined;
   }
 
   /**
@@ -117,35 +139,32 @@ export class AiService {
     return composeSystemPrompt(capability, this._connectionContext);
   }
 
-  async callVsCodeLm(userMessage: string, config: vscode.WorkspaceConfiguration, customSystemPrompt?: string): Promise<{ text: string, usage?: string }> {
+  async callVsCodeLm(
+    userMessage: string,
+    config: vscode.WorkspaceConfiguration,
+    customSystemPrompt?: string,
+    scope: AiConfigScope = 'notebook',
+  ): Promise<{ text: string; usage?: string }> {
     const telemetry = TelemetryService.getInstance();
-    const configuredModel = config.get<string>('aiModel');
-    let models: vscode.LanguageModelChat[];
+    const configuredModel = this._resolveConfiguredModel(config, scope);
+    let model: vscode.LanguageModelChat | undefined;
 
     if (configuredModel) {
-      // Extract base name if format is "name (family)"
-      const baseName = configuredModel.replace(/\s*\(.*\)$/, '').trim();
-
-      // Try to find the specific model by name/id/family
-      const allModels = await vscode.lm.selectChatModels({});
-      const matchingModels = allModels.filter(m =>
-        m.id === baseName ||
-        m.name === baseName ||
-        m.family === baseName ||
-        m.id === configuredModel ||
-        m.name === configuredModel ||
-        m.family === configuredModel
-      );
-      models = matchingModels.length > 0 ? matchingModels : allModels;
+      model = await resolveVsCodeLanguageModel(configuredModel);
+      if (!model) {
+        throw new Error(
+          `Configured VS Code language model "${configuredModel}" was not found. ` +
+            'Open PgStudio AI settings, list models, and save your selection again.',
+        );
+      }
     } else {
-      // Default: try gpt-4o family first
-      models = await vscode.lm.selectChatModels({ family: 'gpt-4o' });
+      let models = await vscode.lm.selectChatModels({ family: 'gpt-4o' });
       if (models.length === 0) {
         models = await vscode.lm.selectChatModels({});
       }
+      model = models[0];
     }
 
-    const model = models[0];
     if (!model) {
       throw new Error('No AI models available via VS Code API. Please ensure GitHub Copilot Chat is installed or switch provider.');
     }
@@ -343,8 +362,12 @@ export class AiService {
       .filter((model: { id: string }) => !!model.id);
   }
 
-  private async _resolveCursorModel(config: vscode.WorkspaceConfiguration, apiKey: string): Promise<string> {
-    const configuredModel = config.get<string>('aiModel');
+  private async _resolveCursorModel(
+    config: vscode.WorkspaceConfiguration,
+    apiKey: string,
+    scope: AiConfigScope = 'notebook',
+  ): Promise<string> {
+    const configuredModel = this._resolveConfiguredModel(config, scope);
     if (configuredModel) {
       try {
         const models = await this._listCursorModels(apiKey);
@@ -382,7 +405,12 @@ export class AiService {
     return sections.join('\n\n');
   }
 
-  private async callCursorAgent(userMessage: string, config: vscode.WorkspaceConfiguration, customSystemPrompt?: string): Promise<{ text: string, usage?: string }> {
+  private async callCursorAgent(
+    userMessage: string,
+    config: vscode.WorkspaceConfiguration,
+    customSystemPrompt?: string,
+    scope: AiConfigScope = 'notebook',
+  ): Promise<{ text: string; usage?: string }> {
     const telemetry = TelemetryService.getInstance();
     if (!userMessage || !userMessage.trim()) {
       throw new Error('User message is required for AI requests.');
@@ -394,7 +422,7 @@ export class AiService {
     }
 
     const { Agent } = await this._loadCursorSdk();
-    const model = await this._resolveCursorModel(config, apiKey);
+    const model = await this._resolveCursorModel(config, apiKey, scope);
     const systemPrompt = customSystemPrompt !== undefined ? customSystemPrompt : this.buildSystemPrompt();
     const prompt = this._buildCursorPrompt(userMessage, systemPrompt, config);
     const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.cwd();
@@ -918,7 +946,13 @@ export class AiService {
     return parts;
   }
 
-  async callDirectApi(provider: string, userMessage: string, config: vscode.WorkspaceConfiguration, customSystemPrompt?: string): Promise<{ text: string, usage?: string }> {
+  async callDirectApi(
+    provider: string,
+    userMessage: string,
+    config: vscode.WorkspaceConfiguration,
+    customSystemPrompt?: string,
+    scope: AiConfigScope = 'notebook',
+  ): Promise<{ text: string; usage?: string }> {
     const telemetry = TelemetryService.getInstance();
     if (!DIRECT_API_PROVIDERS.has(provider)) {
       throw new Error(`Unsupported provider: ${provider}`);
@@ -926,7 +960,7 @@ export class AiService {
     if (!userMessage || !userMessage.trim()) {
       throw new Error('User message is required for AI requests.');
     }
-    const apiKey = await this._getDirectApiKey(config);
+    const apiKey = await this._getDirectApiKey(config, provider);
     const githubSession = provider === 'github' ? await this._getGitHubSession() : undefined;
     
     // API key is required for most providers, but optional for custom endpoints
@@ -935,7 +969,7 @@ export class AiService {
     }
 
     let endpoint = '';
-    let model = config.get<string>('aiModel');
+    let model = this._resolveConfiguredModel(config, scope);
     let headers: any = {
       'Content-Type': 'application/json'
     };
@@ -1188,8 +1222,24 @@ export class AiService {
     );
   }
 
-  private async _getDirectApiKey(config: vscode.WorkspaceConfiguration): Promise<string> {
+  private async _getDirectApiKey(
+    config: vscode.WorkspaceConfiguration,
+    provider: string,
+  ): Promise<string> {
     try {
+      if (
+        provider === 'openai' ||
+        provider === 'anthropic' ||
+        provider === 'gemini' ||
+        provider === 'custom'
+      ) {
+        const scopedKey = await AiCredentialsService.getInstance().getApiKey(
+          provider as DirectApiKeyProvider,
+        );
+        if (scopedKey) {
+          return scopedKey;
+        }
+      }
       const secretApiKey = await SecretStorageService.getInstance().getAiApiKey();
       return secretApiKey || config.get<string>('aiApiKey') || '';
     } catch {
@@ -1336,21 +1386,21 @@ export class AiService {
     }
   }
 
-  async getModelInfo(provider: string, config: vscode.WorkspaceConfiguration): Promise<string> {
+  async getModelInfo(
+    provider: string,
+    config: vscode.WorkspaceConfiguration,
+    scope: AiConfigScope = 'notebook',
+  ): Promise<string> {
     try {
-      const configuredModel = config.get<string>('aiModel');
+      const configuredModel = this._resolveConfiguredModel(config, scope);
 
       if (provider === 'vscode-lm') {
         if (configuredModel) {
-          const baseName = configuredModel.replace(/\s*\(.*\)$/, '').trim();
-          const allModels = await this._selectChatModelsWithTimeout({});
-          const matchingModels = allModels.filter((m: vscode.LanguageModelChat) =>
-            m.id === baseName || m.name === baseName || m.family === baseName ||
-            m.id === configuredModel || m.name === configuredModel || m.family === configuredModel
-          );
-          if (matchingModels.length > 0) {
-            return matchingModels[0].name || matchingModels[0].id;
+          const resolved = await resolveVsCodeLanguageModel(configuredModel);
+          if (resolved) {
+            return resolved.name || resolved.id;
           }
+          return configuredModel;
         }
         const models = await this._selectChatModelsWithTimeout({ family: 'gpt-4o' });
         if (models.length > 0) {

@@ -43,7 +43,7 @@
           <option value="60">Last 1h</option>
         </select>
         <button class="btn-action" data-action="refresh">Refresh</button>
-        <button class="btn-action btn-ai" id="ai-toggle-btn" title="Open AI Insights panel">&#129504; Ask AI</button>
+        <button class="btn-action btn-ai" id="ai-toggle-btn" data-action="toggleAiPanel" title="Open AI Insights panel">&#129504; Ask AI</button>
       </div>
     </div>
 
@@ -468,39 +468,41 @@
 
     </div>
 
-    <!-- AI INSIGHTS PANEL (slide-in drawer) -->
-    <div id="ai-panel" class="ai-panel" aria-label="AI Insights">
-      <div class="ai-panel-header">
-        <span class="ai-panel-title">&#129504; AI Insights</span>
-        <label class="ai-auto-label" title="Automatically analyze when health degrades">
-          <input type="checkbox" id="ai-auto-notify">
-          <span>Auto on degradation</span>
-        </label>
-        <button id="ai-clear-btn" class="ai-panel-clear" title="Clear conversation">&#10227;</button>
-        <button id="ai-panel-close" class="ai-panel-close" title="Close AI panel">&#10005;</button>
-      </div>
-      <div class="ai-quick-chips">
-        <button class="ai-chip" data-prompt="analyze-health">Analyze health</button>
-        <button class="ai-chip" data-prompt="explain-locks">Explain locks</button>
-        <button class="ai-chip" data-prompt="slow-queries">Slow queries</button>
-        <button class="ai-chip" data-prompt="top-sql">Optimize top SQL</button>
-        <button class="ai-chip" data-prompt="schema-health">Schema health</button>
-        <button class="ai-chip" data-prompt="vacuum-advice">Vacuum advice</button>
-        <button class="ai-chip" data-prompt="connection-triage">Connection triage</button>
-        <button class="ai-chip" data-prompt="index-recommendations">Index advice</button>
-      </div>
-      <div id="ai-response-area" class="ai-response-area">
-        <div class="ai-welcome">
-          <p>Ask about any metric, or click a quick-action above.</p>
-          <p class="dash-ai-welcome-foot">Context from the current dashboard snapshot is sent with each question. The AI will suggest follow-up questions after each response.</p>
-        </div>
-      </div>
-      <div class="ai-input-row">
-        <textarea id="ai-question" class="ai-question-input" placeholder="Ask about any metric, or type a number to select a follow-up question..." rows="2"></textarea>
-        <button id="ai-send-btn" class="btn-action">Send</button>
+  </div>
+
+  <div id="ai-panel-backdrop" class="ai-panel-backdrop" data-action="closeAiPanel" hidden aria-hidden="true"></div>
+
+  <!-- AI INSIGHTS PANEL (body-level fixed drawer; avoid transform for webview hit-testing) -->
+  <div id="ai-panel" class="ai-panel" aria-label="AI Insights">
+    <div class="ai-panel-header">
+      <span class="ai-panel-title">&#129504; AI Insights</span>
+      <label class="ai-auto-label" title="Automatically analyze when health degrades">
+        <input type="checkbox" id="ai-auto-notify">
+        <span>Auto on degradation</span>
+      </label>
+      <button type="button" id="ai-clear-btn" class="ai-panel-clear" data-action="clearAiConversation" title="Clear conversation">&#10227;</button>
+      <button type="button" id="ai-panel-close" class="ai-panel-close" data-action="closeAiPanel" title="Close AI panel">&#10005;</button>
+    </div>
+    <div class="ai-quick-chips">
+      <button type="button" class="ai-chip" data-prompt="analyze-health">Analyze health</button>
+      <button type="button" class="ai-chip" data-prompt="explain-locks">Explain locks</button>
+      <button type="button" class="ai-chip" data-prompt="slow-queries">Slow queries</button>
+      <button type="button" class="ai-chip" data-prompt="top-sql">Optimize top SQL</button>
+      <button type="button" class="ai-chip" data-prompt="schema-health">Schema health</button>
+      <button type="button" class="ai-chip" data-prompt="vacuum-advice">Vacuum advice</button>
+      <button type="button" class="ai-chip" data-prompt="connection-triage">Connection triage</button>
+      <button type="button" class="ai-chip" data-prompt="index-recommendations">Index advice</button>
+    </div>
+    <div id="ai-response-area" class="ai-response-area">
+      <div class="ai-welcome">
+        <p>Ask about any metric, or click a quick-action above.</p>
+        <p class="dash-ai-welcome-foot">Context from the current dashboard snapshot is sent with each question. The AI will suggest follow-up questions after each response.</p>
       </div>
     </div>
-
+    <div class="ai-input-row">
+      <textarea id="ai-question" class="ai-question-input" placeholder="Ask about any metric, or type a number to select a follow-up question..." rows="2"></textarea>
+      <button type="button" id="ai-send-btn" class="ai-send-btn" data-action="sendAiQuestion">Send</button>
+    </div>
   </div>
 
   <div id="detail-view">

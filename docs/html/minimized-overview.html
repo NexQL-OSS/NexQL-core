@@ -12,45 +12,50 @@
     <meta itemprop="priceCurrency" content="USD">
   </div>
 
-  <!-- Two-column hero layout (one viewport slice; height from --landing-hero-slice-height) -->
-  <div class="hero-layout landing-viewport">
+  <!-- Centered hero (nexql layout): copy → trust → mini preview opens full workbench -->
+  <div class="hero-layout landing-viewport hero-layout--centered">
 
-    <div class="hero-col-left">
+    <div class="hero-copy-block">
+      <p class="hero-trust-badge hero-pill" aria-live="polite">
+        <span class="badge-pulse" aria-hidden="true"></span>
+        <span><span id="min-overview-version-pill">v—</span> · Free &amp; open source · 4 AI providers</span>
+      </p>
 
       <h1 class="landing-hero-title">
-        PostgreSQL work<br>
-        <span class="hero-line hero-line--accent">without</span>
-        <span class="hero-line hero-line--accent">context</span>
-        <span class="hero-line hero-line--accent">switching.</span>
+        PostgreSQL, without the<br>
+        <span class="grad-text">context switching.</span>
       </h1>
 
-      <p class="min-lead" itemprop="description">Connect to a demo database, run a notebook query, watch results chart,
-        and ask the AI assistant why the query is slow — all inside VS Code.</p>
+      <p class="min-lead" itemprop="description">Connect to a database, run a notebook query, watch the chart build, and ask a schema-aware AI why it&apos;s slow — all inside VS Code. Zero browser tabs.</p>
 
       <div class="minimized-actions">
-        <button class="min-cta primary" id="open-editor-shortcut" type="button">Open interactive demo</button>
-        <a class="min-cta secondary"
+        <a class="min-cta primary"
           href="https://marketplace.visualstudio.com/items?itemName=ric-v.postgres-explorer" target="_blank"
-          rel="noopener noreferrer">Install from Marketplace</a>
+          rel="noopener noreferrer"><span aria-hidden="true">⬇</span> Install from Marketplace</a>
+        <button class="min-cta secondary" id="open-editor-shortcut" type="button"><span aria-hidden="true">▶</span> Run the demo</button>
       </div>
 
-      <div class="hero-kpi-strip hero-kpis" aria-live="polite">
+      <div class="hero-kpi-strip hero-kpis hero-trust" aria-live="polite">
         <div class="kpi-item">
           <span class="kpi-value"><span id="landing-stat-downloads">—</span></span>
-          <span class="kpi-label">Marketplace installs</span>
+          <span class="kpi-label">installs</span>
         </div>
         <div class="kpi-item">
-          <span class="kpi-value"><span id="min-overview-version">—</span></span>
-          <span class="kpi-label">Current release</span>
+          <span class="kpi-value"><span id="landing-stat-rating">—</span></span>
+          <span class="kpi-label">rating</span>
         </div>
         <div class="kpi-item">
-          <span class="kpi-value">AI + SQL</span>
-          <span class="kpi-label">Schema aware workflows</span>
+          <span class="kpi-value">50+</span>
+          <span class="kpi-label">capabilities</span>
+        </div>
+        <div class="kpi-item">
+          <span class="kpi-value">PG 12–17</span>
+          <span class="kpi-label">RDS · Supabase · Neon</span>
         </div>
       </div>
     </div>
 
-    <div class="hero-col-right">
+    <div class="hero-stage-centered">
       <!--
         .mini-editor-preview: workbench.js wires inner buttons + container click → open demo
       -->
@@ -98,6 +103,7 @@
             <span class="dot-yellow"></span>
             <span class="dot-green"></span>
           </div>
+          <img class="mini-wb-brand-icon" src="assets/NexQL.png" alt="" aria-hidden="true">
           <span class="mini-wb-window-title">PgStudio Workspace · Demo Project</span>
           <div class="mini-wb-tab-strip" aria-hidden="true">
             <span class="mini-wb-tab is-active">query.pgsql</span>
@@ -183,96 +189,193 @@
 
   <p class="landing-below-fold-hint">
     <span class="landing-scroll-mouse" aria-hidden="true"></span>
-    <span>Below: capabilities, pricing, install everywhere</span>
+    <span>Below: capabilities, AI, compare, pricing, install</span>
   </p>
+
+  <div class="landing-marquee" aria-hidden="true">
+    <div class="landing-marquee-track">
+      <span>🔌 Secure connections</span><span>📓 SQL notebooks</span><span>📈 Live dashboard</span><span>🛡️ Read-only mode</span><span>🔍 EXPLAIN visualizer</span><span>✦ Schema-aware AI</span><span>🏗️ Table designer</span><span>🗺️ ERD diagram</span><span>📤 CSV · JSON · Excel</span><span>🌍 Foreign data wrappers</span>
+      <span>🔌 Secure connections</span><span>📓 SQL notebooks</span><span>📈 Live dashboard</span><span>🛡️ Read-only mode</span><span>🔍 EXPLAIN visualizer</span><span>✦ Schema-aware AI</span><span>🏗️ Table designer</span><span>🗺️ ERD diagram</span><span>📤 CSV · JSON · Excel</span><span>🌍 Foreign data wrappers</span>
+    </div>
+  </div>
 
   <hr class="section-divider" aria-hidden="true">
 
-  <section class="landing-section" aria-labelledby="landing-cap-title">
-    <div class="section-label">Capabilities</div>
-    <h2 class="section-title" id="landing-cap-title">Everything PgStudio does for you</h2>
-    <p class="section-sub">50+ capabilities across 5 areas — all inside VS Code, zero browser tabs required.</p>
-    <div class="features-grid">
-      <button type="button" class="feature-card" data-cap="notebooks" aria-haspopup="dialog" aria-controls="capability-modal">
-        <div class="feature-icon" aria-hidden="true">📓</div>
-        <h3>SQL Notebooks</h3>
-        <p>Write and run SQL cells with inline results. Mix queries with markdown notes. Export to CSV, JSON, or Excel in one click.</p>
-        <div class="feature-tags"><span class="feature-tag">.pgsql</span><span class="feature-tag">Live results</span><span class="feature-tag">Export</span></div>
-        <span class="feature-card-cta" aria-hidden="true">View details →</span>
-      </button>
-      <button type="button" class="feature-card" data-cap="explorer" aria-haspopup="dialog" aria-controls="capability-modal">
-        <div class="feature-icon" aria-hidden="true">🗂️</div>
-        <h3>Database Explorer</h3>
-        <p>Browse tables, views, functions, triggers, and partitions. Right-click any object to generate SELECT, INSERT, ALTER, or DROP.</p>
-        <div class="feature-tags"><span class="feature-tag">16+ object types</span><span class="feature-tag">1-click SQL</span></div>
-        <span class="feature-card-cta" aria-hidden="true">View details →</span>
-      </button>
-      <button type="button" class="feature-card" data-cap="ai" aria-haspopup="dialog" aria-controls="capability-modal">
-        <div class="feature-icon" aria-hidden="true">✨</div>
-        <h3>AI Assistant</h3>
-        <p>Ask in plain English, get SQL back with schema context. Explain queries, diagnose errors, optimize slow statements.</p>
-        <div class="feature-tags"><span class="feature-tag">GPT-4o</span><span class="feature-tag">Claude</span><span class="feature-tag">Gemini</span><span class="feature-tag">GitHub Models</span></div>
-        <span class="feature-card-cta" aria-hidden="true">View details →</span>
-      </button>
-      <button type="button" class="feature-card" data-cap="schema" aria-haspopup="dialog" aria-controls="capability-modal">
-        <div class="feature-icon" aria-hidden="true">🎨</div>
-        <h3>Visual Schema Tools</h3>
-        <p>Design tables visually, diff schemas, auto-generate ERD diagrams. Import CSV/JSON with guided column mapping.</p>
-        <div class="feature-tags"><span class="feature-tag">ERD</span><span class="feature-tag">Schema diff</span><span class="feature-tag">Import</span></div>
-        <span class="feature-card-cta" aria-hidden="true">View details →</span>
-      </button>
-      <button type="button" class="feature-card" data-cap="safety" aria-haspopup="dialog" aria-controls="capability-modal">
-        <div class="feature-icon" aria-hidden="true">🛡️</div>
-        <h3>Safety Controls</h3>
-        <p>Label environments DEV/STAGE/PROD. Read-only mode, risk scoring, and confirmation prompts for destructive operations.</p>
-        <div class="feature-tags"><span class="feature-tag">Env labels</span><span class="feature-tag">Read-only</span><span class="feature-tag">Risk scoring</span></div>
-        <span class="feature-card-cta" aria-hidden="true">View details →</span>
-      </button>
-      <button type="button" class="feature-card" data-cap="performance" aria-haspopup="dialog" aria-controls="capability-modal">
-        <div class="feature-icon" aria-hidden="true">📊</div>
-        <h3>Performance Insights</h3>
-        <p>EXPLAIN analysis, index advisor, live dashboards. Diagnose slow queries and get specific optimization guidance.</p>
-        <div class="feature-tags"><span class="feature-tag">EXPLAIN</span><span class="feature-tag">Index advisor</span><span class="feature-tag">Dashboard</span></div>
-        <span class="feature-card-cta" aria-hidden="true">View details →</span>
-      </button>
+  <section class="landing-section" id="features" aria-labelledby="landing-cap-title">
+    <span class="eyebrow">Everything in one place</span>
+    <h2 class="section-title" id="landing-cap-title">50+ capabilities,<br>zero browser tabs.</h2>
+    <p class="section-sub">A toolkit that replaces tab-juggling between a SQL client, a monitor, and a chat window — all inside VS Code.</p>
+
+    <div class="landing-metrics" aria-hidden="false">
+      <div class="landing-metric"><div class="landing-metric-value grad-text">50+</div><div class="landing-metric-key">capabilities</div></div>
+      <div class="landing-metric"><div class="landing-metric-value grad-text">5</div><div class="landing-metric-key">major areas</div></div>
+      <div class="landing-metric"><div class="landing-metric-value grad-text">4</div><div class="landing-metric-key">AI providers</div></div>
+      <div class="landing-metric"><div class="landing-metric-value grad-text">0</div><div class="landing-metric-key">browser tabs needed</div></div>
     </div>
 
-    <dialog id="capability-modal" class="capability-modal" aria-labelledby="capability-modal-title">
-      <div class="capability-modal-inner">
-        <header class="capability-modal-header">
-          <div class="capability-modal-icon" data-cap-icon aria-hidden="true">📓</div>
-          <div class="capability-modal-heading">
-            <div class="capability-modal-eyebrow" data-cap-eyebrow>Capability</div>
-            <h3 class="capability-modal-title" id="capability-modal-title" data-cap-title>Capability</h3>
-            <p class="capability-modal-tagline" data-cap-tagline></p>
-          </div>
-          <button type="button" class="capability-modal-close" data-cap-close aria-label="Close capability details">
-            <svg viewBox="0 0 24 24" aria-hidden="true" width="16" height="16">
-              <path d="M6 6l12 12M18 6l-12 12" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>
-            </svg>
-          </button>
-        </header>
-        <div class="capability-modal-body" data-cap-body></div>
-        <footer class="capability-modal-footer">
-          <div class="capability-modal-tags" data-cap-tags></div>
-          <div class="capability-modal-actions">
-            <a class="capability-modal-link" data-cap-primary href="https://marketplace.visualstudio.com/items?itemName=ric-v.postgres-explorer" target="_blank" rel="noopener noreferrer">Install in VS Code →</a>
-          </div>
-        </footer>
+    <div class="cap-area">
+      <h3 class="cap-area-heading">📓 Notebooks &amp; Queries</h3>
+      <div class="cap-tile-grid">
+        <div class="cap-tile"><span class="cap-tile-icon" aria-hidden="true">✍️</span><h4>Write &amp; Run</h4><p>SQL cells with inline results — run one cell or the whole notebook.</p></div>
+        <div class="cap-tile"><span class="cap-tile-icon" aria-hidden="true">📊</span><h4>Sortable Tables</h4><p>Results appear formatted and sortable directly below each cell.</p></div>
+        <div class="cap-tile"><span class="cap-tile-icon" aria-hidden="true">📤</span><h4>Export</h4><p>CSV, JSON, or Excel in one click — no copy-paste.</p></div>
+        <div class="cap-tile"><span class="cap-tile-icon" aria-hidden="true">🕐</span><h4>Auto History</h4><p>Every query saved automatically — browse and replay anytime.</p></div>
       </div>
-    </dialog>
+    </div>
+    <div class="cap-area">
+      <h3 class="cap-area-heading">🗂️ Database Explorer</h3>
+      <div class="cap-tile-grid">
+        <div class="cap-tile"><span class="cap-tile-icon" aria-hidden="true">🌳</span><h4>16+ Object Types</h4><p>Tables, views, functions, triggers, partitions, FDWs and more.</p></div>
+        <div class="cap-tile"><span class="cap-tile-icon" aria-hidden="true">🔍</span><h4>Column Insights</h4><p>Click any column for null count, unique values, min/max on demand.</p></div>
+        <div class="cap-tile"><span class="cap-tile-icon" aria-hidden="true">⚡</span><h4>Right-click SQL</h4><p>SELECT, INSERT, ALTER, DROP — generated with correct names.</p></div>
+        <div class="cap-tile"><span class="cap-tile-icon" aria-hidden="true">🔎</span><h4>Quick Search</h4><p>Find any object across all schemas in one keypress.</p></div>
+      </div>
+    </div>
+    <div class="cap-area">
+      <h3 class="cap-area-heading">🎨 Visual Tools</h3>
+      <div class="cap-tile-grid">
+        <div class="cap-tile"><span class="cap-tile-icon" aria-hidden="true">🖊️</span><h4>Table Designer</h4><p>Create and alter tables visually — every change previews as SQL.</p></div>
+        <div class="cap-tile"><span class="cap-tile-icon" aria-hidden="true">🔄</span><h4>Schema Diff</h4><p>Compare two schemas and generate the migration script.</p></div>
+        <div class="cap-tile"><span class="cap-tile-icon" aria-hidden="true">🗺️</span><h4>ERD Diagram</h4><p>Auto-generated FK relationship map for the whole schema.</p></div>
+        <div class="cap-tile"><span class="cap-tile-icon" aria-hidden="true">📥</span><h4>Import Wizard</h4><p>CSV/JSON import with guided column type mapping.</p></div>
+      </div>
+    </div>
+    <div class="cap-area">
+      <h3 class="cap-area-heading">🛡️ Safety &amp; Performance</h3>
+      <div class="cap-tile-grid">
+        <div class="cap-tile"><span class="cap-tile-icon" aria-hidden="true">🏷️</span><h4>Env Labels</h4><p>DEV / STAGE / PROD — always visible before you run anything.</p></div>
+        <div class="cap-tile"><span class="cap-tile-icon" aria-hidden="true">⚠️</span><h4>Risk Scoring</h4><p>Flags DELETE without WHERE, TRUNCATE, DROP before execution.</p></div>
+        <div class="cap-tile"><span class="cap-tile-icon" aria-hidden="true">📈</span><h4>Live Dashboard</h4><p>Real-time metrics — active connections, query throughput, locks.</p></div>
+        <div class="cap-tile"><span class="cap-tile-icon" aria-hidden="true">🔬</span><h4>EXPLAIN Analysis</h4><p>Query plan breakdown with specific optimization guidance.</p></div>
+      </div>
+    </div>
+
+  </section>
+
+  <hr class="section-divider" aria-hidden="true">
+
+  <section class="landing-section landing-section-compact landing-section-ai" id="ai" aria-labelledby="landing-ai-title">
+    <span class="eyebrow">Schema-aware AI</span>
+    <h2 class="section-title" id="landing-ai-title">Describe it. Get runnable SQL.</h2>
+    <p class="section-sub">It reads your actual tables and columns — not invented ones — and never auto-executes. Generated SQL lands in a cell for you to review first.</p>
+    <div class="landing-ai-show">
+      <div class="landing-ai-demo">
+        <div class="landing-ai-q"><span class="landing-ai-lbl">PLAIN ENGLISH →</span>&quot;Top 10 customers by revenue last 30 days, exclude cancelled orders&quot;</div>
+        <pre class="landing-ai-a" aria-label="Generated SQL example"><code><span class="sql-kwd">SELECT</span> c.name, <span class="sql-fn">SUM</span>(o.amount) <span class="sql-kwd">AS</span> revenue
+<span class="sql-kwd">FROM</span> customers c <span class="sql-kwd">JOIN</span> orders o <span class="sql-kwd">ON</span> c.id = o.customer_id
+<span class="sql-kwd">WHERE</span> o.created_at >= <span class="sql-fn">NOW</span>() - <span class="sql-kwd">INTERVAL</span> <span class="sql-str">'30 days'</span>
+  <span class="sql-kwd">AND</span> o.status &lt;&gt; <span class="sql-str">'cancelled'</span>
+<span class="sql-kwd">GROUP BY</span> c.id, c.name <span class="sql-kwd">ORDER BY</span> revenue <span class="sql-kwd">DESC</span> <span class="sql-kwd">LIMIT</span> <span class="sql-num">10</span>;</code></pre>
+        <p class="landing-ai-note">Schema-aware — uses your real table and column names.</p>
+      </div>
+      <div class="landing-ai-side">
+        <h3 class="landing-ai-side-title">Four ways AI helps</h3>
+        <p class="section-sub landing-ai-side-sub">Text → SQL, plain-English Explain, Optimize with index recommendations, and Debug from a pasted error. Open the assistant in editor tabs and run parallel chats.</p>
+        <div class="landing-provider-chips">
+          <span class="landing-chip landing-chip-grad">GitHub Models · free, no key</span>
+          <span class="landing-chip landing-chip-grad">OpenAI GPT-4o</span>
+          <span class="landing-chip landing-chip-grad">Anthropic Claude</span>
+          <span class="landing-chip landing-chip-grad">Google Gemini</span>
+          <span class="landing-chip landing-chip-muted">+ VS Code LM API</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="section-divider" aria-hidden="true">
+
+  <section class="landing-section landing-section-compact landing-section-compare landing-section-center" id="compare" aria-labelledby="landing-compare-title">
+    <span class="eyebrow">How it compares</span>
+    <h2 class="section-title" id="landing-compare-title">Built into your editor.</h2>
+    <p class="section-sub section-sub-center">The others are separate apps. PgStudio lives where your code already is.</p>
+    <div class="landing-cmp-scroll">
+      <table class="landing-cmp">
+        <thead>
+          <tr><th>Feature</th><th class="landing-cmp-me">PgStudio</th><th>pgAdmin</th><th>DBeaver</th><th>TablePlus</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Runs inside VS Code</td><td class="c landing-cmp-me yes">✓</td><td class="c no">—</td><td class="c no">—</td><td class="c no">—</td></tr>
+          <tr><td>SQL notebooks</td><td class="c landing-cmp-me yes">✓</td><td class="c no">—</td><td class="c no">—</td><td class="c no">—</td></tr>
+          <tr><td>Built-in AI assistant</td><td class="c landing-cmp-me yes">✓</td><td class="c no">—</td><td class="c no">—</td><td class="c no">—</td></tr>
+          <tr><td>Real-time dashboard</td><td class="c landing-cmp-me yes">✓</td><td class="c yes">✓</td><td class="c partial">limited</td><td class="c partial">limited</td></tr>
+          <tr><td>ERD &amp; schema diff</td><td class="c landing-cmp-me yes">✓</td><td class="c partial">partial</td><td class="c yes">✓</td><td class="c no">—</td></tr>
+          <tr><td>Foreign data wrappers</td><td class="c landing-cmp-me yes">✓</td><td class="c yes">✓</td><td class="c partial">limited</td><td class="c no">—</td></tr>
+          <tr><td>License</td><td class="c landing-cmp-me yes">MIT · free</td><td class="c">free</td><td class="c">free</td><td class="c no">paid</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <hr class="section-divider" aria-hidden="true">
+
+  <section class="landing-section landing-section-compact landing-section-center" aria-labelledby="landing-workflow-title">
+    <span class="eyebrow">The loop</span>
+    <h2 class="section-title" id="landing-workflow-title">Connect → Explore → Query → Analyze</h2>
+    <div class="landing-workflow">
+      <div class="landing-step"><div class="landing-step-n">01</div><span class="landing-step-icon" aria-hidden="true">🔐</span><h3>Connect</h3><p>Encrypted credentials, SSH tunnels, env labels.</p></div>
+      <div class="landing-step"><div class="landing-step-n">02</div><span class="landing-step-icon" aria-hidden="true">🌳</span><h3>Explore</h3><p>Schemas, tables, views, functions — one tree.</p></div>
+      <div class="landing-step"><div class="landing-step-n">03</div><span class="landing-step-icon" aria-hidden="true">📝</span><h3>Query</h3><p>Notebooks with AI assist and instant results.</p></div>
+      <div class="landing-step"><div class="landing-step-n">04</div><span class="landing-step-icon" aria-hidden="true">📊</span><h3>Analyze</h3><p>Charts, EXPLAIN, profiling, export.</p></div>
+    </div>
+  </section>
+
+  <hr class="section-divider" aria-hidden="true">
+
+  <section class="landing-section landing-section-compact" id="faq" aria-labelledby="landing-faq-title">
+    <div class="landing-faq-header">
+      <span class="eyebrow">Common questions</span>
+      <h2 class="section-title" id="landing-faq-title">Good to know</h2>
+    </div>
+    <div class="landing-faq">
+      <details open>
+        <summary>Is PgStudio free?</summary>
+        <p>Yes — completely free, no subscription or account. Install from the VS Code Marketplace or Open VSX in under a minute.</p>
+      </details>
+      <details>
+        <summary>Which AI providers are supported?</summary>
+        <p>OpenAI (GPT-4o), Anthropic Claude, Google Gemini, GitHub Models (free, no API key), and the VS Code Language Model API. GitHub Models requires no configuration.</p>
+      </details>
+      <details>
+        <summary>How is it different from pgAdmin or DBeaver?</summary>
+        <p>PgStudio runs inside VS Code — no separate app to install or switch to. Your notebooks, explorer, and AI assistant stay in the same window as your code.</p>
+      </details>
+      <details>
+        <summary>What PostgreSQL versions are supported?</summary>
+        <p>PostgreSQL 12 through 17, plus compatible managed services like Amazon RDS, Supabase, Neon, and other pg-compatible databases.</p>
+      </details>
+      <details>
+        <summary>Does it support SSH tunnels?</summary>
+        <p>Yes — built-in SSH tunnel support connects to databases on private networks or behind firewalls with no extra tooling.</p>
+      </details>
+      <details>
+        <summary>Can I share notebooks with my team?</summary>
+        <p>.pgsql notebooks are plain files that commit to git like source. Your team replays the same queries against their own connections — no export needed.</p>
+      </details>
+    </div>
   </section>
 
   <hr class="section-divider" aria-hidden="true">
 
   <section class="landing-section" aria-labelledby="landing-price-title">
-    <div class="section-label">Pricing</div>
+    <span class="eyebrow">Pricing</span>
     <h2 class="section-title" id="landing-price-title">Simple, transparent pricing</h2>
-    <p class="section-sub">No hidden fees, no surprise charges. The extension is free and open source today.</p>
-    <div class="pricing-grid">
+    <p class="section-sub">Free for everyone. Upgrade to Sponsor for individual pro features, or Singularity for teams with cloud sync.</p>
+
+    <div class="pricing-controls">
+      <div class="pricing-billing-toggle" role="radiogroup" aria-label="Billing period">
+        <button type="button" class="is-active" data-period="monthly" aria-pressed="true">Monthly</button>
+        <button type="button" data-period="annual" aria-pressed="false">Annual <span class="pricing-save-hint">Save ~17%</span></button>
+      </div>
+      <div class="pricing-currency-toggle" role="radiogroup" aria-label="Payment currency">
+        <button type="button" class="is-active" data-currency="INR" aria-pressed="true">INR ₹</button>
+        <button type="button" data-currency="USD" aria-pressed="false">USD $</button>
+      </div>
+    </div>
+
+    <div class="pricing-grid pricing-grid-three">
       <div class="pricing-card">
-        <div class="pricing-name">Community</div>
-        <div class="pricing-desc">For individual developers and small teams</div>
+        <div class="pricing-name">Free</div>
+        <div class="pricing-desc">For individual developers getting started</div>
         <div class="pricing-amount">$0 <span class="period">/ forever</span></div>
         <ul class="pricing-items">
           <li>SQL notebooks with inline results</li>
@@ -284,100 +387,80 @@
         </ul>
         <a class="pricing-cta primary" href="https://marketplace.visualstudio.com/items?itemName=ric-v.postgres-explorer" target="_blank" rel="noopener noreferrer">Install Free</a>
       </div>
-      <div class="pricing-card pricing-card-pro" style="display: none; border: 1px solid var(--accent-color, #4d5efc); position: relative; box-shadow: 0 4px 20px rgba(77, 94, 252, 0.15);">
-        <span class="pricing-badge" style="position: absolute; top: -12px; right: 20px; background: var(--accent-color, #4d5efc); color: white; padding: 2px 10px; border-radius: 12px; font-size: 10px; font-weight: bold; letter-spacing: 0.5px;">RECOMMENDED</span>
-        <div class="pricing-name">Pro Sponsor</div>
-        <div class="pricing-desc">Support continuous development and unlock pre-release features</div>
-        <div class="pricing-amount">₹1.00 <span class="period">/ one-time</span></div>
+
+      <div class="pricing-card pricing-card-featured" data-pricing-tier="sponsor">
+        <span class="pricing-badge">RECOMMENDED</span>
+        <div class="pricing-name">Sponsor</div>
+        <div class="pricing-desc">For individual pro users who want the full toolkit</div>
+        <div class="pricing-amount"><span class="pricing-amount-value">$2</span> <span class="period">/ mo</span></div>
         <ul class="pricing-items">
-          <li>Everything in Community</li>
-          <li>Sponsor status on GitHub and Discord</li>
+          <li>Everything in Free</li>
+          <li>Schema diff, visual EXPLAIN, unlimited saved queries</li>
           <li>Exclusive access to monthly beta builds</li>
           <li>Early access to schema diff visual tools</li>
-          <li>Early access to Teams cloud synchronization</li>
           <li>Direct developer feedback channel</li>
         </ul>
-        <button class="pricing-cta primary" id="btn-razorpay-checkout" type="button" style="width: 100%; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;">
-          <span>Sponsor with Razorpay</span>
-          <span style="font-size: 14px;">⚡</span>
-        </button>
+        <button class="pricing-cta primary pricing-cta-pay" type="button" data-tier="sponsor">Get Sponsor</button>
       </div>
-      <div class="pricing-card pricing-card-roadmap">
-        <div class="pricing-name">Teams roadmap</div>
-        <div class="pricing-desc">Commercial tiers are not sold yet — follow progress on GitHub.</div>
-        <div class="pricing-amount">TBD</div>
-        <ul class="pricing-items pricing-items-muted">
-          <li>Everything in Community</li>
-          <li>Optional cloud sync for shared connection profiles (planned)</li>
+
+      <div class="pricing-card" data-pricing-tier="singularity">
+        <div class="pricing-name">Singularity</div>
+        <div class="pricing-desc">Teams — org license with cloud sync for shared connection profiles</div>
+        <div class="pricing-amount"><span class="pricing-amount-value">$9</span> <span class="period">/ mo</span></div>
+        <ul class="pricing-items">
+          <li>Everything in Sponsor</li>
+          <li>Shared connection profiles via cloud sync</li>
           <li>Org-wide governance and audit hooks (planned)</li>
-          <li>Prioritized support channel (planned)</li>
+          <li>Prioritized support channel</li>
+          <li>Flat org pricing — not per seat</li>
         </ul>
-        <a class="pricing-cta" href="https://github.com/dev-asterix/PgStudio/discussions" target="_blank" rel="noopener noreferrer">Track on GitHub →</a>
+        <button class="pricing-cta primary pricing-cta-pay" type="button" data-tier="singularity">Get Singularity</button>
       </div>
     </div>
   </section>
 
   <hr class="section-divider" aria-hidden="true">
 
-  <section class="landing-section badges-section" aria-labelledby="landing-get-title">
-    <div class="section-label">Get started</div>
-    <h2 class="section-title" id="landing-get-title">Available everywhere</h2>
-    <p class="section-sub">Install in under a minute from your preferred marketplace.</p>
-    <div class="badges-row">
-      <a class="badge-btn" href="https://marketplace.visualstudio.com/items?itemName=ric-v.postgres-explorer" target="_blank" rel="noopener noreferrer">
-        <span class="badge-btn-icon" aria-hidden="true">⚡</span>
-        <span class="badge-btn-text"><strong>VS Code Marketplace</strong><span>ric-v.postgres-explorer</span></span>
-      </a>
-      <a class="badge-btn" href="https://open-vsx.org/extension/ric-v/postgres-explorer" target="_blank" rel="noopener noreferrer">
-        <span class="badge-btn-icon" aria-hidden="true">📦</span>
-        <span class="badge-btn-text"><strong>Open VSX Registry</strong><span>ric-v / postgres-explorer</span></span>
-      </a>
-      <a class="badge-btn" href="https://github.com/dev-asterix/PgStudio" target="_blank" rel="noopener noreferrer">
-        <span class="badge-btn-icon" aria-hidden="true">🐙</span>
-        <span class="badge-btn-text"><strong>GitHub</strong><span>dev-asterix/PgStudio</span></span>
-      </a>
+  <section class="landing-install-cta" id="install" aria-labelledby="landing-install-title">
+    <div class="landing-cta-card">
+      <h2 class="section-title" id="landing-install-title">Install in one click.</h2>
+      <p class="section-sub section-sub-center landing-cta-sub">Free, MIT-licensed, on the VS Code Marketplace and Open VSX. Under a minute to first query.</p>
+      <div class="minimized-actions landing-cta-actions">
+        <a class="min-cta primary"
+          href="https://marketplace.visualstudio.com/items?itemName=ric-v.postgres-explorer" target="_blank"
+          rel="noopener noreferrer"><span aria-hidden="true">⬇</span> VS Code Marketplace</a>
+        <a class="min-cta secondary"
+          href="https://open-vsx.org/extension/ric-v/postgres-explorer" target="_blank"
+          rel="noopener noreferrer">Open VSX</a>
+      </div>
+      <p class="landing-cta-cli">code --install-extension ric-v.postgres-explorer</p>
     </div>
   </section>
-
-  <hr class="section-divider" aria-hidden="true">
 
   <footer class="site-footer landing-site-footer">
-    <div class="footer-grid">
+    <div class="footer-grid footer-grid--nexql">
       <div class="footer-brand">
-        <div class="topbar-brand-name footer-brand-title"><span>PG</span>Studio</div>
-        <p class="footer-desc">PostgreSQL inside VS Code — notebooks, explorer, AI assistant, schema tools, and performance insights. Free and open source.</p>
-        <div class="footer-social">
-          <a href="https://github.com/dev-asterix/PgStudio" target="_blank" rel="noopener noreferrer" aria-label="GitHub">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2C6.477 2 2 6.58 2 12.231c0 4.522 2.865 8.36 6.84 9.713.5.093.682-.22.682-.49 0-.242-.01-.885-.014-1.736-2.782.617-3.37-1.376-3.37-1.376-.455-1.187-1.11-1.503-1.11-1.503-.908-.636.069-.624.069-.624 1.004.072 1.532 1.05 1.532 1.05.892 1.567 2.34 1.115 2.91.852.091-.662.35-1.115.635-1.371-2.22-.258-4.555-1.139-4.555-5.07 0-1.12.39-2.037 1.03-2.755-.103-.258-.447-1.297.098-2.705 0 0 .84-.275 2.75 1.052A9.31 9.31 0 0 1 12 6.84c.85.004 1.706.117 2.505.343 1.91-1.327 2.748-1.052 2.748-1.052.547 1.408.203 2.447.1 2.705.64.718 1.029 1.635 1.029 2.755 0 3.94-2.34 4.808-4.566 5.06.36.314.679.93.679 1.873 0 1.352-.012 2.442-.012 2.774 0 .273.18.59.688.49C19.137 20.59 22 16.754 22 12.231 22 6.58 17.524 2 12 2z"/></svg>
-          </a>
-          <a href="https://marketplace.visualstudio.com/items?itemName=ric-v.postgres-explorer" target="_blank" rel="noopener noreferrer" aria-label="VS Code Marketplace">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 8v8M8 12h8" fill="none" stroke="currentColor" stroke-width="2"/></svg>
-          </a>
-        </div>
-      </div>
-      <div class="footer-col">
-        <h4>Product</h4>
-        <button type="button" class="footer-link-btn" data-landing-open-demo>Interactive demo</button>
-        <a href="https://github.com/dev-asterix/PgStudio#readme" target="_blank" rel="noopener noreferrer">Documentation</a>
-        <a href="https://github.com/dev-asterix/PgStudio/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">Changelog</a>
-        <a href="https://github.com/dev-asterix/PgStudio/releases" target="_blank" rel="noopener noreferrer">Releases</a>
-      </div>
-      <div class="footer-col">
-        <h4>Community</h4>
-        <a href="https://github.com/dev-asterix/PgStudio/issues" target="_blank" rel="noopener noreferrer">Issues</a>
-        <a href="https://github.com/dev-asterix/PgStudio/discussions" target="_blank" rel="noopener noreferrer">Discussions</a>
-        <a href="https://github.com/dev-asterix/PgStudio/pulls" target="_blank" rel="noopener noreferrer">Pull requests</a>
+        <div class="footer-brand-title footer-brand-grad">🐘 Pg<span class="grad-text">Studio</span></div>
+        <p class="footer-desc">PostgreSQL, without the context switching.</p>
       </div>
       <div class="footer-col">
         <h4>Resources</h4>
+        <a href="https://pgstudio.astrx.dev/">Documentation</a>
+        <a href="https://github.com/dev-asterix/PgStudio/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">Changelog</a>
+      </div>
+      <div class="footer-col">
+        <h4>Community</h4>
+        <a href="https://github.com/dev-asterix/PgStudio" target="_blank" rel="noopener noreferrer">GitHub</a>
+        <a href="https://github.com/dev-asterix/PgStudio/issues" target="_blank" rel="noopener noreferrer">Report issues</a>
+      </div>
+      <div class="footer-col">
+        <h4>Install</h4>
+        <a href="https://marketplace.visualstudio.com/items?itemName=ric-v.postgres-explorer" target="_blank" rel="noopener noreferrer">Marketplace</a>
         <a href="https://open-vsx.org/extension/ric-v/postgres-explorer" target="_blank" rel="noopener noreferrer">Open VSX</a>
-        <a href="https://github.com/dev-asterix/PgStudio/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">License</a>
-        <a href="https://astrx.dev/" target="_blank" rel="noopener noreferrer">astrx.dev</a>
       </div>
     </div>
-    <div class="footer-bottom">
-      <span class="footer-copy">© 2026 astrx.dev — PgStudio</span>
-      <span class="footer-copy">Made for PostgreSQL developers</span>
+    <div class="footer-bottom footer-bottom--center">
+      <span class="footer-copy">Made with ❤ by <a href="https://github.com/dev-asterix" target="_blank" rel="noopener noreferrer">astrx.dev</a> · MIT License</span>
     </div>
   </footer>
 

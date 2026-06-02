@@ -1,5 +1,6 @@
 const vscode = acquireVsCodeApi();
 const form = document.getElementById('settingsForm');
+const configScopeSelect = document.getElementById('configScope');
 const providerSelect = document.getElementById('provider');
 const testBtn = document.getElementById('testBtn');
 const saveBtn = document.getElementById('saveBtn');
@@ -101,8 +102,15 @@ function autoLoadModels(provider, apiKey, endpoint, options = {}) {
 }
 
 function getFormData() {
+  const configScope = configScopeSelect ? configScopeSelect.value : 'notebook';
   const provider = providerSelect.value;
   let apiKey = '';
+  const apiKeys = {
+    openai: document.getElementById('apiKey-openai')?.value || '',
+    anthropic: document.getElementById('apiKey-anthropic')?.value || '',
+    gemini: document.getElementById('apiKey-gemini')?.value || '',
+    custom: document.getElementById('apiKey-custom')?.value || ''
+  };
   let model = '';
   let endpoint = '';
 
@@ -158,23 +166,39 @@ function getFormData() {
     endpoint = document.getElementById('endpoint-lmstudio').value || 'http://localhost:1234/v1/chat/completions';
   }
 
-  return { provider, apiKey, model, endpoint };
+  return { configScope, provider, apiKey, apiKeys, model, endpoint };
 }
 
 function setFormData(settings) {
+  if (configScopeSelect && settings.configScope) {
+    configScopeSelect.value = settings.configScope;
+  }
+
+  const keys = settings.apiKeys || {};
+  const openaiKey = keys.openai || (settings.provider === 'openai' ? settings.apiKey : '') || '';
+  const anthropicKey = keys.anthropic || (settings.provider === 'anthropic' ? settings.apiKey : '') || '';
+  const geminiKey = keys.gemini || (settings.provider === 'gemini' ? settings.apiKey : '') || '';
+  const customKey = keys.custom || (settings.provider === 'custom' ? settings.apiKey : '') || '';
+
+  const openaiEl = document.getElementById('apiKey-openai');
+  const anthropicEl = document.getElementById('apiKey-anthropic');
+  const geminiEl = document.getElementById('apiKey-gemini');
+  const customEl = document.getElementById('apiKey-custom');
+  if (openaiEl) openaiEl.value = openaiKey;
+  if (anthropicEl) anthropicEl.value = anthropicKey;
+  if (geminiEl) geminiEl.value = geminiKey;
+  if (customEl) customEl.value = customKey;
+
   providerSelect.value = settings.provider || 'vscode-lm';
   providerSelect.dispatchEvent(new Event('change'));
 
   if (settings.provider === 'vscode-lm') {
     document.getElementById('model-vscode-lm').value = settings.model || '';
   } else if (settings.provider === 'openai') {
-    document.getElementById('apiKey-openai').value = settings.apiKey || '';
     document.getElementById('model-openai').value = settings.model || '';
   } else if (settings.provider === 'anthropic') {
-    document.getElementById('apiKey-anthropic').value = settings.apiKey || '';
     document.getElementById('model-anthropic').value = settings.model || '';
   } else if (settings.provider === 'gemini') {
-    document.getElementById('apiKey-gemini').value = settings.apiKey || '';
     document.getElementById('model-gemini').value = settings.model || '';
   } else if (settings.provider === 'github') {
     document.getElementById('model-github').value = settings.model || '';
@@ -182,7 +206,6 @@ function setFormData(settings) {
     document.getElementById('apiKey-cursor').value = settings.cursorApiKey || '';
     document.getElementById('model-cursor').value = settings.model || '';
   } else if (settings.provider === 'custom') {
-    document.getElementById('apiKey-custom').value = settings.apiKey || '';
     document.getElementById('model-custom').value = settings.model || '';
     document.getElementById('endpoint-custom').value = settings.endpoint || '';
   } else if (settings.provider === 'ollama') {
@@ -192,6 +215,13 @@ function setFormData(settings) {
     document.getElementById('model-lmstudio').value = settings.model || '';
     document.getElementById('endpoint-lmstudio').value = settings.endpoint || 'http://localhost:1234/v1/chat/completions';
   }
+}
+
+if (configScopeSelect) {
+  configScopeSelect.addEventListener('change', () => {
+    hideMessage();
+    vscode.postMessage({ command: 'loadSettings', configScope: configScopeSelect.value });
+  });
 }
 
 // Test button handler

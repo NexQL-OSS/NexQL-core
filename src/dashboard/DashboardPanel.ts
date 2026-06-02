@@ -273,7 +273,9 @@ export class DashboardPanel {
     this._panel.webview.postMessage({ command: 'aiLoading', loading: true });
     try {
       const config = vscode.workspace.getConfiguration('postgresExplorer');
-      const provider = config.get<string>('aiProvider') ?? 'vscode-lm';
+      const { readAiScopeSettings } = await import('../features/aiAssistant/aiConfig');
+      const notebookSettings = readAiScopeSettings(config, 'notebook');
+      const provider = notebookSettings.provider;
 
       // Refresh system prompt with latest stats context each turn
       const systemPrompt = this._buildDashboardSystemPrompt(context);
@@ -281,7 +283,7 @@ export class DashboardPanel {
       // Pass conversation history so the AI has multi-turn context
       this._aiService.setMessages(this._conversationMessages);
 
-      const result = await this._aiService.callProvider(provider, question, config, systemPrompt);
+      const result = await this._aiService.callProvider(provider, question, config, systemPrompt, 'notebook');
 
       if (!this._isSessionCurrent(generation)) {
         return;

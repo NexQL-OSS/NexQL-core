@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<!--
+  PgStudio — landing page REFERENCE build
+  Purpose: a north-star you can adapt in Cursor for pgstudio.astrx.dev
+  Palette: the NexQL logo spectrum (blue → indigo → magenta → amber on near-black)
+  Self-contained: inline CSS + JS, only dependency is Google Fonts.
+  Section map:  [Nav] [Hero + interactive VS Code demo] [Marquee]
+                [Features: 50+ across 5 areas] [AI showcase] [Comparison] [Workflow] [FAQ] [CTA] [Footer]
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PgStudio — PostgreSQL, without the context switching</title>
+<meta name="description" content="PgStudio is a PostgreSQL workspace for VS Code: SQL notebooks, a live dashboard, schema-aware AI, visual designers, and production safety — 50+ capabilities, zero browser tabs." />
+<meta name="theme-color" content="#07080E" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    /* ── Brand spectrum — sampled from the NexQL logo ── */
+    --blue:#3D6BFF; --indigo:#6C4CF0; --magenta:#E0379E; --amber:#FF8A3D;
+    --grad:linear-gradient(110deg,var(--blue) 0%,var(--indigo) 30%,var(--magenta) 62%,var(--amber) 100%);
+    --grad-soft:linear-gradient(110deg,rgba(61,107,255,.16),rgba(108,76,240,.14),rgba(224,55,158,.14),rgba(255,138,61,.16));
+
+    /* ── Surfaces ── */
+    --bg:#07080E; --bg-2:#0A0C16; --panel:#0E1120; --panel-2:#11142440;
+    --line:rgba(255,255,255,.07); --line-2:rgba(255,255,255,.13);
+
+    /* ── Type ── */
+    --fg:#E8EBF6; --muted:#98A2BD; --faint:#646E8C;
+    --display:'Sora',sans-serif; --body:'Inter',sans-serif; --mono:'JetBrains Mono',monospace;
+
+    /* code highlight */
+    --c-kwd:#7AA2FF; --c-fn:#E97AD2; --c-str:#FFB36B; --c-num:#9DE3A0; --c-com:#5B6584;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{font-family:var(--body);background:var(--bg);color:var(--fg);line-height:1.6;overflow-x:hidden;-webkit-font-smoothing:antialiased}
+  a{color:inherit;text-decoration:none}
+  .container{max-width:1200px;margin:0 auto;padding:0 24px}
+  .grad-text{background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent}
+  code{font-family:var(--mono);font-size:.92em}
+
+  /* ───────── Aurora background ───────── */
+  .aurora{position:fixed;inset:0;z-index:-2;overflow:hidden;background:var(--bg)}
+  .blob{position:absolute;border-radius:50%;filter:blur(90px);opacity:.42;mix-blend-mode:screen;will-change:transform}
+  .blob.a{width:46vw;height:46vw;background:radial-gradient(circle,var(--blue),transparent 60%);top:-12vw;left:-8vw;animation:drift1 26s ease-in-out infinite}
+  .blob.b{width:42vw;height:42vw;background:radial-gradient(circle,var(--magenta),transparent 60%);top:6vw;right:-10vw;animation:drift2 30s ease-in-out infinite}
+  .blob.c{width:38vw;height:38vw;background:radial-gradient(circle,var(--amber),transparent 60%);bottom:-14vw;left:24vw;animation:drift3 34s ease-in-out infinite}
+  .blob.d{width:34vw;height:34vw;background:radial-gradient(circle,var(--indigo),transparent 60%);bottom:0;right:18vw;animation:drift1 28s ease-in-out infinite reverse}
+  .grain{position:fixed;inset:0;z-index:-1;opacity:.035;pointer-events:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+  @keyframes drift1{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(6vw,4vw) scale(1.12)}}
+  @keyframes drift2{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(-5vw,5vw) scale(1.08)}}
+  @keyframes drift3{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(3vw,-4vw) scale(1.15)}}
+
+  /* ───────── Nav ───────── */
+  header{position:sticky;top:0;z-index:50;backdrop-filter:blur(14px);background:rgba(7,8,14,.55);border-bottom:1px solid var(--line)}
+  nav{display:flex;align-items:center;justify-content:space-between;height:64px}
+  .brand{display:flex;align-items:center;gap:10px;font-family:var(--display);font-weight:700;font-size:19px;letter-spacing:-.02em}
+  .mark{width:30px;height:30px;flex:none}
+  .nav-links{display:flex;align-items:center;gap:26px;font-size:14px;font-weight:500;color:var(--muted)}
+  .nav-links a:hover{color:var(--fg)}
+  .nav-links a.cta{color:#08090f;font-weight:600;padding:9px 18px;border-radius:10px;background:var(--grad);background-size:160% 160%;animation:shift 7s ease infinite;box-shadow:0 6px 24px -8px rgba(224,55,158,.6)}
+  .nav-links a.cta:hover{transform:translateY(-1px)}
+  @keyframes shift{0%,100%{background-position:0% 50%}50%{background-position:100% 50%}}
+  .menu-btn{display:none;background:none;border:0;color:var(--fg);font-size:22px;cursor:pointer}
+
+  /* ───────── Hero ───────── */
+  .hero{padding:84px 0 36px;text-align:center}
+  .pill{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);border:1px solid var(--line-2);background:var(--panel-2);padding:7px 14px;border-radius:999px;margin-bottom:26px}
+  .pill .dot{width:7px;height:7px;border-radius:50%;background:var(--amber);box-shadow:0 0 10px var(--amber);animation:pulse 2s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+  h1{font-family:var(--display);font-weight:800;font-size:clamp(38px,6vw,70px);line-height:1.05;letter-spacing:-.03em}
+  .hero p.lede{max-width:600px;margin:22px auto 0;color:var(--muted);font-size:clamp(16px,2vw,19px)}
+  .hero-btns{display:flex;gap:14px;justify-content:center;margin-top:32px;flex-wrap:wrap}
+  .btn{display:inline-flex;align-items:center;gap:9px;padding:13px 24px;border-radius:12px;font-weight:600;font-size:15px;cursor:pointer;transition:.18s;border:0}
+  .btn-primary{color:#08090f;background:var(--grad);background-size:160% 160%;animation:shift 7s ease infinite;box-shadow:0 10px 34px -10px rgba(108,76,240,.7)}
+  .btn-primary:hover{transform:translateY(-2px)}
+  .btn-ghost{color:var(--fg);border:1px solid var(--line-2);background:var(--panel-2)}
+  .btn-ghost:hover{border-color:var(--magenta);color:#fff}
+  .trust{display:flex;gap:26px;justify-content:center;margin-top:30px;flex-wrap:wrap;color:var(--faint);font-size:13px}
+  .trust b{color:var(--fg);font-weight:700;font-family:var(--display)}
+  .rise{opacity:0;transform:translateY(22px);animation:rise .9s cubic-bezier(.16,1,.3,1) forwards}
+  @keyframes rise{to{opacity:1;transform:none}}
+
+  /* ───────── Interactive VS Code demo ───────── */
+  .stage{margin:50px auto 0;max-width:1120px;position:relative}
+  .stage::before{content:"";position:absolute;inset:-2px;border-radius:18px;background:var(--grad);filter:blur(28px);opacity:.33;z-index:-1}
+  .ide{border:1px solid var(--line-2);border-radius:14px;overflow:hidden;background:#0B0E1A;box-shadow:0 40px 120px -40px rgba(0,0,0,.9);text-align:left}
+  .titlebar{display:flex;align-items:center;gap:8px;height:38px;padding:0 14px;background:#0E1120;border-bottom:1px solid var(--line)}
+  .lights{display:flex;gap:7px}.lights span{width:11px;height:11px;border-radius:50%}
+  .lights .r{background:#ff5f57}.lights .y{background:#febc2e}.lights .g{background:#28c840}
+  .titlebar .file{flex:1;text-align:center;font-size:12.5px;color:var(--muted);font-family:var(--mono)}
+  .ide-body{display:grid;grid-template-columns:48px 200px 1fr 300px;min-height:460px}
+
+  .activity{background:#0B0E1A;border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:6px;padding-top:12px}
+  .activity .ico{width:34px;height:34px;display:grid;place-items:center;border-radius:8px;color:var(--faint);cursor:pointer}
+  .activity .ico svg{width:20px;height:20px}
+  .activity .ico.active{color:var(--fg);position:relative}
+  .activity .ico.active::before{content:"";position:absolute;left:-12px;top:6px;bottom:6px;width:2px;border-radius:2px;background:var(--grad)}
+  .activity .ico:hover{color:var(--fg)}
+
+  .sidebar{background:#0A0D18;border-right:1px solid var(--line);padding:12px 0;overflow:hidden;font-size:13px}
+  .sb-title{font-size:11px;letter-spacing:.12em;color:var(--faint);padding:0 14px 8px;font-weight:600}
+  .tree .row{display:flex;align-items:center;gap:7px;padding:4px 14px;color:var(--muted);white-space:nowrap}
+  .tree .row .chev{font-size:9px;color:var(--faint);width:9px}
+  .tree .lvl2{padding-left:24px}.tree .lvl3{padding-left:36px}.tree .lvl4{padding-left:48px}
+  .tree .env{margin-left:auto;font-size:9px;padding:1px 6px;border-radius:5px;background:rgba(255,95,87,.16);color:#ff8a82;font-weight:700}
+  .tree .leaf{color:var(--fg)}
+  .sb-title.mt{margin-top:14px}
+  .hist .row{font-size:12px}.hist .ago{margin-left:auto;color:var(--faint);font-size:10px}
+
+  .editor{display:flex;flex-direction:column;min-width:0;background:#0B0E1A}
+  .tabs-strip{display:flex;height:34px;border-bottom:1px solid var(--line);background:#0A0D18}
+  .tabs-strip .tab{display:flex;align-items:center;gap:8px;padding:0 16px;font-size:12.5px;color:var(--muted);border-right:1px solid var(--line)}
+  .tabs-strip .tab.active{color:var(--fg);background:#0B0E1A;position:relative}
+  .tabs-strip .tab.active::after{content:"";position:absolute;left:0;right:0;top:0;height:2px;background:var(--grad)}
+  .cell{flex:1;display:flex;flex-direction:column;min-height:0}
+
+  /* example switcher chips */
+  .examples{display:flex;gap:8px;padding:10px 18px 4px;flex-wrap:wrap}
+  .ex-chip{font-size:11.5px;padding:5px 11px;border-radius:8px;border:1px solid var(--line-2);background:var(--bg-2);color:var(--muted);cursor:pointer;transition:.15s}
+  .ex-chip:hover{color:var(--fg)}
+  .ex-chip.active{color:#fff;border-color:transparent;background:var(--grad)}
+
+  .codelens{display:flex;gap:16px;padding:6px 18px 4px 54px;font-size:11.5px}
+  .codelens a{color:var(--faint);cursor:pointer}
+  .codelens a.ai{color:transparent;background:var(--grad);-webkit-background-clip:text;background-clip:text;font-weight:600}
+  .codelens a:hover{color:var(--fg)}
+  .code-wrap{display:flex;flex:0 0 auto}
+  .gutter{width:40px;flex:none;padding-top:10px;display:flex;flex-direction:column;align-items:center;border-right:1px solid var(--line)}
+  /* pulsing Run = the one action that matters (eye direction) */
+  .run{width:26px;height:26px;border-radius:7px;border:1px solid #9DE3A0;background:rgba(157,227,160,.14);color:#9DE3A0;display:grid;place-items:center;cursor:pointer;font-size:11px;transition:.15s;animation:runpulse 2.2s ease-in-out infinite}
+  .run:hover{background:rgba(157,227,160,.26)}
+  @keyframes runpulse{0%,100%{box-shadow:0 0 0 0 rgba(157,227,160,.4)}50%{box-shadow:0 0 0 6px rgba(157,227,160,0)}}
+  .cellno{font-family:var(--mono);font-size:11px;color:var(--faint);margin-top:8px}
+  .code{flex:1;padding:10px 16px;font-family:var(--mono);font-size:12.5px;line-height:1.75;white-space:pre;overflow-x:auto}
+  .code .ln{opacity:0;transition:opacity .12s}.code .ln.show{opacity:1}
+  .kwd{color:var(--c-kwd)}.fn{color:var(--c-fn)}.str{color:var(--c-str)}.num{color:var(--c-num)}.com{color:var(--c-com)}.at{color:var(--c-fn)}
+  .caret{display:inline-block;width:7px;height:14px;background:var(--magenta);vertical-align:-2px;margin-left:1px;animation:blink 1s step-end infinite}
+  .caret.hide{display:none}
+  @keyframes blink{50%{opacity:0}}
+
+  .results{flex:1;border-top:1px solid var(--line);display:flex;flex-direction:column;min-height:0;opacity:0;transition:opacity .4s}
+  .results.show{opacity:1}
+  .res-tabs{display:flex;align-items:center;gap:4px;padding:6px 14px;border-bottom:1px solid var(--line);font-size:12px}
+  .res-tab{padding:5px 12px;border-radius:7px;color:var(--muted);cursor:pointer}
+  .res-tab.active{color:var(--fg);background:var(--panel-2);border:1px solid var(--line)}
+  .res-info{margin-left:auto;color:#9DE3A0;font-family:var(--mono);font-size:11.5px}
+  .res-info.slow{color:#ffb36b}
+  .res-body{flex:1;overflow:auto;min-height:150px}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  thead th{position:sticky;top:0;text-align:left;padding:8px 14px;color:var(--faint);font-weight:600;background:#0A0D18;border-bottom:1px solid var(--line);font-size:11px;letter-spacing:.04em}
+  thead th.num{text-align:right}
+  tbody td{padding:7px 14px;border-bottom:1px solid rgba(255,255,255,.04);font-family:var(--mono);font-size:12px}
+  tbody td.num{text-align:right;color:#9DE3A0}
+  tbody tr{opacity:0;transform:translateX(-6px)}
+  tbody tr.in{opacity:1;transform:none;transition:.3s}
+  tbody tr:hover{background:rgba(255,255,255,.03)}
+  .insight{margin:0;padding:11px 16px;border-top:1px solid var(--line);background:var(--grad-soft);font-size:12px;color:var(--fg)}
+  .insight b{font-family:var(--display)}
+  .chartpane{display:none;padding:18px 18px;height:100%}
+  .chartpane.show{display:block}
+  .bars{display:flex;align-items:flex-end;gap:12px;height:175px}
+  .bar{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;height:100%;justify-content:flex-end}
+  .bar .fill{width:100%;border-radius:6px 6px 0 0;height:0;background:var(--grad);transition:height 1s cubic-bezier(.16,1,.3,1);box-shadow:0 0 16px -4px var(--magenta)}
+  .bar .lbl{font-size:10px;color:var(--faint);font-family:var(--mono)}
+
+  /* AI assistant panel — honest "Demo" labeling, lifted contrast on bubbles */
+  .assistant{background:#0A0D18;border-left:1px solid var(--line);display:flex;flex-direction:column;min-width:0}
+  .as-head{display:flex;align-items:center;gap:8px;padding:9px 14px;border-bottom:1px solid var(--line);font-size:12px;letter-spacing:.08em;color:var(--muted);font-weight:600}
+  .as-badge{margin-left:auto;font-size:10px;color:#08090f;background:var(--grad);padding:2px 8px;border-radius:6px;font-weight:700;letter-spacing:0}
+  .as-body{flex:1;overflow:auto;padding:14px;display:flex;flex-direction:column;gap:10px}
+  .msg{font-size:12.5px;border-radius:10px;padding:9px 12px;max-width:92%}
+  .msg.user{align-self:flex-end;background:rgba(108,76,240,.22);border:1px solid rgba(108,76,240,.4);color:#eef}
+  .msg.bot{align-self:flex-start;background:#11142A;border:1px solid var(--line);color:var(--fg)}
+  .msg.bot code{color:var(--c-kwd)}
+  .ai-sql{display:block;font-family:var(--mono);font-size:11px;color:#9DE3A0;background:#070a14;border:1px solid var(--line);border-radius:7px;padding:8px;margin:6px 0;white-space:pre-wrap}
+  .as-suggest{display:flex;gap:6px;flex-wrap:wrap;padding:8px 12px;border-top:1px solid var(--line)}
+  .as-suggest .sg{font-size:11px;color:var(--muted);border:1px solid var(--line-2);border-radius:999px;padding:5px 10px;cursor:pointer}
+  .as-suggest .sg:hover{color:#fff;border-color:var(--magenta)}
+  .as-input{display:flex;align-items:center;gap:8px;padding:10px 12px;border-top:1px solid var(--line);font-size:12px;color:var(--faint)}
+  .as-input .box{flex:1;border:1px dashed var(--line-2);border-radius:8px;padding:8px 10px;background:transparent}
+  .as-input .go{color:#08090f;background:var(--grad);border-radius:7px;padding:6px 12px;font-weight:600;font-size:12px}
+
+  .statusbar{display:flex;align-items:center;gap:16px;height:26px;padding:0 14px;background:#0E1120;border-top:1px solid var(--line);font-size:11px;color:var(--muted);font-family:var(--mono)}
+  .statusbar .prod{color:#ff8a82;font-weight:700}.statusbar .ro{color:var(--amber)}.statusbar .sp{margin-left:auto}
+
+  /* ───────── Marquee ───────── */
+  .marquee{border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:18px 0;overflow:hidden;background:var(--bg-2);white-space:nowrap;margin-top:60px}
+  .marquee .track{display:inline-flex;gap:46px;animation:scrollx 30s linear infinite;font-family:var(--mono);font-size:13px;color:var(--faint)}
+  @keyframes scrollx{to{transform:translateX(-50%)}}
+
+  /* ───────── Sections ───────── */
+  section.block{padding:90px 0;position:relative}
+  .eyebrow{display:inline-block;font-family:var(--mono);font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--magenta);margin-bottom:14px}
+  h2{font-family:var(--display);font-weight:700;font-size:clamp(28px,4vw,44px);letter-spacing:-.02em;line-height:1.1}
+  .sub{color:var(--muted);max-width:580px;margin-top:14px}
+  .center{text-align:center}.center .sub{margin-left:auto;margin-right:auto}
+  [data-reveal]{opacity:0;transform:translateY(28px);transition:opacity .7s cubic-bezier(.16,1,.3,1),transform .7s cubic-bezier(.16,1,.3,1)}
+  [data-reveal].in{opacity:1;transform:none}
+
+  /* metric strip */
+  .metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin:44px 0 8px}
+  .metric{border:1px solid var(--line);border-radius:14px;background:var(--panel);padding:22px;text-align:center}
+  .metric .v{font-family:var(--display);font-weight:800;font-size:34px}
+  .metric .k{color:var(--muted);font-size:13px;margin-top:4px}
+
+  /* feature areas */
+  .area{margin-top:40px}
+  .area-h{display:flex;align-items:center;gap:10px;font-family:var(--display);font-weight:600;font-size:18px;margin-bottom:16px}
+  .area-h .ai-pill{font-size:11px;color:var(--faint);font-family:var(--mono);font-weight:400}
+  .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+  .tile{position:relative;border:1px solid var(--line);border-radius:14px;background:var(--panel);padding:20px;overflow:hidden;transition:transform .25s}
+  .tile::after{content:"";position:absolute;inset:0;border-radius:14px;padding:1px;background:var(--grad);-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;opacity:0;transition:opacity .3s}
+  .tile:hover{transform:translateY(-4px)}.tile:hover::after{opacity:.8}
+  .tile .glow{position:absolute;width:220px;height:220px;border-radius:50%;background:var(--grad-soft);filter:blur(40px);top:var(--my,50%);left:var(--mx,50%);transform:translate(-50%,-50%);opacity:0;transition:opacity .3s;pointer-events:none}
+  .tile:hover .glow{opacity:1}
+  .tile .ic{font-size:22px;margin-bottom:10px;display:block}
+  .tile h3{font-family:var(--display);font-weight:600;font-size:15px;margin-bottom:6px}
+  .tile p{color:var(--muted);font-size:13px}
+
+  /* AI showcase */
+  .ai-show{display:grid;grid-template-columns:1fr 1fr;gap:30px;align-items:center;margin-top:46px}
+  .ai-demo{border:1px solid var(--line-2);border-radius:16px;background:var(--panel);overflow:hidden}
+  .ai-demo .q{padding:16px 18px;border-bottom:1px solid var(--line);color:var(--fg);font-size:14px}
+  .ai-demo .q .lbl{color:var(--magenta);font-family:var(--mono);font-size:11px;display:block;margin-bottom:6px;letter-spacing:.05em}
+  .ai-demo .a{padding:16px 18px;font-family:var(--mono);font-size:12.5px;line-height:1.7;white-space:pre-wrap;background:#070a14}
+  .ai-demo .note{padding:10px 18px;font-size:12px;color:var(--muted);border-top:1px solid var(--line)}
+  .providers{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}
+  .chip{font-family:var(--mono);font-size:12px;padding:7px 13px;border-radius:9px;border:1px solid var(--line-2);color:#fff;background:var(--grad)}
+  .chip.free{background:none;color:var(--muted)}
+
+  /* comparison table */
+  .cmp{width:100%;border-collapse:collapse;margin-top:44px;font-size:14px;border:1px solid var(--line);border-radius:14px;overflow:hidden}
+  .cmp th,.cmp td{padding:14px 16px;text-align:left;border-bottom:1px solid var(--line)}
+  .cmp thead th{background:var(--panel);font-family:var(--display);font-size:14px}
+  .cmp thead th:first-child{color:var(--muted);font-weight:500}
+  .cmp .me{background:rgba(108,76,240,.07);font-weight:600}
+  .cmp td.c{text-align:center}
+  .cmp .yes{color:#9DE3A0;font-weight:700}.cmp .no{color:var(--faint)}.cmp .partial{color:var(--amber)}
+
+  /* workflow */
+  .flow{display:flex;gap:0;margin-top:46px;flex-wrap:wrap;justify-content:center}
+  .step{flex:1;min-width:180px;text-align:center;padding:24px 14px;position:relative}
+  .step .n{font-family:var(--mono);font-size:12px;color:var(--faint)}
+  .step .si{font-size:30px;margin:10px 0;display:inline-block;transition:transform .4s}
+  .step:hover .si{transform:translateY(-6px) scale(1.12)}
+  .step h4{font-family:var(--display);font-size:16px;margin-bottom:6px}
+  .step p{font-size:13px;color:var(--muted)}
+  .step:not(:last-child)::after{content:"→";position:absolute;right:-8px;top:50%;color:var(--faint);font-size:20px}
+
+  /* FAQ */
+  .faq{max-width:760px;margin:44px auto 0}
+  details{border:1px solid var(--line);border-radius:12px;background:var(--panel);margin-bottom:12px;overflow:hidden}
+  summary{cursor:pointer;padding:16px 20px;font-family:var(--display);font-weight:600;font-size:15px;list-style:none;display:flex;justify-content:space-between;align-items:center}
+  summary::-webkit-details-marker{display:none}
+  summary::after{content:"+";color:var(--magenta);font-size:20px;transition:transform .25s}
+  details[open] summary::after{transform:rotate(45deg)}
+  details p{padding:0 20px 18px;color:var(--muted);font-size:14px}
+
+  /* CTA + footer */
+  .cta-block{text-align:center;padding:100px 0}
+  .cta-card{max-width:760px;margin:0 auto;border:1px solid var(--line-2);border-radius:24px;padding:56px 32px;position:relative;overflow:hidden;background:var(--panel)}
+  .cta-card::before{content:"";position:absolute;inset:0;background:var(--grad-soft);opacity:.7}
+  .cta-card>*{position:relative}
+  footer{border-top:1px solid var(--line);padding:48px 0 32px;color:var(--muted);font-size:14px}
+  .foot{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
+  .foot-col h5{color:var(--fg);font-family:var(--display);font-size:14px;margin-bottom:12px}
+  .foot-col a{display:block;margin-bottom:8px;color:var(--muted)}.foot-col a:hover{color:var(--fg)}
+  .foot-bottom{margin-top:36px;padding-top:20px;border-top:1px solid var(--line);text-align:center;color:var(--faint);font-size:13px}
+  :focus-visible{outline:2px solid var(--magenta);outline-offset:3px;border-radius:4px}
+
+  @media(max-width:980px){.ide-body{grid-template-columns:44px 1fr}.sidebar,.assistant{display:none}.ai-show{grid-template-columns:1fr}}
+  @media(max-width:860px){
+    .nav-links{display:none}.menu-btn{display:block}
+    .metrics{grid-template-columns:repeat(2,1fr)}.grid{grid-template-columns:repeat(2,1fr)}
+    .step:not(:last-child)::after{display:none}
+    .cmp{display:block;overflow-x:auto;white-space:nowrap}
+  }
+  @media(prefers-reduced-motion:reduce){
+    *{animation:none!important;transition:none!important}
+    [data-reveal]{opacity:1;transform:none}.code .ln{opacity:1}.results{opacity:1}tbody tr{opacity:1;transform:none}
+  }
+</style>
+</head>
+<body>
+
+<div class="aurora" aria-hidden="true"><div class="blob a"></div><div class="blob b"></div><div class="blob c"></div><div class="blob d"></div></div>
+<div class="grain" aria-hidden="true"></div>
+
+<!-- ─────────────── Nav ─────────────── -->
+<header><div class="container"><nav aria-label="Primary">
+  <a class="brand" href="#" aria-label="PgStudio home">
+    <svg class="mark" viewBox="0 0 100 100" aria-hidden="true">
+      <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#3D6BFF"/><stop offset=".35" stop-color="#6C4CF0"/>
+        <stop offset=".68" stop-color="#E0379E"/><stop offset="1" stop-color="#FF8A3D"/>
+      </linearGradient></defs>
+      <path d="M22 80 V28 q0-6 7-3 L71 52 V20" fill="none" stroke="url(#g)" stroke-width="11" stroke-linecap="round"/>
+      <path d="M78 20 V72 q0 6 -7 3 L29 48" fill="none" stroke="url(#g)" stroke-width="11" stroke-linecap="round" opacity=".55"/>
+    </svg>
+    <span>Pg<span class="grad-text">Studio</span></span>
+  </a>
+  <div class="nav-links">
+    <a href="#features">Features</a><a href="#ai">AI</a><a href="#compare">Compare</a>
+    <a href="#faq">FAQ</a><a href="https://github.com/dev-asterix/PgStudio">GitHub</a>
+    <a class="cta" href="#install">Install — free</a>
+  </div>
+  <button class="menu-btn" aria-label="Toggle menu">☰</button>
+</nav></div></header>
+
+<!-- ─────────────── Hero + demo ─────────────── -->
+<section class="hero"><div class="container">
+  <span class="pill rise" style="animation-delay:.05s"><span class="dot"></span> v1.3.13 · Free &amp; open source · 4 AI providers</span>
+  <h1 class="rise" style="animation-delay:.12s">PostgreSQL, without the<br><span class="grad-text">context switching.</span></h1>
+  <p class="lede rise" style="animation-delay:.2s">Connect to a database, run a notebook query, watch the chart build, and ask a schema-aware AI why it's slow — all inside VS Code. Zero browser tabs.</p>
+  <div class="hero-btns rise" style="animation-delay:.28s">
+    <a class="btn btn-primary" href="#install"><span aria-hidden="true">⬇</span> Install from Marketplace</a>
+    <button class="btn btn-ghost" id="replay"><span aria-hidden="true">▶</span> Run the demo</button>
+  </div>
+  <div class="trust rise" style="animation-delay:.36s">
+    <span><b id="dl">0</b> installs</span><span><b id="rt">0.0</b>★ rating</span>
+    <span><b>50+</b> capabilities</span><span><b>PG 12–17</b> + RDS · Supabase · Neon</span>
+  </div>
+
+  <!-- The product IS the hero -->
+  <div class="stage rise" style="animation-delay:.44s">
+    <div class="ide" role="img" aria-label="A simulated VS Code window running a SQL query in PgStudio with results, a chart, and a schema-aware AI assistant.">
+      <div class="titlebar">
+        <div class="lights" aria-hidden="true"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+        <div class="file">ecom_analytics.pgsql — PgStudio</div>
+      </div>
+      <div class="ide-body">
+        <!-- activity bar -->
+        <div class="activity" aria-hidden="true">
+          <div class="ico active" title="Explorer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/><path d="M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg></div>
+          <div class="ico" title="Search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg></div>
+          <div class="ico" title="Dashboard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 13h4v8H3zM10 3h4v18h-4zM17 9h4v12h-4z"/></svg></div>
+          <div class="ico" title="AI"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
+        </div>
+        <!-- sidebar -->
+        <div class="sidebar">
+          <div class="sb-title">PG STUDIO</div>
+          <div class="tree">
+            <div class="row"><span class="chev">▼</span><span>🔌</span> prod-analytics <span class="env">PROD</span></div>
+            <div class="row lvl2"><span class="chev">▼</span><span>🗄️</span> shopdb</div>
+            <div class="row lvl3"><span class="chev">▼</span><span>📂</span> ecom · 12 tables</div>
+            <div class="row lvl4 leaf"><span>📊</span> orders ~480K</div>
+            <div class="row lvl4 leaf"><span>📊</span> customers</div>
+            <div class="row lvl4 leaf"><span>📊</span> products</div>
+            <div class="row lvl4 leaf"><span>📊</span> shipments</div>
+          </div>
+          <div class="sb-title mt">QUERY HISTORY</div>
+          <div class="tree hist">
+            <div class="row"><span>📄</span> daily_revenue_7d <span class="ago">2m</span></div>
+            <div class="row"><span>📄</span> top_customers_30d <span class="ago">18m</span></div>
+            <div class="row"><span>📄</span> pending_shipments <span class="ago">1h</span></div>
+          </div>
+        </div>
+        <!-- editor + results -->
+        <div class="editor">
+          <div class="tabs-strip" aria-hidden="true"><div class="tab active"><span>📓</span> ecom_analytics.pgsql</div></div>
+          <div class="cell">
+            <!-- switchable examples -->
+            <div class="examples" role="tablist" aria-label="Demo queries">
+              <button class="ex-chip active" data-ex="0">Revenue by day</button>
+              <button class="ex-chip" data-ex="1">Top customers</button>
+              <button class="ex-chip" data-ex="2">Find the slow join</button>
+            </div>
+            <div class="codelens"><a class="ai">✦ Ask AI</a><a>Optimize</a><a>Explain</a><a>Save query</a></div>
+            <div class="code-wrap">
+              <div class="gutter"><button class="run" id="runBtn" aria-label="Run cell">▶</button><span class="cellno">1</span></div>
+              <div class="code" id="code" aria-hidden="true"></div>
+            </div>
+            <div class="results" id="results">
+              <div class="res-tabs">
+                <span class="res-tab active" data-pane="table">Table</span>
+                <span class="res-tab" data-pane="chart">Chart</span>
+                <span class="res-info" id="resInfo"><span id="rows">0</span> rows · <span id="ms">0</span> ms</span>
+              </div>
+              <div class="res-body">
+                <table id="tbl"><thead id="thead"></thead><tbody></tbody></table>
+                <div class="chartpane" id="chart"><div class="bars" id="bars"></div></div>
+              </div>
+              <p class="insight" id="insight"></p>
+            </div>
+          </div>
+          <div class="statusbar" aria-hidden="true">
+            <span class="prod">● PROD</span><span class="ro">🔒 Read-only</span><span>Auto-LIMIT 1000</span>
+            <span class="sp">UTF-8</span><span>PostgreSQL 16</span>
+          </div>
+        </div>
+        <!-- AI assistant (honest demo) -->
+        <div class="assistant">
+          <div class="as-head">SQL ASSISTANT <span class="as-badge">Demo</span></div>
+          <div class="as-body" id="asBody"></div>
+          <div class="as-suggest" id="asSuggest">
+            <span class="sg" data-ex="0">Why is this slow?</span>
+            <span class="sg" data-ex="1">Top customers?</span>
+            <span class="sg" data-ex="2">Find the slow join</span>
+          </div>
+          <div class="as-input"><span class="box">Install to chat against your live schema…</span><span class="go">Send</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div></section>
+
+<!-- marquee -->
+<div class="marquee" aria-hidden="true"><div class="track" id="mq"></div></div>
+
+<!-- ─────────────── Features ─────────────── -->
+<section class="block" id="features"><div class="container">
+  <div data-reveal>
+    <span class="eyebrow">Everything in one place</span>
+    <h2>50+ capabilities,<br>zero browser tabs.</h2>
+    <p class="sub">A toolkit that replaces the tab-juggling between a SQL client, a monitor, and a chat window — all inside VS Code.</p>
+  </div>
+
+  <div class="metrics" data-reveal>
+    <div class="metric"><div class="v grad-text">50+</div><div class="k">capabilities</div></div>
+    <div class="metric"><div class="v grad-text">5</div><div class="k">major areas</div></div>
+    <div class="metric"><div class="v grad-text">4</div><div class="k">AI providers</div></div>
+    <div class="metric"><div class="v grad-text">0</div><div class="k">browser tabs needed</div></div>
+  </div>
+
+  <div class="area" data-reveal>
+    <div class="area-h">📓 Notebooks &amp; Queries</div>
+    <div class="grid">
+      <div class="tile"><span class="glow"></span><span class="ic">✍️</span><h3>Write &amp; Run</h3><p>SQL cells with inline results — run one cell or the whole notebook.</p></div>
+      <div class="tile"><span class="glow"></span><span class="ic">📊</span><h3>Sortable Tables</h3><p>Results appear formatted and sortable directly below each cell.</p></div>
+      <div class="tile"><span class="glow"></span><span class="ic">📤</span><h3>Export</h3><p>CSV, JSON, or Excel in one click — no copy-paste.</p></div>
+      <div class="tile"><span class="glow"></span><span class="ic">🕐</span><h3>Auto History</h3><p>Every query saved automatically — browse and replay anytime.</p></div>
+    </div>
+  </div>
+
+  <div class="area" data-reveal>
+    <div class="area-h">🗂️ Database Explorer</div>
+    <div class="grid">
+      <div class="tile"><span class="glow"></span><span class="ic">🌳</span><h3>16+ Object Types</h3><p>Tables, views, functions, triggers, partitions, FDWs and more.</p></div>
+      <div class="tile"><span class="glow"></span><span class="ic">🔍</span><h3>Column Insights</h3><p>Click any column for null count, unique values, min/max on demand.</p></div>
+      <div class="tile"><span class="glow"></span><span class="ic">⚡</span><h3>Right-click SQL</h3><p>SELECT, INSERT, ALTER, DROP — generated with correct names.</p></div>
+      <div class="tile"><span class="glow"></span><span class="ic">🔎</span><h3>Quick Search</h3><p>Find any object across all schemas in one keypress.</p></div>
+    </div>
+  </div>
+
+  <div class="area" data-reveal>
+    <div class="area-h">🎨 Visual Tools</div>
+    <div class="grid">
+      <div class="tile"><span class="glow"></span><span class="ic">🖊️</span><h3>Table Designer</h3><p>Create and alter tables visually — every change previews as SQL.</p></div>
+      <div class="tile"><span class="glow"></span><span class="ic">🔄</span><h3>Schema Diff</h3><p>Compare two schemas and generate the migration script.</p></div>
+      <div class="tile"><span class="glow"></span><span class="ic">🗺️</span><h3>ERD Diagram</h3><p>Auto-generated FK relationship map for the whole schema.</p></div>
+      <div class="tile"><span class="glow"></span><span class="ic">📥</span><h3>Import Wizard</h3><p>CSV/JSON import with guided column type mapping.</p></div>
+    </div>
+  </div>
+
+  <div class="area" data-reveal>
+    <div class="area-h">🛡️ Safety &amp; Performance</div>
+    <div class="grid">
+      <div class="tile"><span class="glow"></span><span class="ic">🏷️</span><h3>Env Labels</h3><p>DEV / STAGE / PROD — always visible before you run anything.</p></div>
+      <div class="tile"><span class="glow"></span><span class="ic">⚠️</span><h3>Risk Scoring</h3><p>Flags DELETE without WHERE, TRUNCATE, DROP before execution.</p></div>
+      <div class="tile"><span class="glow"></span><span class="ic">📈</span><h3>Live Dashboard</h3><p>Real-time metrics — active connections, query throughput, locks.</p></div>
+      <div class="tile"><span class="glow"></span><span class="ic">🔬</span><h3>EXPLAIN Analysis</h3><p>Query plan breakdown with specific optimization guidance.</p></div>
+    </div>
+  </div>
+</div></section>
+
+<!-- ─────────────── AI showcase ─────────────── -->
+<section class="block" id="ai"><div class="container">
+  <div data-reveal>
+    <span class="eyebrow">Schema-aware AI</span>
+    <h2>Describe it. Get runnable SQL.</h2>
+    <p class="sub">It reads your actual tables and columns — not invented ones — and never auto-executes. Generated SQL lands in a cell for you to review first.</p>
+  </div>
+  <div class="ai-show">
+    <div class="ai-demo" data-reveal>
+      <div class="q"><span class="lbl">PLAIN ENGLISH →</span>"Top 10 customers by revenue last 30 days, exclude cancelled orders"</div>
+      <div class="a"><span class="kwd">SELECT</span> c.name, <span class="fn">SUM</span>(o.amount) <span class="kwd">AS</span> revenue
+<span class="kwd">FROM</span> customers c <span class="kwd">JOIN</span> orders o <span class="kwd">ON</span> c.id = o.customer_id
+<span class="kwd">WHERE</span> o.created_at >= <span class="fn">NOW</span>() - <span class="kwd">INTERVAL</span> <span class="str">'30 days'</span>
+  <span class="kwd">AND</span> o.status <> <span class="str">'cancelled'</span>
+<span class="kwd">GROUP BY</span> c.id, c.name <span class="kwd">ORDER BY</span> revenue <span class="kwd">DESC</span> <span class="kwd">LIMIT</span> <span class="num">10</span>;</div>
+      <div class="note">Schema-aware — uses your real table and column names.</div>
+    </div>
+    <div data-reveal>
+      <h3 style="font-family:var(--display);font-size:20px">Four ways AI helps</h3>
+      <p class="sub" style="margin-top:10px">Text → SQL, plain-English Explain, Optimize with index recommendations, and Debug from a pasted error. Open the assistant in editor tabs and run parallel chats.</p>
+      <div class="providers">
+        <span class="chip">GitHub Models · free, no key</span>
+        <span class="chip">OpenAI GPT-4o</span><span class="chip">Anthropic Claude</span><span class="chip">Google Gemini</span>
+        <span class="chip free">+ VS Code LM API</span>
+      </div>
+    </div>
+  </div>
+</div></section>
+
+<!-- ─────────────── Comparison ─────────────── -->
+<section class="block" id="compare"><div class="container center">
+  <div data-reveal>
+    <span class="eyebrow">How it compares</span>
+    <h2>Built into your editor.</h2>
+    <p class="sub">The others are separate apps. PgStudio lives where your code already is.</p>
+  </div>
+  <table class="cmp" data-reveal>
+    <thead><tr><th>Feature</th><th class="me">PgStudio</th><th>pgAdmin</th><th>DBeaver</th><th>TablePlus</th></tr></thead>
+    <tbody>
+      <tr><td>Runs inside VS Code</td><td class="c me yes">✓</td><td class="c no">—</td><td class="c no">—</td><td class="c no">—</td></tr>
+      <tr><td>SQL notebooks</td><td class="c me yes">✓</td><td class="c no">—</td><td class="c no">—</td><td class="c no">—</td></tr>
+      <tr><td>Built-in AI assistant</td><td class="c me yes">✓</td><td class="c no">—</td><td class="c no">—</td><td class="c no">—</td></tr>
+      <tr><td>Real-time dashboard</td><td class="c me yes">✓</td><td class="c yes">✓</td><td class="c partial">limited</td><td class="c partial">limited</td></tr>
+      <tr><td>ERD &amp; schema diff</td><td class="c me yes">✓</td><td class="c partial">partial</td><td class="c yes">✓</td><td class="c no">—</td></tr>
+      <tr><td>Foreign data wrappers</td><td class="c me yes">✓</td><td class="c yes">✓</td><td class="c partial">limited</td><td class="c no">—</td></tr>
+      <tr><td>License</td><td class="c me yes">MIT · free</td><td class="c">free</td><td class="c">free</td><td class="c no">paid</td></tr>
+    </tbody>
+  </table>
+</div></section>
+
+<!-- ─────────────── Workflow ─────────────── -->
+<section class="block"><div class="container center">
+  <div data-reveal><span class="eyebrow">The loop</span><h2>Connect → Explore → Query → Analyze</h2></div>
+  <div class="flow" data-reveal>
+    <div class="step"><div class="n">01</div><span class="si">🔐</span><h4>Connect</h4><p>Encrypted credentials, SSH tunnels, env labels.</p></div>
+    <div class="step"><div class="n">02</div><span class="si">🌳</span><h4>Explore</h4><p>Schemas, tables, views, functions — one tree.</p></div>
+    <div class="step"><div class="n">03</div><span class="si">📝</span><h4>Query</h4><p>Notebooks with AI assist and instant results.</p></div>
+    <div class="step"><div class="n">04</div><span class="si">📊</span><h4>Analyze</h4><p>Charts, EXPLAIN, profiling, export.</p></div>
+  </div>
+</div></section>
+
+<!-- ─────────────── FAQ ─────────────── -->
+<section class="block" id="faq"><div class="container">
+  <div class="center" data-reveal><span class="eyebrow">Common questions</span><h2>Good to know</h2></div>
+  <div class="faq" data-reveal>
+    <details open><summary>Is PgStudio free?</summary><p>Yes — completely free, no subscription or account. Install from the VS Code Marketplace or Open VSX in under a minute.</p></details>
+    <details><summary>Which AI providers are supported?</summary><p>OpenAI (GPT-4o), Anthropic Claude, Google Gemini, GitHub Models (free, no API key), and the VS Code Language Model API. GitHub Models requires no configuration.</p></details>
+    <details><summary>How is it different from pgAdmin or DBeaver?</summary><p>PgStudio runs inside VS Code — no separate app to install or switch to. Your notebooks, explorer, and AI assistant stay in the same window as your code.</p></details>
+    <details><summary>What PostgreSQL versions are supported?</summary><p>PostgreSQL 12 through 17, plus compatible managed services like Amazon RDS, Supabase, Neon, and other pg-compatible databases.</p></details>
+    <details><summary>Does it support SSH tunnels?</summary><p>Yes — built-in SSH tunnel support connects to databases on private networks or behind firewalls with no extra tooling.</p></details>
+    <details><summary>Can I share notebooks with my team?</summary><p>.pgsql notebooks are plain files that commit to git like source. Your team replays the same queries against their own connections — no export needed.</p></details>
+  </div>
+</div></section>
+
+<!-- ─────────────── CTA ─────────────── -->
+<section class="cta-block" id="install"><div class="container">
+  <div class="cta-card" data-reveal>
+    <h2>Install in one click.</h2>
+    <p class="sub" style="margin:14px auto 28px">Free, MIT-licensed, on the VS Code Marketplace and Open VSX. Under a minute to first query.</p>
+    <div class="hero-btns" style="margin-top:0">
+      <a class="btn btn-primary" href="https://marketplace.visualstudio.com/items?itemName=ric-v.postgres-explorer"><span aria-hidden="true">⬇</span> VS Code Marketplace</a>
+      <a class="btn btn-ghost" href="https://open-vsx.org/extension/ric-v/postgres-explorer">Open VSX</a>
+    </div>
+    <p style="margin-top:22px;font-family:var(--mono);font-size:13px;color:var(--faint)">code --install-extension ric-v.postgres-explorer</p>
+  </div>
+</div></section>
+
+<footer><div class="container">
+  <div class="foot">
+    <div style="max-width:280px">
+      <div class="brand" style="font-size:17px;margin-bottom:10px">🐘 Pg<span class="grad-text">Studio</span></div>
+      <p style="color:var(--faint);font-size:13px">PostgreSQL, without the context switching.</p>
+    </div>
+    <div class="foot-col"><h5>Resources</h5><a href="https://pgstudio.astrx.dev/">Documentation</a><a href="https://github.com/dev-asterix/PgStudio/blob/main/CHANGELOG.md">Changelog</a></div>
+    <div class="foot-col"><h5>Community</h5><a href="https://github.com/dev-asterix/PgStudio">GitHub</a><a href="https://github.com/dev-asterix/PgStudio/issues">Report issues</a></div>
+    <div class="foot-col"><h5>Install</h5><a href="https://marketplace.visualstudio.com/items?itemName=ric-v.postgres-explorer">Marketplace</a><a href="https://open-vsx.org/extension/ric-v/postgres-explorer">Open VSX</a></div>
+  </div>
+  <div class="foot-bottom">Made with ❤ by <a href="https://github.com/dev-asterix">astrx.dev</a> · MIT License</div>
+</div></footer>
+
+<script>
+(function(){
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* ── Demo data: 3 switchable examples ── */
+  const EX = [
+    {
+      code:['<span class="com">-- Revenue by day · last 7 days</span>',
+        '<span class="kwd">SELECT</span> <span class="fn">date_trunc</span>(<span class="str">\'day\'</span>, created_at) <span class="kwd">AS</span> day,',
+        '       <span class="fn">COUNT</span>(*)    <span class="kwd">AS</span> orders,',
+        '       <span class="fn">SUM</span>(amount) <span class="kwd">AS</span> revenue',
+        '<span class="kwd">FROM</span> <span class="at">ecom.orders</span>',
+        '<span class="kwd">WHERE</span> created_at >= <span class="fn">NOW</span>() - <span class="kwd">INTERVAL</span> <span class="str">\'7 days\'</span>',
+        '<span class="kwd">GROUP BY</span> day <span class="kwd">ORDER BY</span> day;'],
+      cols:['day','orders','revenue'], ms:55, slow:false,
+      rows:[['2026-04-07','142','18,420.00'],['2026-04-08','158','21,340.50'],['2026-04-09','131','17,890.00'],['2026-04-10','177','24,110.25'],['2026-04-11','191','27,905.40'],['2026-04-12','168','22,490.00'],['2026-04-13','182','26,331.75']],
+      insight:'<b>Suggestion:</b> add an index on <code>orders(created_at)</code> and cache the daily rollup in a materialized view for sub-100ms dashboards.',
+      chart:{labels:['Apr 7','Apr 8','Apr 9','Apr 10','Apr 11','Apr 12','Apr 13'],values:[18420,21340,17890,24110,27905,22490,26331]},
+      ai:{q:'Why is this daily revenue query slow on prod?',a:'<code>orders.created_at</code> isn\'t indexed — a sequential scan over ~480K rows. The fix:<span class="ai-sql">CREATE INDEX CONCURRENTLY idx_orders_created_at\nON ecom.orders (created_at DESC);</span>After that it drops to under 80ms.'}
+    },
+    {
+      code:['<span class="com">-- Top 10 customers by revenue · 30 days</span>',
+        '<span class="kwd">SELECT</span> c.name, <span class="fn">COUNT</span>(o.id) <span class="kwd">AS</span> orders, <span class="fn">SUM</span>(o.amount) <span class="kwd">AS</span> revenue',
+        '<span class="kwd">FROM</span> <span class="at">ecom.customers</span> c',
+        '<span class="kwd">JOIN</span> <span class="at">ecom.orders</span> o <span class="kwd">ON</span> o.customer_id = c.id',
+        '<span class="kwd">WHERE</span> o.created_at >= <span class="fn">NOW</span>() - <span class="kwd">INTERVAL</span> <span class="str">\'30 days\'</span>',
+        '  <span class="kwd">AND</span> o.status <> <span class="str">\'cancelled\'</span>',
+        '<span class="kwd">GROUP BY</span> c.id, c.name <span class="kwd">ORDER BY</span> revenue <span class="kwd">DESC</span> <span class="kwd">LIMIT</span> <span class="num">7</span>;'],
+      cols:['customer','orders','revenue'], ms:88, slow:false,
+      rows:[['Mara Vance','41','12,940.00'],['Leo Yamada','38','11,205.50'],['Priya Raman','33','9,870.25'],['Dane Okafor','29','8,640.00'],['Ines Carbó','27','7,915.40'],['Tom Eriksen','22','6,480.00'],['Aya Nakamura','19','5,331.75']],
+      insight:'<b>Tip:</b> a composite index on <code>orders(customer_id, created_at)</code> turns this into an index-only scan.',
+      chart:{labels:['Mara','Leo','Priya','Dane','Ines','Tom','Aya'],values:[12940,11205,9870,8640,7915,6480,5331]},
+      ai:{q:'Top customers — and is the join efficient?',a:'The join on <code>orders.customer_id</code> is fine (it\'s a FK), but the date filter scans first. A composite index<span class="ai-sql">CREATE INDEX idx_orders_cust_date\nON ecom.orders (customer_id, created_at);</span>lets the planner skip the sort entirely.'}
+    },
+    {
+      code:['<span class="com">-- Orders still awaiting shipment, by status</span>',
+        '<span class="kwd">SELECT</span> o.status, <span class="fn">COUNT</span>(*) <span class="kwd">AS</span> pending',
+        '<span class="kwd">FROM</span> <span class="at">ecom.orders</span> o',
+        '<span class="kwd">JOIN</span> <span class="at">ecom.shipments</span> s <span class="kwd">ON</span> s.order_id = o.id',
+        '<span class="kwd">WHERE</span> s.shipped_at <span class="kwd">IS NULL</span>',
+        '<span class="kwd">GROUP BY</span> o.status;'],
+      cols:['status','pending'], ms:2140, slow:true,
+      rows:[['paid','1,240'],['processing','860'],['backorder','410'],['refunded','95']],
+      insight:'<b>⚠ Nested loop join</b> — <code>shipments.order_id</code> is unindexed. A btree index cuts this from 2.1s to ~40ms.',
+      chart:{labels:['paid','processing','backorder','refunded'],values:[1240,860,410,95]},
+      ai:{q:'This join takes 2 seconds — what\'s wrong?',a:'The planner falls back to a nested loop because <code>shipments.order_id</code> has no index. Add one:<span class="ai-sql">CREATE INDEX CONCURRENTLY idx_shipments_order_id\nON ecom.shipments (order_id);</span>It\'ll switch to a hash join — about 40ms.'}
+    }
+  ];
+
+  let active = 0, busy = false;
+  const codeEl=document.getElementById('code'), results=document.getElementById('results');
+  const thead=document.getElementById('thead'), tbody=document.querySelector('#tbl tbody');
+  const bars=document.getElementById('bars'), insightEl=document.getElementById('insight');
+  const resInfo=document.getElementById('resInfo'), asBody=document.getElementById('asBody');
+
+  const countUp=(el,to,dur,dec)=>{const s=performance.now();(function step(t){const p=Math.min((t-s)/dur,1);el.textContent=dec?(p*to).toFixed(1):Math.floor(p*to);if(p<1)requestAnimationFrame(step);})(s);};
+
+  function buildBars(ex){bars.innerHTML='';const max=Math.max(...ex.chart.values);ex.chart.labels.forEach((l,i)=>{const b=document.createElement('div');b.className='bar';const f=document.createElement('div');f.className='fill';f.dataset.h=(ex.chart.values[i]/max*100);const lb=document.createElement('div');lb.className='lbl';lb.textContent=l;b.appendChild(f);b.appendChild(lb);bars.appendChild(b);});}
+  function animateBars(){bars.querySelectorAll('.fill').forEach((f,i)=>setTimeout(()=>f.style.height=f.dataset.h+'%',i*70));}
+
+  function showResults(ex){
+    results.classList.add('show');
+    thead.innerHTML='<tr>'+ex.cols.map((c,i)=>`<th class="${i?'num':''}">${c}</th>`).join('')+'</tr>';
+    tbody.innerHTML='';
+    ex.rows.forEach((r,i)=>{const tr=document.createElement('tr');tr.innerHTML=r.map((c,j)=>`<td class="${j?'num':''}">${c}</td>`).join('');tbody.appendChild(tr);setTimeout(()=>tr.classList.add('in'),reduce?0:120+i*55);});
+    insightEl.innerHTML=ex.insight;
+    resInfo.className='res-info'+(ex.slow?' slow':'');
+    setTimeout(()=>{countUp(document.getElementById('rows'),ex.rows.length,450);countUp(document.getElementById('ms'),ex.ms,700);},reduce?0:150);
+    // AI exchange (lifted-contrast bubbles)
+    asBody.innerHTML=`<div class="msg user">${ex.ai.q}</div>`;
+    setTimeout(()=>{const b=document.createElement('div');b.className='msg bot';b.innerHTML=ex.ai.a;asBody.appendChild(b);asBody.scrollTop=asBody.scrollHeight;},reduce?0:600);
+    busy=false;
+  }
+
+  function run(){
+    if(busy)return;busy=true;
+    const ex=EX[active];
+    results.classList.remove('show');
+    codeEl.innerHTML=ex.code.map((c,i)=>`<span class="ln" id="ln${i}">${c}</span>`).join('\n')+'<span class="caret" id="cv"></span>';
+    buildBars(ex);
+    const caret=document.getElementById('cv');
+    if(reduce){ex.code.forEach((_,i)=>document.getElementById('ln'+i).classList.add('show'));caret.classList.add('hide');showResults(ex);return;}
+    let i=0;(function next(){if(i>=ex.code.length){caret.classList.add('hide');setTimeout(()=>showResults(ex),380);return;}const ln=document.getElementById('ln'+i);ln.classList.add('show');ln.appendChild(caret);i++;setTimeout(next,150+Math.random()*120);})();
+  }
+
+  function setExample(n){active=n;document.querySelectorAll('.ex-chip').forEach(c=>c.classList.toggle('active',+c.dataset.ex===n));run();}
+  document.querySelectorAll('.ex-chip').forEach(c=>c.addEventListener('click',()=>setExample(+c.dataset.ex)));
+  document.querySelectorAll('.as-suggest .sg').forEach(s=>s.addEventListener('click',()=>setExample(+s.dataset.ex)));
+  document.getElementById('runBtn').addEventListener('click',run);
+  document.getElementById('replay').addEventListener('click',run);
+
+  document.querySelectorAll('.res-tab').forEach(t=>t.addEventListener('click',()=>{
+    document.querySelectorAll('.res-tab').forEach(x=>x.classList.remove('active'));t.classList.add('active');
+    const chart=t.dataset.pane==='chart';
+    document.getElementById('chart').classList.toggle('show',chart);
+    document.querySelector('#tbl').style.display=chart?'none':'table';
+    if(chart)animateBars();
+  }));
+
+  setTimeout(run,reduce?0:1300);
+
+  /* scroll reveals */
+  const io=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target);}}),{threshold:.15});
+  document.querySelectorAll('[data-reveal]').forEach(el=>io.observe(el));
+
+  /* tile pointer glow */
+  document.querySelectorAll('.tile').forEach(tile=>tile.addEventListener('pointermove',e=>{const r=tile.getBoundingClientRect();tile.style.setProperty('--mx',(e.clientX-r.left)+'px');tile.style.setProperty('--my',(e.clientY-r.top)+'px');}));
+
+  /* trust count-ups — wire to live Marketplace API in production */
+  const tio=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){countUp(document.getElementById('dl'),6400,1400);countUp(document.getElementById('rt'),4.5,1200,true);tio.disconnect();}}),{threshold:.5});
+  tio.observe(document.querySelector('.trust'));
+
+  /* marquee */
+  const items=['🔌 Secure connections','📓 SQL notebooks','📈 Live dashboard','🛡️ Read-only mode','🔍 EXPLAIN visualizer','✦ Schema-aware AI','🏗️ Table designer','🗺️ ERD diagram','📤 CSV · JSON · Excel','🌍 Foreign data wrappers'];
+  document.getElementById('mq').innerHTML=(items.map(i=>`<span>${i}</span>`).join(''))+(items.map(i=>`<span>${i}</span>`).join(''));
+})();
+</script>
+</body>
+</html>

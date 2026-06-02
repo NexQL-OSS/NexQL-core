@@ -144,6 +144,10 @@ export async function activate(context: vscode.ExtensionContext) {
   telemetry.trackDailyActiveUser(version);
 
   SecretStorageService.getInstance(context);
+  const { AiCredentialsService } = await import('./features/aiAssistant/AiCredentialsService');
+  AiCredentialsService.getInstance(context);
+  const { AiModelCatalogService } = await import('./features/aiAssistant/AiModelCatalogService');
+  AiModelCatalogService.getInstance(context);
   ConnectionManager.getInstance();
   QueryHistoryService.initialize(context.workspaceState);
   QueryPerformanceService.initialize(context.globalState);
@@ -529,6 +533,11 @@ export async function activate(context: vscode.ExtensionContext) {
   runDeferredStartupTask('migrateExistingPasswords', async () => {
     const { migrateExistingPasswords } = await import('./services/SecretStorageService');
     await migrateExistingPasswords(context);
+  });
+
+  runDeferredStartupTask('migrateAiCredentialsAndSettings', async () => {
+    const { migrateAiCredentialsAndSettings } = await import('./features/aiAssistant/AiCredentialsService');
+    await migrateAiCredentialsAndSettings(context);
   });
 
   outputChannel.appendLine(`PgStudio activation completed in ${Date.now() - activationStart}ms`);

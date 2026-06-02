@@ -45,7 +45,15 @@ export class WhatsNewManager {
 
     panel.webview.html = await this.getWebviewContent(panel.webview, version);
 
-    const messageSub = panel.webview.onDidReceiveMessage(async (message: { type?: string; command?: string }) => {
+    const messageSub = panel.webview.onDidReceiveMessage(async (message: { type?: string; command?: string; url?: string }) => {
+      if (message?.type === 'openExternal' && typeof message.url === 'string') {
+        try {
+          await vscode.env.openExternal(vscode.Uri.parse(message.url));
+        } catch (err) {
+          console.warn('[PgStudio WhatsNew] openExternal failed', err);
+        }
+        return;
+      }
       if (message?.type !== 'runCommand' || typeof message.command !== 'string') {
         return;
       }
@@ -57,8 +65,32 @@ export class WhatsNewManager {
     panel.onDidDispose(() => messageSub.dispose());
   }
 
+  private getCommunityLinks(): { issues: string; website: string; repository: string; discussions: string } {
+    const pkg = this.context.extension.packageJSON as {
+      bugs?: { url?: string };
+      homepage?: string;
+      repository?: { url?: string } | string;
+    };
+    const issues = pkg.bugs?.url ?? 'https://github.com/dev-asterix/PgStudio/issues';
+    const website = pkg.homepage ?? 'https://pgstudio.astrx.dev/';
+    let repoBase = 'https://github.com/dev-asterix/PgStudio';
+    const repo = pkg.repository;
+    if (typeof repo === 'object' && repo?.url) {
+      repoBase = repo.url.replace(/\.git$/i, '');
+    } else if (typeof repo === 'string') {
+      repoBase = repo.replace(/\.git$/i, '');
+    }
+    return {
+      issues,
+      website,
+      repository: repoBase,
+      discussions: `${repoBase}/discussions`,
+    };
+  }
+
   private async getWebviewContent(webview: vscode.Webview, version: string): Promise<string> {
     const changelogContent = await this.getChangelogContent();
+    const links = this.getCommunityLinks();
     const logoPath = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'resources', 'postgres-explorer.png'));
     const markedUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'resources', 'marked.min.js'));
     const highlightScriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'resources', 'highlight.min.js'));
@@ -101,30 +133,79 @@ export class WhatsNewManager {
           .header {
             display: flex;
             align-items: center;
-            margin-bottom: 2rem;
+            gap: 1rem;
+            margin-bottom: 1.25rem;
             border-bottom: 1px solid var(--vscode-widget-border);
-            padding-bottom: 1rem;
-            flex-direction: row;
+            padding-bottom: 0.85rem;
             text-align: left;
           }
           .logo {
-            width: 64px;
-            height: 64px;
-            margin-right: 1.5rem;
-            margin-bottom: 0;
+            width: 52px;
+            height: 52px;
+            flex-shrink: 0;
+          }
+          .header-main {
+            flex: 1;
+            min-width: 0;
+          }
+          .header-main h1 {
+            margin-bottom: 0.15rem;
+          }
+          .header-main p {
+            margin: 0;
+            font-size: 0.92em;
+            color: var(--vscode-descriptionForeground);
           }
           .version-badge {
             background-color: var(--vscode-badge-background);
             color: var(--vscode-badge-foreground);
             padding: 0.2rem 0.5rem;
             border-radius: 4px;
-            font-size: 0.9em;
-            margin-left: 1rem;
+            font-size: 0.55em;
+            margin-left: 0.5rem;
             vertical-align: middle;
+            font-weight: 600;
+          }
+          .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 2px;
+            flex-shrink: 0;
+          }
+          .icon-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 32px;
+            border-radius: 6px;
+            color: var(--vscode-icon-foreground, var(--vscode-foreground));
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            text-decoration: none;
+            opacity: 0.9;
+          }
+          .icon-btn:hover {
+            background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.2));
+            opacity: 1;
+          }
+          .icon-btn:focus-visible {
+            outline: 1px solid var(--vscode-focusBorder);
+            outline-offset: 1px;
+          }
+          .icon-btn svg {
+            width: 18px;
+            height: 18px;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 1.75;
+            stroke-linecap: round;
+            stroke-linejoin: round;
           }
 
           .content {
-            margin-top: 1rem;
+            margin-top: 0.25rem;
           }
           .content a {
             color: var(--vscode-textLink-foreground);
@@ -221,33 +302,45 @@ export class WhatsNewManager {
           .content .hljs-built_in,
           .content .hljs-type { color: var(--vscode-symbolIcon-classForeground, #4ec9b0) !important; }
 
-          .footer {
-            margin-top: 3rem;
-            padding-top: 1rem;
-            border-top: 1px solid var(--vscode-widget-border);
-            font-size: 0.9em;
-            color: var(--vscode-descriptionForeground);
-            text-align: center;
-          }
         </style>
       </head>
       <body>
         <div class="header">
           <img src="${logoPath}" alt="PgStudio Logo" class="logo">
-          <div>
+          <div class="header-main">
             <h1>PgStudio <span class="version-badge">v${version}</span></h1>
             <p>Thanks for using PgStudio! Here are the latest updates.</p>
           </div>
+          <nav class="header-actions" aria-label="Community links">
+            <a href="#" class="icon-btn" data-external-href="${links.issues}" title="GitHub Issues" aria-label="GitHub Issues">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 20v-9"/>
+                <path d="M8 20v-5"/>
+                <path d="M16 20v-5"/>
+                <path d="M12 4V3"/>
+                <path d="M8 4l-1 1"/>
+                <path d="M16 4l1 1"/>
+                <path d="M9 11H5"/>
+                <path d="M19 11h-4"/>
+                <ellipse cx="12" cy="11" rx="5" ry="6"/>
+              </svg>
+            </a>
+            <a href="#" class="icon-btn" data-external-href="${links.website}" title="Website" aria-label="Website">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M2 12h20"/>
+                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+              </svg>
+            </a>
+            <a href="#" class="icon-btn" data-external-href="${links.discussions}" title="GitHub Discussions" aria-label="GitHub Discussions">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
+              </svg>
+            </a>
+          </nav>
         </div>
 
         <div id="markdown-content" class="content"></div>
-
-        <div class="footer">
-          <p>
-            <a href="https://github.com/dev-asterix/PgStudio/issues">Report Issue</a> |
-            <a href="https://github.com/dev-asterix/PgStudio">GitHub Repository</a>
-          </p>
-        </div>
 
         <script>
           const vscode = acquireVsCodeApi();
@@ -264,6 +357,12 @@ export class WhatsNewManager {
           const decodedContent = base64ToUtf8(rawContent);
           const parseOpts = { async: false, breaks: true, gfm: true };
           document.getElementById('markdown-content').innerHTML = marked.parse(decodedContent, parseOpts);
+          document.querySelectorAll('#markdown-content a[href^="http"]').forEach(function (anchor) {
+            const url = anchor.getAttribute('href');
+            if (!url) return;
+            anchor.setAttribute('data-external-href', url);
+            anchor.setAttribute('href', '#');
+          });
           if (typeof hljs !== 'undefined' && typeof hljs.highlightElement === 'function') {
             document.querySelectorAll('#markdown-content pre code').forEach(function (block) {
               try {
@@ -284,15 +383,34 @@ export class WhatsNewManager {
             return id || null;
           }
 
-          document.getElementById('markdown-content').addEventListener('click', (e) => {
+          function isExternalHttp(href) {
+            return typeof href === 'string' && /^https?:\\/\\//i.test(href);
+          }
+
+          document.addEventListener('click', (e) => {
             const a = e.target && e.target.closest && e.target.closest('a');
             if (!a) return;
+            const externalUrl = a.getAttribute('data-external-href');
+            if (externalUrl) {
+              e.preventDefault();
+              e.stopPropagation();
+              vscode.postMessage({ type: 'openExternal', url: externalUrl });
+              return;
+            }
             const href = a.getAttribute('href');
             const command = commandIdFromHref(href);
-            if (!command || !command.startsWith('postgres-explorer.')) return;
-            e.preventDefault();
-            vscode.postMessage({ type: 'runCommand', command });
-          });
+            if (command && command.startsWith('postgres-explorer.')) {
+              e.preventDefault();
+              e.stopPropagation();
+              vscode.postMessage({ type: 'runCommand', command });
+              return;
+            }
+            if (isExternalHttp(href)) {
+              e.preventDefault();
+              e.stopPropagation();
+              vscode.postMessage({ type: 'openExternal', url: href });
+            }
+          }, true);
         </script>
       </body>
       </html>

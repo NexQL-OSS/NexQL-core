@@ -27,10 +27,10 @@
   <link rel="icon" type="image/png" sizes="32x32" href="assets/NexQL.png">
   <link rel="icon" type="image/png" sizes="16x16" href="assets/NexQL.png">
   <link rel="apple-touch-icon" href="assets/NexQL.png">
-  <meta name="theme-color" content="#4d5efc">
+  <meta name="theme-color" content="#07080E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Fira+Mono:wght@400;500&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
   <script type="application/ld+json">
     {
@@ -82,15 +82,13 @@
           </div>
         </div>
         <div class="desktop-topbar-links landing-topbar-nav-collapsible">
-          <button type="button" id="btn-landing-home">Home</button>
-          <button type="button" id="btn-landing-live-demo">Live demo</button>
-          <button type="button" data-open="doc-notebooks">Notebooks</button>
-          <button type="button" data-open="doc-explorer">Explorer</button>
-          <button type="button" data-open="doc-ai">AI Assistant</button>
+          <button type="button" data-landing-scroll="features">Features</button>
+          <button type="button" data-landing-scroll="ai">AI</button>
+          <button type="button" data-landing-scroll="compare">Compare</button>
+          <button type="button" data-landing-scroll="faq">FAQ</button>
+          <button type="button" id="btn-landing-pricing">Pricing</button>
           <a href="https://github.com/dev-asterix/PgStudio" target="_blank" rel="noopener noreferrer">GitHub</a>
-          <a class="landing-nav-install"
-            href="https://marketplace.visualstudio.com/items?itemName=ric-v.postgres-explorer" target="_blank"
-            rel="noopener noreferrer">Install Free</a>
+          <a class="landing-nav-install" href="#install">Install — free</a>
         </div>
         <div class="topbar-actions">
           <button class="topbar-icon-btn" id="theme-toggle" type="button" aria-label="Switch to dark theme"
@@ -545,6 +543,7 @@
   <script src="js/landing-capabilities.js"></script>
   <!-- Razorpay Checkout Integration -->
   <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+  <script src="js/pricing.js"></script>
   <script src="js/checkout.js"></script>
   <script src="js/bootstrap.js"></script>
 </body>
