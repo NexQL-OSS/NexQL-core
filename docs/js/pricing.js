@@ -76,10 +76,8 @@
       if (periodEl) periodEl.textContent = parsed.period;
 
       if (payBtn) {
-        payBtn.disabled = !tierData.available;
-        payBtn.title = tierData.available
-          ? ''
-          : 'Checkout unavailable — plan not configured yet';
+        payBtn.disabled = true;
+        payBtn.title = 'Checkout disabled for now';
       }
     });
   }

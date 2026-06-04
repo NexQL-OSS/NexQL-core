@@ -213,7 +213,8 @@
     if (!tier || tier === 'free') return;
 
     event.preventDefault();
-    if (btn.disabled) return;
+    // Payment is disabled for now
+    return;
 
     const originalContent = btn.innerHTML;
 
