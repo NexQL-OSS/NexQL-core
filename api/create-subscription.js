@@ -30,9 +30,14 @@ module.exports = async (req, res) => {
     key_secret,
   });
 
+  // Razorpay requires total_count (number of billing cycles) when end_at is absent.
+  // Use a long horizon so it behaves like an ongoing subscription until cancelled.
+  const totalCount = period === 'annual' ? 10 : 120; // 10 years either way
+
   try {
     const subscription = await razorpay.subscriptions.create({
       plan_id: resolved.planId,
+      total_count: totalCount,
       customer_notify: 1,
       notes: {
         tier,

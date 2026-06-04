@@ -70,6 +70,23 @@ function buildTierCatalog() {
   return tiers;
 }
 
+// Reverse map a Razorpay plan_id back to {tier, period, currency} by scanning
+// RAZORPAY_PLAN_* env vars. Used by the webhook as a fallback when subscription
+// notes are missing (notes set in create-subscription.js are the primary source).
+function reversePlanLookup(planId) {
+  if (!planId) return null;
+  for (const tier of SUPPORTED_TIERS) {
+    for (const period of SUPPORTED_PERIODS) {
+      for (const currency of SUPPORTED_CURRENCIES) {
+        if (getPlanId(tier, period, currency) === planId) {
+          return { tier, period, currency };
+        }
+      }
+    }
+  }
+  return null;
+}
+
 function resolvePlan(tier, period, currency) {
   if (!isValidTier(tier) || !isValidPeriod(period) || !isValidCurrency(currency)) {
     return { error: 'Invalid tier, period, or currency' };
@@ -89,6 +106,7 @@ module.exports = {
   SUPPORTED_PERIODS,
   buildTierCatalog,
   resolvePlan,
+  reversePlanLookup,
   isValidTier,
   isValidPeriod,
   isValidCurrency,
