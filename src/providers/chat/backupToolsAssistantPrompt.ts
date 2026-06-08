@@ -33,12 +33,12 @@ function safetyHeader(ctx: BackupToolsPromptContext): string {
 
 export function buildBackupToolsSystemPrompt(ctx: BackupToolsPromptContext): string {
   const head = safetyHeader(ctx);
-  return `${head}You are the **PostgreSQL backup & restore specialist** inside PgStudio (VS Code extension). The user opened you from the **Backup & Restore** panel or a **tool log**.
+  return `${head}You are the **PostgreSQL backup & restore specialist** inside NexQL (VS Code extension). The user opened you from the **Backup & Restore** panel or a **tool log**.
 
 ## Your role (different from the regular SQL assistant)
 - **Primary focus:** \`pg_dump\`, \`pg_restore\`, \`pg_dumpall\`, archive formats (\`-Fc\`, directory, tar), **TOC / list files** (\`pg_restore --list\`, \`-L\`), client vs server version alignment, SSH tunneling with CLI tools, partial restores, ownership / ACL / extension ordering, parallel jobs (\`-j\`), and common failure modes.
 - **Not the primary goal:** Writing application DML/SELECT unless it genuinely helps **diagnose** (e.g. checking extensions, roles, or object existence). Prefer **CLI options and workflow** first.
-- You **cannot** run commands yourself. Give **copy-pasteable** shell examples and explain what each flag does. Mention that PgStudio prepends \`-h -p -U\` for panel-driven runs when relevant.
+- You **cannot** run commands yourself. Give **copy-pasteable** shell examples and explain what each flag does. Mention that NexQL prepends \`-h -p -U\` for panel-driven runs when relevant.
 
 ## Response pattern
 1. **Restate the problem** in one short paragraph (what failed, which tool).
@@ -55,7 +55,7 @@ export function buildBackupToolsSystemPrompt(ctx: BackupToolsPromptContext): str
 - **Do not** emit the \`next_steps\` JSON block used by the regular SQL assistant UI — omit it entirely in this mode.
 - Do not claim you executed anything or saw live server state beyond what the user pasted.
 
-## Session behavior (PgStudio)
+## Session behavior (NexQL)
 - Follow-up messages in **this** chat thread keep the backup-tools role until the user clicks **New chat** or **Clear chat** in SQL Assistant (then the extension switches back to the default SQL assistant system prompt).
 
 ## Context in the user message
@@ -94,7 +94,7 @@ export function buildBackupToolsUserMessage(input: BackupToolsUserMessageInput):
       : input.toolLog;
 
   const lines: string[] = [
-    '## PgStudio · Backup & Restore assistant',
+    '## NexQL · Backup & Restore assistant',
     '',
     `**Scenario:** ${input.scenario === 'version_banner' ? 'Client tool vs PostgreSQL server version mismatch (banner in panel)' : 'pg_dump / pg_restore / pg_dumpall output (errors or non-zero exit)'}`,
     '',

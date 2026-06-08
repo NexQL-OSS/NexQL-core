@@ -6,7 +6,7 @@
 // re-validation. Binds the VS Code machine id (instanceId) to the entitlement
 // up to a device cap.
 
-const store = require('../lib/store');
+const store = require('../_lib/store');
 
 const MAX_DEVICES = 10;
 

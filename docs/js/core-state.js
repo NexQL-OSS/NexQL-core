@@ -3,7 +3,7 @@ const FILE_STATUS = {
   query: { file: "PostgreSQL", connection: "● Connected · ecommerce_demo", line: "Ln 8, Col 1" },
   features: { file: "Markdown", connection: "● Connected · ecommerce_demo", line: "Ln 1, Col 1" },
   connections: { file: "Form", connection: "○ Not connected", line: "New Connection" },
-  install: { file: "Markdown", connection: "● pgstudio.astrx.dev", line: "Ln 1, Col 1" },
+  install: { file: "Markdown", connection: "● nexql.astrx.dev", line: "Ln 1, Col 1" },
   "doc-notebooks": { file: "Markdown", connection: "● Connected · ecommerce_demo", line: "Ln 1, Col 1" },
   "doc-explorer": { file: "Markdown", connection: "● Connected · ecommerce_demo", line: "Ln 1, Col 1" },
   "doc-ai": { file: "Markdown", connection: "● Connected · ecommerce_demo", line: "Ln 1, Col 1" },
@@ -61,19 +61,19 @@ const PRODUCT_HIGHLIGHTS = {
     icon: "🔐",
     title: "Secure Connections",
     user: "Tell me about secure connections.",
-    summary: "PgStudio keeps connection secrets out of the UI while still making it easy to manage several databases at once.",
+    summary: "NexQL keeps connection secrets out of the UI while still making it easy to manage several databases at once.",
     points: [
       "Credentials are stored in VS Code SecretStorage.",
       "Multiple simultaneous connections stay organized.",
       "Passwords do not need to be visible in the editor workflow."
     ],
-    tip: "Try it now: install PgStudio and connect in under a minute."
+    tip: "Try it now: install NexQL and connect in under a minute."
   },
   "connection-safety": {
     icon: "🛡️",
     title: "Connection Safety",
-    user: "How does PgStudio help prevent risky queries?",
-    summary: "PgStudio adds lightweight guardrails so dangerous SQL is easier to catch before execution.",
+    user: "How does NexQL help prevent risky queries?",
+    summary: "NexQL adds lightweight guardrails so dangerous SQL is easier to catch before execution.",
     points: [
       "Label environments as DEV, STAGE, or PROD.",
       "Enable read-only mode for safer inspection.",
@@ -104,13 +104,13 @@ const PRODUCT_HIGHLIGHTS = {
       "Optimize slower statements with targeted suggestions.",
       "Works with GitHub Models, OpenAI, Anthropic, Gemini, and VS Code LM."
     ],
-    tip: "Try it now: install PgStudio and connect in under a minute."
+    tip: "Try it now: install NexQL and connect in under a minute."
   },
   "visual-tools": {
     icon: "🧩",
     title: "Visual Tools",
     user: "What visual tools are included?",
-    summary: "PgStudio gives you visual workflows for common schema tasks so you spend less time hand-editing DDL.",
+    summary: "NexQL gives you visual workflows for common schema tasks so you spend less time hand-editing DDL.",
     points: [
       "Visual table designer for schema creation.",
       "Index and constraint management from the UI.",
@@ -125,7 +125,7 @@ const PRODUCT_HIGHLIGHTS = {
     user: "How do I get started?",
     summary: "The fastest path is simple: install, connect, and open a notebook.",
     points: [
-      "Install PgStudio from the marketplace.",
+      "Install NexQL from the marketplace.",
       "Add a connection and verify it is online.",
       "Open a .pgsql notebook and start running SQL."
     ],
@@ -135,9 +135,9 @@ const PRODUCT_HIGHLIGHTS = {
 
 // ── Search index ──────────────────────────────────────────
 const SEARCH_INDEX = [
-  { key: "readme", label: "README.md", path: "PGSTUDIO", text: "overview connect sql notebooks explorer ai assistant schema safety performance pgstudio postgres postgresql vs code extension free open source database management developer tool sql ide database client query editor productivity" },
+  { key: "readme", label: "README.md", path: "NEXQL", text: "overview connect sql notebooks explorer ai assistant schema safety performance pgstudio postgres postgresql vs code extension free open source database management developer tool sql ide database client query editor productivity" },
   { key: "query", label: "query.pgsql", path: "NOTEBOOKS", text: "sql query run execute select orders revenue notebook cell results daily aggregation date_trunc count sum group by where interval explain analyze explain plan query tuning performance optimization index recommendation" },
-  { key: "features", label: "features.md", path: "PGSTUDIO", text: "features notebooks explorer ai assistant schema tools visual safety performance 50 capabilities pgadmin dbeaver alternative vs code native postgres client free faq questions postgresql gui sql workflow developer experience" },
+  { key: "features", label: "features.md", path: "NEXQL", text: "features notebooks explorer ai assistant schema tools visual safety performance 50 capabilities pgadmin dbeaver alternative vs code native postgres client free faq questions postgresql gui sql workflow developer experience" },
   { key: "connections", label: "connections.demo", path: "WORKFLOW", text: "connect database host port username password ssl tls dev stage prod environment connection ssh tunnel rds supabase neon amazon secure secretstorage connection manager postgres connection setup" },
   { key: "install", label: "INSTALL.md", path: "WORKFLOW", text: "install marketplace extension vscode download get started setup quick start pgsql extension id ric-v postgres-explorer open vsx visual studio code install postgres extension" },
   { key: "doc-notebooks", label: "01_notebooks.md", path: "DOCUMENTATION", text: "notebook pgsql sql cells run execute results export csv json history saved queries markdown notes jupyter git commit share team reproducible interactive data analysis workflow" },
@@ -155,15 +155,15 @@ const ASSISTANT_RESPONSES = {
   },
   "slow-query-deep": {
     user: "The daily revenue query is slow — runs in 3s on prod",
-    reply: `3 seconds. On 7 days of data. Yep — sequential scan on <code>created_at</code>, ~480K rows, no filtering shortcut. The fix is embarrassingly simple:\n\n<code>CREATE INDEX CONCURRENTLY idx_orders_created_at ON orders (created_at DESC);</code>\n\nAfter that: under 80ms. Also stash the daily rollup in a materialized view and your dashboard will feel instantaneous. Want me to write the full view? Install PgStudio and I'll generate it against your live schema.`
+    reply: `3 seconds. On 7 days of data. Yep — sequential scan on <code>created_at</code>, ~480K rows, no filtering shortcut. The fix is embarrassingly simple:\n\n<code>CREATE INDEX CONCURRENTLY idx_orders_created_at ON orders (created_at DESC);</code>\n\nAfter that: under 80ms. Also stash the daily rollup in a materialized view and your dashboard will feel instantaneous. Want me to write the full view? Install NexQL and I'll generate it against your live schema.`
   },
   "slow-revenue": {
     user: "Why is my daily revenue query slow?",
-    reply: "Ah yes, the classic 3-second dashboard query — I call it the 'morning coffee loading screen'. Your <code>orders.created_at</code> is getting a full table scan. One index and a materialized view and you'll wonder why you ever waited.\n\n<code>CREATE INDEX CONCURRENTLY idx_orders_created_at ON orders (created_at DESC);</code>\n\nRun that and watch it drop to sub-100ms. Install PgStudio and I'll show you the EXPLAIN diff live, before and after. 📈"
+    reply: "Ah yes, the classic 3-second dashboard query — I call it the 'morning coffee loading screen'. Your <code>orders.created_at</code> is getting a full table scan. One index and a materialized view and you'll wonder why you ever waited.\n\n<code>CREATE INDEX CONCURRENTLY idx_orders_created_at ON orders (created_at DESC);</code>\n\nRun that and watch it drop to sub-100ms. Install NexQL and I'll show you the EXPLAIN diff live, before and after. 📈"
   },
   "ask-ai": {
     user: "Analyze this result set and share insights",
-    reply: "That's exactly what I'm here for. Give me a slow query, a weird join, or just paste your <code>EXPLAIN ANALYZE</code> output and I'll tell you what the planner is thinking (and why it's wrong).\n\n• Total revenue: <code>$158,487.90</code> across <code>1,149</code> orders\n• Peak day: <code>2026-04-11</code> with <code>$27,905.40</code> from <code>191</code> orders\n• Trend: <code>2026-04-13</code> is ~43% higher than <code>2026-04-07</code> — momentum is up\n\nOnce you install PgStudio I'll have live access to your actual schema — no more guessing column types."
+    reply: "That's exactly what I'm here for. Give me a slow query, a weird join, or just paste your <code>EXPLAIN ANALYZE</code> output and I'll tell you what the planner is thinking (and why it's wrong).\n\n• Total revenue: <code>$158,487.90</code> across <code>1,149</code> orders\n• Peak day: <code>2026-04-11</code> with <code>$27,905.40</code> from <code>191</code> orders\n• Trend: <code>2026-04-13</code> is ~43% higher than <code>2026-04-07</code> — momentum is up\n\nOnce you install NexQL I'll have live access to your actual schema — no more guessing column types."
   },
   "explain-query": {
     user: "Explain this query",
@@ -206,7 +206,7 @@ const TOUR_STEPS_CONFIG = [
     file: "connections", panel: "pgstudio",
     target: "#file-connections",
     title: "Connect",
-    body: "Label environments as DEV, STAGE, or PROD. PgStudio makes it obvious which database you're working on — before you run anything. Test & Connect validates credentials first."
+    body: "Label environments as DEV, STAGE, or PROD. NexQL makes it obvious which database you're working on — before you run anything. Test & Connect validates credentials first."
   },
   {
     file: "doc-explorer", panel: "pgstudio",

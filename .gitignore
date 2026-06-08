@@ -42,3 +42,6 @@ test/
 .vercel
 .env
 .env.local
+
+# Local dev entitlement store (KV fallback)
+.kv-dev.json

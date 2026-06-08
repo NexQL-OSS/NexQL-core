@@ -3,6 +3,7 @@ import * as vscode from 'vscode';
 import { createMetadata, getConnectionWithPassword } from '../commands/connection';
 import { ConnectionConfig } from '../common/types';
 import { DashboardPanel } from '../dashboard/DashboardPanel';
+import { requirePro, ProFeature } from '../services/featureGates';
 import { DatabaseTreeItem, DatabaseTreeProvider } from '../providers/DatabaseTreeProvider';
 import { ConnectionManager } from '../services/ConnectionManager';
 import {
@@ -36,6 +37,7 @@ import { BackupRestorePanel } from '../features/backup/BackupRestorePanel';
  * // Dashboard notebook is now displayed
  */
 export async function cmdDatabaseDashboard(item: DatabaseTreeItem, context: vscode.ExtensionContext): Promise<void> {
+  if (!(await requirePro(ProFeature.Dashboard, context))) return;
   try {
     const { connection, release } = await getDatabaseConnection(item, validateCategoryItem);
     // Release the client used for validation/setup immediately
@@ -53,6 +55,7 @@ export async function cmdDatabaseDashboard(item: DatabaseTreeItem, context: vsco
 export async function cmdDatabaseDashboardFromPalette(
   context: vscode.ExtensionContext,
 ): Promise<void> {
+  if (!(await requirePro(ProFeature.Dashboard, context))) return;
   const connections =
     vscode.workspace
       .getConfiguration()

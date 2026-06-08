@@ -32,6 +32,7 @@ import {
   writeAiScopeSettings,
 } from '../features/aiAssistant/aiConfig';
 import { AiModelCatalogService } from '../features/aiAssistant/AiModelCatalogService';
+import { isProFeatureEnabled, getUpgradeHtml, ProFeature } from '../services/featureGates';
 
 /** P1.4 — max rows sampled into the AI prompt for "Analyze Data" on large result sets. */
 const AI_ANALYZE_MAX_SAMPLE_ROWS = 200;
@@ -460,6 +461,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   ): Promise<void> {
     this._view = webviewView;
     this._activeWebview = webviewView.webview;
+
+    if (!isProFeatureEnabled(ProFeature.AiAssistant)) {
+      webviewView.webview.options = { enableScripts: true };
+      webviewView.webview.html = getUpgradeHtml(ProFeature.AiAssistant);
+      return;
+    }
 
     await this._initializeWebview(webviewView.webview);
     this._registerWebviewMessageHandler(webviewView.webview);

@@ -229,7 +229,7 @@ export class ListenNotifyPanel {
       password: password ?? undefined,
       database,
       // Minimal keepalive / idle settings
-      application_name: 'PgStudio-ListenNotify',
+      application_name: 'NexQL-ListenNotify',
     };
 
     // Handle SSL if configured on the saved connection

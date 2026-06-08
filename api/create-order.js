@@ -39,25 +39,31 @@ module.exports = async (req, res) => {
     const options = {
       amount: amountPaise,
       currency: currency,
-      receipt: receipt || `receipt_${Date.now()}`
+      receipt: receipt || `receipt_${Date.now()}`,
     };
 
     const order = await razorpay.orders.create(options);
-    
+
     return res.status(200).json({
       order_id: order.id,
       amount: order.amount,
-      currency: order.currency
+      currency: order.currency,
     });
   } catch (error) {
     console.error('Razorpay API error:', error);
 
     // Handle authentication failures (Razorpay SDK might throw or return standard error response)
     const errorDescription = error.description || (error.error && error.error.description) || '';
-    if (error.statusCode === 401 || errorDescription.includes('Key') || errorDescription.includes('signature')) {
+    if (
+      error.statusCode === 401 ||
+      errorDescription.includes('Key') ||
+      errorDescription.includes('signature')
+    ) {
       return res.status(401).json({ error: 'Authentication failed with Razorpay API' });
     }
 
-    return res.status(500).json({ error: error.message || 'Failed to create order with Razorpay API' });
+    return res
+      .status(500)
+      .json({ error: error.message || 'Failed to create order with Razorpay API' });
   }
 };

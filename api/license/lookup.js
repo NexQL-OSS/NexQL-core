@@ -4,7 +4,7 @@
 // Lets the post-checkout success page poll for the freshly issued key while the
 // Razorpay webhook lands. subscription_id is unguessable, so no extra auth.
 
-const store = require('../lib/store');
+const store = require('../_lib/store');
 
 module.exports = async (req, res) => {
   if (req.method !== 'GET') {

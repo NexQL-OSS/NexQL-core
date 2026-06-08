@@ -8,6 +8,7 @@ import { ProfilesTreeProvider, SavedQueriesTreeProvider } from '../providers/Pha
 import { NotebooksTreeProvider } from '../providers/NotebooksTreeProvider';
 import { AutoRefreshService } from '../services/AutoRefreshService';
 import { DdlViewerService } from '../services/DdlViewerService';
+import { LicenseService } from '../services/LicenseService';
 
 function runDeferredProviderTask(outputChannel: vscode.OutputChannel, taskName: string, task: () => Promise<void>) {
   setTimeout(() => {
@@ -26,6 +27,13 @@ function runDeferredProviderTask(outputChannel: vscode.OutputChannel, taskName: 
 export function registerProviders(context: vscode.ExtensionContext, outputChannel: vscode.OutputChannel) {
   // Create database tree provider instance
   const databaseTreeProvider = new DatabaseTreeProvider(context);
+
+  // Refresh tree when license changes
+  context.subscriptions.push(
+    LicenseService.getInstance().onDidChangeLicense(() => {
+      databaseTreeProvider.refresh();
+    })
+  );
 
   // Register tree data provider and create tree view
   const treeView = vscode.window.createTreeView('postgresExplorer', {

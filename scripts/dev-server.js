@@ -48,6 +48,8 @@ const verifyPaymentHandler = require('../api/verify-payment');
 const webhookHandler = require('../api/webhook');
 const licenseValidateHandler = require('../api/license/validate');
 const licenseLookupHandler = require('../api/license/lookup');
+const licenseStatusHandler = require('../api/license/status');
+const cancelSubscriptionHandler = require('../api/cancel-subscription');
 
 // Standard Express wrapper for Serverless function signature (req, res)
 const wrapServerless = (handler) => {
@@ -77,6 +79,8 @@ app.post('/api/create-subscription', wrapServerless(createSubscriptionHandler));
 app.post('/api/verify-payment', wrapServerless(verifyPaymentHandler));
 app.post('/api/license/validate', wrapServerless(licenseValidateHandler));
 app.get('/api/license/lookup', wrapServerless(licenseLookupHandler));
+app.post('/api/license/status', wrapServerless(licenseStatusHandler));
+app.post('/api/cancel-subscription', wrapServerless(cancelSubscriptionHandler));
 
 // Global Error Handler
 app.use((err, req, res, next) => {

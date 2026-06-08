@@ -10,10 +10,10 @@
 // Raw body is required for signature verification, so body parsing is disabled.
 
 const crypto = require('crypto');
-const { reversePlanLookup } = require('./plan-config');
-const store = require('./lib/store');
-const { generateLicenseKey } = require('./lib/license-key');
-const { sendLicenseEmail } = require('./lib/email');
+const { reversePlanLookup } = require('./_lib/plan-config');
+const store = require('./_lib/store');
+const { generateLicenseKey } = require('./_lib/license-key');
+const { sendLicenseEmail } = require('./_lib/email');
 
 const ACTIVE_EVENTS = new Set([
   'subscription.activated',
@@ -104,12 +104,16 @@ module.exports = async (req, res) => {
       const currency = notes.currency || fromPlan.currency || 'INR';
 
       if (!tier) {
-        console.error(`Cannot resolve tier for subscription ${subscriptionId} (plan ${subEntity.plan_id})`);
+        console.error(
+          `Cannot resolve tier for subscription ${subscriptionId} (plan ${subEntity.plan_id})`,
+        );
         return res.status(200).json({ ignored: true, reason: 'unresolved tier' });
       }
 
       const email =
-        (body.payload.payment && body.payload.payment.entity && body.payload.payment.entity.email) ||
+        (body.payload.payment &&
+          body.payload.payment.entity &&
+          body.payload.payment.entity.email) ||
         notes.email ||
         (existing && existing.email) ||
         null;

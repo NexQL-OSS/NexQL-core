@@ -1,7 +1,7 @@
 import { expect } from 'chai';
 import * as vscode from 'vscode';
 
-describe('PgStudio extension (smoke)', () => {
+describe('NexQL extension (smoke)', () => {
   it('exposes the extension id after activation', async () => {
     const ext = vscode.extensions.getExtension('ric-v.postgres-explorer');
     expect(ext).to.not.equal(undefined);

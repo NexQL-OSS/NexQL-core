@@ -15,6 +15,7 @@ import { ConnectionLoader } from './tree/loaders/ConnectionLoader';
 import { DatabaseLoader } from './tree/loaders/DatabaseLoader';
 import { SchemaLoader } from './tree/loaders/SchemaLoader';
 import { TableLoader } from './tree/loaders/TableLoader';
+import { LicenseService } from '../services/LicenseService';
 
 const buildItemKey = buildTreeItemKey;
 
@@ -414,6 +415,24 @@ export class DatabaseTreeProvider implements vscode.TreeDataProvider<DatabaseTre
     if (!element) {
       // Root level - show connections (grouped if configured)
       const rootItems: DatabaseTreeItem[] = [];
+
+      // Add subscription badge if user is subscribed to Sponsor or Team
+      const tier = LicenseService.getInstance().getTier();
+      if (tier === 'sponsor' || tier === 'singularity') {
+        const badgeLabel = tier === 'sponsor' ? 'NexQL Sponsor' : 'NexQL Team';
+        const badgeType = tier === 'sponsor' ? 'sponsor-badge' : 'team-badge';
+        const badgeItem = new DatabaseTreeItem(
+          badgeLabel,
+          vscode.TreeItemCollapsibleState.None,
+          badgeType
+        );
+        badgeItem.command = {
+          command: 'postgres-explorer.license.manage',
+          title: 'Manage License'
+        };
+        rootItems.push(badgeItem);
+      }
+
       const groupedConnections: { [key: string]: any[] } = {};
       const ungroupedConnections: any[] = [];
 
@@ -564,7 +583,7 @@ export class DatabaseTreeItem extends vscode.TreeItem {
   constructor(
     public readonly label: string,
     public readonly collapsibleState: vscode.TreeItemCollapsibleState,
-    public readonly type: 'connection' | 'database' | 'schema' | 'table' | 'view' | 'function' | 'procedure' | 'column' | 'category' | 'materialized-view' | 'type' | 'foreign-table' | 'extension' | 'role' | 'databases-group' | 'system-databases-group' | 'favorites-group' | 'recent-group' | 'constraint' | 'index' | 'foreign-data-wrapper' | 'foreign-server' | 'user-mapping' | 'connection-group' | 'trigger' | 'sequence' | 'partition' | 'domain' | 'aggregate' | 'event-trigger' | 'rule' | 'tablespace' | 'publication' | 'subscription' | 'cron-job' | 'policy',
+    public readonly type: 'connection' | 'database' | 'schema' | 'table' | 'view' | 'function' | 'procedure' | 'column' | 'category' | 'materialized-view' | 'type' | 'foreign-table' | 'extension' | 'role' | 'databases-group' | 'system-databases-group' | 'favorites-group' | 'recent-group' | 'constraint' | 'index' | 'foreign-data-wrapper' | 'foreign-server' | 'user-mapping' | 'connection-group' | 'trigger' | 'sequence' | 'partition' | 'domain' | 'aggregate' | 'event-trigger' | 'rule' | 'tablespace' | 'publication' | 'subscription' | 'cron-job' | 'policy' | 'sponsor-badge' | 'team-badge',
     public readonly connectionId?: string,
     public readonly databaseName?: string,
     public readonly schema?: string,
@@ -638,10 +657,18 @@ export class DatabaseTreeItem extends vscode.TreeItem {
       'subscription': new vscode.ThemeIcon('inbox', new vscode.ThemeColor('charts.purple')),
       'cron-job': new vscode.ThemeIcon('clock', new vscode.ThemeColor('charts.orange')),
       policy: new vscode.ThemeIcon('shield', new vscode.ThemeColor('charts.green')),
+      'sponsor-badge': new vscode.ThemeIcon('heart', new vscode.ThemeColor('charts.green')),
+      'team-badge': new vscode.ThemeIcon('verified', new vscode.ThemeColor('charts.purple')),
     }[type];
   }
 
   private getTooltip(type: string, comment?: string, roleAttributes?: { [key: string]: boolean }, environment?: string, readOnlyMode?: boolean): string {
+    if (type === 'sponsor-badge') {
+      return 'NexQL Sponsor — License Active';
+    }
+    if (type === 'team-badge') {
+      return 'NexQL Team — License Active';
+    }
     if (type === 'connection') {
       const parts = [this.label];
       if (environment) {
@@ -665,6 +692,10 @@ export class DatabaseTreeItem extends vscode.TreeItem {
 
   private getDescription(type: string, isInstalled?: boolean, installedVersion?: string, roleAttributes?: { [key: string]: boolean }, isFavorite?: boolean, count?: number, rowCount?: string | number, size?: string, environment?: string, readOnlyMode?: boolean): string | undefined {
     let desc: string | undefined = undefined;
+
+    if (type === 'sponsor-badge' || type === 'team-badge') {
+      return 'Active';
+    }
 
     if (type === 'connection') {
       const badges = [];

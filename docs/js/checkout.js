@@ -1,4 +1,4 @@
-// Razorpay Subscription Checkout for PgStudio (Sponsor + Singularity tiers)
+// Razorpay Subscription Checkout for NexQL (Sponsor + Singularity tiers)
 
 (function () {
   const TIER_LABELS = {
@@ -89,6 +89,28 @@
     .license-btn-primary { background: #6C4CF0; color: #fff; width: 100%; text-align: center; text-decoration: none; display: block; box-sizing: border-box; margin-bottom: 10px; }
     .license-btn-secondary { background: transparent; color: #9ca3af; width: 100%; }
     .license-pending { display: flex; align-items: center; gap: 10px; color: #b8b8c8; font-size: 14px; }
+    .license-input {
+      width: 100%; box-sizing: border-box; margin-bottom: 12px;
+      background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 8px; padding: 12px 14px; color: #fff; font-size: 14px;
+      font-family: ui-monospace, 'SF Mono', Menlo, monospace; letter-spacing: 1px;
+    }
+    .license-input:focus { outline: none; border-color: #6C4CF0; }
+    .license-status-card {
+      background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 10px; padding: 16px; margin-bottom: 16px; font-size: 14px;
+    }
+    .license-status-card div { margin-bottom: 6px; }
+    .license-status-card .muted { color: #9ca3af; }
+    .license-pill { display:inline-block; padding:2px 10px; border-radius:999px; font-size:12px; font-weight:600; }
+    .license-pill.active { background: rgba(16,185,129,0.18); color:#34d399; }
+    .license-pill.cancelled, .license-pill.halted, .license-pill.paused { background: rgba(239,68,68,0.18); color:#f87171; }
+    .license-btn-danger { background:#ef4444; color:#fff; width:100%; }
+    .license-error { color:#f87171; font-size:13px; margin-bottom:12px; }
+    a.manage-subscription-link { color: var(--accent, #8b7cf6); cursor:pointer; text-decoration: underline; }
+    .license-recover { margin: 4px 0 14px; }
+    .license-recover .manage-subscription-link { font-size: 13px; }
+    .license-recover-note { color:#b8b8c8; font-size:13px; margin-top:10px; line-height:1.4; }
   `;
   document.head.appendChild(style);
 
@@ -123,6 +145,7 @@
   }
 
   const ACTIVATE_URI_BASE = 'vscode://ric-v.postgres-explorer/activate?key=';
+  const LICENSE_STORAGE_KEY = 'pgstudio_license';
 
   // Poll the lookup endpoint until the webhook has issued a license key.
   async function pollLicenseKey(subscriptionId, attempts = 6) {
@@ -152,13 +175,13 @@
 
     const keyBlock = licenseKey
       ? `
-        <p>Your license key is ready. Activate PgStudio in VS Code:</p>
+        <p>Your license key is ready. Activate NexQL in VS Code:</p>
         <div class="license-key-row">
           <div class="license-key-value" id="lic-key">${licenseKey}</div>
           <button class="license-btn license-btn-copy" id="lic-copy">Copy</button>
         </div>
         <a class="license-btn license-btn-primary" href="${ACTIVATE_URI_BASE}${encodeURIComponent(licenseKey)}">Activate in VS Code</a>
-        <p style="font-size:13px;margin-top:4px">Or run <b>PgStudio: Activate License</b> in the command palette and paste the key. A copy was also emailed to you.</p>
+        <p style="font-size:13px;margin-top:4px">Or run <b>NexQL: Activate License</b> in the command palette and paste the key. A copy was also emailed to you.</p>
       `
       : `
         <div class="license-pending"><span class="spinner-dot"></span> Issuing your license key…</div>
@@ -167,7 +190,7 @@
 
     overlay.innerHTML = `
       <div class="license-modal" role="dialog" aria-modal="true">
-        <h3>Welcome to PgStudio ${tierLabel} 🎉</h3>
+        <h3>Welcome to NexQL ${tierLabel} 🎉</h3>
         ${keyBlock}
         <button class="license-btn license-btn-secondary" id="lic-close">Done</button>
       </div>`;
@@ -197,6 +220,194 @@
     }
   }
 
+  function fmtDate(ms) {
+    if (!ms) return '—';
+    try {
+      return new Date(ms).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+    } catch {
+      return '—';
+    }
+  }
+
+  function showManageModal() {
+    const overlay = document.createElement('div');
+    overlay.className = 'license-modal-overlay';
+    const close = () => {
+      overlay.classList.remove('show');
+      setTimeout(() => overlay.remove(), 300);
+    };
+
+    let savedKey = '';
+    try { savedKey = localStorage.getItem(LICENSE_STORAGE_KEY) || ''; } catch {}
+
+    overlay.innerHTML = `
+      <div class="license-modal" role="dialog" aria-modal="true">
+        <h3>Manage subscription</h3>
+        <p>Enter your license key to view status or cancel.</p>
+        <div class="license-error" id="mng-error" style="display:none"></div>
+        <input class="license-input" id="mng-key" placeholder="PGST-XXXX-XXXX-XXXX-XXXX" autocomplete="off" value="${savedKey}" />
+        <div id="mng-result"></div>
+        <button class="license-btn license-btn-primary" id="mng-check">Check status</button>
+        <div class="license-recover">
+          <a class="manage-subscription-link" id="mng-recover-toggle">Lost your key? Email it to me</a>
+          <div id="mng-recover-form" style="display:none;margin-top:12px">
+            <input class="license-input" id="mng-email" type="email" placeholder="you@example.com" autocomplete="email" />
+            <button class="license-btn license-btn-copy" id="mng-recover-send" style="width:100%">Email my license key</button>
+            <div class="license-recover-note" id="mng-recover-note" style="display:none"></div>
+          </div>
+        </div>
+        <button class="license-btn license-btn-secondary" id="mng-close">Close</button>
+      </div>`;
+
+    document.body.appendChild(overlay);
+    setTimeout(() => overlay.classList.add('show'), 50);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+    overlay.querySelector('#mng-close').addEventListener('click', close);
+
+    const errorEl = overlay.querySelector('#mng-error');
+    const resultEl = overlay.querySelector('#mng-result');
+    const keyEl = overlay.querySelector('#mng-key');
+    const checkBtn = overlay.querySelector('#mng-check');
+
+    // --- Email recovery (cross-device) ---
+    const recoverToggle = overlay.querySelector('#mng-recover-toggle');
+    const recoverForm = overlay.querySelector('#mng-recover-form');
+    const emailEl = overlay.querySelector('#mng-email');
+    const recoverSend = overlay.querySelector('#mng-recover-send');
+    const recoverNote = overlay.querySelector('#mng-recover-note');
+
+    recoverToggle.addEventListener('click', (e) => {
+      e.preventDefault();
+      recoverForm.style.display = recoverForm.style.display === 'none' ? 'block' : 'none';
+    });
+
+    recoverSend.addEventListener('click', async () => {
+      const email = (emailEl.value || '').trim();
+      recoverNote.style.display = 'none';
+      if (!email || !email.includes('@')) {
+        recoverNote.textContent = 'Enter a valid email.';
+        recoverNote.style.display = 'block';
+        return;
+      }
+      recoverSend.disabled = true;
+      recoverSend.textContent = 'Sending…';
+      try {
+        await fetch('/api/license/recover', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email }),
+        });
+        recoverNote.textContent = "If that email has a subscription, we've sent the license key to it.";
+      } catch {
+        recoverNote.textContent = 'Network error. Try again.';
+      } finally {
+        recoverNote.style.display = 'block';
+        recoverSend.disabled = false;
+        recoverSend.textContent = 'Email my license key';
+      }
+    });
+
+    const showError = (msg) => {
+      errorEl.textContent = msg;
+      errorEl.style.display = 'block';
+    };
+    const clearError = () => { errorEl.style.display = 'none'; };
+
+    async function checkStatus() {
+      clearError();
+      resultEl.innerHTML = '';
+      const key = (keyEl.value || '').trim().toUpperCase();
+      if (!key) return showError('Enter your license key.');
+      checkBtn.disabled = true;
+      checkBtn.textContent = 'Checking…';
+      try {
+        const res = await fetch('/api/license/status', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ licenseKey: key }),
+        });
+        if (res.status === 404) {
+          showError('No subscription found for that key.');
+          return;
+        }
+        if (!res.ok) {
+          showError('Could not look up that key. Try again.');
+          return;
+        }
+        const data = await res.json();
+        try { localStorage.setItem(LICENSE_STORAGE_KEY, key); } catch {}
+        renderStatus(key, data);
+      } catch {
+        showError('Network error. Try again.');
+      } finally {
+        checkBtn.disabled = false;
+        checkBtn.textContent = 'Check status';
+      }
+    }
+
+    function renderStatus(key, data) {
+      const tierName = data.tier ? data.tier[0].toUpperCase() + data.tier.slice(1) : '—';
+      const cancellable = data.status === 'active' && data.hasSubscription;
+      const renewLabel = data.status === 'active' ? 'Renews / valid until' : 'Access until';
+      resultEl.innerHTML = `
+        <div class="license-status-card">
+          <div><b>NexQL ${tierName}</b> <span class="license-pill ${data.status}">${data.status}</span></div>
+          <div class="muted">${data.period || ''} ${data.currency || ''}</div>
+          <div class="muted">${renewLabel}: ${fmtDate(data.expiresAt)}</div>
+          ${data.email ? `<div class="muted">${data.email}</div>` : ''}
+        </div>
+        ${cancellable ? '<button class="license-btn license-btn-danger" id="mng-cancel">Cancel subscription</button>' : ''}
+      `;
+      const cancelBtn = resultEl.querySelector('#mng-cancel');
+      if (cancelBtn) {
+        cancelBtn.addEventListener('click', () => cancelSubscription(key, cancelBtn));
+      }
+    }
+
+    async function cancelSubscription(key, btn) {
+      if (!window.confirm('Cancel at the end of your current billing period? You keep access until then.')) {
+        return;
+      }
+      btn.disabled = true;
+      btn.textContent = 'Cancelling…';
+      try {
+        const res = await fetch('/api/cancel-subscription', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ licenseKey: key, immediate: false }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data.ok) {
+          resultEl.innerHTML = `
+            <div class="license-status-card">
+              <div><b>Cancellation scheduled.</b></div>
+              <div class="muted">Your subscription will not renew. Access continues until ${fmtDate(data.accessUntil)}.</div>
+            </div>`;
+        } else {
+          showError(data.error || 'Could not cancel. Contact support.');
+          btn.disabled = false;
+          btn.textContent = 'Cancel subscription';
+        }
+      } catch {
+        showError('Network error during cancellation.');
+        btn.disabled = false;
+        btn.textContent = 'Cancel subscription';
+      }
+    }
+
+    checkBtn.addEventListener('click', checkStatus);
+    keyEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') checkStatus(); });
+  }
+
+  // Open the manage panel from any element with [data-manage-subscription].
+  document.addEventListener('click', (event) => {
+    const trigger = event.target.closest('[data-manage-subscription]');
+    if (trigger) {
+      event.preventDefault();
+      showManageModal();
+    }
+  });
+
   async function fetchConfig() {
     if (configCache) return configCache;
     const res = await fetch('/api/config');
@@ -213,8 +424,7 @@
     if (!tier || tier === 'free') return;
 
     event.preventDefault();
-    // Payment is disabled for now
-    return;
+    if (btn.disabled) return;
 
     const originalContent = btn.innerHTML;
 
@@ -230,7 +440,7 @@
       btn.innerHTML = originalContent;
     }
 
-    const pricing = window.PgStudioPricing;
+    const pricing = window.NexQLPricing;
     const currency = pricing?.getCurrency?.() || 'INR';
     const period = pricing?.getPeriod?.() || 'monthly';
     const tierLabel = TIER_LABELS[tier] || tier;
@@ -264,7 +474,7 @@
       const options = {
         key: keyId,
         subscription_id: subData.subscription_id,
-        name: 'PgStudio',
+        name: 'NexQL',
         description: `${tierLabel} — ${periodLabel} subscription`,
         image: '/assets/NexQL.png',
         notes: {
@@ -280,8 +490,8 @@
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
-                razorpay_order_id: response.razorpay_order_id,
                 razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_subscription_id: response.razorpay_subscription_id,
                 razorpay_signature: response.razorpay_signature,
               }),
             });
@@ -292,6 +502,9 @@
               resetButton();
               showLicenseModal(tierLabel, null); // optimistic: modal opens immediately
               const licenseKey = await pollLicenseKey(subData.subscription_id);
+              if (licenseKey) {
+                try { localStorage.setItem(LICENSE_STORAGE_KEY, licenseKey); } catch {}
+              }
               const open = document.querySelector('.license-modal-overlay');
               if (open) open.remove(); // replace pending modal with final state
               showLicenseModal(tierLabel, licenseKey);

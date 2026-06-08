@@ -95,6 +95,7 @@ import { cmdSearchSchema } from '../commands/schemaSearch';
 import { WorkspaceStateService } from '../services/WorkspaceStateService';
 import { switchWorkspaceDefaultConnection } from '../commands/workspaceConnection';
 import { WhatsNewManager } from './WhatsNewManager';
+import { cmdLicenseActivate, cmdLicenseManage, cmdLicenseOpenUpgrade } from '../commands/license';
 
 export function getCommandSpecs(
   context: vscode.ExtensionContext,
@@ -106,6 +107,18 @@ export function getCommandSpecs(
   notebooksTreeProvider?: NotebooksTreeProvider
 ): Array<{ command: string; callback: (...args: any[]) => any }> {
   const commands = [
+    {
+      command: 'postgres-explorer.license.activate',
+      callback: (prefillKey?: string) => cmdLicenseActivate(prefillKey)
+    },
+    {
+      command: 'postgres-explorer.license.manage',
+      callback: () => cmdLicenseManage()
+    },
+    {
+      command: 'postgres-explorer.license.openUpgrade',
+      callback: () => cmdLicenseOpenUpgrade()
+    },
     {
       command: 'postgres-explorer.addConnection',
       callback: () => {

@@ -1,6 +1,6 @@
 <section class="minimized-overview" id="minimized-overview" aria-hidden="false" itemscope
   itemtype="https://schema.org/SoftwareApplication">
-  <meta itemprop="name" content="PgStudio">
+  <meta itemprop="name" content="NexQL">
   <meta itemprop="applicationCategory" content="DeveloperApplication">
   <meta itemprop="operatingSystem" content="Windows, macOS, Linux">
   <meta itemprop="softwareVersion" id="landing-software-version-meta" content="0.0.0">
@@ -26,13 +26,14 @@
         <span class="grad-text">context switching.</span>
       </h1>
 
-      <p class="min-lead" itemprop="description">Connect to a database, run a notebook query, watch the chart build, and ask a schema-aware AI why it&apos;s slow — all inside VS Code. Zero browser tabs.</p>
+      <p class="min-lead" itemprop="description">Connect to a database, run a notebook query, watch the chart build, and
+        ask a schema-aware AI why it&apos;s slow — all inside VS Code. Zero browser tabs.</p>
 
       <div class="minimized-actions">
-        <a class="min-cta primary"
-          href="https://marketplace.visualstudio.com/items?itemName=ric-v.postgres-explorer" target="_blank"
-          rel="noopener noreferrer"><span aria-hidden="true">⬇</span> Install from Marketplace</a>
-        <button class="min-cta secondary" id="open-editor-shortcut" type="button"><span aria-hidden="true">▶</span> Run the demo</button>
+        <a class="min-cta primary" href="https://marketplace.visualstudio.com/items?itemName=ric-v.postgres-explorer"
+          target="_blank" rel="noopener noreferrer"><span aria-hidden="true">⬇</span> Install from Marketplace</a>
+        <button class="min-cta secondary" id="open-editor-shortcut" type="button"><span aria-hidden="true">▶</span> Run
+          the demo</button>
       </div>
 
       <div class="hero-kpi-strip hero-kpis hero-trust" aria-live="polite">
@@ -72,14 +73,16 @@
             <b>Schema context</b><span>orders, customers</span>
           </div>
           <div class="landing-float-node landing-float-node--two" aria-hidden="true">
-            <b>Safe env labels</b><span><span class="landing-env-dev">DEV</span> / <span class="landing-env-prod">PROD</span></span>
+            <b>Safe env labels</b><span><span class="landing-env-dev">DEV</span> / <span
+                class="landing-env-prod">PROD</span></span>
           </div>
           <div class="landing-float-node landing-float-node--three" aria-hidden="true">
             <b>Plan insight</b><span>Index recommendation</span>
           </div>
 
           <div class="landing-cmd-palette" aria-hidden="true">
-            <div class="landing-cmd-palette-input"><span class="landing-cmd-gt">&gt;</span> PgStudio: optimize current query</div>
+            <div class="landing-cmd-palette-input"><span class="landing-cmd-gt">&gt;</span> NexQL: optimize current
+              query</div>
             <div class="landing-cmd-row landing-cmd-row--active">
               <span class="landing-cmd-icon" aria-hidden="true">✦</span>
               <span>Ask AI with schema context</span>
@@ -94,92 +97,112 @@
             </div>
           </div>
 
-        <div class="mini-wb-preview mini-wb-preview--hero mini-editor-preview"
-          aria-label="PgStudio interactive preview — click to open demo">
+          <div class="mini-wb-preview mini-wb-preview--hero mini-editor-preview"
+            aria-label="NexQL interactive preview — click to open demo">
 
-        <div class="mini-wb-titlebar">
-          <div class="mini-wb-dots" aria-hidden="true">
-            <span class="dot-red"></span>
-            <span class="dot-yellow"></span>
-            <span class="dot-green"></span>
+            <div class="mini-wb-titlebar">
+              <div class="mini-wb-dots" aria-hidden="true">
+                <span class="dot-red"></span>
+                <span class="dot-yellow"></span>
+                <span class="dot-green"></span>
+              </div>
+              <img class="mini-wb-brand-icon" src="assets/NexQL.png" alt="" aria-hidden="true">
+              <span class="mini-wb-window-title">NexQL Workspace · Demo Project</span>
+              <div class="mini-wb-tab-strip" aria-hidden="true">
+                <span class="mini-wb-tab is-active">query.pgsql</span>
+                <span class="mini-wb-tab">README.md</span>
+              </div>
+            </div>
+
+            <div class="mini-wb-body" aria-hidden="true">
+
+              <div class="mini-wb-sidebar">
+                <div class="mini-wb-sidebar-hdr">NEXQL</div>
+                <div class="mini-wb-file-row is-active">
+                  <span class="mini-wb-file-dot nb"></span>
+                  query.pgsql
+                </div>
+                <div class="mini-wb-file-row">
+                  <span class="mini-wb-file-dot nb"></span>
+                  sales_health.pgsql
+                </div>
+                <div class="mini-wb-section-hdr">SCHEMA</div>
+                <div class="mini-wb-schema-row">orders</div>
+                <div class="mini-wb-schema-row">customers</div>
+                <div class="mini-wb-schema-row">products</div>
+                <div class="mini-wb-env-badge">
+                  Safe env labels&nbsp;
+                  <span class="env-label-dev">DEV</span>&thinsp;/&thinsp;<span class="env-label-prod">PROD</span>
+                </div>
+              </div>
+
+              <div class="mini-wb-editor">
+                <table class="mini-wb-result-table">
+                  <thead>
+                    <tr>
+                      <th>day</th>
+                      <th>orders</th>
+                      <th>revenue</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>Apr 07</td>
+                      <td>142</td>
+                      <td>$18,420</td>
+                    </tr>
+                    <tr>
+                      <td>Apr 08</td>
+                      <td>158</td>
+                      <td>$21,340</td>
+                    </tr>
+                    <tr>
+                      <td>Apr 09</td>
+                      <td>131</td>
+                      <td>$17,890</td>
+                    </tr>
+                    <tr>
+                      <td>Apr 10</td>
+                      <td>177</td>
+                      <td>$24,110</td>
+                    </tr>
+                  </tbody>
+                </table>
+                <div class="mini-chart">
+                  <div class="mini-chart-bar" style="--bar-h: 66%"></div>
+                  <div class="mini-chart-bar" style="--bar-h: 77%"></div>
+                  <div class="mini-chart-bar" style="--bar-h: 64%"></div>
+                  <div class="mini-chart-bar" style="--bar-h: 87%"></div>
+                  <div class="mini-chart-bar" style="--bar-h: 100%"></div>
+                  <div class="mini-chart-bar" style="--bar-h: 81%"></div>
+                  <div class="mini-chart-bar" style="--bar-h: 95%"></div>
+                </div>
+              </div>
+
+              <div class="mini-wb-assistant">
+                <div class="mini-wb-assistant-hdr">SQL ASSISTANT</div>
+                <div class="mini-wb-schema-pill">
+                  Schema context: <strong>orders, customers</strong>
+                </div>
+                <div class="mini-chat-user">Why is this daily revenue query slow?</div>
+                <div class="mini-chat-ai">
+                  I can see <code>orders.created_at</code> is not indexed. Create
+                  <code>idx_orders_created_at</code> concurrently, then cache the daily rollup
+                  for dashboard latency.<br><br>
+                  Expected result: 3s to under 100ms on this demo shape.
+                </div>
+                <button class="mini-wb-cta-btn" type="button" aria-label="Open interactive NexQL demo">
+                  Try it live →
+                </button>
+              </div>
+            </div>
+
+            <div class="mini-wb-insight-bar">
+              Plan insight
+              <span class="mini-wb-insight-pill">Index recommendation</span>
+            </div>
+
           </div>
-          <img class="mini-wb-brand-icon" src="assets/NexQL.png" alt="" aria-hidden="true">
-          <span class="mini-wb-window-title">PgStudio Workspace · Demo Project</span>
-          <div class="mini-wb-tab-strip" aria-hidden="true">
-            <span class="mini-wb-tab is-active">query.pgsql</span>
-            <span class="mini-wb-tab">README.md</span>
-          </div>
-        </div>
-
-        <div class="mini-wb-body" aria-hidden="true">
-
-          <div class="mini-wb-sidebar">
-            <div class="mini-wb-sidebar-hdr">PGSTUDIO</div>
-            <div class="mini-wb-file-row is-active">
-              <span class="mini-wb-file-dot nb"></span>
-              query.pgsql
-            </div>
-            <div class="mini-wb-file-row">
-              <span class="mini-wb-file-dot nb"></span>
-              sales_health.pgsql
-            </div>
-            <div class="mini-wb-section-hdr">SCHEMA</div>
-            <div class="mini-wb-schema-row">orders</div>
-            <div class="mini-wb-schema-row">customers</div>
-            <div class="mini-wb-schema-row">products</div>
-            <div class="mini-wb-env-badge">
-              Safe env labels&nbsp;
-              <span class="env-label-dev">DEV</span>&thinsp;/&thinsp;<span class="env-label-prod">PROD</span>
-            </div>
-          </div>
-
-          <div class="mini-wb-editor">
-            <table class="mini-wb-result-table">
-              <thead>
-                <tr><th>day</th><th>orders</th><th>revenue</th></tr>
-              </thead>
-              <tbody>
-                <tr><td>Apr 07</td><td>142</td><td>$18,420</td></tr>
-                <tr><td>Apr 08</td><td>158</td><td>$21,340</td></tr>
-                <tr><td>Apr 09</td><td>131</td><td>$17,890</td></tr>
-                <tr><td>Apr 10</td><td>177</td><td>$24,110</td></tr>
-              </tbody>
-            </table>
-            <div class="mini-chart">
-              <div class="mini-chart-bar" style="--bar-h: 66%"></div>
-              <div class="mini-chart-bar" style="--bar-h: 77%"></div>
-              <div class="mini-chart-bar" style="--bar-h: 64%"></div>
-              <div class="mini-chart-bar" style="--bar-h: 87%"></div>
-              <div class="mini-chart-bar" style="--bar-h: 100%"></div>
-              <div class="mini-chart-bar" style="--bar-h: 81%"></div>
-              <div class="mini-chart-bar" style="--bar-h: 95%"></div>
-            </div>
-          </div>
-
-          <div class="mini-wb-assistant">
-            <div class="mini-wb-assistant-hdr">SQL ASSISTANT</div>
-            <div class="mini-wb-schema-pill">
-              Schema context: <strong>orders, customers</strong>
-            </div>
-            <div class="mini-chat-user">Why is this daily revenue query slow?</div>
-            <div class="mini-chat-ai">
-              I can see <code>orders.created_at</code> is not indexed. Create
-              <code>idx_orders_created_at</code> concurrently, then cache the daily rollup
-              for dashboard latency.<br><br>
-              Expected result: 3s to under 100ms on this demo shape.
-            </div>
-            <button class="mini-wb-cta-btn" type="button" aria-label="Open interactive PgStudio demo">
-              Try it live →
-            </button>
-          </div>
-        </div>
-
-        <div class="mini-wb-insight-bar">
-          Plan insight
-          <span class="mini-wb-insight-pill">Index recommendation</span>
-        </div>
-
-        </div>
 
         </div><!-- /.landing-demo-stage -->
       </div>
@@ -194,8 +217,14 @@
 
   <div class="landing-marquee" aria-hidden="true">
     <div class="landing-marquee-track">
-      <span>🔌 Secure connections</span><span>📓 SQL notebooks</span><span>📈 Live dashboard</span><span>🛡️ Read-only mode</span><span>🔍 EXPLAIN visualizer</span><span>✦ Schema-aware AI</span><span>🏗️ Table designer</span><span>🗺️ ERD diagram</span><span>📤 CSV · JSON · Excel</span><span>🌍 Foreign data wrappers</span>
-      <span>🔌 Secure connections</span><span>📓 SQL notebooks</span><span>📈 Live dashboard</span><span>🛡️ Read-only mode</span><span>🔍 EXPLAIN visualizer</span><span>✦ Schema-aware AI</span><span>🏗️ Table designer</span><span>🗺️ ERD diagram</span><span>📤 CSV · JSON · Excel</span><span>🌍 Foreign data wrappers</span>
+      <span>🔌 Secure connections</span><span>📓 SQL notebooks</span><span>📈 Live dashboard</span><span>🛡️ Read-only
+        mode</span><span>🔍 EXPLAIN visualizer</span><span>✦ Schema-aware AI</span><span>🏗️ Table
+        designer</span><span>🗺️ ERD diagram</span><span>📤 CSV · JSON · Excel</span><span>🌍 Foreign data
+        wrappers</span>
+      <span>🔌 Secure connections</span><span>📓 SQL notebooks</span><span>📈 Live dashboard</span><span>🛡️ Read-only
+        mode</span><span>🔍 EXPLAIN visualizer</span><span>✦ Schema-aware AI</span><span>🏗️ Table
+        designer</span><span>🗺️ ERD diagram</span><span>📤 CSV · JSON · Excel</span><span>🌍 Foreign data
+        wrappers</span>
     </div>
   </div>
 
@@ -204,49 +233,110 @@
   <section class="landing-section" id="features" aria-labelledby="landing-cap-title">
     <span class="eyebrow">Everything in one place</span>
     <h2 class="section-title" id="landing-cap-title">50+ capabilities,<br>zero browser tabs.</h2>
-    <p class="section-sub">A toolkit that replaces tab-juggling between a SQL client, a monitor, and a chat window — all inside VS Code.</p>
+    <p class="section-sub">A toolkit that replaces tab-juggling between a SQL client, a monitor, and a chat window — all
+      inside VS Code.</p>
 
     <div class="landing-metrics" aria-hidden="false">
-      <div class="landing-metric"><div class="landing-metric-value grad-text">50+</div><div class="landing-metric-key">capabilities</div></div>
-      <div class="landing-metric"><div class="landing-metric-value grad-text">5</div><div class="landing-metric-key">major areas</div></div>
-      <div class="landing-metric"><div class="landing-metric-value grad-text">4</div><div class="landing-metric-key">AI providers</div></div>
-      <div class="landing-metric"><div class="landing-metric-value grad-text">0</div><div class="landing-metric-key">browser tabs needed</div></div>
+      <div class="landing-metric">
+        <div class="landing-metric-value grad-text">50+</div>
+        <div class="landing-metric-key">capabilities</div>
+      </div>
+      <div class="landing-metric">
+        <div class="landing-metric-value grad-text">5</div>
+        <div class="landing-metric-key">major areas</div>
+      </div>
+      <div class="landing-metric">
+        <div class="landing-metric-value grad-text">4</div>
+        <div class="landing-metric-key">AI providers</div>
+      </div>
+      <div class="landing-metric">
+        <div class="landing-metric-value grad-text">0</div>
+        <div class="landing-metric-key">browser tabs needed</div>
+      </div>
     </div>
 
     <div class="cap-area">
       <h3 class="cap-area-heading">📓 Notebooks &amp; Queries</h3>
       <div class="cap-tile-grid">
-        <div class="cap-tile"><span class="cap-tile-icon" aria-hidden="true">✍️</span><h4>Write &amp; Run</h4><p>SQL cells with inline results — run one cell or the whole notebook.</p></div>
-        <div class="cap-tile"><span class="cap-tile-icon" aria-hidden="true">📊</span><h4>Sortable Tables</h4><p>Results appear formatted and sortable directly below each cell.</p></div>
-        <div class="cap-tile"><span class="cap-tile-icon" aria-hidden="true">📤</span><h4>Export</h4><p>CSV, JSON, or Excel in one click — no copy-paste.</p></div>
-        <div class="cap-tile"><span class="cap-tile-icon" aria-hidden="true">🕐</span><h4>Auto History</h4><p>Every query saved automatically — browse and replay anytime.</p></div>
+        <div class="cap-tile"><span class="cap-tile-icon" aria-hidden="true">✍️</span>
+          <h4>Write &amp; Run</h4>
+          <p>SQL cells with inline results — run one cell or the whole notebook.</p>
+        </div>
+        <div class="cap-tile"><span class="cap-tile-icon" aria-hidden="true">📊</span>
+          <h4>Sortable Tables</h4>
+          <p>Results appear formatted and sortable directly below each cell.</p>
+        </div>
+        <div class="cap-tile"><span class="cap-tile-icon" aria-hidden="true">📤</span>
+          <h4>Export</h4>
+          <p>CSV, JSON, or Excel in one click — no copy-paste.</p>
+        </div>
+        <div class="cap-tile"><span class="cap-tile-icon" aria-hidden="true">🕐</span>
+          <h4>Auto History</h4>
+          <p>Every query saved automatically — browse and replay anytime.</p>
+        </div>
       </div>
     </div>
     <div class="cap-area">
       <h3 class="cap-area-heading">🗂️ Database Explorer</h3>
       <div class="cap-tile-grid">
-        <div class="cap-tile"><span class="cap-tile-icon" aria-hidden="true">🌳</span><h4>16+ Object Types</h4><p>Tables, views, functions, triggers, partitions, FDWs and more.</p></div>
-        <div class="cap-tile"><span class="cap-tile-icon" aria-hidden="true">🔍</span><h4>Column Insights</h4><p>Click any column for null count, unique values, min/max on demand.</p></div>
-        <div class="cap-tile"><span class="cap-tile-icon" aria-hidden="true">⚡</span><h4>Right-click SQL</h4><p>SELECT, INSERT, ALTER, DROP — generated with correct names.</p></div>
-        <div class="cap-tile"><span class="cap-tile-icon" aria-hidden="true">🔎</span><h4>Quick Search</h4><p>Find any object across all schemas in one keypress.</p></div>
+        <div class="cap-tile"><span class="cap-tile-icon" aria-hidden="true">🌳</span>
+          <h4>16+ Object Types</h4>
+          <p>Tables, views, functions, triggers, partitions, FDWs and more.</p>
+        </div>
+        <div class="cap-tile"><span class="cap-tile-icon" aria-hidden="true">🔍</span>
+          <h4>Column Insights</h4>
+          <p>Click any column for null count, unique values, min/max on demand.</p>
+        </div>
+        <div class="cap-tile"><span class="cap-tile-icon" aria-hidden="true">⚡</span>
+          <h4>Right-click SQL</h4>
+          <p>SELECT, INSERT, ALTER, DROP — generated with correct names.</p>
+        </div>
+        <div class="cap-tile"><span class="cap-tile-icon" aria-hidden="true">🔎</span>
+          <h4>Quick Search</h4>
+          <p>Find any object across all schemas in one keypress.</p>
+        </div>
       </div>
     </div>
     <div class="cap-area">
       <h3 class="cap-area-heading">🎨 Visual Tools</h3>
       <div class="cap-tile-grid">
-        <div class="cap-tile"><span class="cap-tile-icon" aria-hidden="true">🖊️</span><h4>Table Designer</h4><p>Create and alter tables visually — every change previews as SQL.</p></div>
-        <div class="cap-tile"><span class="cap-tile-icon" aria-hidden="true">🔄</span><h4>Schema Diff</h4><p>Compare two schemas and generate the migration script.</p></div>
-        <div class="cap-tile"><span class="cap-tile-icon" aria-hidden="true">🗺️</span><h4>ERD Diagram</h4><p>Auto-generated FK relationship map for the whole schema.</p></div>
-        <div class="cap-tile"><span class="cap-tile-icon" aria-hidden="true">📥</span><h4>Import Wizard</h4><p>CSV/JSON import with guided column type mapping.</p></div>
+        <div class="cap-tile"><span class="cap-tile-icon" aria-hidden="true">🖊️</span>
+          <h4>Table Designer</h4>
+          <p>Create and alter tables visually — every change previews as SQL.</p>
+        </div>
+        <div class="cap-tile"><span class="cap-tile-icon" aria-hidden="true">🔄</span>
+          <h4>Schema Diff</h4>
+          <p>Compare two schemas and generate the migration script.</p>
+        </div>
+        <div class="cap-tile"><span class="cap-tile-icon" aria-hidden="true">🗺️</span>
+          <h4>ERD Diagram</h4>
+          <p>Auto-generated FK relationship map for the whole schema.</p>
+        </div>
+        <div class="cap-tile"><span class="cap-tile-icon" aria-hidden="true">📥</span>
+          <h4>Import Wizard</h4>
+          <p>CSV/JSON import with guided column type mapping.</p>
+        </div>
       </div>
     </div>
     <div class="cap-area">
       <h3 class="cap-area-heading">🛡️ Safety &amp; Performance</h3>
       <div class="cap-tile-grid">
-        <div class="cap-tile"><span class="cap-tile-icon" aria-hidden="true">🏷️</span><h4>Env Labels</h4><p>DEV / STAGE / PROD — always visible before you run anything.</p></div>
-        <div class="cap-tile"><span class="cap-tile-icon" aria-hidden="true">⚠️</span><h4>Risk Scoring</h4><p>Flags DELETE without WHERE, TRUNCATE, DROP before execution.</p></div>
-        <div class="cap-tile"><span class="cap-tile-icon" aria-hidden="true">📈</span><h4>Live Dashboard</h4><p>Real-time metrics — active connections, query throughput, locks.</p></div>
-        <div class="cap-tile"><span class="cap-tile-icon" aria-hidden="true">🔬</span><h4>EXPLAIN Analysis</h4><p>Query plan breakdown with specific optimization guidance.</p></div>
+        <div class="cap-tile"><span class="cap-tile-icon" aria-hidden="true">🏷️</span>
+          <h4>Env Labels</h4>
+          <p>DEV / STAGE / PROD — always visible before you run anything.</p>
+        </div>
+        <div class="cap-tile"><span class="cap-tile-icon" aria-hidden="true">⚠️</span>
+          <h4>Risk Scoring</h4>
+          <p>Flags DELETE without WHERE, TRUNCATE, DROP before execution.</p>
+        </div>
+        <div class="cap-tile"><span class="cap-tile-icon" aria-hidden="true">📈</span>
+          <h4>Live Dashboard</h4>
+          <p>Real-time metrics — active connections, query throughput, locks.</p>
+        </div>
+        <div class="cap-tile"><span class="cap-tile-icon" aria-hidden="true">🔬</span>
+          <h4>EXPLAIN Analysis</h4>
+          <p>Query plan breakdown with specific optimization guidance.</p>
+        </div>
       </div>
     </div>
 
@@ -254,14 +344,18 @@
 
   <hr class="section-divider" aria-hidden="true">
 
-  <section class="landing-section landing-section-compact landing-section-ai" id="ai" aria-labelledby="landing-ai-title">
+  <section class="landing-section landing-section-compact landing-section-ai" id="ai"
+    aria-labelledby="landing-ai-title">
     <span class="eyebrow">Schema-aware AI</span>
     <h2 class="section-title" id="landing-ai-title">Describe it. Get runnable SQL.</h2>
-    <p class="section-sub">It reads your actual tables and columns — not invented ones — and never auto-executes. Generated SQL lands in a cell for you to review first.</p>
+    <p class="section-sub">It reads your actual tables and columns — not invented ones — and never auto-executes.
+      Generated SQL lands in a cell for you to review first.</p>
     <div class="landing-ai-show">
       <div class="landing-ai-demo">
-        <div class="landing-ai-q"><span class="landing-ai-lbl">PLAIN ENGLISH →</span>&quot;Top 10 customers by revenue last 30 days, exclude cancelled orders&quot;</div>
-        <pre class="landing-ai-a" aria-label="Generated SQL example"><code><span class="sql-kwd">SELECT</span> c.name, <span class="sql-fn">SUM</span>(o.amount) <span class="sql-kwd">AS</span> revenue
+        <div class="landing-ai-q"><span class="landing-ai-lbl">PLAIN ENGLISH →</span>&quot;Top 10 customers by revenue
+          last 30 days, exclude cancelled orders&quot;</div>
+        <pre class="landing-ai-a"
+          aria-label="Generated SQL example"><code><span class="sql-kwd">SELECT</span> c.name, <span class="sql-fn">SUM</span>(o.amount) <span class="sql-kwd">AS</span> revenue
 <span class="sql-kwd">FROM</span> customers c <span class="sql-kwd">JOIN</span> orders o <span class="sql-kwd">ON</span> c.id = o.customer_id
 <span class="sql-kwd">WHERE</span> o.created_at >= <span class="sql-fn">NOW</span>() - <span class="sql-kwd">INTERVAL</span> <span class="sql-str">'30 days'</span>
   <span class="sql-kwd">AND</span> o.status &lt;&gt; <span class="sql-str">'cancelled'</span>
@@ -270,7 +364,8 @@
       </div>
       <div class="landing-ai-side">
         <h3 class="landing-ai-side-title">Four ways AI helps</h3>
-        <p class="section-sub landing-ai-side-sub">Text → SQL, plain-English Explain, Optimize with index recommendations, and Debug from a pasted error. Open the assistant in editor tabs and run parallel chats.</p>
+        <p class="section-sub landing-ai-side-sub">Text → SQL, plain-English Explain, Optimize with index
+          recommendations, and Debug from a pasted error. Open the assistant in editor tabs and run parallel chats.</p>
         <div class="landing-provider-chips">
           <span class="landing-chip landing-chip-grad">GitHub Models · free, no key</span>
           <span class="landing-chip landing-chip-grad">OpenAI GPT-4o</span>
@@ -284,23 +379,73 @@
 
   <hr class="section-divider" aria-hidden="true">
 
-  <section class="landing-section landing-section-compact landing-section-compare landing-section-center" id="compare" aria-labelledby="landing-compare-title">
+  <section class="landing-section landing-section-compact landing-section-compare landing-section-center" id="compare"
+    aria-labelledby="landing-compare-title">
     <span class="eyebrow">How it compares</span>
     <h2 class="section-title" id="landing-compare-title">Built into your editor.</h2>
-    <p class="section-sub section-sub-center">The others are separate apps. PgStudio lives where your code already is.</p>
+    <p class="section-sub section-sub-center">The others are separate apps. NexQL lives where your code already is.
+    </p>
     <div class="landing-cmp-scroll">
       <table class="landing-cmp">
         <thead>
-          <tr><th>Feature</th><th class="landing-cmp-me">PgStudio</th><th>pgAdmin</th><th>DBeaver</th><th>TablePlus</th></tr>
+          <tr>
+            <th>Feature</th>
+            <th class="landing-cmp-me">NexQL</th>
+            <th>pgAdmin</th>
+            <th>DBeaver</th>
+            <th>TablePlus</th>
+          </tr>
         </thead>
         <tbody>
-          <tr><td>Runs inside VS Code</td><td class="c landing-cmp-me yes">✓</td><td class="c no">—</td><td class="c no">—</td><td class="c no">—</td></tr>
-          <tr><td>SQL notebooks</td><td class="c landing-cmp-me yes">✓</td><td class="c no">—</td><td class="c no">—</td><td class="c no">—</td></tr>
-          <tr><td>Built-in AI assistant</td><td class="c landing-cmp-me yes">✓</td><td class="c no">—</td><td class="c no">—</td><td class="c no">—</td></tr>
-          <tr><td>Real-time dashboard</td><td class="c landing-cmp-me yes">✓</td><td class="c yes">✓</td><td class="c partial">limited</td><td class="c partial">limited</td></tr>
-          <tr><td>ERD &amp; schema diff</td><td class="c landing-cmp-me yes">✓</td><td class="c partial">partial</td><td class="c yes">✓</td><td class="c no">—</td></tr>
-          <tr><td>Foreign data wrappers</td><td class="c landing-cmp-me yes">✓</td><td class="c yes">✓</td><td class="c partial">limited</td><td class="c no">—</td></tr>
-          <tr><td>License</td><td class="c landing-cmp-me yes">MIT · free</td><td class="c">free</td><td class="c">free</td><td class="c no">paid</td></tr>
+          <tr>
+            <td>Runs inside VS Code</td>
+            <td class="c landing-cmp-me yes">✓</td>
+            <td class="c no">—</td>
+            <td class="c no">—</td>
+            <td class="c no">—</td>
+          </tr>
+          <tr>
+            <td>SQL notebooks</td>
+            <td class="c landing-cmp-me yes">✓</td>
+            <td class="c no">—</td>
+            <td class="c no">—</td>
+            <td class="c no">—</td>
+          </tr>
+          <tr>
+            <td>Built-in AI assistant</td>
+            <td class="c landing-cmp-me yes">✓</td>
+            <td class="c no">—</td>
+            <td class="c no">—</td>
+            <td class="c no">—</td>
+          </tr>
+          <tr>
+            <td>Real-time dashboard</td>
+            <td class="c landing-cmp-me yes">✓</td>
+            <td class="c yes">✓</td>
+            <td class="c partial">limited</td>
+            <td class="c partial">limited</td>
+          </tr>
+          <tr>
+            <td>ERD &amp; schema diff</td>
+            <td class="c landing-cmp-me yes">✓</td>
+            <td class="c partial">partial</td>
+            <td class="c yes">✓</td>
+            <td class="c no">—</td>
+          </tr>
+          <tr>
+            <td>Foreign data wrappers</td>
+            <td class="c landing-cmp-me yes">✓</td>
+            <td class="c yes">✓</td>
+            <td class="c partial">limited</td>
+            <td class="c no">—</td>
+          </tr>
+          <tr>
+            <td>License</td>
+            <td class="c landing-cmp-me yes">MIT · free</td>
+            <td class="c">free</td>
+            <td class="c">free</td>
+            <td class="c no">paid</td>
+          </tr>
         </tbody>
       </table>
     </div>
@@ -308,14 +453,31 @@
 
   <hr class="section-divider" aria-hidden="true">
 
-  <section class="landing-section landing-section-compact landing-section-center" aria-labelledby="landing-workflow-title">
+  <section class="landing-section landing-section-compact landing-section-center"
+    aria-labelledby="landing-workflow-title">
     <span class="eyebrow">The loop</span>
     <h2 class="section-title" id="landing-workflow-title">Connect → Explore → Query → Analyze</h2>
     <div class="landing-workflow">
-      <div class="landing-step"><div class="landing-step-n">01</div><span class="landing-step-icon" aria-hidden="true">🔐</span><h3>Connect</h3><p>Encrypted credentials, SSH tunnels, env labels.</p></div>
-      <div class="landing-step"><div class="landing-step-n">02</div><span class="landing-step-icon" aria-hidden="true">🌳</span><h3>Explore</h3><p>Schemas, tables, views, functions — one tree.</p></div>
-      <div class="landing-step"><div class="landing-step-n">03</div><span class="landing-step-icon" aria-hidden="true">📝</span><h3>Query</h3><p>Notebooks with AI assist and instant results.</p></div>
-      <div class="landing-step"><div class="landing-step-n">04</div><span class="landing-step-icon" aria-hidden="true">📊</span><h3>Analyze</h3><p>Charts, EXPLAIN, profiling, export.</p></div>
+      <div class="landing-step">
+        <div class="landing-step-n">01</div><span class="landing-step-icon" aria-hidden="true">🔐</span>
+        <h3>Connect</h3>
+        <p>Encrypted credentials, SSH tunnels, env labels.</p>
+      </div>
+      <div class="landing-step">
+        <div class="landing-step-n">02</div><span class="landing-step-icon" aria-hidden="true">🌳</span>
+        <h3>Explore</h3>
+        <p>Schemas, tables, views, functions — one tree.</p>
+      </div>
+      <div class="landing-step">
+        <div class="landing-step-n">03</div><span class="landing-step-icon" aria-hidden="true">📝</span>
+        <h3>Query</h3>
+        <p>Notebooks with AI assist and instant results.</p>
+      </div>
+      <div class="landing-step">
+        <div class="landing-step-n">04</div><span class="landing-step-icon" aria-hidden="true">📊</span>
+        <h3>Analyze</h3>
+        <p>Charts, EXPLAIN, profiling, export.</p>
+      </div>
     </div>
   </section>
 
@@ -328,28 +490,34 @@
     </div>
     <div class="landing-faq">
       <details open>
-        <summary>Is PgStudio free?</summary>
-        <p>Yes — completely free, no subscription or account. Install from the VS Code Marketplace or Open VSX in under a minute.</p>
+        <summary>Is NexQL free?</summary>
+        <p>Yes — completely free, no subscription or account. Install from the VS Code Marketplace or Open VSX in under
+          a minute.</p>
       </details>
       <details>
         <summary>Which AI providers are supported?</summary>
-        <p>OpenAI (GPT-4o), Anthropic Claude, Google Gemini, GitHub Models (free, no API key), and the VS Code Language Model API. GitHub Models requires no configuration.</p>
+        <p>OpenAI (GPT-4o), Anthropic Claude, Google Gemini, GitHub Models (free, no API key), and the VS Code Language
+          Model API. GitHub Models requires no configuration.</p>
       </details>
       <details>
         <summary>How is it different from pgAdmin or DBeaver?</summary>
-        <p>PgStudio runs inside VS Code — no separate app to install or switch to. Your notebooks, explorer, and AI assistant stay in the same window as your code.</p>
+        <p>NexQL runs inside VS Code — no separate app to install or switch to. Your notebooks, explorer, and AI
+          assistant stay in the same window as your code.</p>
       </details>
       <details>
         <summary>What PostgreSQL versions are supported?</summary>
-        <p>PostgreSQL 12 through 17, plus compatible managed services like Amazon RDS, Supabase, Neon, and other pg-compatible databases.</p>
+        <p>PostgreSQL 12 through 17, plus compatible managed services like Amazon RDS, Supabase, Neon, and other
+          pg-compatible databases.</p>
       </details>
       <details>
         <summary>Does it support SSH tunnels?</summary>
-        <p>Yes — built-in SSH tunnel support connects to databases on private networks or behind firewalls with no extra tooling.</p>
+        <p>Yes — built-in SSH tunnel support connects to databases on private networks or behind firewalls with no extra
+          tooling.</p>
       </details>
       <details>
         <summary>Can I share notebooks with my team?</summary>
-        <p>.pgsql notebooks are plain files that commit to git like source. Your team replays the same queries against their own connections — no export needed.</p>
+        <p>.pgsql notebooks are plain files that commit to git like source. Your team replays the same queries against
+          their own connections — no export needed.</p>
       </details>
     </div>
   </section>
@@ -359,19 +527,21 @@
   <section class="landing-section" aria-labelledby="landing-price-title">
     <span class="eyebrow">Pricing</span>
     <h2 class="section-title" id="landing-price-title">Simple, transparent pricing</h2>
-    <p class="section-sub">Free for everyone. Upgrade to Sponsor for individual pro features, or Singularity for teams with cloud sync.</p>
-
+    <p class="section-sub">Free for everyone. Upgrade to Sponsor for individual pro features, or Singularity for teams
+      with cloud sync (coming soon).</p>
+ 
     <div class="pricing-controls">
       <div class="pricing-billing-toggle" role="radiogroup" aria-label="Billing period">
         <button type="button" class="is-active" data-period="monthly" aria-pressed="true">Monthly</button>
-        <button type="button" data-period="annual" aria-pressed="false">Annual <span class="pricing-save-hint">Save ~17%</span></button>
+        <button type="button" data-period="annual" aria-pressed="false">Annual <span class="pricing-save-hint">Save
+            ~17%</span></button>
       </div>
       <div class="pricing-currency-toggle" role="radiogroup" aria-label="Payment currency">
         <button type="button" class="is-active" data-currency="INR" aria-pressed="true">INR ₹</button>
         <button type="button" data-currency="USD" aria-pressed="false">USD $</button>
       </div>
     </div>
-
+ 
     <div class="pricing-grid pricing-grid-three">
       <div class="pricing-card">
         <div class="pricing-name">Free</div>
@@ -385,9 +555,11 @@
           <li>Export CSV, JSON, Excel</li>
           <li>Community support via GitHub</li>
         </ul>
-        <a class="pricing-cta primary" href="https://marketplace.visualstudio.com/items?itemName=ric-v.postgres-explorer" target="_blank" rel="noopener noreferrer">Install Free</a>
+        <a class="pricing-cta primary"
+          href="https://marketplace.visualstudio.com/items?itemName=ric-v.postgres-explorer" target="_blank"
+          rel="noopener noreferrer">Install Free</a>
       </div>
-
+ 
       <div class="pricing-card pricing-card-featured" data-pricing-tier="sponsor">
         <span class="pricing-badge">RECOMMENDED</span>
         <div class="pricing-name">Sponsor</div>
@@ -400,10 +572,11 @@
           <li>Early access to schema diff visual tools</li>
           <li>Direct developer feedback channel</li>
         </ul>
-        <button class="pricing-cta primary pricing-cta-pay" type="button" data-tier="sponsor" disabled>Get Sponsor</button>
+        <button class="pricing-cta primary pricing-cta-pay" type="button" data-tier="sponsor">Get Sponsor</button>
       </div>
-
+ 
       <div class="pricing-card" data-pricing-tier="singularity">
+        <span class="pricing-badge" style="background: rgba(255, 255, 255, 0.12); color: rgba(255, 255, 255, 0.6); border: 1px solid rgba(255, 255, 255, 0.15)">COMING SOON</span>
         <div class="pricing-name">Singularity</div>
         <div class="pricing-desc">Teams — org license with cloud sync for shared connection profiles</div>
         <div class="pricing-amount"><span class="pricing-amount-value">$9</span> <span class="period">/ mo</span></div>
@@ -414,12 +587,14 @@
           <li>Prioritized support channel</li>
           <li>Flat org pricing — not per seat</li>
         </ul>
-        <button class="pricing-cta primary pricing-cta-pay" type="button" data-tier="singularity" disabled>Get Singularity</button>
+        <button class="pricing-cta primary pricing-cta-pay" type="button" data-tier="singularity" disabled>Coming Soon</button>
       </div>
     </div>
-    <p class="pricing-activation-note" style="text-align:center;color:var(--text-muted,#9ca3af);font-size:13px;margin-top:16px">
+    <p class="pricing-activation-note"
+      style="text-align:center;color:var(--text-muted,#9ca3af);font-size:13px;margin-top:16px">
       After checkout you’ll get a license key — click <b>Activate in VS Code</b> or run
-      <b>PgStudio: Activate License</b> from the command palette. Your key is also emailed to you.
+      <b>NexQL: Activate License</b> from the command palette. Your key is also emailed to you.
+      <br>Already subscribed? <a href="#" class="manage-subscription-link" data-manage-subscription>Manage or cancel your subscription</a>.
     </p>
   </section>
 
@@ -428,13 +603,12 @@
   <section class="landing-install-cta" id="install" aria-labelledby="landing-install-title">
     <div class="landing-cta-card">
       <h2 class="section-title" id="landing-install-title">Install in one click.</h2>
-      <p class="section-sub section-sub-center landing-cta-sub">Free, MIT-licensed, on the VS Code Marketplace and Open VSX. Under a minute to first query.</p>
+      <p class="section-sub section-sub-center landing-cta-sub">Free, MIT-licensed, on the VS Code Marketplace and Open
+        VSX. Under a minute to first query.</p>
       <div class="minimized-actions landing-cta-actions">
-        <a class="min-cta primary"
-          href="https://marketplace.visualstudio.com/items?itemName=ric-v.postgres-explorer" target="_blank"
-          rel="noopener noreferrer"><span aria-hidden="true">⬇</span> VS Code Marketplace</a>
-        <a class="min-cta secondary"
-          href="https://open-vsx.org/extension/ric-v/postgres-explorer" target="_blank"
+        <a class="min-cta primary" href="https://marketplace.visualstudio.com/items?itemName=ric-v.postgres-explorer"
+          target="_blank" rel="noopener noreferrer"><span aria-hidden="true">⬇</span> VS Code Marketplace</a>
+        <a class="min-cta secondary" href="https://open-vsx.org/extension/ric-v/postgres-explorer" target="_blank"
           rel="noopener noreferrer">Open VSX</a>
       </div>
       <p class="landing-cta-cli">code --install-extension ric-v.postgres-explorer</p>
@@ -444,47 +618,70 @@
   <footer class="site-footer landing-site-footer">
     <div class="footer-grid footer-grid--nexql">
       <div class="footer-brand">
-        <div class="footer-brand-title footer-brand-grad">🐘 Pg<span class="grad-text">Studio</span></div>
+        <div class="footer-brand-title footer-brand-grad">🐘 <span class="grad-text">NexQL</span></div>
         <p class="footer-desc">PostgreSQL, without the context switching.</p>
       </div>
       <div class="footer-col">
         <h4>Resources</h4>
-        <a href="https://pgstudio.astrx.dev/">Documentation</a>
-        <a href="https://github.com/dev-asterix/PgStudio/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">Changelog</a>
+        <a href="https://nexql.astrx.dev/">Documentation</a>
+        <a href="https://github.com/dev-asterix/PgStudio/blob/main/CHANGELOG.md" target="_blank"
+          rel="noopener noreferrer">Changelog</a>
       </div>
       <div class="footer-col">
         <h4>Community</h4>
         <a href="https://github.com/dev-asterix/PgStudio" target="_blank" rel="noopener noreferrer">GitHub</a>
-        <a href="https://github.com/dev-asterix/PgStudio/issues" target="_blank" rel="noopener noreferrer">Report issues</a>
+        <a href="https://github.com/dev-asterix/PgStudio/issues" target="_blank" rel="noopener noreferrer">Report
+          issues</a>
       </div>
       <div class="footer-col">
         <h4>Install</h4>
-        <a href="https://marketplace.visualstudio.com/items?itemName=ric-v.postgres-explorer" target="_blank" rel="noopener noreferrer">Marketplace</a>
-        <a href="https://open-vsx.org/extension/ric-v/postgres-explorer" target="_blank" rel="noopener noreferrer">Open VSX</a>
+        <a href="https://marketplace.visualstudio.com/items?itemName=ric-v.postgres-explorer" target="_blank"
+          rel="noopener noreferrer">Marketplace</a>
+        <a href="https://open-vsx.org/extension/ric-v/postgres-explorer" target="_blank" rel="noopener noreferrer">Open
+          VSX</a>
       </div>
     </div>
     <div class="footer-bottom footer-bottom--center">
-      <span class="footer-copy">Made with ❤ by <a href="https://github.com/dev-asterix" target="_blank" rel="noopener noreferrer">astrx.dev</a> · MIT License</span>
+      <span class="footer-copy">Made with ❤ by <a href="https://github.com/dev-asterix" target="_blank"
+          rel="noopener noreferrer">astrx.dev</a> · MIT License</span>
     </div>
   </footer>
 
   <!-- Hidden SEO content -->
   <ul class="min-feature-pills" aria-label="Key features" itemprop="featureList"
     style="display:none;flex-wrap:wrap;gap:6px;list-style:none;padding:10px 0 4px;margin:0;justify-content:center">
-    <li style="font-size:10px;padding:2px 8px;border-radius:10px;background:var(--bg-secondary);color:var(--text-muted);border:1px solid var(--border-color)">SQL Notebooks</li>
-    <li style="font-size:10px;padding:2px 8px;border-radius:10px;background:var(--bg-secondary);color:var(--text-muted);border:1px solid var(--border-color)">DB Explorer</li>
-    <li style="font-size:10px;padding:2px 8px;border-radius:10px;background:var(--bg-secondary);color:var(--text-muted);border:1px solid var(--border-color)">AI Assistant</li>
-    <li style="font-size:10px;padding:2px 8px;border-radius:10px;background:var(--bg-secondary);color:var(--text-muted);border:1px solid var(--border-color)">Schema Designer</li>
-    <li style="font-size:10px;padding:2px 8px;border-radius:10px;background:var(--bg-secondary);color:var(--text-muted);border:1px solid var(--border-color)">ERD Diagrams</li>
-    <li style="font-size:10px;padding:2px 8px;border-radius:10px;background:var(--bg-secondary);color:var(--text-muted);border:1px solid var(--border-color)">SSH Tunnels</li>
-    <li style="font-size:10px;padding:2px 8px;border-radius:10px;background:var(--bg-secondary);color:var(--text-muted);border:1px solid var(--border-color)">EXPLAIN Analysis</li>
-    <li style="font-size:10px;padding:2px 8px;border-radius:10px;background:var(--bg-secondary);color:var(--text-muted);border:1px solid var(--border-color)">Live Dashboard</li>
-    <li style="font-size:10px;padding:2px 8px;border-radius:10px;background:var(--bg-secondary);color:var(--text-muted);border:1px solid var(--border-color)">Free</li>
+    <li
+      style="font-size:10px;padding:2px 8px;border-radius:10px;background:var(--bg-secondary);color:var(--text-muted);border:1px solid var(--border-color)">
+      SQL Notebooks</li>
+    <li
+      style="font-size:10px;padding:2px 8px;border-radius:10px;background:var(--bg-secondary);color:var(--text-muted);border:1px solid var(--border-color)">
+      DB Explorer</li>
+    <li
+      style="font-size:10px;padding:2px 8px;border-radius:10px;background:var(--bg-secondary);color:var(--text-muted);border:1px solid var(--border-color)">
+      AI Assistant</li>
+    <li
+      style="font-size:10px;padding:2px 8px;border-radius:10px;background:var(--bg-secondary);color:var(--text-muted);border:1px solid var(--border-color)">
+      Schema Designer</li>
+    <li
+      style="font-size:10px;padding:2px 8px;border-radius:10px;background:var(--bg-secondary);color:var(--text-muted);border:1px solid var(--border-color)">
+      ERD Diagrams</li>
+    <li
+      style="font-size:10px;padding:2px 8px;border-radius:10px;background:var(--bg-secondary);color:var(--text-muted);border:1px solid var(--border-color)">
+      SSH Tunnels</li>
+    <li
+      style="font-size:10px;padding:2px 8px;border-radius:10px;background:var(--bg-secondary);color:var(--text-muted);border:1px solid var(--border-color)">
+      EXPLAIN Analysis</li>
+    <li
+      style="font-size:10px;padding:2px 8px;border-radius:10px;background:var(--bg-secondary);color:var(--text-muted);border:1px solid var(--border-color)">
+      Live Dashboard</li>
+    <li
+      style="font-size:10px;padding:2px 8px;border-radius:10px;background:var(--bg-secondary);color:var(--text-muted);border:1px solid var(--border-color)">
+      Free</li>
   </ul>
-  <p style="display:none">PgStudio helps developers query PostgreSQL in VS Code with notebooks, explorer navigation,
+  <p style="display:none">NexQL helps developers query PostgreSQL in VS Code with notebooks, explorer navigation,
     schema tools, AI-assisted SQL generation, EXPLAIN analysis, and performance optimization workflows.</p>
   <div style="display:none" aria-hidden="true">
-    <h3>PgStudio capabilities</h3>
+    <h3>NexQL capabilities</h3>
     <ul>
       <li>PostgreSQL SQL editor and notebook workflow in VS Code</li>
       <li>Database explorer for schemas, tables, views, and functions</li>

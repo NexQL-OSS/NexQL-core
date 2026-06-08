@@ -1,8 +1,8 @@
-# PgStudio Architecture
+# NexQL Architecture
 
 > **Last Updated**: March 2026
 
-This document provides a comprehensive overview of PgStudio's architecture, design decisions, and component interactions.
+This document provides a comprehensive overview of NexQL's architecture, design decisions, and component interactions.
 
 ---
 
@@ -18,7 +18,7 @@ This document provides a comprehensive overview of PgStudio's architecture, desi
 
 ## System Overview
 
-PgStudio is a VS Code extension that provides comprehensive PostgreSQL database management capabilities. The architecture follows a modular design with clear separation between the Extension Host (Node.js) and Webview Renderers (Browser).
+NexQL is a VS Code extension that provides comprehensive PostgreSQL database management capabilities. The architecture follows a modular design with clear separation between the Extension Host (Node.js) and Webview Renderers (Browser).
 
 ```mermaid
 graph TB
@@ -213,7 +213,7 @@ sequenceDiagram
 
 ### Connection Pooling Strategy
 
-PgStudio uses a **hybrid pooling approach**:
+NexQL uses a **hybrid pooling approach**:
 
 ```mermaid
 graph TB

@@ -23,6 +23,11 @@ const fs = require('fs');
 
 const ENT_PREFIX = 'ent:';
 const SUB_PREFIX = 'sub:';
+const EMAIL_PREFIX = 'email:';
+
+function normalizeEmail(email) {
+  return String(email || '').trim().toLowerCase();
+}
 
 const useKv = Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
 
@@ -84,6 +89,9 @@ async function putEntitlement(entitlement) {
   if (entitlement.subscriptionId) {
     await rawSet(SUB_PREFIX + entitlement.subscriptionId, entitlement.licenseKey);
   }
+  if (entitlement.email) {
+    await rawSet(EMAIL_PREFIX + normalizeEmail(entitlement.email), entitlement.licenseKey);
+  }
   return entitlement;
 }
 
@@ -98,10 +106,24 @@ async function getEntitlementBySubscription(subscriptionId) {
   return getEntitlement(licenseKey);
 }
 
+async function getKeyByEmail(email) {
+  const norm = normalizeEmail(email);
+  if (!norm) return null;
+  return rawGet(EMAIL_PREFIX + norm);
+}
+
+async function getEntitlementByEmail(email) {
+  const licenseKey = await getKeyByEmail(email);
+  if (!licenseKey) return null;
+  return getEntitlement(licenseKey);
+}
+
 module.exports = {
   getEntitlement,
   putEntitlement,
   getKeyBySubscription,
   getEntitlementBySubscription,
+  getKeyByEmail,
+  getEntitlementByEmail,
   usingKv: useKv,
 };

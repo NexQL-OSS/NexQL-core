@@ -1,5 +1,5 @@
 const Razorpay = require('razorpay');
-const { resolvePlan } = require('./plan-config');
+const { resolvePlan } = require('./_lib/plan-config');
 
 module.exports = async (req, res) => {
   if (req.method !== 'POST') {
@@ -10,6 +10,11 @@ module.exports = async (req, res) => {
 
   if (!tier || !period || !currency) {
     return res.status(400).json({ error: 'tier, period, and currency are required' });
+  }
+
+  const country = req.headers['x-vercel-ip-country'];
+  if (currency === 'INR' && country && country.toUpperCase() !== 'IN') {
+    return res.status(400).json({ error: 'INR payments are only available for users in India' });
   }
 
   const resolved = resolvePlan(tier, period, currency);
@@ -57,8 +62,7 @@ module.exports = async (req, res) => {
   } catch (error) {
     console.error('Razorpay subscription API error:', error);
 
-    const errorDescription =
-      error.description || (error.error && error.error.description) || '';
+    const errorDescription = error.description || (error.error && error.error.description) || '';
     if (
       error.statusCode === 401 ||
       errorDescription.includes('Key') ||

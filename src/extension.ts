@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 import { ConnectionManager } from './services/ConnectionManager';
 import { SecretStorageService } from './services/SecretStorageService';
+import { LicenseService } from './services/LicenseService';
+import { requirePro, ProFeature } from './services/featureGates';
 import { ProfileManager } from './features/connections/ProfileManager';
 import { SavedQueriesService } from './features/savedQueries/SavedQueriesService';
 import { NotebookBuilder } from './commands/helper';
@@ -135,8 +137,8 @@ export async function activate(context: vscode.ExtensionContext) {
     })
   );
 
-  outputChannel = vscode.window.createOutputChannel('PgStudio');
-  outputChannel.appendLine('Activating PgStudio extension');
+  outputChannel = vscode.window.createOutputChannel('NexQL');
+  outputChannel.appendLine('Activating NexQL extension');
   const telemetry = TelemetryService.getInstance();
   telemetry.initialize(context);
   const version = context.extension.packageJSON.version;
@@ -144,6 +146,7 @@ export async function activate(context: vscode.ExtensionContext) {
   telemetry.trackDailyActiveUser(version);
 
   SecretStorageService.getInstance(context);
+  LicenseService.getInstance(context);
   const { AiCredentialsService } = await import('./features/aiAssistant/AiCredentialsService');
   AiCredentialsService.getInstance(context);
   const { AiModelCatalogService } = await import('./features/aiAssistant/AiModelCatalogService');
@@ -304,6 +307,7 @@ export async function activate(context: vscode.ExtensionContext) {
         }
 
         const explainPlan = typeof planCell === 'string' ? JSON.parse(planCell) : planCell;
+        if (!(await requirePro(ProFeature.ExplainStudio, context))) return;
         PlanStudioPanel.show(context.extensionUri, planStore, {
           plan: explainPlan,
           query: plan.query,
@@ -502,6 +506,31 @@ export async function activate(context: vscode.ExtensionContext) {
   statusBar = new statusBarModule.NotebookStatusBar();
   context.subscriptions.push(statusBar);
 
+  // License tier indicator + deep-link activation (vscode://ric-v.postgres-explorer/activate?key=...)
+  const license = LicenseService.getInstance();
+  const reflectTier = () => {
+    const s = license.getStatus();
+    statusBar.updateTier(s.tier, s.offline);
+  };
+  reflectTier();
+  context.subscriptions.push(
+    license.onDidChangeLicense(() => reflectTier()),
+    vscode.window.registerUriHandler({
+      handleUri: async (uri: vscode.Uri) => {
+        if (uri.path === '/activate') {
+          const key = new URLSearchParams(uri.query).get('key');
+          if (key) {
+            await vscode.commands.executeCommand('postgres-explorer.license.activate', key);
+          }
+        }
+      },
+    }),
+  );
+  runDeferredStartupTask('initializeLicense', async () => {
+    await license.initialize();
+    reflectTier();
+  });
+
   // Register Message Handlers
   const registry = MessageHandlerRegistry.getInstance();
   let handlersInitialized = false;
@@ -540,11 +569,11 @@ export async function activate(context: vscode.ExtensionContext) {
     await migrateAiCredentialsAndSettings(context);
   });
 
-  outputChannel.appendLine(`PgStudio activation completed in ${Date.now() - activationStart}ms`);
+  outputChannel.appendLine(`NexQL activation completed in ${Date.now() - activationStart}ms`);
 }
 
 export async function deactivate() {
-  outputChannel?.appendLine('Deactivating PgStudio extension - closing all connections');
+  outputChannel?.appendLine('Deactivating NexQL extension - closing all connections');
   const telemetry = TelemetryService.getInstance();
   telemetry.trackExtensionDeactivate();
 
@@ -560,5 +589,5 @@ export async function deactivate() {
   // Flush after connection shutdown so close events are not dropped.
   await telemetry.flush();
 
-  outputChannel?.appendLine('PgStudio extension deactivated');
+  outputChannel?.appendLine('NexQL extension deactivated');
 }

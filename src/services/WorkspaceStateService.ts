@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 
-/** Workspace-scoped defaults for PgStudio (per VS Code workspace folder). */
+/** Workspace-scoped defaults for NexQL (per VS Code workspace folder). */
 export interface PgStudioWorkspaceDefaults {
   lastConnectionId?: string;
   lastDatabaseName?: string;
@@ -9,7 +9,7 @@ export interface PgStudioWorkspaceDefaults {
 const WORKSPACE_DEFAULTS_KEY = 'pgstudio.workspaceDefaults.v1';
 
 /**
- * Centralizes reads/writes to {@link vscode.ExtensionContext.workspaceState} for PgStudio.
+ * Centralizes reads/writes to {@link vscode.ExtensionContext.workspaceState} for NexQL.
  * Used for last-used connection/database when switching from the status bar and for workspace-level UI.
  */
 export class WorkspaceStateService implements vscode.Disposable {

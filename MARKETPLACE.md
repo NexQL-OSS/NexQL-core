@@ -1,10 +1,10 @@
 <div align="center">
 
-# 🐘 PgStudio
+# 🐘 NexQL
 
 ### *Professional Database Management for VS Code*
 
-**PgStudio is a comprehensive PostgreSQL database management extension featuring interactive SQL notebooks, real-time monitoring dashboard, AI-powered assistance, and advanced database operations—all within VS Code.**
+**NexQL is a comprehensive PostgreSQL database management extension featuring interactive SQL notebooks, real-time monitoring dashboard, AI-powered assistance, and advanced database operations—all within VS Code.**
 
 </div>
 
@@ -15,7 +15,7 @@
 ### 🎥 Video Guides
 
 #### 1. Quick Setup
-![PgStudio Setup](docs/assets/01-setup.gif)
+![NexQL Setup](docs/assets/01-setup.gif)
 
 #### 2. More Settings
 ![More Settings](docs/assets/02-more-settings.gif)
@@ -64,7 +64,7 @@
 
 ---
 
-## 🎯 Why PgStudio?
+## 🎯 Why NexQL?
 
 <table>
 <tr>
@@ -126,7 +126,7 @@
 
 ## 📋 Feature Matrix
 
-| Area | PgStudio v1.2.1 | Notes |
+| Area | NexQL v1.2.1 | Notes |
 |---|---|---|
 | Core PostgreSQL object operations | ✅ | Tables, views, mat views, functions, roles, extensions, FDWs, and more |
 | AI-assisted SQL workflows | ✅ | Generate, optimize, explain, analyze, and notebook handoff |
@@ -192,7 +192,7 @@ Leverage AI to write, optimize, and debug your queries faster:
 - **Natural Language to SQL** — Describe what you need, let AI write the SQL
 
 ### 🛡️ Safe AI Execution
-PgStudio provides a **Safe Execution Model** for AI interactions.
+NexQL provides a **Safe Execution Model** for AI interactions.
 - **Human-in-the-Loop**: AI generates the code, but it is **never executed automatically**. You review it in a notebook cell first.
 - **Context Control**: You decide which tables the AI can see.
 
@@ -268,7 +268,7 @@ code --install-extension ric-v.postgres-explorer
 
 ## 📚 Resources
 
-- 📖 [Full Documentation](https://pgstudio.astrx.dev/)
+- 📖 [Full Documentation](https://nexql.astrx.dev/)
 - 🐛 [Report Issues](https://github.com/dev-asterix/PgStudio/issues)
 - 💡 [Request Features](https://github.com/dev-asterix/PgStudio/issues/new?template=feature_request.md)
 - ⭐ [Star on GitHub](https://github.com/dev-asterix/PgStudio)

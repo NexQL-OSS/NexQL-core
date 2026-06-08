@@ -1008,7 +1008,7 @@ div.tree-row {
 .sort-ind { color: var(--vsc-muted); font-size: 9px; margin-left: 3px; opacity: .5; }
 .sortable-th:hover .sort-ind { opacity: 1; }
 
-/* ── PgStudio tree: connection dot + column rows ────────── */
+/* ── NexQL tree: connection dot + column rows ────────── */
 .conn-dot { background: var(--vsc-green); border-radius: 50%; box-shadow: 0 0 4px color-mix(in srgb, var(--vsc-green) 70%, transparent); display: inline-block; height: 6px; margin-right: 5px; width: 6px; }
 .depth-5 { padding-left: 56px; }
 .depth-6 { padding-left: 68px; }
