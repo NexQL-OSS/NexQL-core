@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [2.0.0] - 2026-06-08
+
+### Added
+
+- **Licensing & Subscription System** — Implemented license management and entitlement enforcement.
+  - **In-Extension Commands** — Added commands for activating (`postgres-explorer.license.activate`), managing (`postgres-explorer.license.manage`), and upgrading licenses.
+  - **LicenseService** — Introduced a background licensing manager with secure cache storage (using VS Code's `SecretStorage` API), 24-hour cache TTL, and a 7-day offline grace period.
+  - **Status Bar Indicator** — Added a license status bar indicator showing the active tier.
+  - **Feature Gates** — Integrated gates for premium features using information prompts (soft gates) or modal warning dialogs (hard gates) to direct unlicensed users to upgrade paths.
+  - **License Key Recovery** — Added a secure API endpoint (`/api/license/recover`) and UI flow for recovering license keys via email.
+  - **Enhanced Payment Verification** — Enhanced subscription checks and HMAC payment signature verification.
+
+### Changed
+
+- **Saved Queries Soft Limit** — Implemented a soft limit of 5 saved queries for Free tier users, prompting upgrades for unlimited saving.
+- **Consolidated API Layout** — Consolidated and cleaned up shared utility modules (store, email, config, keygen) inside the `api/_lib/` directory.
+
+---
+
 ## [1.4.0] - 2026-06-02
 > Nightly releases — v1.3.10 • v1.3.11 • v1.3.15 • v1.5.0
 

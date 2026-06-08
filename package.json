@@ -1727,13 +1727,13 @@
             "hard"
           ],
           "enumDescriptions": [
-            "No gating — all features available to everyone (default).",
+            "No gating — all features available to everyone.",
             "Show upgrade nudges on paid features but never block.",
-            "Require an active subscription to use paid features."
+            "Require an active subscription to use paid features (default)."
           ],
-          "default": "off",
+          "default": "hard",
           "scope": "machine",
-          "markdownDescription": "Controls premium feature gating. `off` ships dark (no change for existing users); flip to `hard` once entitlement is live."
+          "markdownDescription": "Controls premium feature gating. Set to `hard` to require an active subscription for paid features by default."
         },
         "postgresExplorer.license.endpoint": {
           "type": "string",

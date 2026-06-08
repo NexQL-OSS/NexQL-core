@@ -32,7 +32,7 @@ type Enforcement = 'off' | 'soft' | 'hard';
 function enforcement(): Enforcement {
   const v = vscode.workspace
     .getConfiguration()
-    .get<string>('postgresExplorer.license.enforcement', 'off');
+    .get<string>('postgresExplorer.license.enforcement', 'hard');
   return v === 'hard' || v === 'soft' ? v : 'off';
 }
 
