@@ -154,7 +154,7 @@ export class AiService {
       if (!model) {
         throw new Error(
           `Configured VS Code language model "${configuredModel}" was not found. ` +
-            'Open PgStudio AI settings, list models, and save your selection again.',
+            'Open NexQL AI settings, list models, and save your selection again.',
         );
       }
     } else {

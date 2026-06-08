@@ -31,7 +31,7 @@ export class WhatsNewManager {
 
     const panel = vscode.window.createWebviewPanel(
       WHATS_NEW_PANEL_VIEW_TYPE,
-      `What's New in PgStudio ${version}`,
+      `What's New in NexQL ${version}`,
       column,
       {
         enableScripts: true,
@@ -50,7 +50,7 @@ export class WhatsNewManager {
         try {
           await vscode.env.openExternal(vscode.Uri.parse(message.url));
         } catch (err) {
-          console.warn('[PgStudio WhatsNew] openExternal failed', err);
+          console.warn('[NexQL WhatsNew] openExternal failed', err);
         }
         return;
       }
@@ -72,7 +72,7 @@ export class WhatsNewManager {
       repository?: { url?: string } | string;
     };
     const issues = pkg.bugs?.url ?? 'https://github.com/dev-asterix/PgStudio/issues';
-    const website = pkg.homepage ?? 'https://pgstudio.astrx.dev/';
+    const website = pkg.homepage ?? 'https://nexql.astrx.dev/';
     let repoBase = 'https://github.com/dev-asterix/PgStudio';
     const repo = pkg.repository;
     if (typeof repo === 'object' && repo?.url) {
@@ -104,7 +104,7 @@ export class WhatsNewManager {
       <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>What's New in PgStudio</title>
+        <title>What's New in NexQL</title>
         <link rel="stylesheet" href="${highlightCssUri}">
         <script src="${markedUri}"></script>
         <script src="${highlightScriptUri}"></script>
@@ -306,10 +306,10 @@ export class WhatsNewManager {
       </head>
       <body>
         <div class="header">
-          <img src="${logoPath}" alt="PgStudio Logo" class="logo">
+          <img src="${logoPath}" alt="NexQL Logo" class="logo">
           <div class="header-main">
-            <h1>PgStudio <span class="version-badge">v${version}</span></h1>
-            <p>Thanks for using PgStudio! Here are the latest updates.</p>
+            <h1>NexQL <span class="version-badge">v${version}</span></h1>
+            <p>Thanks for using NexQL! Here are the latest updates.</p>
           </div>
           <nav class="header-actions" aria-label="Community links">
             <a href="#" class="icon-btn" data-external-href="${links.issues}" title="GitHub Issues" aria-label="GitHub Issues">
@@ -368,7 +368,7 @@ export class WhatsNewManager {
               try {
                 hljs.highlightElement(block);
               } catch (e) {
-                console.warn('[PgStudio WhatsNew] code highlight skipped', e);
+                console.warn('[NexQL WhatsNew] code highlight skipped', e);
               }
             });
           }

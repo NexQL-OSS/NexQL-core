@@ -165,7 +165,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Production Stable Release
 
-PgStudio v1.0.0 is a major milestone release with comprehensive stability improvements, security hardening, and production-ready tooling.
+NexQL v1.0.0 is a major milestone release with comprehensive stability improvements, security hardening, and production-ready tooling.
 
 #### Added
 - **DDL Viewer SQL Preview toggle**: Added user-facing toggle command and setting (`pgstudio.ddlViewer.enabled`) to quickly enable/disable definition preview actions.
@@ -328,7 +328,7 @@ PgStudio v1.0.0 is a major milestone release with comprehensive stability improv
 ## [0.8.8] - 2026-03-21
 
 ### Added
-- **Command palette - release notes**: **PgStudio: Show Release Notes / What's New** is now easy to find, and it opens in the editor area instead of hiding off to the side.
+- **Command palette - release notes**: **NexQL: Show Release Notes / What's New** is now easy to find, and it opens in the editor area instead of hiding off to the side.
 - **Tests**: Added coverage for notebook renderer message flow and query save/delete handlers.
 - **Table Designer (create mode)**: Drag-and-drop column reorder now has clearer create-vs-edit behavior.
 - **AI chat**: The system prompt now carries explicit production-safety rules, so the assistant stays more cautious around writes.
@@ -458,7 +458,7 @@ PgStudio v1.0.0 is a major milestone release with comprehensive stability improv
 
 ### Added
 - **What's New Welcome Screen**: A new immersive welcome page that automatically displays release notes upon extension update.
-- **Manual Trigger**: New command `PgStudio: Show What's New` to view the changelog history at any time.
+- **Manual Trigger**: New command `NexQL: Show What's New` to view the changelog history at any time.
 - **Rich Markdown Rendering**: The changelog viewer now supports full markdown rendering with syntax highlighting.
 
 ---
@@ -554,14 +554,14 @@ PgStudio v1.0.0 is a major milestone release with comprehensive stability improv
 - **AI Assistance**: Improved markdown rendering in notebooks, ensuring tables and code blocks from AI responses look perfect.
 
 ### Changed
-- **Branding**: Renamed the output channel to `PgStudio` to match the new extension identity.
+- **Branding**: Renamed the output channel to `NexQL` to match the new extension identity.
 
 ---
 
 ## [0.5.4] - 2025-12-13
 
 ### Rebranding
-- **Project Renamed**: The extension is now **PgStudio**! (formerly "YAPE" / "PostgreSQL Explorer").
+- **Project Renamed**: The extension is now **NexQL**! (formerly "YAPE" / "PostgreSQL Explorer").
 - Updated all documentation, UI references, and command titles to reflect the new professional identity.
 
 ### Added

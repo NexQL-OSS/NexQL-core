@@ -1,4 +1,4 @@
-# Testing and coverage (PgStudio)
+# Testing and coverage (NexQL)
 
 ## Policy A — instrumented application code
 

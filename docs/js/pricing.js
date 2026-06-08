@@ -158,7 +158,7 @@
     loadCatalog();
   }
 
-  window.PgStudioPricing = {
+  window.NexQLPricing = {
     getCurrency,
     getPeriod,
     getCatalog: () => catalog,

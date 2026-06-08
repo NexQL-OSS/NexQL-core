@@ -246,7 +246,7 @@ function wireAssistant() {
         const bullets = teaserLines.slice(1).join("\n");
         streamChatMessage(logId, "assistant",
           opener + "\n\n" + bullets + "\n\n" +
-          "Install PgStudio and I'll run this against your actual database — no copy-paste required. Takes about 30 seconds.\n\n" +
+          "Install NexQL and I'll run this against your actual database — no copy-paste required. Takes about 30 seconds.\n\n" +
           '<a class="chat-install-cta" href="https://marketplace.visualstudio.com/items?itemName=ric-v.postgres-explorer" target="_blank">⬇ Install free — live answers in VS Code →</a>',
           () => { sendBtn.disabled = false; }
         );

@@ -167,7 +167,7 @@ export class TelemetryService {
     this.context = context;
     this.sessionStartMs = Date.now();
     this.installId = this.resolveInstallId(context);
-    this.outputChannel = vscode.window.createOutputChannel('PgStudio Telemetry');
+    this.outputChannel = vscode.window.createOutputChannel('NexQL Telemetry');
     this.loadSettings();
     this.rebuildSinks();
     this.startFlushTimer();

@@ -668,7 +668,7 @@ export class BackupRestorePanel {
       scenario = 'tool_log';
       toolLog =
         '[Context: user opened assistant from the Backup & Restore **SSH** info banner.]\n' +
-        'PgStudio shows that SSH is enabled and that CLI tools (pg_dump / pg_restore) use the same tunnel as the SQL driver (local port forward).\n\n' +
+        'NexQL shows that SSH is enabled and that CLI tools (pg_dump / pg_restore) use the same tunnel as the SQL driver (local port forward).\n\n' +
         'Please explain what that means for running backups/restores, common pitfalls (host/port, identity file, timeouts), and how to verify the tunnel matches the connection.\n';
     }
 

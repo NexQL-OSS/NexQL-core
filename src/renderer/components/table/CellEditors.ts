@@ -1,6 +1,6 @@
 /**
  * CellEditors.ts
- * Type-aware inline cell editor factory for PgStudio's data grid.
+ * Type-aware inline cell editor factory for NexQL's data grid.
  * All editors run in the notebook webview (no VS Code API access).
  */
 

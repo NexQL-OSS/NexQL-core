@@ -1,6 +1,6 @@
 {
   "name": "postgres-explorer",
-  "displayName": "PgStudio (PostgreSQL Explorer)",
+  "displayName": "NexQL - Postgres Explorer",
   "version": "1.4.1",
   "description": "PostgreSQL database explorer for VS Code with notebook support [Nightly]",
   "publisher": "ric-v",
@@ -13,7 +13,7 @@
   "bugs": {
     "url": "https://github.com/dev-asterix/PgStudio/issues"
   },
-  "homepage": "https://pgstudio.astrx.dev/",
+  "homepage": "https://nexql.astrx.dev/",
   "icon": "resources/postgres-explorer.png",
   "galleryBanner": {
     "color": "#575584",
@@ -61,17 +61,17 @@
       {
         "command": "postgres-explorer.license.activate",
         "title": "Activate License",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.license.manage",
         "title": "Manage License",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.license.openUpgrade",
         "title": "View Plans / Upgrade",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.addConnection",
@@ -131,59 +131,59 @@
       {
         "command": "postgres-explorer.jumpToSection",
         "title": "Jump to Section",
-        "category": "PgStudio",
+        "category": "NexQL",
         "icon": "$(list-unordered)"
       },
       {
         "command": "postgres-explorer.exportNotebook",
         "title": "Export Notebook (HTML / Gist)",
-        "category": "PgStudio",
+        "category": "NexQL",
         "icon": "$(export)"
       },
       {
         "command": "postgres-explorer.notebooks.open",
         "title": "Open Notebook",
-        "category": "PgStudio",
+        "category": "NexQL",
         "icon": "$(go-to-file)"
       },
       {
         "command": "postgres-explorer.notebooks.rename",
         "title": "Rename Notebook",
-        "category": "PgStudio",
+        "category": "NexQL",
         "icon": "$(edit)"
       },
       {
         "command": "postgres-explorer.notebooks.delete",
         "title": "Delete Notebook",
-        "category": "PgStudio",
+        "category": "NexQL",
         "icon": "$(trash)"
       },
       {
         "command": "postgres-explorer.notebooks.deleteFolder",
         "title": "Delete Folder",
-        "category": "PgStudio",
+        "category": "NexQL",
         "icon": "$(trash)"
       },
       {
         "command": "postgres-explorer.notebooks.refresh",
         "title": "Refresh Notebooks",
-        "category": "PgStudio",
+        "category": "NexQL",
         "icon": "$(refresh)"
       },
       {
         "command": "postgres-explorer.generateQuery",
         "title": "AI: Generate Query",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.optimizeQuery",
         "title": "AI: Optimize Query",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.openSqlAssistantTab",
         "title": "SQL Assistant: Open in Editor Tab",
-        "category": "PgStudio",
+        "category": "NexQL",
         "icon": "$(go-to-file)"
       },
       {
@@ -960,7 +960,7 @@
       {
         "command": "postgres-explorer.explainQueryFromCell",
         "title": "Explain Analyze",
-        "category": "PgStudio",
+        "category": "NexQL",
         "icon": "$(type-hierarchy-sub)"
       },
       {
@@ -991,557 +991,557 @@
       {
         "command": "postgres-explorer.openDefinition",
         "title": "Open Definition Viewer",
-        "category": "PgStudio",
+        "category": "NexQL",
         "icon": "$(file-code)"
       },
       {
         "command": "postgres-explorer.ddlViewer.openEditableCopy",
         "title": "DDL Viewer: Open as Editable Copy",
-        "category": "PgStudio",
+        "category": "NexQL",
         "icon": "$(edit)"
       },
       {
         "command": "postgres-explorer.ddlViewer.copyToClipboard",
         "title": "DDL Viewer: Copy to Clipboard",
-        "category": "PgStudio",
+        "category": "NexQL",
         "icon": "$(copy)"
       },
       {
         "command": "postgres-explorer.ddlViewer.executeRoutine",
         "title": "DDL Viewer: Execute Routine Scaffold",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.ddlViewer.toggleEnabled",
         "title": "DDL Viewer: Toggle SQL Preview",
-        "category": "PgStudio",
+        "category": "NexQL",
         "icon": "$(file-code)"
       },
       {
         "command": "postgres-explorer.switchConnection",
         "title": "Switch Connection",
         "icon": "$(server)",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.switchDatabase",
         "title": "Switch Database",
         "icon": "$(database)",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.switchConnectionProfile",
         "title": "Switch Connection Profile",
         "icon": "$(person)",
-        "category": "PgStudio: Profiles"
+        "category": "NexQL: Profiles"
       },
       {
         "command": "postgres-explorer.switchWorkspaceDefaultConnection",
         "title": "Set Workspace Default PostgreSQL Connection",
         "icon": "$(root-folder)",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.createConnectionProfile",
         "title": "Create Connection Profile",
         "icon": "$(add)",
-        "category": "PgStudio: Profiles"
+        "category": "NexQL: Profiles"
       },
       {
         "command": "postgres-explorer.deleteConnectionProfile",
         "title": "Delete Connection Profile",
         "icon": "$(trash)",
-        "category": "PgStudio: Profiles"
+        "category": "NexQL: Profiles"
       },
       {
         "command": "postgres-explorer.saveQueryToLibrary",
         "title": "Save Query to Library",
         "icon": "$(save)",
-        "category": "PgStudio: Queries"
+        "category": "NexQL: Queries"
       },
       {
         "command": "postgres-explorer.saveQueryToLibraryUI",
         "title": "Save Query to Library",
         "icon": "$(bookmark)",
-        "category": "PgStudio: Queries"
+        "category": "NexQL: Queries"
       },
       {
         "command": "postgres-explorer.toggleFullDatasetFromCell",
         "title": "Toggle Full Dataset Mode",
         "icon": "$(table)",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.loadSavedQuery",
         "title": "Load Saved Query",
         "icon": "$(folder-opened)",
-        "category": "PgStudio: Queries"
+        "category": "NexQL: Queries"
       },
       {
         "command": "postgres-explorer.loadSavedQueryUI",
         "title": "📂 Load Saved Query",
         "icon": "$(folder-opened)",
-        "category": "PgStudio: Queries"
+        "category": "NexQL: Queries"
       },
       {
         "command": "postgres-explorer.viewSavedQuery",
         "title": "📌 View Saved Query",
         "icon": "$(preview)",
-        "category": "PgStudio: Queries"
+        "category": "NexQL: Queries"
       },
       {
         "command": "postgres-explorer.copySavedQuery",
         "title": "📋 Copy Query",
         "icon": "$(copy)",
-        "category": "PgStudio: Queries"
+        "category": "NexQL: Queries"
       },
       {
         "command": "postgres-explorer.editSavedQuery",
         "title": "✏️ Edit Query",
         "icon": "$(edit)",
-        "category": "PgStudio: Queries"
+        "category": "NexQL: Queries"
       },
       {
         "command": "postgres-explorer.openSavedQueryInNotebook",
         "title": "📘 Open in Notebook",
         "icon": "$(notebook)",
-        "category": "PgStudio: Queries"
+        "category": "NexQL: Queries"
       },
       {
         "command": "postgres-explorer.deleteSavedQuery",
         "title": "Delete Saved Query",
         "icon": "$(trash)",
-        "category": "PgStudio: Queries"
+        "category": "NexQL: Queries"
       },
       {
         "command": "postgres-explorer.searchSavedQueries",
         "title": "Search Saved Queries",
         "icon": "$(search)",
-        "category": "PgStudio: Queries"
+        "category": "NexQL: Queries"
       },
       {
         "command": "postgres-explorer.showQueryRecommendations",
         "title": "Show Query Recommendations",
         "icon": "$(lightbulb)",
-        "category": "PgStudio: Queries"
+        "category": "NexQL: Queries"
       },
       {
         "command": "postgres-explorer.exportSavedQueries",
         "title": "Export Saved Queries",
         "icon": "$(export)",
-        "category": "PgStudio: Queries"
+        "category": "NexQL: Queries"
       },
       {
         "command": "postgres-explorer.importSavedQueries",
         "title": "Import Saved Queries",
         "icon": "$(import)",
-        "category": "PgStudio: Queries"
+        "category": "NexQL: Queries"
       },
       {
         "command": "postgres-explorer.openTableDesigner",
         "title": "Open Table Designer (Visual)",
         "icon": "$(layout)",
-        "category": "PgStudio: Schema"
+        "category": "NexQL: Schema"
       },
       {
         "command": "postgres-explorer.createTableVisual",
         "title": "Create Table (Visual)",
         "icon": "$(add)",
-        "category": "PgStudio: Schema"
+        "category": "NexQL: Schema"
       },
       {
         "command": "postgres-explorer.openSchemaDiff",
         "title": "Schema Diff",
         "icon": "$(diff)",
-        "category": "PgStudio: Schema"
+        "category": "NexQL: Schema"
       },
       {
         "command": "postgres-explorer.openSchemaDiffFromPalette",
         "title": "Schema Diff: Choose Connection & Schema…",
         "icon": "$(diff)",
-        "category": "PgStudio: Schema"
+        "category": "NexQL: Schema"
       },
       {
         "command": "postgres-explorer.openErd",
         "title": "View ERD (Entity-Relationship Diagram)",
         "icon": "$(type-hierarchy)",
-        "category": "PgStudio: Schema"
+        "category": "NexQL: Schema"
       },
       {
         "command": "postgres-explorer.openErdMulti",
         "title": "View ERD (pick schemas)…",
         "icon": "$(type-hierarchy)",
-        "category": "PgStudio: Schema"
+        "category": "NexQL: Schema"
       },
       {
         "command": "postgres-explorer.importDbml",
         "title": "Import DBML → CREATE TABLE…",
         "icon": "$(file-code)",
-        "category": "PgStudio: Schema"
+        "category": "NexQL: Schema"
       },
       {
         "command": "postgres-explorer.importData",
         "title": "Import Data…",
         "icon": "$(cloud-upload)",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.exportConnectionProfiles",
         "title": "Export Connection Profiles…",
         "icon": "$(export)",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.importConnectionProfiles",
         "title": "Import Connection Profiles…",
         "icon": "$(import)",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.formatSql",
         "title": "Format SQL",
         "icon": "$(symbol-keyword)",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.telemetry.openModePicker",
         "title": "Set Telemetry Mode",
         "icon": "$(pulse)",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.telemetry.setModeOff",
         "title": "Telemetry: Off",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.telemetry.setModeBasic",
         "title": "Telemetry: Basic",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.telemetry.setModeDetailed",
         "title": "Telemetry: Detailed",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.showWhatsNew",
-        "title": "What's New in PgStudio",
-        "category": "PgStudio"
+        "title": "What's New in NexQL",
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.listTriggers",
         "title": "List Triggers",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.createTrigger",
         "title": "Create Trigger",
         "icon": "$(add)",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.dropTrigger",
         "title": "Drop Trigger",
         "icon": "$(trash)",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.dropPolicy",
         "title": "Drop RLS Policy",
         "icon": "$(trash)",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.enableTrigger",
         "title": "Enable Trigger",
         "icon": "$(play)",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.disableTrigger",
         "title": "Disable Trigger",
         "icon": "$(debug-pause)",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.showTriggerProperties",
         "title": "Trigger Properties",
         "icon": "$(info)",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.triggerOperations",
         "title": "Trigger Operations",
         "icon": "$(notebook)",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.listSequences",
         "title": "List Sequences",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.createSequence",
         "title": "Create Sequence",
         "icon": "$(add)",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.dropSequence",
         "title": "Drop Sequence",
         "icon": "$(trash)",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.sequenceNextValue",
         "title": "Next Value",
         "icon": "$(arrow-right)",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.showSequenceProperties",
         "title": "Sequence Properties",
         "icon": "$(info)",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.sequenceOperations",
         "title": "Sequence Operations",
         "icon": "$(notebook)",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.listPartitions",
         "title": "List Partitions",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.detachPartition",
         "title": "Detach Partition",
         "icon": "$(debug-disconnect)",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.showPartitionProperties",
         "title": "Partition Properties",
         "icon": "$(info)",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.createPartition",
         "title": "Create Partition",
         "icon": "$(add)",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.listDomains",
         "title": "List Domains",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.createDomain",
         "title": "Create Domain",
         "icon": "$(add)",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.dropDomain",
         "title": "Drop Domain",
         "icon": "$(trash)",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.showDomainProperties",
         "title": "Domain Properties",
         "icon": "$(info)",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.listAggregates",
         "title": "List Aggregates",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.createAggregate",
         "title": "Create Aggregate",
         "icon": "$(add)",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.dropAggregate",
         "title": "Drop Aggregate",
         "icon": "$(trash)",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.showAggregateProperties",
         "title": "Aggregate Properties",
         "icon": "$(info)",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.listEventTriggers",
         "title": "List Event Triggers",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.createEventTrigger",
         "title": "Create Event Trigger",
         "icon": "$(add)",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.dropEventTrigger",
         "title": "Drop Event Trigger",
         "icon": "$(trash)",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.enableEventTrigger",
         "title": "Enable Event Trigger",
         "icon": "$(play)",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.disableEventTrigger",
         "title": "Disable Event Trigger",
         "icon": "$(debug-pause)",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.showEventTriggerProperties",
         "title": "Event Trigger Properties",
         "icon": "$(info)",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.eventTriggerOperations",
         "title": "Event Trigger Operations",
         "icon": "$(notebook)",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.listCronJobs",
         "title": "List pg_cron Jobs",
         "icon": "$(list-unordered)",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.installPgCron",
         "title": "Install pg_cron Extension",
         "icon": "$(cloud-download)",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.scheduleCronJob",
         "title": "Schedule New pg_cron Job",
         "icon": "$(add)",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.showCronJobProperties",
         "title": "Cron Job Details",
         "icon": "$(info)",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.unscheduleCronJob",
         "title": "Unschedule Cron Job",
         "icon": "$(trash)",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.listRules",
         "title": "List Rules",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.dropRule",
         "title": "Drop Rule",
         "icon": "$(trash)",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.showRuleProperties",
         "title": "Rule Properties",
         "icon": "$(info)",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.ruleOperations",
         "title": "Rule Operations",
         "icon": "$(notebook)",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.listTablespaces",
         "title": "List Tablespaces",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.showTablespaceProperties",
         "title": "Tablespace Properties",
         "icon": "$(info)",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.tablespaceOperations",
         "title": "Tablespace Operations",
         "icon": "$(notebook)",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.listPublications",
         "title": "List Publications",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.createPublication",
         "title": "Create Publication",
         "icon": "$(add)",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.dropPublication",
         "title": "Drop Publication",
         "icon": "$(trash)",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.showPublicationProperties",
         "title": "Publication Properties",
         "icon": "$(info)",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.publicationOperations",
         "title": "Publication Operations",
         "icon": "$(notebook)",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.listSubscriptions",
         "title": "List Subscriptions",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.dropSubscription",
         "title": "Drop Subscription",
         "icon": "$(trash)",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.showSubscriptionProperties",
         "title": "Subscription Properties",
         "icon": "$(info)",
-        "category": "PgStudio"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.searchSchema",
         "title": "Search Schema Objects",
         "icon": "$(search)",
-        "category": "PgStudio"
+        "category": "NexQL"
       }
     ],
     "submenus": [
@@ -1583,7 +1583,7 @@
       "activitybar": [
         {
           "id": "postgres-explorer",
-          "title": "PG Studio",
+          "title": "NexQL",
           "icon": "resources/postgres-vsc-icon.png"
         },
         {
@@ -1598,26 +1598,26 @@
         {
           "id": "postgresExplorer",
           "name": "Connections",
-          "contextualTitle": "PG Studio",
+          "contextualTitle": "NexQL",
           "icon": "resources/postgres-vsc-icon.png"
         },
         {
           "id": "postgresExplorer.notebooks",
           "name": "Notebooks",
-          "contextualTitle": "PG Studio",
+          "contextualTitle": "NexQL",
           "icon": "$(notebook)"
         },
         {
           "id": "postgresExplorer.savedQueries",
           "name": "Saved Queries",
-          "contextualTitle": "PG Studio",
+          "contextualTitle": "NexQL",
           "icon": "$(save)",
           "visibility": "collapsed"
         },
         {
           "id": "postgresExplorer.history",
           "name": "Query History",
-          "contextualTitle": "PG Studio",
+          "contextualTitle": "NexQL",
           "icon": "$(history)",
           "visibility": "collapsed"
         }
@@ -1635,7 +1635,7 @@
     "walkthroughs": [
       {
         "id": "pgstudioWelcome",
-        "title": "PgStudio: PostgreSQL in VS Code",
+        "title": "NexQL: PostgreSQL in VS Code",
         "description": "Connect to a database, explore objects, and run SQL in notebooks.",
         "steps": [
           {
@@ -1652,8 +1652,8 @@
           },
           {
             "id": "pgstudioWelcome.openExplorer",
-            "title": "Open the PG Studio explorer",
-            "description": "Browse databases, schemas, and objects from the sidebar.\n[Show PG Studio](command:workbench.view.extension.postgres-explorer)",
+            "title": "Open the NexQL explorer",
+            "description": "Browse databases, schemas, and objects from the sidebar.\n[Show NexQL](command:workbench.view.extension.postgres-explorer)",
             "media": {
               "markdown": "walkthroughs/step-explorer.md",
               "altText": "Database explorer tree"
@@ -1737,9 +1737,9 @@
         },
         "postgresExplorer.license.endpoint": {
           "type": "string",
-          "default": "https://pgstudio.dev/api",
+          "default": "https://nexql.astrx.dev/api",
           "scope": "machine",
-          "description": "Base URL for the PgStudio license validation API."
+          "description": "Base URL for the NexQL license validation API."
         },
         "postgresExplorer.connections": {
           "type": "array",

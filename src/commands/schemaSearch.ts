@@ -221,7 +221,7 @@ export async function cmdSearchSchema(): Promise<void> {
         await vscode.window.withProgress(
           {
             location: vscode.ProgressLocation.Window,
-            title: 'PgStudio: schema search',
+            title: 'NexQL: schema search',
           },
           async () => {
             const tasks = scoped.map(async (conn) => {

@@ -1,5 +1,5 @@
 // Landing-page capability modal
-// Wires the "Everything PgStudio does for you" cards to a single
+// Wires the "Everything NexQL does for you" cards to a single
 // <dialog id="capability-modal"> element and populates it on click.
 
 const CAPABILITY_DETAILS = {

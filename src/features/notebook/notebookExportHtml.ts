@@ -196,7 +196,7 @@ export function buildNotebookHtmlDocument(doc: vscode.NotebookDocument, title: s
 <body>
   <header class="doc-title">
     <h1>${safeTitle}</h1>
-    <p class="muted">Exported from PgStudio · Use your browser’s Print dialog to save as PDF.</p>
+    <p class="muted">Exported from NexQL · Use your browser’s Print dialog to save as PDF.</p>
   </header>
   ${parts.join('\n')}
 </body>

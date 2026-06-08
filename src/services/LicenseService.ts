@@ -27,10 +27,10 @@ interface ValidateResponse {
 
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // re-validate after 24h
 const GRACE_MS = 7 * 24 * 60 * 60 * 1000; // tolerate 7 days offline
-const DEFAULT_ENDPOINT = 'https://pgstudio.dev/api';
+const DEFAULT_ENDPOINT = 'https://nexql.astrx.dev/api';
 
 /**
- * Manages PgStudio license activation and tier entitlement.
+ * Manages NexQL license activation and tier entitlement.
  *
  * Source of truth is the server (`/api/license/validate`); a cached snapshot in
  * SecretStorage lets the extension answer `getTier()` synchronously and keep
@@ -151,7 +151,7 @@ export class LicenseService {
     };
     await this.persist();
     this._onDidChangeLicense.fire(res.tier);
-    return { ok: true, message: `Activated PgStudio ${this.tierLabel(res.tier)}.`, tier: res.tier };
+    return { ok: true, message: `Activated NexQL ${this.tierLabel(res.tier)}.`, tier: res.tier };
   }
 
   /** Remove the local license (does not cancel the subscription). */

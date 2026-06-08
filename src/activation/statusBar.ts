@@ -132,7 +132,7 @@ export class NotebookStatusBar implements vscode.Disposable {
     const dbLabel = defaults.lastDatabaseName || conn?.database;
 
     if (!connLabel && !dbLabel) {
-      this.workspaceDefaultItem.text = '$(folder) PgStudio: set workspace DB';
+      this.workspaceDefaultItem.text = '$(folder) NexQL: set workspace DB';
       this.workspaceDefaultItem.tooltip =
         'Choose a default PostgreSQL connection for this workspace (used when no .pgsql notebook is focused).';
       this.workspaceDefaultItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
@@ -276,26 +276,32 @@ export class NotebookStatusBar implements vscode.Disposable {
     }
   }
 
-  /**
-   * Updates the always-visible license tier indicator.
-   * @param tier 'free' | 'sponsor' | 'singularity'
-   * @param offline true when running on a cached entitlement (grace window).
-   */
   public updateTier(tier: string, offline: boolean = false): void {
     if (tier === 'free') {
-      this.tierItem.text = '$(unlock) PgStudio Free';
+      this.tierItem.text = '$(unlock) NexQL Free';
       this.tierItem.tooltip = 'Free tier — click to activate a license';
       this.tierItem.backgroundColor = undefined;
+      this.tierItem.color = undefined;
     } else {
-      const label = tier[0].toUpperCase() + tier.slice(1);
+      const label = tier === 'singularity' ? 'Team' : (tier[0].toUpperCase() + tier.slice(1));
       if (offline) {
-        this.tierItem.text = `$(warning) ${label} (offline)`;
-        this.tierItem.tooltip = `PgStudio ${label} — running on cached license (offline grace). Click to manage.`;
+        this.tierItem.text = `$(warning) NexQL ${label} (offline)`;
+        this.tierItem.tooltip = `NexQL ${label} — running on cached license (offline grace). Click to manage.`;
         this.tierItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
+        this.tierItem.color = undefined;
       } else {
-        this.tierItem.text = `$(verified) PgStudio ${label}`;
-        this.tierItem.tooltip = `PgStudio ${label} — license active. Click to manage.`;
-        this.tierItem.backgroundColor = undefined;
+        if (tier === 'sponsor') {
+          this.tierItem.text = `$(heart) NexQL Sponsor`;
+          this.tierItem.tooltip = `NexQL Sponsor — license active. Click to manage.`;
+          this.tierItem.backgroundColor = undefined;
+          this.tierItem.color = new vscode.ThemeColor('charts.green');
+        } else {
+          // singularity / team
+          this.tierItem.text = `$(verified) NexQL Team`;
+          this.tierItem.tooltip = `NexQL Team — license active. Click to manage.`;
+          this.tierItem.backgroundColor = undefined;
+          this.tierItem.color = new vscode.ThemeColor('charts.purple');
+        }
       }
     }
   }

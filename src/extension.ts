@@ -137,8 +137,8 @@ export async function activate(context: vscode.ExtensionContext) {
     })
   );
 
-  outputChannel = vscode.window.createOutputChannel('PgStudio');
-  outputChannel.appendLine('Activating PgStudio extension');
+  outputChannel = vscode.window.createOutputChannel('NexQL');
+  outputChannel.appendLine('Activating NexQL extension');
   const telemetry = TelemetryService.getInstance();
   telemetry.initialize(context);
   const version = context.extension.packageJSON.version;
@@ -569,11 +569,11 @@ export async function activate(context: vscode.ExtensionContext) {
     await migrateAiCredentialsAndSettings(context);
   });
 
-  outputChannel.appendLine(`PgStudio activation completed in ${Date.now() - activationStart}ms`);
+  outputChannel.appendLine(`NexQL activation completed in ${Date.now() - activationStart}ms`);
 }
 
 export async function deactivate() {
-  outputChannel?.appendLine('Deactivating PgStudio extension - closing all connections');
+  outputChannel?.appendLine('Deactivating NexQL extension - closing all connections');
   const telemetry = TelemetryService.getInstance();
   telemetry.trackExtensionDeactivate();
 
@@ -589,5 +589,5 @@ export async function deactivate() {
   // Flush after connection shutdown so close events are not dropped.
   await telemetry.flush();
 
-  outputChannel?.appendLine('PgStudio extension deactivated');
+  outputChannel?.appendLine('NexQL extension deactivated');
 }
