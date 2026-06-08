@@ -779,7 +779,7 @@ export async function importConnectionProfiles(): Promise<void> {
   const files = await vscode.window.showOpenDialog({
     canSelectMany: false,
     filters: { 'JSON Files': ['json'] },
-    title: 'Import PgStudio Connection Profiles',
+    title: 'Import NexQL Connection Profiles',
   });
 
   if (!files || files.length === 0) { return; }

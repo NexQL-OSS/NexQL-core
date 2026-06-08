@@ -22,6 +22,11 @@ export class NotebookStatusBar implements vscode.Disposable {
   private readonly tierItem: vscode.StatusBarItem;
   private readonly disposables: vscode.Disposable[] = [];
 
+  private currentEnvironment: string | undefined;
+  private currentReadOnlyMode = false;
+  private currentTier = 'free';
+  private currentOffline = false;
+
   constructor() {
     this.connectionItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
     this.connectionItem.command = 'postgres-explorer.switchConnection';
@@ -111,6 +116,10 @@ export class NotebookStatusBar implements vscode.Disposable {
     this.riskIndicatorItem.hide();
     this.profileItem.hide();
     this.transactionItem.hide();
+
+    this.currentEnvironment = undefined;
+    this.currentReadOnlyMode = false;
+    this.renderTierItem();
   }
 
   private hide(): void {
@@ -132,7 +141,7 @@ export class NotebookStatusBar implements vscode.Disposable {
     const dbLabel = defaults.lastDatabaseName || conn?.database;
 
     if (!connLabel && !dbLabel) {
-      this.workspaceDefaultItem.text = '$(folder) PgStudio: set workspace DB';
+      this.workspaceDefaultItem.text = '$(folder) NexQL: set workspace DB';
       this.workspaceDefaultItem.tooltip =
         'Choose a default PostgreSQL connection for this workspace (used when no .pgsql notebook is focused).';
       this.workspaceDefaultItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
@@ -156,6 +165,10 @@ export class NotebookStatusBar implements vscode.Disposable {
     this.riskIndicatorItem.hide();
     this.profileItem.hide();
     this.transactionItem.hide();
+
+    this.currentEnvironment = undefined;
+    this.currentReadOnlyMode = false;
+    this.renderTierItem();
   }
 
   private showConnection(connection: any, metadata: PostgresMetadata): void {
@@ -215,39 +228,13 @@ export class NotebookStatusBar implements vscode.Disposable {
 
   private updateRiskIndicator(connection: any): void {
     if (!connection) {
-      this.riskIndicatorItem.hide();
-      return;
-    }
-
-    const environment = connection.environment;
-    const readOnlyMode = connection.readOnlyMode;
-
-    if (environment === 'production') {
-      this.riskIndicatorItem.text = readOnlyMode ? '$(shield) PROD (READ-ONLY)' : '$(alert) PRODUCTION';
-      this.riskIndicatorItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
-      this.riskIndicatorItem.tooltip = readOnlyMode 
-        ? 'Production environment - Read-only mode active'
-        : '⚠️ Warning: Connected to PRODUCTION database';
-      this.riskIndicatorItem.show();
-    } else if (environment === 'staging') {
-      this.riskIndicatorItem.text = readOnlyMode ? '$(shield) STAGING (READ-ONLY)' : '$(info) STAGING';
-      this.riskIndicatorItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
-      this.riskIndicatorItem.tooltip = readOnlyMode
-        ? 'Staging environment - Read-only mode active'
-        : 'Connected to STAGING database';
-      this.riskIndicatorItem.show();
-    } else if (environment === 'development' || readOnlyMode) {
-      if (readOnlyMode) {
-        this.riskIndicatorItem.text = '$(shield) READ-ONLY';
-        this.riskIndicatorItem.backgroundColor = new vscode.ThemeColor('statusBarItem.prominentBackground');
-        this.riskIndicatorItem.tooltip = 'Read-only mode active';
-        this.riskIndicatorItem.show();
-      } else {
-        this.riskIndicatorItem.hide();
-      }
+      this.currentEnvironment = undefined;
+      this.currentReadOnlyMode = false;
     } else {
-      this.riskIndicatorItem.hide();
+      this.currentEnvironment = connection.environment;
+      this.currentReadOnlyMode = !!connection.readOnlyMode;
     }
+    this.renderTierItem();
   }
 
   /**
@@ -276,27 +263,77 @@ export class NotebookStatusBar implements vscode.Disposable {
     }
   }
 
-  /**
-   * Updates the always-visible license tier indicator.
-   * @param tier 'free' | 'sponsor' | 'singularity'
-   * @param offline true when running on a cached entitlement (grace window).
-   */
   public updateTier(tier: string, offline: boolean = false): void {
+    this.currentTier = tier;
+    this.currentOffline = offline;
+    this.renderTierItem();
+  }
+
+  private renderTierItem(): void {
+    const tier = this.currentTier;
+    const offline = this.currentOffline;
+    const env = this.currentEnvironment;
+    const ro = this.currentReadOnlyMode;
+
+    let tierLabel = 'Free';
+    let baseIcon = '$(unlock)';
+    let tierColor: vscode.ThemeColor | undefined = undefined;
+
     if (tier === 'free') {
-      this.tierItem.text = '$(unlock) PgStudio Free';
-      this.tierItem.tooltip = 'Free tier — click to activate a license';
-      this.tierItem.backgroundColor = undefined;
+      tierLabel = 'Free';
+      baseIcon = '$(unlock)';
+    } else if (tier === 'sponsor') {
+      tierLabel = 'Sponsor';
+      baseIcon = '$(heart)';
+      tierColor = new vscode.ThemeColor('charts.green');
+    } else if (tier === 'singularity') {
+      tierLabel = 'Team';
+      baseIcon = '$(verified)';
+      tierColor = new vscode.ThemeColor('charts.purple');
+    }
+
+    // Determine suffix for environment and color overrides
+    let suffix = '';
+    let envTooltip = '';
+    let finalColor: vscode.ThemeColor | undefined = tierColor;
+
+    if (env === 'production') {
+      suffix = ro ? ' [PROD-RO]' : ' [PROD]';
+      envTooltip = ro 
+        ? '\nEnvironment: Production (Read-only mode & safety checks active)'
+        : '\n⚠️ Warning: Connected to PRODUCTION database (Safety checks active)';
+      finalColor = new vscode.ThemeColor('charts.red');
+    } else if (env === 'staging') {
+      suffix = ro ? ' [STAGING-RO]' : ' [STAGING]';
+      envTooltip = ro
+        ? '\nEnvironment: Staging (Read-only mode & safety checks active)'
+        : '\nEnvironment: Staging (Safety checks active)';
+      finalColor = new vscode.ThemeColor('charts.orange');
+    } else if (env === 'development') {
+      suffix = ro ? ' [DEV-RO]' : ' [DEV]';
+      envTooltip = ro
+        ? '\nEnvironment: Development (Read-only mode & safety checks active)'
+        : '\nEnvironment: Development (Safety checks active)';
+      finalColor = new vscode.ThemeColor('charts.blue');
+    } else if (ro) {
+      suffix = ' [RO]';
+      envTooltip = '\nRead-only mode active';
+      finalColor = new vscode.ThemeColor('charts.blue');
+    }
+
+    // Compose text
+    if (offline && tier !== 'free') {
+      this.tierItem.text = `$(warning) ${tierLabel}${suffix} (offline)`;
+      this.tierItem.tooltip = `${tierLabel} — running on cached license (offline grace). Click to manage.${envTooltip}`;
+      this.tierItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
+      this.tierItem.color = undefined;
     } else {
-      const label = tier[0].toUpperCase() + tier.slice(1);
-      if (offline) {
-        this.tierItem.text = `$(warning) ${label} (offline)`;
-        this.tierItem.tooltip = `PgStudio ${label} — running on cached license (offline grace). Click to manage.`;
-        this.tierItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
-      } else {
-        this.tierItem.text = `$(verified) PgStudio ${label}`;
-        this.tierItem.tooltip = `PgStudio ${label} — license active. Click to manage.`;
-        this.tierItem.backgroundColor = undefined;
-      }
+      this.tierItem.text = `${baseIcon} ${tierLabel}${suffix}`;
+      this.tierItem.tooltip = tier === 'free'
+        ? `Free tier — click to activate a license.${envTooltip}`
+        : `${tierLabel} — license active. Click to manage.${envTooltip}`;
+      this.tierItem.backgroundColor = undefined;
+      this.tierItem.color = finalColor;
     }
   }
 

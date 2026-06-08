@@ -1,8 +1,8 @@
-# Plan: Make PgStudio Demo Site Feel Like a Lived-In VS Code + Helpful SQL Assistant
+# Plan: Make NexQL Demo Site Feel Like a Lived-In VS Code + Helpful SQL Assistant
 
 ## Context
 
-The site at `docs/index.html` simulates VS Code for PgStudio marketing. It's polished but thin — VS Code chrome exists but lacks the micro-details that signal authenticity (line numbers, git badges, problem indicators, a real multi-turn conversation). The SQL assistant is a teaser: one canned Q&A turn, no streaming, no schema context. This plan upgrades both to make a developer immediately feel at home.
+The site at `docs/index.html` simulates VS Code for NexQL marketing. It's polished but thin — VS Code chrome exists but lacks the micro-details that signal authenticity (line numbers, git badges, problem indicators, a real multi-turn conversation). The SQL assistant is a teaser: one canned Q&A turn, no streaming, no schema context. This plan upgrades both to make a developer immediately feel at home.
 
 ---
 
@@ -20,16 +20,16 @@ The site at `docs/index.html` simulates VS Code for PgStudio marketing. It's pol
 Replace generic `ASSISTANT_RESPONSES` entries with personality-driven versions. Examples:
 
 **`slow-revenue`** reply:
-> "Ah yes, the classic 3-second dashboard query — I call it the 'morning coffee loading screen'. Your `orders.created_at` is getting a full table scan. One index and a materialized view and you'll wonder why you ever waited. `CREATE INDEX CONCURRENTLY idx_orders_created_at ON orders (created_at DESC);` — run that and watch it drop to sub-100ms. Install PgStudio and I'll show you the EXPLAIN diff live, before and after. 📈"
+> "Ah yes, the classic 3-second dashboard query — I call it the 'morning coffee loading screen'. Your `orders.created_at` is getting a full table scan. One index and a materialized view and you'll wonder why you ever waited. `CREATE INDEX CONCURRENTLY idx_orders_created_at ON orders (created_at DESC);` — run that and watch it drop to sub-100ms. Install NexQL and I'll show you the EXPLAIN diff live, before and after. 📈"
 
 **`ask-ai`** reply:
-> "That's exactly what I'm here for. Give me a slow query, a weird join, or just paste your `EXPLAIN ANALYZE` output and I'll tell you what the planner is thinking (and why it's wrong). Once you install PgStudio I'll have live access to your actual schema — no more guessing column types."
+> "That's exactly what I'm here for. Give me a slow query, a weird join, or just paste your `EXPLAIN ANALYZE` output and I'll tell you what the planner is thinking (and why it's wrong). Once you install NexQL I'll have live access to your actual schema — no more guessing column types."
 
 ### `preloadAssistantConversation()` turn 1 schema-intro:
 > "Yes — I can see `ecommerce_demo`. You've got an `orders` table with ~480K rows, `created_at` indexed... wait, actually it's *not* indexed. That's your problem right there. 🙃 Full schema: `id` (bigint PK), `customer_id` (→ customers), `created_at` (timestamptz, **unindexed**), `amount` (numeric 10,2), `status` (text). What are you trying to run?"
 
 ### `preloadAssistantConversation()` turn 2 slow-query-deep:
-> "3 seconds. On 7 days of data. Yep — sequential scan on `created_at`, ~480K rows, no filtering shortcut. The fix is embarrassingly simple:\n\n`CREATE INDEX CONCURRENTLY idx_orders_created_at ON orders (created_at DESC);`\n\nAfter that: under 80ms. Also stash the daily rollup in a materialized view and your dashboard will feel instantaneous. Want me to write the full view? Install PgStudio and I'll generate it against your live schema."
+> "3 seconds. On 7 days of data. Yep — sequential scan on `created_at`, ~480K rows, no filtering shortcut. The fix is embarrassingly simple:\n\n`CREATE INDEX CONCURRENTLY idx_orders_created_at ON orders (created_at DESC);`\n\nAfter that: under 80ms. Also stash the daily rollup in a materialized view and your dashboard will feel instantaneous. Want me to write the full view? Install NexQL and I'll generate it against your live schema."
 
 ### Free-form teaser in `wireAssistant()` `handleSend()`:
 
@@ -39,7 +39,7 @@ Rewrite `buildFreeFormTeaser` returns and the wrapper to be specific:
 // Replace the generic teaser wrapper:
 appendChatMessage(logId, "assistant",
   `Good question. Here's what I'd look at first:\n\n${buildFreeFormTeaser(text).join("\n")}\n\n` +
-  `Install PgStudio and I'll run this against your actual database — no copy-paste required. ` +
+  `Install NexQL and I'll run this against your actual database — no copy-paste required. ` +
   `Takes about 30 seconds to set up.\n\n` +
   `<a class="chat-install-cta" href="https://marketplace.visualstudio.com/items?itemName=ric-v.postgres-explorer" target="_blank">⬇ Install free — live answers in VS Code →</a>`
 );
@@ -50,7 +50,7 @@ Update `buildFreeFormTeaser` patterns in `tour.js` to be more direct and confide
 ### Action card responses in `PRODUCT_HIGHLIGHTS` (`core-state.js`):
 
 Each highlight's `tip` field should end with an install CTA variant:
-- "Try it now: install PgStudio and connect in under a minute."
+- "Try it now: install NexQL and connect in under a minute."
 - "See it live: install and open any `.pgsql` notebook."
 - "Get this in your VS Code — install takes 30 seconds."
 
@@ -111,11 +111,11 @@ Add 4 new `<article class="file-view">` panels that mimic VS Code's image previe
       <span class="gif-viewer-meta">GIF • demos/</span>
     </div>
     <div class="gif-viewer-canvas">
-      <img src="assets/01-setup.gif" alt="PgStudio setup and connection workflow" class="gif-viewer-img">
+      <img src="assets/01-setup.gif" alt="NexQL setup and connection workflow" class="gif-viewer-img">
     </div>
     <div class="gif-viewer-footer">
       <span>Connect to PostgreSQL in seconds — label your environment, test the connection, done.</span>
-      <a class="gif-install-cta" href="https://marketplace.visualstudio.com/items?itemName=ric-v.postgres-explorer">⬇ Install PgStudio →</a>
+      <a class="gif-install-cta" href="https://marketplace.visualstudio.com/items?itemName=ric-v.postgres-explorer">⬇ Install NexQL →</a>
     </div>
   </div>
 </article>
@@ -498,7 +498,7 @@ CSS in `workbench-layout.css`:
 
 ## Priority 6 — Expanded Database Tree with Column Detail
 
-**File:** `docs/index.html` (PgStudio sidebar panel)
+**File:** `docs/index.html` (NexQL sidebar panel)
 
 Add green connection dot to Local connection row, and expand `orders` table with column-level rows:
 
@@ -552,7 +552,7 @@ CSS: `.sb-err { color: rgba(255,120,120,.9); } .sb-warn { color: rgba(255,200,80
 
 **Files:** `docs/index.html`, `docs/styles/workbench-layout.css`
 
-On the PgStudio activity icon button:
+On the NexQL activity icon button:
 ```html
 <span class="activity-badge" aria-label="1 notification">1</span>
 ```
@@ -568,7 +568,7 @@ CSS:
 
 ---
 
-## Priority 9 — Richer Query History in PgStudio Sidebar
+## Priority 9 — Richer Query History in NexQL Sidebar
 
 **File:** `docs/index.html`
 
@@ -638,9 +638,9 @@ CSS: `.history-label { flex:1; overflow:hidden; text-overflow:ellipsis; white-sp
 6. Check: Model label reads "GitHub Models · gpt-4o" (not "No Model")
 7. Check: Clicking "Run Query" shows variable ms timing (re-run shows different value)
 8. Check: Click a result column header — rows sort ascending/descending
-9. Check: PgStudio sidebar shows `orders` with 5 column rows and green connection dot
+9. Check: NexQL sidebar shows `orders` with 5 column rows and green connection dot
 10. Check: Status bar shows `⊘ 0 ⚠ 1` and `LF`
-11. Check: Activity badge shows `1` on PgStudio icon
+11. Check: Activity badge shows `1` on NexQL icon
 12. Check: Query history shows 4 entries with timestamps
 13. Repeat steps 2-10 in dark mode (theme toggle)
 14. Resize to mobile width — verify minimap hides, layout doesn't break

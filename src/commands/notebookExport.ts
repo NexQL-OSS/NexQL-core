@@ -45,7 +45,7 @@ async function createGithubGist(params: {
       Accept: 'application/vnd.github+json',
       Authorization: `Bearer ${params.token}`,
       'Content-Type': 'application/json',
-      'User-Agent': 'PgStudio-VSCode-Extension',
+      'User-Agent': 'NexQL-VSCode-Extension',
       'X-GitHub-Api-Version': '2022-11-28',
     },
     body: JSON.stringify({
@@ -138,7 +138,7 @@ export async function cmdExportNotebook(): Promise<void> {
       const htmlName = filename.replace(/\.pgsql$/i, '.html');
 
       const url = await createGithubGist({
-        description: `PgStudio: ${title}`,
+        description: `NexQL: ${title}`,
         public: vis.id === 'public',
         token,
         files: {

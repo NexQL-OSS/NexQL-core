@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
 import { LicenseService } from '../services/LicenseService';
 
-const PRICING_URL = 'https://pgstudio.dev/#pricing';
-const KEY_HINT = /^PGST-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/;
+const PRICING_URL = 'https://nexql.astrx.dev/#pricing';
+const KEY_HINT = /^NXQL-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/;
 const isWellFormedHint = (v: string): boolean => KEY_HINT.test(v.trim().toUpperCase());
 
 /** Prompt for a license key and activate it. */
@@ -10,12 +10,12 @@ export async function cmdLicenseActivate(prefillKey?: string): Promise<void> {
   const key =
     prefillKey ||
     (await vscode.window.showInputBox({
-      title: 'Activate PgStudio License',
-      prompt: 'Paste your license key (e.g. PGST-XXXX-XXXX-XXXX-XXXX)',
-      placeHolder: 'PGST-XXXX-XXXX-XXXX-XXXX',
+      title: 'Activate NexQL License',
+      prompt: 'Paste your license key (e.g. NXQL-XXXX-XXXX-XXXX-XXXX)',
+      placeHolder: 'NXQL-XXXX-XXXX-XXXX-XXXX',
       ignoreFocusOut: true,
       validateInput: (value) =>
-        !value || isWellFormedHint(value) ? undefined : 'That does not look like a PgStudio key.',
+        !value || isWellFormedHint(value) ? undefined : 'That does not look like a NexQL key.',
     }));
 
   if (!key) {
@@ -44,7 +44,7 @@ export async function cmdLicenseManage(): Promise<void> {
 
   if (status.tier === 'free') {
     const choice = await vscode.window.showInformationMessage(
-      'PgStudio Free — no license active.',
+      'NexQL Free — no license active.',
       'Activate License',
       'View Plans',
     );
@@ -59,7 +59,7 @@ export async function cmdLicenseManage(): Promise<void> {
   const label = status.tier[0].toUpperCase() + status.tier.slice(1);
   const offlineNote = status.offline ? ' (offline — using cached license)' : '';
   const choice = await vscode.window.showInformationMessage(
-    `PgStudio ${label} active${offlineNote}.`,
+    `NexQL ${label} active${offlineNote}.`,
     'Deactivate',
     'View Plans',
   );

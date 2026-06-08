@@ -1,6 +1,6 @@
 <section class="minimized-overview" id="minimized-overview" aria-hidden="false" itemscope
   itemtype="https://schema.org/SoftwareApplication">
-  <meta itemprop="name" content="PgStudio">
+  <meta itemprop="name" content="NexQL">
   <meta itemprop="applicationCategory" content="DeveloperApplication">
   <meta itemprop="operatingSystem" content="Windows, macOS, Linux">
   <meta itemprop="softwareVersion" id="landing-software-version-meta" content="0.0.0">
@@ -81,7 +81,7 @@
           </div>
 
           <div class="landing-cmd-palette" aria-hidden="true">
-            <div class="landing-cmd-palette-input"><span class="landing-cmd-gt">&gt;</span> PgStudio: optimize current
+            <div class="landing-cmd-palette-input"><span class="landing-cmd-gt">&gt;</span> NexQL: optimize current
               query</div>
             <div class="landing-cmd-row landing-cmd-row--active">
               <span class="landing-cmd-icon" aria-hidden="true">✦</span>
@@ -98,7 +98,7 @@
           </div>
 
           <div class="mini-wb-preview mini-wb-preview--hero mini-editor-preview"
-            aria-label="PgStudio interactive preview — click to open demo">
+            aria-label="NexQL interactive preview — click to open demo">
 
             <div class="mini-wb-titlebar">
               <div class="mini-wb-dots" aria-hidden="true">
@@ -107,7 +107,7 @@
                 <span class="dot-green"></span>
               </div>
               <img class="mini-wb-brand-icon" src="assets/NexQL.png" alt="" aria-hidden="true">
-              <span class="mini-wb-window-title">PgStudio Workspace · Demo Project</span>
+              <span class="mini-wb-window-title">NexQL Workspace · Demo Project</span>
               <div class="mini-wb-tab-strip" aria-hidden="true">
                 <span class="mini-wb-tab is-active">query.pgsql</span>
                 <span class="mini-wb-tab">README.md</span>
@@ -117,7 +117,7 @@
             <div class="mini-wb-body" aria-hidden="true">
 
               <div class="mini-wb-sidebar">
-                <div class="mini-wb-sidebar-hdr">PGSTUDIO</div>
+                <div class="mini-wb-sidebar-hdr">NEXQL</div>
                 <div class="mini-wb-file-row is-active">
                   <span class="mini-wb-file-dot nb"></span>
                   query.pgsql
@@ -191,7 +191,7 @@
                   for dashboard latency.<br><br>
                   Expected result: 3s to under 100ms on this demo shape.
                 </div>
-                <button class="mini-wb-cta-btn" type="button" aria-label="Open interactive PgStudio demo">
+                <button class="mini-wb-cta-btn" type="button" aria-label="Open interactive NexQL demo">
                   Try it live →
                 </button>
               </div>
@@ -383,14 +383,14 @@
     aria-labelledby="landing-compare-title">
     <span class="eyebrow">How it compares</span>
     <h2 class="section-title" id="landing-compare-title">Built into your editor.</h2>
-    <p class="section-sub section-sub-center">The others are separate apps. PgStudio lives where your code already is.
+    <p class="section-sub section-sub-center">The others are separate apps. NexQL lives where your code already is.
     </p>
     <div class="landing-cmp-scroll">
       <table class="landing-cmp">
         <thead>
           <tr>
             <th>Feature</th>
-            <th class="landing-cmp-me">PgStudio</th>
+            <th class="landing-cmp-me">NexQL</th>
             <th>pgAdmin</th>
             <th>DBeaver</th>
             <th>TablePlus</th>
@@ -490,7 +490,7 @@
     </div>
     <div class="landing-faq">
       <details open>
-        <summary>Is PgStudio free?</summary>
+        <summary>Is NexQL free?</summary>
         <p>Yes — completely free, no subscription or account. Install from the VS Code Marketplace or Open VSX in under
           a minute.</p>
       </details>
@@ -501,7 +501,7 @@
       </details>
       <details>
         <summary>How is it different from pgAdmin or DBeaver?</summary>
-        <p>PgStudio runs inside VS Code — no separate app to install or switch to. Your notebooks, explorer, and AI
+        <p>NexQL runs inside VS Code — no separate app to install or switch to. Your notebooks, explorer, and AI
           assistant stay in the same window as your code.</p>
       </details>
       <details>
@@ -528,8 +528,8 @@
     <span class="eyebrow">Pricing</span>
     <h2 class="section-title" id="landing-price-title">Simple, transparent pricing</h2>
     <p class="section-sub">Free for everyone. Upgrade to Sponsor for individual pro features, or Singularity for teams
-      with cloud sync.</p>
-
+      with cloud sync (coming soon).</p>
+ 
     <div class="pricing-controls">
       <div class="pricing-billing-toggle" role="radiogroup" aria-label="Billing period">
         <button type="button" class="is-active" data-period="monthly" aria-pressed="true">Monthly</button>
@@ -541,7 +541,7 @@
         <button type="button" data-currency="USD" aria-pressed="false">USD $</button>
       </div>
     </div>
-
+ 
     <div class="pricing-grid pricing-grid-three">
       <div class="pricing-card">
         <div class="pricing-name">Free</div>
@@ -559,7 +559,7 @@
           href="https://marketplace.visualstudio.com/items?itemName=ric-v.postgres-explorer" target="_blank"
           rel="noopener noreferrer">Install Free</a>
       </div>
-
+ 
       <div class="pricing-card pricing-card-featured" data-pricing-tier="sponsor">
         <span class="pricing-badge">RECOMMENDED</span>
         <div class="pricing-name">Sponsor</div>
@@ -574,8 +574,9 @@
         </ul>
         <button class="pricing-cta primary pricing-cta-pay" type="button" data-tier="sponsor">Get Sponsor</button>
       </div>
-
+ 
       <div class="pricing-card" data-pricing-tier="singularity">
+        <span class="pricing-badge" style="background: rgba(255, 255, 255, 0.12); color: rgba(255, 255, 255, 0.6); border: 1px solid rgba(255, 255, 255, 0.15)">COMING SOON</span>
         <div class="pricing-name">Singularity</div>
         <div class="pricing-desc">Teams — org license with cloud sync for shared connection profiles</div>
         <div class="pricing-amount"><span class="pricing-amount-value">$9</span> <span class="period">/ mo</span></div>
@@ -586,14 +587,13 @@
           <li>Prioritized support channel</li>
           <li>Flat org pricing — not per seat</li>
         </ul>
-        <button class="pricing-cta primary pricing-cta-pay" type="button" data-tier="singularity">Get
-          Singularity</button>
+        <button class="pricing-cta primary pricing-cta-pay" type="button" data-tier="singularity" disabled>Coming Soon</button>
       </div>
     </div>
     <p class="pricing-activation-note"
       style="text-align:center;color:var(--text-muted,#9ca3af);font-size:13px;margin-top:16px">
       After checkout you’ll get a license key — click <b>Activate in VS Code</b> or run
-      <b>PgStudio: Activate License</b> from the command palette. Your key is also emailed to you.
+      <b>NexQL: Activate License</b> from the command palette. Your key is also emailed to you.
       <br>Already subscribed? <a href="#" class="manage-subscription-link" data-manage-subscription>Manage or cancel your subscription</a>.
     </p>
   </section>
@@ -618,12 +618,12 @@
   <footer class="site-footer landing-site-footer">
     <div class="footer-grid footer-grid--nexql">
       <div class="footer-brand">
-        <div class="footer-brand-title footer-brand-grad">🐘 Pg<span class="grad-text">Studio</span></div>
+        <div class="footer-brand-title footer-brand-grad">🐘 <span class="grad-text">NexQL</span></div>
         <p class="footer-desc">PostgreSQL, without the context switching.</p>
       </div>
       <div class="footer-col">
         <h4>Resources</h4>
-        <a href="https://pgstudio.astrx.dev/">Documentation</a>
+        <a href="https://nexql.astrx.dev/">Documentation</a>
         <a href="https://github.com/dev-asterix/PgStudio/blob/main/CHANGELOG.md" target="_blank"
           rel="noopener noreferrer">Changelog</a>
       </div>
@@ -678,10 +678,10 @@
       style="font-size:10px;padding:2px 8px;border-radius:10px;background:var(--bg-secondary);color:var(--text-muted);border:1px solid var(--border-color)">
       Free</li>
   </ul>
-  <p style="display:none">PgStudio helps developers query PostgreSQL in VS Code with notebooks, explorer navigation,
+  <p style="display:none">NexQL helps developers query PostgreSQL in VS Code with notebooks, explorer navigation,
     schema tools, AI-assisted SQL generation, EXPLAIN analysis, and performance optimization workflows.</p>
   <div style="display:none" aria-hidden="true">
-    <h3>PgStudio capabilities</h3>
+    <h3>NexQL capabilities</h3>
     <ul>
       <li>PostgreSQL SQL editor and notebook workflow in VS Code</li>
       <li>Database explorer for schemas, tables, views, and functions</li>

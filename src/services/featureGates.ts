@@ -20,7 +20,7 @@ const FEATURE_LABELS: Record<ProFeature, string> = {
   [ProFeature.UnlimitedSavedQueries]: 'Unlimited Saved Queries',
 };
 
-const PRICING_URL = 'https://pgstudio.dev/#pricing';
+const PRICING_URL = 'https://nexql.astrx.dev/#pricing';
 
 type Enforcement = 'off' | 'soft' | 'hard';
 
@@ -32,7 +32,7 @@ type Enforcement = 'off' | 'soft' | 'hard';
 function enforcement(): Enforcement {
   const v = vscode.workspace
     .getConfiguration()
-    .get<string>('postgresExplorer.license.enforcement', 'off');
+    .get<string>('postgresExplorer.license.enforcement', 'hard');
   return v === 'hard' || v === 'soft' ? v : 'off';
 }
 
@@ -64,14 +64,14 @@ export async function requirePro(feature: ProFeature, _context?: vscode.Extensio
   if (mode === 'soft') {
     // Non-blocking nudge.
     void vscode.window
-      .showInformationMessage(`${label} is a PgStudio paid feature.`, 'Upgrade', 'Activate License')
+      .showInformationMessage(`${label} is a NexQL paid feature.`, 'Upgrade', 'Activate License')
       .then((choice) => handleUpgradeChoice(choice));
     return true;
   }
 
   // hard
   const choice = await vscode.window.showWarningMessage(
-    `${label} requires a PgStudio subscription.`,
+    `${label} requires a NexQL subscription.`,
     { modal: true },
     'Upgrade',
     'Activate License',
@@ -103,9 +103,9 @@ export function getUpgradeHtml(feature: ProFeature): string {
     </style></head>
     <body>
       <h2>${label} is a paid feature</h2>
-      <p>Upgrade to PgStudio Sponsor or Singularity to unlock ${label}.</p>
+      <p>Upgrade to NexQL Sponsor or Singularity to unlock ${label}.</p>
       <a class="btn" href="${PRICING_URL}">View plans</a>
       <p style="margin-top:20px;font-size:12px">Already subscribed? Run
-        <b>PgStudio: Activate License</b> from the command palette.</p>
+        <b>NexQL: Activate License</b> from the command palette.</p>
     </body></html>`;
 }

@@ -37,7 +37,7 @@ export function buildPivotOptimizeUserMessage(ctx: PivotAiHelpContext, sourceSql
       : ctx.valueColumn ?? '—';
 
   return [
-    'PgStudio Analyst tab: the in-browser pivot failed because there are too many distinct row or column labels.',
+    'NexQL Analyst tab: the in-browser pivot failed because there are too many distinct row or column labels.',
     '',
     'Help me rewrite my PostgreSQL query using server-side pre-aggregation (GROUP BY, rollups, bucketing, date_trunc, FILTER, CASE expressions, etc.) so pivot dimensions stay within a manageable cardinality.',
     '',

@@ -7,7 +7,7 @@ export type TelemetryMode = 'off' | 'basic' | 'detailed';
 export async function setTelemetryMode(mode: TelemetryMode): Promise<void> {
   const config = vscode.workspace.getConfiguration(CONFIG_SECTION);
   await config.update('mode', mode, vscode.ConfigurationTarget.Global);
-  void vscode.window.showInformationMessage(`PgStudio telemetry mode set to: ${mode}`);
+  void vscode.window.showInformationMessage(`NexQL telemetry mode set to: ${mode}`);
 }
 
 interface ModePickItem extends vscode.QuickPickItem {
@@ -20,7 +20,7 @@ export async function showTelemetryModePicker(): Promise<void> {
     {
       label: '$(circle-slash) Off',
       description: 'No usage or performance events',
-      detail: 'Maximum privacy; no product analytics are sent for PgStudio.',
+      detail: 'Maximum privacy; no product analytics are sent for NexQL.',
       mode: 'off',
       picked: current === 'off',
     },
@@ -44,7 +44,7 @@ export async function showTelemetryModePicker(): Promise<void> {
 
   const picked = await vscode.window.showQuickPick(items, {
     placeHolder: `Current mode: ${current} — choose telemetry mode`,
-    title: 'PgStudio telemetry',
+    title: 'NexQL telemetry',
   });
   if (!picked) {
     return;

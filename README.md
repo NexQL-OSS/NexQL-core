@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🐘 PgStudio
+# 🐘 NexQL
 
 ### *Professional Database Management for VS Code*
 
@@ -9,9 +9,9 @@
 [![Rating](https://img.shields.io/visual-studio-marketplace/r/ric-v.postgres-explorer?style=for-the-badge&logo=visual-studio-code&logoColor=white&color=F39C12)](https://marketplace.visualstudio.com/items?itemName=ric-v.postgres-explorer)
 [![Status](https://img.shields.io/badge/status-stable%20v1.2.1%20%2B%20nightly-blue?style=for-the-badge&logo=git&logoColor=white)](https://github.com/dev-asterix/PgStudio/releases)
 
-**PgStudio** (formerly YAPE) is a comprehensive PostgreSQL database management extension featuring interactive SQL notebooks, real-time monitoring dashboard, AI-powered assistance, and advanced database operations—all within VS Code.
+**NexQL** (formerly YAPE) is a comprehensive PostgreSQL database management extension featuring interactive SQL notebooks, real-time monitoring dashboard, AI-powered assistance, and advanced database operations—all within VS Code.
 
-[📖 **Documentation**](https://pgstudio.astrx.dev/) • [🛒 **Marketplace**](https://marketplace.visualstudio.com/items?itemName=ric-v.postgres-explorer) • [🤝 **Contributing**](#-contributing) • [📝 **v1.0.0 Release Notes**](docs/RELEASE_NOTES_v1.0.0.md) • [📋 **Changelog**](CHANGELOG.md)
+[📖 **Documentation**](https://nexql.astrx.dev/) • [🛒 **Marketplace**](https://marketplace.visualstudio.com/items?itemName=ric-v.postgres-explorer) • [🤝 **Contributing**](#-contributing) • [📝 **v1.0.0 Release Notes**](docs/RELEASE_NOTES_v1.0.0.md) • [📋 **Changelog**](CHANGELOG.md)
 
 </div>
 
@@ -20,7 +20,7 @@
 ## 📺 Video Guides
 
 ### 1. Setup
-![PgStudio Setup](docs/assets/01-setup.gif)
+![NexQL Setup](docs/assets/01-setup.gif)
 
 ### 2. More Settings
 ![AI Assistant Setup](docs/assets/02-more-settings.gif)
@@ -75,7 +75,7 @@
 
 ---
 
-## 🎯 Why PgStudio?
+## 🎯 Why NexQL?
 
 <table>
 <tr>
@@ -128,7 +128,7 @@
 
 ## 📋 Feature Matrix
 
-| Area | PgStudio v1.2.1 | Notes |
+| Area | NexQL v1.2.1 | Notes |
 |---|---|---|
 | Core PostgreSQL object operations | ✅ | Tables, views, mat views, functions, roles, extensions, FDWs, and more |
 | AI-assisted SQL workflows | ✅ | Generate, optimize, explain, and analyze with notebook-first execution |
@@ -158,10 +158,10 @@ Then: **PostgreSQL icon** → **Add Connection** → Enter details → **Connect
 
 ## Telemetry Setup
 
-PgStudio ships with a privacy-first telemetry client designed for anonymous product analytics.
+NexQL ships with a privacy-first telemetry client designed for anonymous product analytics.
 
 - No SQL text, schema/object names, hostnames, database names, usernames, or credentials are collected.
-- VS Code global telemetry setting is a hard gate; when disabled globally, PgStudio telemetry is disabled.
+- VS Code global telemetry setting is a hard gate; when disabled globally, NexQL telemetry is disabled.
 - Event payloads are allowlisted and bucketed (durations/result sizes) to avoid raw sensitive values.
 
 ### Configure telemetry mode
@@ -211,7 +211,7 @@ If `posthogApiKey` is empty, telemetry stays local (debug sink only).
 ## 🏗️ Project Structure
 
 ```
-PgStudio/
+NexQL/
 ├── src/
 │   ├── extension.ts          # Extension entry point
 │   ├── commands/             # Command implementations
@@ -274,7 +274,7 @@ Organize, manage, and reuse your most important queries with intelligent tagging
 
 ## 🤖 AI-Powered Operations
 
-PgStudio integrates advanced AI capabilities directly into your workflow, but keeps **YOU** in control.
+NexQL integrates advanced AI capabilities directly into your workflow, but keeps **YOU** in control.
 
 ### 🔐 GitHub Models via GitHub Sign-In
 Use GitHub Models without manually managing a PAT in normal VS Code authentication flows.
@@ -288,7 +288,7 @@ Use SQL Assistant where you work, not only in the sidebar.
 - **Parallel Assistants**: Open multiple SQL Assistant tabs for separate tasks (e.g., optimization, migration, and schema exploration).
 
 ### 🪄 Generate Query (Natural Language → SQL)
-Describe what you need in plain English (e.g., "Show me top 10 users by order count"), and PgStudio will generate the SQL for you using your schema context.
+Describe what you need in plain English (e.g., "Show me top 10 users by order count"), and NexQL will generate the SQL for you using your schema context.
 - **Command Palette**: `AI: Generate Query`
 - **Context-Aware**: The AI understands your table schemas, columns, and relationships.
 
@@ -342,7 +342,7 @@ Turn any query result into beautiful, interactive charts in seconds.
 ```bash
 # Clone the repository
 git clone https://github.com/dev-asterix/PgStudio.git
-cd PgStudio
+cd NexQL
 
 # Install dependencies
 npm install
@@ -439,7 +439,7 @@ scripts\test.bat --coverage
 
 ### Testing Infrastructure
 
-PgStudio includes comprehensive testing infrastructure:
+NexQL includes comprehensive testing infrastructure:
 
 - **Unit Tests** (50%+ coverage): Mocha + Chai + Sinon
 - **Integration Tests**: Connection lifecycle, SSL, pool exhaustion, version compatibility
@@ -592,7 +592,7 @@ Also on [Open VSX](https://open-vsx.org/extension/ric-v/postgres-explorer)
 
 ## 🙈 Feature Comparison
 
-| Feature | PgStudio | pgAdmin | DBeaver | TablePlus |
+| Feature | NexQL | pgAdmin | DBeaver | TablePlus |
 |---------|----------|---------|---------|-----------|
 | **VS Code Integration** | ✅ Native | ❌ | ❌ | ❌ |
 | **SQL Notebooks** | ✅ Interactive | ❌ | ❌ | ❌ |
@@ -604,7 +604,7 @@ Also on [Open VSX](https://open-vsx.org/extension/ric-v/postgres-explorer)
 | **Foreign Data Wrappers** | ✅ Full | ✅ | ⚠️ Limited | ❌ |
 | **License** | MIT (Free) | PostgreSQL (Free) | Apache 2.0 (Free) | Proprietary (Paid) |
 
-### Unique to PgStudio
+### Unique to NexQL
 - 🤖 AI-powered query generation and optimization
 - 📓 Interactive SQL notebooks with persistent state
 - 🔄 Infinite scrolling for large result sets (10k rows)

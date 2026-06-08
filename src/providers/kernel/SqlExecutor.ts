@@ -135,7 +135,7 @@ export class SqlExecutor {
     const leaveReview = 'Leave a Review';
     const maybeLater = 'Maybe Later';
     const selection = await vscode.window.showInformationMessage(
-      'Enjoying PgStudio? A quick VS Code Marketplace review helps other PostgreSQL users discover it.',
+      'Enjoying NexQL? A quick VS Code Marketplace review helps other PostgreSQL users discover it.',
       leaveReview,
       maybeLater
     );
@@ -296,7 +296,7 @@ export class SqlExecutor {
         notebookUri,
         parameterKey: this.makeNotebookParameterKey('positional', String(parameterIndex)),
         title: `SQL parameter $${parameterIndex}`,
-        prompt: `Enter the raw value for $${parameterIndex}${contextSnippet ? ` - ${contextSnippet}` : ''} (do not add quotes; PgStudio sends the parameter value directly)`,
+        prompt: `Enter the raw value for $${parameterIndex}${contextSnippet ? ` - ${contextSnippet}` : ''} (do not add quotes; NexQL sends the parameter value directly)`,
         placeHolder: contextSnippet,
         allowNullChoice: true,
       });
@@ -358,7 +358,7 @@ export class SqlExecutor {
         notebookUri,
         parameterKey: this.makeNotebookParameterKey('named', name),
         title: `SQL parameter :${name}`,
-        prompt: `Enter the raw value for :${name} (do not add quotes; PgStudio sends the parameter value directly)`,
+        prompt: `Enter the raw value for :${name} (do not add quotes; NexQL sends the parameter value directly)`,
         allowNullChoice: true,
       });
 
@@ -494,7 +494,7 @@ export class SqlExecutor {
 
     const applied = await vscode.workspace.applyEdit(edit);
     if (!applied) {
-      vscode.window.showWarningMessage('Transaction started, but PgStudio could not insert the follow-up COMMIT/ROLLBACK cell.');
+      vscode.window.showWarningMessage('Transaction started, but NexQL could not insert the follow-up COMMIT/ROLLBACK cell.');
     }
   }
 

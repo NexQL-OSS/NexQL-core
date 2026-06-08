@@ -1,4 +1,4 @@
-// Razorpay Subscription Checkout for PgStudio (Sponsor + Singularity tiers)
+// Razorpay Subscription Checkout for NexQL (Sponsor + Singularity tiers)
 
 (function () {
   const TIER_LABELS = {
@@ -175,13 +175,13 @@
 
     const keyBlock = licenseKey
       ? `
-        <p>Your license key is ready. Activate PgStudio in VS Code:</p>
+        <p>Your license key is ready. Activate NexQL in VS Code:</p>
         <div class="license-key-row">
           <div class="license-key-value" id="lic-key">${licenseKey}</div>
           <button class="license-btn license-btn-copy" id="lic-copy">Copy</button>
         </div>
         <a class="license-btn license-btn-primary" href="${ACTIVATE_URI_BASE}${encodeURIComponent(licenseKey)}">Activate in VS Code</a>
-        <p style="font-size:13px;margin-top:4px">Or run <b>PgStudio: Activate License</b> in the command palette and paste the key. A copy was also emailed to you.</p>
+        <p style="font-size:13px;margin-top:4px">Or run <b>NexQL: Activate License</b> in the command palette and paste the key. A copy was also emailed to you.</p>
       `
       : `
         <div class="license-pending"><span class="spinner-dot"></span> Issuing your license key…</div>
@@ -190,7 +190,7 @@
 
     overlay.innerHTML = `
       <div class="license-modal" role="dialog" aria-modal="true">
-        <h3>Welcome to PgStudio ${tierLabel} 🎉</h3>
+        <h3>Welcome to NexQL ${tierLabel} 🎉</h3>
         ${keyBlock}
         <button class="license-btn license-btn-secondary" id="lic-close">Done</button>
       </div>`;
@@ -351,7 +351,7 @@
       const renewLabel = data.status === 'active' ? 'Renews / valid until' : 'Access until';
       resultEl.innerHTML = `
         <div class="license-status-card">
-          <div><b>PgStudio ${tierName}</b> <span class="license-pill ${data.status}">${data.status}</span></div>
+          <div><b>NexQL ${tierName}</b> <span class="license-pill ${data.status}">${data.status}</span></div>
           <div class="muted">${data.period || ''} ${data.currency || ''}</div>
           <div class="muted">${renewLabel}: ${fmtDate(data.expiresAt)}</div>
           ${data.email ? `<div class="muted">${data.email}</div>` : ''}
@@ -440,7 +440,7 @@
       btn.innerHTML = originalContent;
     }
 
-    const pricing = window.PgStudioPricing;
+    const pricing = window.NexQLPricing;
     const currency = pricing?.getCurrency?.() || 'INR';
     const period = pricing?.getPeriod?.() || 'monthly';
     const tierLabel = TIER_LABELS[tier] || tier;
@@ -474,7 +474,7 @@
       const options = {
         key: keyId,
         subscription_id: subData.subscription_id,
-        name: 'PgStudio',
+        name: 'NexQL',
         description: `${tierLabel} — ${periodLabel} subscription`,
         image: '/assets/NexQL.png',
         notes: {

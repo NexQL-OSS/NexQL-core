@@ -142,7 +142,7 @@ Do this in **Test Mode** first, then duplicate Plans in Live Mode with live API 
 
 **Subscriptions → Plans → Create Plan** (repeat eight times).
 
-Use a consistent naming scheme, e.g. `PgStudio Sponsor Monthly INR`.
+Use a consistent naming scheme, e.g. `NexQL Sponsor Monthly INR`.
 
 | Plan purpose | Interval | Currency | Amount |
 |--------------|----------|----------|--------|

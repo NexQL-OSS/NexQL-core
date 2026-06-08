@@ -381,7 +381,7 @@ export class ConnectionFormPanel {
             } else if (connection.environment === "production" && isSSLFailure) {
               const enrichedError = new Error(
                 `Production connection failed: ${err.message || "SSL connection failed"}.\n\n` +
-                `Security Alert: PgStudio blocked automatic SSL downgrade on a Production environment to protect your credentials. ` +
+                `Security Alert: NexQL blocked automatic SSL downgrade on a Production environment to protect your credentials. ` +
                 `If your database does not support SSL or you are using a secure SSH tunnel, please expand Advanced Options and explicitly set SSL Mode to "Disable — No SSL".`
               );
               (enrichedError as any).code = err.code;

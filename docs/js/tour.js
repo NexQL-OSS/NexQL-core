@@ -157,7 +157,7 @@ function buildFreeFormTeaser(text) {
     return [
       "Slow query — let's diagnose it properly.",
       "• First move: `EXPLAIN (ANALYZE, BUFFERS) <your query>` — look for 'Seq Scan' on a large table. That's your culprit.",
-      "• Fix is usually one line: `CREATE INDEX CONCURRENTLY idx_col ON table (col DESC);` — drops 3s queries to sub-100ms. Install PgStudio and I'll write the exact statement against your live schema."
+      "• Fix is usually one line: `CREATE INDEX CONCURRENTLY idx_col ON table (col DESC);` — drops 3s queries to sub-100ms. Install NexQL and I'll write the exact statement against your live schema."
     ];
   }
 
@@ -173,7 +173,7 @@ function buildFreeFormTeaser(text) {
     return [
       "That sounds painful. Here's the diagnostic checklist:",
       "• Paste the full error — especially the DETAIL and HINT lines. Those tell the real story, not the headline.",
-      "• Install PgStudio — I can read `pg_stat_activity` and logs directly, not just the vibe you're describing. 🫠"
+      "• Install NexQL — I can read `pg_stat_activity` and logs directly, not just the vibe you're describing. 🫠"
     ];
   }
 
@@ -205,7 +205,7 @@ function buildFreeFormTeaser(text) {
     return [
       "Migration work — let's do this without drama:",
       "• `pg_dump -Fc dbname | pg_restore -d newdb` is the starting point, but you need to think about sequences, extensions, and search_path.",
-      "• Install PgStudio — migration tooling is built in and I promise it's less scary than the docs."
+      "• Install NexQL — migration tooling is built in and I promise it's less scary than the docs."
     ];
   }
 
@@ -229,7 +229,7 @@ function buildFreeFormTeaser(text) {
     [
       "Honest answer: I need your schema to say anything useful.",
       "• I have a hunch, but hunches without schema context age poorly.",
-      "• Install PgStudio — I'll give you the real answer in about 30 seconds. ⚡"
+      "• Install NexQL — I'll give you the real answer in about 30 seconds. ⚡"
     ],
     [
       "That's a real question — it deserves a real answer, not a generic one. 🎯",
@@ -239,7 +239,7 @@ function buildFreeFormTeaser(text) {
     [
       "I *could* make something up — but you seem like you'd notice. 🤓",
       "• Without your schema I'd just be inventing facts about your database.",
-      "• Install PgStudio — real schema, real answer, no vibes-based SQL."
+      "• Install NexQL — real schema, real answer, no vibes-based SQL."
     ],
     [
       "My crystal ball says: it depends on your data. Shocking, I know. 🔮",
@@ -249,7 +249,7 @@ function buildFreeFormTeaser(text) {
     [
       "Strong gut feeling here. Weak evidence though. Classic demo AI problem. 😅",
       "• I can see patterns — but not *your* patterns without a live connection.",
-      "• Install PgStudio and I'll back my gut with your actual query stats."
+      "• Install NexQL and I'll back my gut with your actual query stats."
     ],
     [
       "I've seen this question before. I've never answered it correctly without the schema. 📊",
@@ -259,22 +259,22 @@ function buildFreeFormTeaser(text) {
     [
       "The answer exists in your database. I just can't see it from here. 👀",
       "• It's probably in `pg_stat_*` or the query plan — both need a live connection.",
-      "• Install PgStudio — I'll find it before you finish your coffee. ☕"
+      "• Install NexQL — I'll find it before you finish your coffee. ☕"
     ],
     [
       "The honest answer involves your table sizes. I don't have those. You do. 📏",
       "• Row counts, null rates, index cardinality — these all change what I'd recommend.",
-      "• Connect PgStudio and we'll stop theorizing and start optimizing."
+      "• Connect NexQL and we'll stop theorizing and start optimizing."
     ],
     [
       "I refuse to give you a generic non-answer. You deserve better than that. 🙅",
       "• Generic advice for Postgres questions is almost always wrong or incomplete.",
-      "• Install PgStudio and ask me this again with a live connection. Night and day difference."
+      "• Install NexQL and ask me this again with a live connection. Night and day difference."
     ],
     [
       "If I had a dollar for every time I've guessed wrong without schema context... 💸",
       "• I'd have a lot of dollars. The schema changes everything.",
-      "• Install PgStudio. Let's not add to the pile."
+      "• Install NexQL. Let's not add to the pile."
     ],
     [
       "I won't pretend I can help without your data. That's just helpfulness theatre. 🎭",
