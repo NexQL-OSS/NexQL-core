@@ -77,6 +77,11 @@ sequenceDiagram
 | Public config | `api/config.js` | `GET` — `key_id` + tier catalog (no secret) |
 | Create subscription | `api/create-subscription.js` | `POST` — `{ tier, period, currency }` |
 | Verify payment | `api/verify-payment.js` | `POST` — HMAC-SHA256 over `order_id\|payment_id` |
+| Webhook (entitlement) | `api/webhook.js` | `POST` — Razorpay events → KV entitlement + license key + email |
+| Validate license | `api/license/validate.js` | `POST` — `{ licenseKey, instanceId }` → `{ valid, tier, status }` |
+| License lookup | `api/license/lookup.js` | `GET` — `?subscription_id=` → `{ licenseKey }` (success-page poll) |
+| KV store / keygen | `api/lib/store.js`, `api/lib/license-key.js` | Entitlement persistence + key generation |
+| Extension license | `src/services/LicenseService.ts` | Activation, 24h TTL, 7-day offline grace, tier gating |
 | Local dev server | `scripts/dev-server.js` | Serves `docs/` + mounts same API routes |
 | Env template | `.env.example` | All `RAZORPAY_*` keys |
 
@@ -154,9 +159,27 @@ Copy each Plan’s id (`plan_xxxxxxxxxxxx`) into the matching `RAZORPAY_PLAN_*` 
 
 Optional: set **Plan notes** or description to `tier=sponsor period=monthly currency=INR` for support debugging (checkout also sends `notes` on the subscription create call).
 
-### 4. Webhooks (recommended — not implemented in repo yet)
+### 4. Webhooks (implemented — entitlement source of truth)
 
-For production you should add a webhook endpoint for `subscription.activated`, `subscription.charged`, `subscription.cancelled`, and payment failures, then issue extension licenses from those events. Today, success UI only runs after **client-side** signature verification in `verify-payment.js`; there is no server-side entitlement store. See [license-implementation.md](./roadmap/license-implementation.md).
+`api/webhook.js` is the authoritative entitlement path. Add a webhook endpoint in
+**Settings → Webhooks** pointing at `https://<your-domain>/api/webhook` with secret
+`RAZORPAY_WEBHOOK_SECRET`, subscribed to:
+
+`subscription.activated`, `subscription.charged`, `subscription.resumed`,
+`subscription.cancelled`, `subscription.halted`, `subscription.paused`.
+
+On `activated`/`charged` the webhook issues a license key (`PGST-XXXX-…`), stores the
+entitlement in the KV store (`api/lib/store.js`), and emails the key (Resend, optional).
+On cancel/halt/pause it flips `status`, so `api/license/validate.js` returns `valid:false`
+and the extension downgrades to Free after its 24h cache TTL.
+
+The extension validates via `POST /api/license/validate` and keeps a 7-day offline grace
+window (`src/services/LicenseService.ts`). Client-side `verify-payment.js` is now only
+best-effort checkout UX — entitlement does **not** depend on it.
+
+**Storage:** set `KV_REST_API_URL` / `KV_REST_API_TOKEN` (Vercel KV / Upstash). With KV
+unset, the dev server falls back to a local `.kv-dev.json` file. See
+[license-implementation.md](./roadmap/license-implementation.md).
 
 ---
 
@@ -271,7 +294,7 @@ User overrides are stored in `sessionStorage` (`pgstudio_pricing_currency`, `pgs
 | `Authentication failed with Razorpay API` | Wrong secret, test key with live plan (or vice versa) |
 | Prices show `—` | `/api/config` failed — run via `dev:site` or Vercel, not raw `file://` |
 | Checkout works locally but not on Vercel | Env vars not set for the deployment environment you’re hitting |
-| Payment succeeds but extension still free | Expected until license service + webhooks are implemented |
+| Payment succeeds but extension still free | Webhook not configured/reaching `/api/webhook`, `RAZORPAY_WEBHOOK_SECRET` mismatch, or `enforcement` still `off`. Check KV entry + `POST /api/license/validate` |
 
 ---
 

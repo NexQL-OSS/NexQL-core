@@ -12,6 +12,11 @@ module.exports = async (req, res) => {
     return res.status(400).json({ error: 'tier, period, and currency are required' });
   }
 
+  const country = req.headers['x-vercel-ip-country'];
+  if (currency === 'INR' && country && country.toUpperCase() !== 'IN') {
+    return res.status(400).json({ error: 'INR payments are only available for users in India' });
+  }
+
   const resolved = resolvePlan(tier, period, currency);
   if (resolved.error) {
     return res.status(400).json({ error: resolved.error });
@@ -57,8 +62,7 @@ module.exports = async (req, res) => {
   } catch (error) {
     console.error('Razorpay subscription API error:', error);
 
-    const errorDescription =
-      error.description || (error.error && error.error.description) || '';
+    const errorDescription = error.description || (error.error && error.error.description) || '';
     if (
       error.statusCode === 401 ||
       errorDescription.includes('Key') ||

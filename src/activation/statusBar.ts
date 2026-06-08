@@ -18,6 +18,8 @@ export class NotebookStatusBar implements vscode.Disposable {
   private readonly transactionItem: vscode.StatusBarItem;
   /** Shown when no PostgreSQL notebook is active: workspace default connection (per-folder state). */
   private readonly workspaceDefaultItem: vscode.StatusBarItem;
+  /** Always-visible license tier indicator (independent of notebook focus). */
+  private readonly tierItem: vscode.StatusBarItem;
   private readonly disposables: vscode.Disposable[] = [];
 
   constructor() {
@@ -43,6 +45,11 @@ export class NotebookStatusBar implements vscode.Disposable {
     this.workspaceDefaultItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 95);
     this.workspaceDefaultItem.command = 'postgres-explorer.switchWorkspaceDefaultConnection';
 
+    this.tierItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 94);
+    this.tierItem.command = 'postgres-explorer.license.manage';
+    this.updateTier('free');
+    this.tierItem.show();
+
     this.disposables.push(
       this.connectionItem,
       this.databaseItem,
@@ -50,6 +57,7 @@ export class NotebookStatusBar implements vscode.Disposable {
       this.profileItem,
       this.transactionItem,
       this.workspaceDefaultItem,
+      this.tierItem,
       vscode.window.onDidChangeActiveNotebookEditor(() => this.update()),
       vscode.workspace.onDidChangeNotebookDocument((e) => {
         if (vscode.window.activeNotebookEditor?.notebook === e.notebook) {
@@ -265,6 +273,30 @@ export class NotebookStatusBar implements vscode.Disposable {
       this.transactionItem.show();
     } else {
       this.transactionItem.hide();
+    }
+  }
+
+  /**
+   * Updates the always-visible license tier indicator.
+   * @param tier 'free' | 'sponsor' | 'singularity'
+   * @param offline true when running on a cached entitlement (grace window).
+   */
+  public updateTier(tier: string, offline: boolean = false): void {
+    if (tier === 'free') {
+      this.tierItem.text = '$(unlock) PgStudio Free';
+      this.tierItem.tooltip = 'Free tier — click to activate a license';
+      this.tierItem.backgroundColor = undefined;
+    } else {
+      const label = tier[0].toUpperCase() + tier.slice(1);
+      if (offline) {
+        this.tierItem.text = `$(warning) ${label} (offline)`;
+        this.tierItem.tooltip = `PgStudio ${label} — running on cached license (offline grace). Click to manage.`;
+        this.tierItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
+      } else {
+        this.tierItem.text = `$(verified) PgStudio ${label}`;
+        this.tierItem.tooltip = `PgStudio ${label} — license active. Click to manage.`;
+        this.tierItem.backgroundColor = undefined;
+      }
     }
   }
 

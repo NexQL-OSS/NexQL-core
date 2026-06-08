@@ -59,6 +59,21 @@
     ],
     "commands": [
       {
+        "command": "postgres-explorer.license.activate",
+        "title": "Activate License",
+        "category": "PgStudio"
+      },
+      {
+        "command": "postgres-explorer.license.manage",
+        "title": "Manage License",
+        "category": "PgStudio"
+      },
+      {
+        "command": "postgres-explorer.license.openUpgrade",
+        "title": "View Plans / Upgrade",
+        "category": "PgStudio"
+      },
+      {
         "command": "postgres-explorer.addConnection",
         "title": "Add PostgreSQL Connection",
         "icon": "$(add)"
@@ -1704,6 +1719,28 @@
     "configuration": {
       "title": "PostgreSQL Explorer",
       "properties": {
+        "postgresExplorer.license.enforcement": {
+          "type": "string",
+          "enum": [
+            "off",
+            "soft",
+            "hard"
+          ],
+          "enumDescriptions": [
+            "No gating — all features available to everyone (default).",
+            "Show upgrade nudges on paid features but never block.",
+            "Require an active subscription to use paid features."
+          ],
+          "default": "off",
+          "scope": "machine",
+          "markdownDescription": "Controls premium feature gating. `off` ships dark (no change for existing users); flip to `hard` once entitlement is live."
+        },
+        "postgresExplorer.license.endpoint": {
+          "type": "string",
+          "default": "https://pgstudio.dev/api",
+          "scope": "machine",
+          "description": "Base URL for the PgStudio license validation API."
+        },
         "postgresExplorer.connections": {
           "type": "array",
           "default": [],
@@ -3372,6 +3409,7 @@
     ]
   },
   "activationEvents": [
+    "onUri",
     "onView:postgresExplorer",
     "onView:postgresExplorer.notebooks",
     "onView:postgresExplorer.savedQueries",

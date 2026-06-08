@@ -8,6 +8,7 @@ import { ImportDataPanel } from '../schemaDesigner/ImportDataPanel';
 import { ConnectionManager } from '../services/ConnectionManager';
 import { resolveTreeItemConnection } from '../schemaDesigner/connectionHelper';
 import { ErrorHandlers } from './helper';
+import { requirePro, ProFeature } from '../services/featureGates';
 
 /**
  * Open the Visual Table Designer for an existing table (Edit mode)
@@ -25,6 +26,7 @@ export async function cmdOpenTableDesigner(
     tableName: item?.tableName,
     contextValue: item?.contextValue,
   }));
+  if (!(await requirePro(ProFeature.SchemaDesigner, context))) return;
   await TableDesignerPanel.openForTable(item, context);
 }
 
@@ -35,6 +37,7 @@ export async function cmdCreateTableVisual(
   item: DatabaseTreeItem,
   context: vscode.ExtensionContext
 ): Promise<void> {
+  if (!(await requirePro(ProFeature.SchemaDesigner, context))) return;
   await TableDesignerPanel.openForCreate(item, context);
 }
 
@@ -45,6 +48,7 @@ export async function cmdOpenRoleDesigner(
   item: DatabaseTreeItem,
   context: vscode.ExtensionContext
 ): Promise<void> {
+  if (!(await requirePro(ProFeature.SchemaDesigner, context))) return;
   await RoleDesignerPanel.openForRole(item, context);
 }
 
@@ -64,6 +68,7 @@ export async function cmdOpenSchemaDiff(
     tableName: item?.tableName,
     contextValue: item?.contextValue,
   }));
+  if (!(await requirePro(ProFeature.SchemaDiff, context))) return;
   await SchemaDiffPanel.open(item, context);
 }
 
@@ -74,6 +79,7 @@ export async function cmdOpenSchemaDiff(
 export async function cmdOpenSchemaDiffFromPalette(
   context: vscode.ExtensionContext
 ): Promise<void> {
+  if (!(await requirePro(ProFeature.SchemaDiff, context))) return;
   const connections =
     vscode.workspace.getConfiguration().get<Array<Record<string, unknown>>>('postgresExplorer.connections') ||
     [];
@@ -189,6 +195,7 @@ export async function cmdOpenErd(
   item: DatabaseTreeItem,
   context: vscode.ExtensionContext
 ): Promise<void> {
+  if (!(await requirePro(ProFeature.SchemaDesigner, context))) return;
   await ErdPanel.open(item, context);
 }
 
@@ -199,6 +206,7 @@ export async function cmdOpenErdMultiFromDatabase(
   item: DatabaseTreeItem,
   context: vscode.ExtensionContext
 ): Promise<void> {
+  if (!(await requirePro(ProFeature.SchemaDesigner, context))) return;
   const conn = await resolveTreeItemConnection(item);
   if (!conn) {
     return;

@@ -6,6 +6,36 @@
 
   let catalog = null;
 
+  function isUserInIndia() {
+    if (catalog && typeof catalog.inIndia === 'boolean') {
+      return catalog.inIndia;
+    }
+    try {
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      if (tz === 'Asia/Kolkata') return true;
+    } catch (_) {
+      /* ignore */
+    }
+    const lang = (navigator.language || '').toLowerCase();
+    if (lang.startsWith('en-in') || lang.startsWith('hi-in')) return true;
+    return false;
+  }
+
+  function adjustCurrencyUI() {
+    const inIndia = isUserInIndia();
+    const inrBtn = document.querySelector('.pricing-currency-toggle button[data-currency="INR"]');
+    if (inrBtn) {
+      if (!inIndia) {
+        inrBtn.style.display = 'none';
+        if (getCurrency() === 'INR') {
+          setCurrency('USD');
+        }
+      } else {
+        inrBtn.style.display = '';
+      }
+    }
+  }
+
   function detectDefaultCurrency() {
     try {
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -19,6 +49,9 @@
   }
 
   function getCurrency() {
+    if (!isUserInIndia()) {
+      return 'USD';
+    }
     return sessionStorage.getItem(STORAGE_CURRENCY) || detectDefaultCurrency();
   }
 
@@ -27,6 +60,9 @@
   }
 
   function setCurrency(currency) {
+    if (!isUserInIndia() && currency === 'INR') {
+      currency = 'USD';
+    }
     sessionStorage.setItem(STORAGE_CURRENCY, currency);
     syncToggleGroup('.pricing-currency-toggle', 'data-currency', currency);
     updatePriceLabels();
@@ -76,8 +112,8 @@
       if (periodEl) periodEl.textContent = parsed.period;
 
       if (payBtn) {
-        payBtn.disabled = true;
-        payBtn.title = 'Checkout disabled for now';
+        payBtn.disabled = !tierData.available;
+        payBtn.title = tierData.available ? '' : 'Checkout unavailable — plan not configured yet';
       }
     });
   }
@@ -87,9 +123,11 @@
       const res = await fetch('/api/config');
       if (!res.ok) throw new Error('Failed to load pricing config');
       catalog = await res.json();
+      adjustCurrencyUI();
       updatePriceLabels();
     } catch (err) {
       console.error('Pricing catalog load failed:', err);
+      adjustCurrencyUI();
     }
   }
 
@@ -110,6 +148,7 @@
   });
 
   function initPricingUi() {
+    adjustCurrencyUI();
     syncToggleGroup('.pricing-currency-toggle', 'data-currency', getCurrency());
     syncToggleGroup('.pricing-billing-toggle', 'data-period', getPeriod());
     updatePriceLabels();

@@ -64,6 +64,19 @@ export class SecretStorageService {
     await AiCredentialsService.getInstance().setCursorApiKey(undefined);
   }
 
+  /** License entitlement cache (JSON). Held in SecretStorage so the key never lands in settings. */
+  public async getLicenseCache(): Promise<string | undefined> {
+    return await this.context.secrets.get('postgresExplorer.licenseCache');
+  }
+
+  public async setLicenseCache(value: string): Promise<void> {
+    await this.context.secrets.store('postgresExplorer.licenseCache', value);
+  }
+
+  public async deleteLicenseCache(): Promise<void> {
+    await this.context.secrets.delete('postgresExplorer.licenseCache');
+  }
+
   /** GitHub PAT with `gist` scope — used only for “Publish notebook to Gist”. */
   public async getGithubGistToken(): Promise<string | undefined> {
     return await this.context.secrets.get('postgresExplorer.githubGistToken');

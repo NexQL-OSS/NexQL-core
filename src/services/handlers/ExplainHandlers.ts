@@ -9,6 +9,7 @@ import { SecretStorageService } from '../../services/SecretStorageService';
 import { PostgresMetadata } from '../../common/types';
 import { PlanStoreWorkspace } from '../../features/planStudio/PlanStoreWorkspace';
 import { PlanStudioPanel } from '../../features/planStudio/PlanStudioPanel';
+import { requirePro, ProFeature } from '../../services/featureGates';
 
 export class ExplainErrorHandler implements IMessageHandler {
   constructor(private chatViewProvider: ChatViewProvider | undefined) { }
@@ -70,6 +71,7 @@ export class ShowExplainPlanHandler implements IMessageHandler {
   ) { }
 
   async handle(message: any, context?: { editor?: vscode.NotebookEditor }) {
+    if (!(await requirePro(ProFeature.ExplainStudio))) return;
     const metadata = context?.editor?.notebook?.metadata as PostgresMetadata | undefined;
     PlanStudioPanel.show(this.extensionUri, this.planStore, {
       plan: message.plan,
@@ -286,6 +288,7 @@ export class OpenPlanStudioHandler implements IMessageHandler {
   ) { }
 
   async handle(message: any, context?: { editor?: vscode.NotebookEditor }) {
+    if (!(await requirePro(ProFeature.ExplainStudio))) return;
     const metadata = context?.editor?.notebook?.metadata as PostgresMetadata | undefined;
     PlanStudioPanel.show(this.extensionUri, this.planStore, {
       plan: message.plan,

@@ -89,6 +89,25 @@
     .license-btn-primary { background: #6C4CF0; color: #fff; width: 100%; text-align: center; text-decoration: none; display: block; box-sizing: border-box; margin-bottom: 10px; }
     .license-btn-secondary { background: transparent; color: #9ca3af; width: 100%; }
     .license-pending { display: flex; align-items: center; gap: 10px; color: #b8b8c8; font-size: 14px; }
+    .license-input {
+      width: 100%; box-sizing: border-box; margin-bottom: 12px;
+      background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 8px; padding: 12px 14px; color: #fff; font-size: 14px;
+      font-family: ui-monospace, 'SF Mono', Menlo, monospace; letter-spacing: 1px;
+    }
+    .license-input:focus { outline: none; border-color: #6C4CF0; }
+    .license-status-card {
+      background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 10px; padding: 16px; margin-bottom: 16px; font-size: 14px;
+    }
+    .license-status-card div { margin-bottom: 6px; }
+    .license-status-card .muted { color: #9ca3af; }
+    .license-pill { display:inline-block; padding:2px 10px; border-radius:999px; font-size:12px; font-weight:600; }
+    .license-pill.active { background: rgba(16,185,129,0.18); color:#34d399; }
+    .license-pill.cancelled, .license-pill.halted, .license-pill.paused { background: rgba(239,68,68,0.18); color:#f87171; }
+    .license-btn-danger { background:#ef4444; color:#fff; width:100%; }
+    .license-error { color:#f87171; font-size:13px; margin-bottom:12px; }
+    a.manage-subscription-link { color: var(--accent, #8b7cf6); cursor:pointer; text-decoration: underline; }
   `;
   document.head.appendChild(style);
 
@@ -197,6 +216,144 @@
     }
   }
 
+  function fmtDate(ms) {
+    if (!ms) return '—';
+    try {
+      return new Date(ms).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+    } catch {
+      return '—';
+    }
+  }
+
+  function showManageModal() {
+    const overlay = document.createElement('div');
+    overlay.className = 'license-modal-overlay';
+    const close = () => {
+      overlay.classList.remove('show');
+      setTimeout(() => overlay.remove(), 300);
+    };
+
+    overlay.innerHTML = `
+      <div class="license-modal" role="dialog" aria-modal="true">
+        <h3>Manage subscription</h3>
+        <p>Enter your license key to view status or cancel.</p>
+        <div class="license-error" id="mng-error" style="display:none"></div>
+        <input class="license-input" id="mng-key" placeholder="PGST-XXXX-XXXX-XXXX-XXXX" autocomplete="off" />
+        <div id="mng-result"></div>
+        <button class="license-btn license-btn-primary" id="mng-check">Check status</button>
+        <button class="license-btn license-btn-secondary" id="mng-close">Close</button>
+      </div>`;
+
+    document.body.appendChild(overlay);
+    setTimeout(() => overlay.classList.add('show'), 50);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+    overlay.querySelector('#mng-close').addEventListener('click', close);
+
+    const errorEl = overlay.querySelector('#mng-error');
+    const resultEl = overlay.querySelector('#mng-result');
+    const keyEl = overlay.querySelector('#mng-key');
+    const checkBtn = overlay.querySelector('#mng-check');
+
+    const showError = (msg) => {
+      errorEl.textContent = msg;
+      errorEl.style.display = 'block';
+    };
+    const clearError = () => { errorEl.style.display = 'none'; };
+
+    async function checkStatus() {
+      clearError();
+      resultEl.innerHTML = '';
+      const key = (keyEl.value || '').trim().toUpperCase();
+      if (!key) return showError('Enter your license key.');
+      checkBtn.disabled = true;
+      checkBtn.textContent = 'Checking…';
+      try {
+        const res = await fetch('/api/license/status', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ licenseKey: key }),
+        });
+        if (res.status === 404) {
+          showError('No subscription found for that key.');
+          return;
+        }
+        if (!res.ok) {
+          showError('Could not look up that key. Try again.');
+          return;
+        }
+        const data = await res.json();
+        renderStatus(key, data);
+      } catch {
+        showError('Network error. Try again.');
+      } finally {
+        checkBtn.disabled = false;
+        checkBtn.textContent = 'Check status';
+      }
+    }
+
+    function renderStatus(key, data) {
+      const tierName = data.tier ? data.tier[0].toUpperCase() + data.tier.slice(1) : '—';
+      const cancellable = data.status === 'active' && data.hasSubscription;
+      const renewLabel = data.status === 'active' ? 'Renews / valid until' : 'Access until';
+      resultEl.innerHTML = `
+        <div class="license-status-card">
+          <div><b>PgStudio ${tierName}</b> <span class="license-pill ${data.status}">${data.status}</span></div>
+          <div class="muted">${data.period || ''} ${data.currency || ''}</div>
+          <div class="muted">${renewLabel}: ${fmtDate(data.expiresAt)}</div>
+          ${data.email ? `<div class="muted">${data.email}</div>` : ''}
+        </div>
+        ${cancellable ? '<button class="license-btn license-btn-danger" id="mng-cancel">Cancel subscription</button>' : ''}
+      `;
+      const cancelBtn = resultEl.querySelector('#mng-cancel');
+      if (cancelBtn) {
+        cancelBtn.addEventListener('click', () => cancelSubscription(key, cancelBtn));
+      }
+    }
+
+    async function cancelSubscription(key, btn) {
+      if (!window.confirm('Cancel at the end of your current billing period? You keep access until then.')) {
+        return;
+      }
+      btn.disabled = true;
+      btn.textContent = 'Cancelling…';
+      try {
+        const res = await fetch('/api/cancel-subscription', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ licenseKey: key, immediate: false }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data.ok) {
+          resultEl.innerHTML = `
+            <div class="license-status-card">
+              <div><b>Cancellation scheduled.</b></div>
+              <div class="muted">Your subscription will not renew. Access continues until ${fmtDate(data.accessUntil)}.</div>
+            </div>`;
+        } else {
+          showError(data.error || 'Could not cancel. Contact support.');
+          btn.disabled = false;
+          btn.textContent = 'Cancel subscription';
+        }
+      } catch {
+        showError('Network error during cancellation.');
+        btn.disabled = false;
+        btn.textContent = 'Cancel subscription';
+      }
+    }
+
+    checkBtn.addEventListener('click', checkStatus);
+    keyEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') checkStatus(); });
+  }
+
+  // Open the manage panel from any element with [data-manage-subscription].
+  document.addEventListener('click', (event) => {
+    const trigger = event.target.closest('[data-manage-subscription]');
+    if (trigger) {
+      event.preventDefault();
+      showManageModal();
+    }
+  });
+
   async function fetchConfig() {
     if (configCache) return configCache;
     const res = await fetch('/api/config');
@@ -213,8 +370,7 @@
     if (!tier || tier === 'free') return;
 
     event.preventDefault();
-    // Payment is disabled for now
-    return;
+    if (btn.disabled) return;
 
     const originalContent = btn.innerHTML;
 
