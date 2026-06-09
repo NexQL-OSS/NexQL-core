@@ -3,6 +3,7 @@ import { DatabaseTreeItem } from '../providers/DatabaseTreeProvider';
 import { getDatabaseConnection, NotebookBuilder, MarkdownUtils, ErrorHandlers, validateNotebookContextItem } from './helper';
 import { PostgresMetadata } from '../common/types';
 import { ConnectionUtils } from '../utils/connectionUtils';
+import { isProFeatureEnabled, ProFeature } from '../services/featureGates';
 
 type NotebookCellSeed = {
   kind: 'markdown' | 'sql';
@@ -71,9 +72,10 @@ async function createNotebookAtUri(
   return vscode.workspace.openNotebookDocument(uri);
 }
 
-async function pickNotebookFromList(
+export async function pickNotebookFromList(
   existingNotebookUris: vscode.Uri[],
-  title: string
+  title: string,
+  allowCreate: boolean = true
 ): Promise<NotebookPickerResult> {
   const existingByName = new Map<string, vscode.Uri>();
   for (const uri of existingNotebookUris) {
@@ -85,7 +87,9 @@ async function pickNotebookFromList(
   }
 
   const existingItems = (await Promise.all(existingNotebookUris.map(async (uri) => {
-    const filename = uri.path.split('/').pop() ?? '';
+    const parts = uri.path.split('/');
+    const filename = parts.pop() ?? '';
+    const dbName = parts.pop() ?? '';
     let sectionCount = 0;
     let modified = '';
 
@@ -117,7 +121,7 @@ async function pickNotebookFromList(
 
     return {
       label: normalizeNotebookName(filename),
-      description: `${prefix} · ${sectionText} · ${dateText}`,
+      description: `${prefix} [${dbName}] · ${sectionText} · ${dateText}`,
       uri,
       itemType: 'existing' as const,
     };
@@ -136,7 +140,7 @@ async function pickNotebookFromList(
       | { label: string; description: string; itemType: 'create-named'; name: string }
     >();
     qp.title = title;
-    qp.placeholder = 'Search notebooks or type a new notebook name';
+    qp.placeholder = allowCreate ? 'Search notebooks or type a new notebook name' : 'Search existing notebooks';
     qp.matchOnDescription = true;
     qp.matchOnDetail = true;
 
@@ -144,7 +148,7 @@ async function pickNotebookFromList(
       const typed = normalizeNotebookName(qp.value);
       const hasTyped = typed.length > 0;
       const hasExisting = hasTyped && existingByName.has(typed.toLowerCase());
-      const createNamedItem = hasTyped && !hasExisting
+      const createNamedItem = allowCreate && hasTyped && !hasExisting
         ? [{
             label: `$(add) Create "${typed}"`,
             description: 'Press Enter to create notebook with this name',
@@ -153,7 +157,7 @@ async function pickNotebookFromList(
           }]
         : [];
 
-      qp.items = [...existingItems, createRandomItem, ...createNamedItem];
+      qp.items = allowCreate ? [...existingItems, createRandomItem, ...createNamedItem] : existingItems;
     };
 
     qp.onDidChangeValue(updateItems);
@@ -168,13 +172,13 @@ async function pickNotebookFromList(
         return;
       }
 
-      if (selected?.itemType === 'create-random') {
+      if (allowCreate && selected?.itemType === 'create-random') {
         qp.hide();
         resolve({ action: 'create-random' });
         return;
       }
 
-      if (selected?.itemType === 'create-named') {
+      if (allowCreate && selected?.itemType === 'create-named') {
         qp.hide();
         resolve({ action: 'create-named', name: selected.name });
         return;
@@ -185,8 +189,10 @@ async function pickNotebookFromList(
         qp.hide();
         if (existing) {
           resolve({ action: 'open', uri: existing });
-        } else {
+        } else if (allowCreate) {
           resolve({ action: 'create-named', name: typed });
+        } else {
+          resolve({ action: 'cancel' });
         }
         return;
       }
@@ -218,6 +224,30 @@ export async function openOrCreateNotebookWithPicker(
   }
 
   await vscode.workspace.fs.createDirectory(folderUri);
+
+  const connectionNameOrId = (metadata?.name ?? metadata?.connectionName ?? metadata?.connectionId) as string | undefined;
+  if (connectionNameOrId) {
+    const { count: totalNotebooks, uris: connectionNotebookUris } = await ConnectionUtils.countNotebooksInConnection(context, connectionNameOrId);
+    const isUnlimited = isProFeatureEnabled(ProFeature.UnlimitedNotebooks);
+
+    if (!isUnlimited && totalNotebooks >= 10) {
+      const choice = await vscode.window.showWarningMessage(
+        `Free tier is limited to 10 notebooks per connection. Upgrade to Sponsor or Team for unlimited notebooks.`,
+        'Open Existing Notebook',
+        'Upgrade'
+      );
+      if (choice === 'Upgrade') {
+        await vscode.commands.executeCommand('postgres-explorer.license.openUpgrade');
+      } else if (choice === 'Open Existing Notebook') {
+        const pick = await pickNotebookFromList(connectionNotebookUris, 'Open Existing Notebook', false);
+        if (pick.action === 'open') {
+          const existingDoc = await vscode.workspace.openNotebookDocument(pick.uri);
+          await vscode.window.showNotebookDocument(existingDoc, { preserveFocus: false });
+        }
+      }
+      return;
+    }
+  }
 
   let existingNotebookUris: vscode.Uri[] = [];
   try {

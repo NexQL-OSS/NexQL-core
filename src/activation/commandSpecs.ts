@@ -89,7 +89,8 @@ import {
 import { cmdListRules, cmdDropRule, cmdShowRuleProperties, cmdRuleOperations } from '../commands/rules';
 import { cmdListTablespaces, cmdShowTablespaceProperties, cmdTablespaceOperations } from '../commands/tablespaces';
 import { cmdListPublications, cmdCreatePublication, cmdDropPublication, cmdShowPublicationProperties, cmdListSubscriptions, cmdDropSubscription, cmdShowSubscriptionProperties, cmdPublicationOperations } from '../commands/publications';
-import { cmdDropPolicy } from '../commands/rlsPolicies';
+import { cmdDropPolicy, cmdCreatePolicy } from '../commands/rlsPolicies';
+import { cmdMigrationHub } from '../features/migrations/migrationHub';
 import { cmdOpenListenNotify, cmdOpenListenNotifyFromPalette } from '../commands/listenNotify';
 import { cmdSearchSchema } from '../commands/schemaSearch';
 import { WorkspaceStateService } from '../services/WorkspaceStateService';
@@ -110,6 +111,10 @@ export function getCommandSpecs(
     {
       command: 'postgres-explorer.license.activate',
       callback: (prefillKey?: string) => cmdLicenseActivate(prefillKey)
+    },
+    {
+      command: 'postgres-explorer.migrationHub',
+      callback: () => cmdMigrationHub()
     },
     {
       command: 'postgres-explorer.license.manage',
@@ -1553,6 +1558,7 @@ export function getCommandSpecs(
     { command: 'postgres-explorer.listSubscriptions', callback: async (item: DatabaseTreeItem) => await cmdListSubscriptions(item, context) },
     { command: 'postgres-explorer.dropSubscription', callback: async (item: DatabaseTreeItem) => await cmdDropSubscription(item, context) },
     { command: 'postgres-explorer.dropPolicy', callback: async (item: DatabaseTreeItem) => await cmdDropPolicy(item, context) },
+    { command: 'postgres-explorer.createPolicy', callback: async (item: DatabaseTreeItem) => await cmdCreatePolicy(item, context) },
     { command: 'postgres-explorer.showSubscriptionProperties', callback: async (item: DatabaseTreeItem) => await cmdShowSubscriptionProperties(item, context) },
 
     // Phase 2: Schema Search

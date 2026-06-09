@@ -1,7 +1,18 @@
 import * as vscode from 'vscode';
 import { LicenseService } from './LicenseService';
+import { TelemetryService } from './TelemetryService';
+import { FeatureQuota, formatReset } from './quotaMath';
 
-/** Premium features gated behind a paid tier. */
+/** Fire-and-forget gate telemetry; never let instrumentation break gating. */
+function reportGate(feature: ProFeature, mode: Enforcement, allowed: boolean, paid: boolean): void {
+  try {
+    TelemetryService.getInstance().trackGateDecision(feature, mode, allowed, paid);
+  } catch {
+    /* telemetry is best-effort */
+  }
+}
+
+/** Premium features. Free tier gets metered access (see {@link FREE_QUOTAS}); paid is unlimited. */
 export enum ProFeature {
   AiAssistant = 'aiAssistant',
   SchemaDiff = 'schemaDiff',
@@ -9,6 +20,9 @@ export enum ProFeature {
   ExplainStudio = 'explainStudio',
   Dashboard = 'dashboard',
   UnlimitedSavedQueries = 'unlimitedSavedQueries',
+  BackupRestore = 'backupRestore',
+  DataImport = 'dataImport',
+  UnlimitedNotebooks = 'unlimitedNotebooks',
 }
 
 const FEATURE_LABELS: Record<ProFeature, string> = {
@@ -18,35 +32,71 @@ const FEATURE_LABELS: Record<ProFeature, string> = {
   [ProFeature.ExplainStudio]: 'Visual EXPLAIN',
   [ProFeature.Dashboard]: 'Real-time Dashboard',
   [ProFeature.UnlimitedSavedQueries]: 'Unlimited Saved Queries',
+  [ProFeature.BackupRestore]: 'Backup & Restore',
+  [ProFeature.DataImport]: 'Data Import',
+  [ProFeature.UnlimitedNotebooks]: 'Unlimited Notebooks',
+};
+
+/**
+ * Free-tier allowances (the freemium model). Paid tiers are unlimited. A feature
+ * present here grants metered access on the free tier — each action consumes one
+ * unit and the counter resets per period. A feature absent here is a paid-only
+ * unlock (e.g. {@link ProFeature.UnlimitedSavedQueries}, which is a stock cap
+ * enforced by SavedQueriesService rather than a periodic quota).
+ *
+ * Tuned so casual free use is comfortable; heavy/costly actions (AI, backups,
+ * imports) have firmer caps.
+ */
+export const FREE_QUOTAS: Partial<Record<ProFeature, FeatureQuota>> = {
+  [ProFeature.AiAssistant]: { limit: 25, period: 'day' },
+  [ProFeature.ExplainStudio]: { limit: 10, period: 'day' },
+  [ProFeature.Dashboard]: { limit: 5, period: 'day' },
+  [ProFeature.SchemaDiff]: { limit: 5, period: 'day' },
+  [ProFeature.SchemaDesigner]: { limit: 5, period: 'day' },
+  [ProFeature.DataImport]: { limit: 3, period: 'week' },
+  [ProFeature.BackupRestore]: { limit: 3, period: 'week' },
 };
 
 const PRICING_URL = 'https://nexql.astrx.dev/#pricing';
 
-type Enforcement = 'off' | 'soft' | 'hard';
+/** `off` = no metering (dev / dark-ship). `freemium` = free quotas enforced, paid unlimited. */
+type Enforcement = 'off' | 'freemium';
 
 /**
- * Rollout safety valve. Default `off` means every gate is a no-op, so shipping
- * the gating code does NOT change behavior for existing users. Flip to `hard`
- * (or `soft`) via settings / a release default once entitlement is live.
+ * Reads the enforcement mode. Legacy values `hard`/`soft` (full block / nudge)
+ * are mapped to `freemium` so existing settings keep working under the new model.
  */
 function enforcement(): Enforcement {
   const v = vscode.workspace
     .getConfiguration()
-    .get<string>('postgresExplorer.license.enforcement', 'hard');
-  return v === 'hard' || v === 'soft' ? v : 'off';
+    .get<string>('postgresExplorer.license.enforcement', 'freemium');
+  return v === 'off' ? 'off' : 'freemium';
 }
 
-/** Synchronous check for hot paths (e.g. webview rendering). */
-export function isProFeatureEnabled(_feature: ProFeature): boolean {
-  if (enforcement() !== 'hard') {
-    return true; // off / soft never block
-  }
-  return LicenseService.getInstance().isPaid();
+function quotaWord(period: FeatureQuota['period']): string {
+  return period === 'week' ? 'weekly' : 'daily';
 }
 
 /**
- * Async gate for commands. Returns true if the feature may proceed. When blocked,
- * shows an upgrade prompt. In `soft` mode it nudges once but still allows.
+ * Synchronous unlock check for render-time gating (e.g. webviews). Under freemium,
+ * any quota-metered feature is "enabled" (access is granted; usage is metered at
+ * the action via {@link requirePro}). Features without a quota are paid-only.
+ */
+export function isProFeatureEnabled(feature: ProFeature): boolean {
+  if (enforcement() === 'off') {
+    return true;
+  }
+  if (LicenseService.getInstance().isPaid()) {
+    return true;
+  }
+  return FREE_QUOTAS[feature] !== undefined;
+}
+
+/**
+ * Action gate for the freemium model. Returns true if the action may proceed.
+ * Paid → always. Free → consumes one unit of the feature's periodic quota; when
+ * the quota is exhausted it returns false with a non-blocking "resets …" nudge
+ * (the feature is rate-limited for the period, not permanently locked).
  */
 export async function requirePro(feature: ProFeature, _context?: vscode.ExtensionContext): Promise<boolean> {
   const mode = enforcement();
@@ -56,28 +106,48 @@ export async function requirePro(feature: ProFeature, _context?: vscode.Extensio
 
   const paid = LicenseService.getInstance().isPaid();
   if (paid) {
+    reportGate(feature, mode, true, paid);
     return true;
   }
 
-  const label = FEATURE_LABELS[feature];
+  // Free tier → meter against the periodic quota.
+  const { QuotaService } = await import('./QuotaService');
+  const result = await QuotaService.getInstance().tryConsume(feature);
 
-  if (mode === 'soft') {
-    // Non-blocking nudge.
-    void vscode.window
-      .showInformationMessage(`${label} is a NexQL paid feature.`, 'Upgrade', 'Activate License')
-      .then((choice) => handleUpgradeChoice(choice));
+  // No quota configured → either a paid-only unlock or unmetered: block paid-only, allow otherwise.
+  if (!result) {
+    const unlimitedOnly = FREE_QUOTAS[feature] === undefined;
+    reportGate(feature, mode, !unlimitedOnly, paid);
+    if (unlimitedOnly) {
+      promptUpgrade(`${FEATURE_LABELS[feature]} is a paid feature.`);
+      return false;
+    }
     return true;
   }
 
-  // hard
-  const choice = await vscode.window.showWarningMessage(
-    `${label} requires a NexQL subscription.`,
-    { modal: true },
-    'Upgrade',
-    'Activate License',
+  if (result.allowed) {
+    reportGate(feature, mode, true, paid);
+    if (result.remaining <= 1) {
+      const left = result.remaining;
+      void vscode.window.showInformationMessage(
+        `${FEATURE_LABELS[feature]}: ${left} free ${quotaWord(result.period)} use${left === 1 ? '' : 's'} left (${formatReset(result.resetsAt, new Date())}).`,
+      );
+    }
+    return true;
+  }
+
+  // Exhausted for this period — rate-limited, not blocked forever.
+  reportGate(feature, mode, false, paid);
+  promptUpgrade(
+    `Free ${quotaWord(result.period)} limit reached for ${FEATURE_LABELS[feature]} (${result.limit}/${result.period}). ${formatReset(result.resetsAt, new Date())}. Upgrade for unlimited.`,
   );
-  await handleUpgradeChoice(choice);
   return false;
+}
+
+function promptUpgrade(message: string): void {
+  void vscode.window
+    .showInformationMessage(message, 'Upgrade', 'Activate License')
+    .then((choice) => handleUpgradeChoice(choice));
 }
 
 async function handleUpgradeChoice(choice: string | undefined): Promise<void> {
@@ -88,7 +158,7 @@ async function handleUpgradeChoice(choice: string | undefined): Promise<void> {
   }
 }
 
-/** Inline upgrade HTML for webviews that gate synchronously. */
+/** Inline upgrade HTML for webviews that gate synchronously (paid-only features). */
 export function getUpgradeHtml(feature: ProFeature): string {
   const label = FEATURE_LABELS[feature];
   return `<!DOCTYPE html><html><head><meta charset="UTF-8">

@@ -4,6 +4,7 @@ import { DatabaseTreeItem } from '../providers/DatabaseTreeProvider';
 import { ConnectionManager } from '../services/ConnectionManager';
 import { SecretStorageService } from '../services/SecretStorageService';
 import { ErrorHandlers } from '../commands/helper';
+import { parseCsv, parseJson, parseData, formatFromExtension, type ParsedTable, type DataFormat } from './importParsers';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -11,7 +12,7 @@ import { ErrorHandlers } from '../commands/helper';
 
 interface ImportConfig {
   filePath: string;
-  format: 'csv' | 'tsv' | 'custom';
+  format: DataFormat;
   delimiter: string;
   quoteChar: string;
   escapeChar: string;
@@ -50,83 +51,6 @@ interface ImportProgress {
   log: string[];
   done: boolean;
   durationMs?: number;
-}
-
-// ---------------------------------------------------------------------------
-// CSV Parser  (RFC 4180 compliant, supports custom delimiter/quote/escape)
-// ---------------------------------------------------------------------------
-
-function parseCsv(
-  content: string,
-  delimiter: string,
-  quoteChar: string,
-  escapeChar: string,
-  hasHeader: boolean,
-  nullValue: string
-): { headers: string[]; rows: (string | null)[][] } {
-  const lines = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-  const result: (string | null)[][] = [];
-  let i = 0;
-  const len = lines.length;
-
-  const parseRow = (): (string | null)[] => {
-    const fields: (string | null)[] = [];
-    while (i < len && lines[i] !== '\n') {
-      // Skip delimiter between fields
-      if (fields.length > 0) {
-        if (lines[i] === delimiter[0]) { i++; }
-        else { break; }
-      }
-
-      if (lines[i] === quoteChar) {
-        // Quoted field
-        i++; // skip opening quote
-        let field = '';
-        while (i < len) {
-          const ch = lines[i];
-          if (ch === escapeChar && i + 1 < len && lines[i + 1] === quoteChar) {
-            field += quoteChar;
-            i += 2;
-          } else if (ch === quoteChar) {
-            i++; // skip closing quote
-            break;
-          } else {
-            field += ch;
-            i++;
-          }
-        }
-        fields.push(field === nullValue ? null : field);
-      } else {
-        // Unquoted field
-        let field = '';
-        while (i < len && lines[i] !== delimiter[0] && lines[i] !== '\n') {
-          field += lines[i++];
-        }
-        fields.push(field === nullValue || field === '' && nullValue === '' ? null : field === nullValue ? null : field || null);
-      }
-    }
-    if (i < len && lines[i] === '\n') { i++; }
-    return fields;
-  };
-
-  while (i < len) {
-    if (lines[i] === '\n') { i++; continue; } // blank line
-    const row = parseRow();
-    if (row.length > 0) { result.push(row); }
-  }
-
-  let headers: string[];
-  let rows: (string | null)[][];
-  if (hasHeader && result.length > 0) {
-    headers = result[0].map((h, idx) => (h != null ? String(h) : `col_${idx + 1}`));
-    rows = result.slice(1);
-  } else {
-    const maxCols = result.reduce((m, r) => Math.max(m, r.length), 0);
-    headers = Array.from({ length: maxCols }, (_, i) => `col_${i + 1}`);
-    rows = result;
-  }
-
-  return { headers, rows };
 }
 
 // ---------------------------------------------------------------------------
@@ -357,7 +281,9 @@ export class ImportDataPanel {
       canSelectMany: false,
       title: 'Select data file to import',
       filters: {
-        'Delimited text files': ['csv', 'tsv', 'txt'],
+        'Data files': ['csv', 'tsv', 'txt', 'json', 'ndjson', 'jsonl'],
+        'Delimited text': ['csv', 'tsv', 'txt'],
+        'JSON': ['json', 'ndjson', 'jsonl'],
         'All files': ['*'],
       },
     });
@@ -368,6 +294,7 @@ export class ImportDataPanel {
       const stat = fs.statSync(filePath);
       const sizeMb = (stat.size / 1024 / 1024).toFixed(1);
       const ext = filePath.split('.').pop()?.toLowerCase() ?? '';
+      const format = formatFromExtension(ext);
       const guessedDelimiter = ext === 'tsv' ? '\t' : ',';
 
       // Read just enough for preview (first 64 KB)
@@ -376,9 +303,32 @@ export class ImportDataPanel {
       const bytesRead = fs.readSync(fd, buf, 0, 65536, 0);
       fs.closeSync(fd);
       const sample = buf.slice(0, bytesRead).toString('utf8');
+      const truncated = stat.size > 65536;
 
-      // Parse sample to count rows and get headers
-      const { headers, rows } = parseCsv(sample, guessedDelimiter, '"', '"', true, '');
+      // Parse sample to count rows and get headers. A JSON array cannot be parsed
+      // when truncated mid-document, so fall back to reading the whole file (capped).
+      let parsed: ParsedTable;
+      if (format === 'json') {
+        if (truncated) {
+          if (stat.size > 50 * 1024 * 1024) {
+            throw new Error('JSON file too large to preview (> 50 MB). Import will still process the full file.');
+          }
+          parsed = parseJson(fs.readFileSync(filePath).toString('utf8'));
+        } else {
+          parsed = parseJson(sample);
+        }
+      } else {
+        parsed = parseData(sample, {
+          format,
+          delimiter: guessedDelimiter,
+          quoteChar: '"',
+          escapeChar: '"',
+          hasHeader: true,
+          nullValue: '',
+          allowPartialLast: truncated,
+        });
+      }
+      const { headers, rows } = parsed;
       const previewRows = rows.slice(0, 15);
 
       this._post({
@@ -386,7 +336,8 @@ export class ImportDataPanel {
         filePath,
         filename: filePath.split(/[\\/]/).pop(),
         sizeMb,
-        totalLines: stat.size > 65536 ? '> 15 (file too large to count in preview)' : rows.length,
+        format,
+        totalLines: truncated ? '> 15 (file too large to count in preview)' : rows.length,
         headers,
         previewRows,
         guessedDelimiter,
@@ -418,14 +369,20 @@ export class ImportDataPanel {
       // Read full file
       const rawContent = fs.readFileSync(config.filePath).toString('utf8');
 
-      const { headers, rows } = parseCsv(
-        rawContent,
-        config.delimiter === '\\t' ? '\t' : config.delimiter,
-        config.quoteChar || '"',
-        config.escapeChar || '"',
-        config.hasHeader,
-        config.nullValue
-      );
+      const { headers, rows } = parseData(rawContent, {
+        format: config.format,
+        delimiter: config.delimiter === '\\t' ? '\t' : config.delimiter,
+        quoteChar: config.quoteChar || '"',
+        escapeChar: config.escapeChar || '"',
+        hasHeader: config.hasHeader,
+        nullValue: config.nullValue,
+      });
+
+      // For JSON the full-file column set (and order) can differ from the preview
+      // sample, so resolve each mapping by header name and fall back to its index.
+      const headerIndex = new Map(headers.map((h, i) => [h, i]));
+      const indexForMapping = (m: ColumnMapping): number =>
+        headerIndex.has(m.fileHeader) ? (headerIndex.get(m.fileHeader) as number) : m.fileIndex;
 
       progress.total = rows.length;
       this._post({ type: 'progress', ...progress });
@@ -457,10 +414,7 @@ export class ImportDataPanel {
         for (const row of batch) {
           if (this._cancelRequested) { break; }
           try {
-            const values = enabledMappings.map(m => {
-              const val = row[m.fileIndex];
-              return val;
-            });
+            const values = enabledMappings.map(m => row[indexForMapping(m)] ?? null);
 
             const placeholders = values.map((_, i) => `$${i + 1}`).join(', ');
             const sql = `INSERT INTO "${config.schema}"."${config.table}" (${tableColumns}) VALUES (${placeholders})`;
@@ -896,6 +850,8 @@ export class ImportDataPanel {
             <option value="csv">CSV (comma-separated)</option>
             <option value="tsv">TSV (tab-separated)</option>
             <option value="custom">Custom delimiter</option>
+            <option value="json">JSON (array of objects)</option>
+            <option value="ndjson">NDJSON (one object per line)</option>
           </select>
         </div>
         <div class="form-group" id="delim-group">
@@ -1134,11 +1090,14 @@ export class ImportDataPanel {
     document.getElementById('file-icon').textContent = '📄';
     document.getElementById('toolbar-sub').textContent = msg.filename;
 
-    // Guess delimiter
-    if (msg.guessedDelimiter === '\\t') {
+    // Apply the format detected from the file extension.
+    if (msg.format) {
+      document.getElementById('fmt-format').value = msg.format;
+    } else if (msg.guessedDelimiter === '\\t') {
       document.getElementById('fmt-format').value = 'tsv';
       document.getElementById('fmt-delimiter').value = '\\t';
     }
+    onFormatChange();
 
     renderPreview();
     checkImportReady();
@@ -1150,11 +1109,19 @@ export class ImportDataPanel {
   function onFormatChange() {
     const fmt = document.getElementById('fmt-format').value;
     const delimGroup = document.getElementById('delim-group');
+    const isJson = fmt === 'json' || fmt === 'ndjson';
+    // Delimiter/quote/escape/header controls are meaningless for JSON inputs.
+    ['fmt-quote', 'fmt-escape'].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) { el.closest('.form-group').style.display = isJson ? 'none' : ''; }
+    });
     if (fmt === 'csv') {
       document.getElementById('fmt-delimiter').value = ',';
       delimGroup.style.display = '';
     } else if (fmt === 'tsv') {
       document.getElementById('fmt-delimiter').value = '\\t';
+      delimGroup.style.display = 'none';
+    } else if (isJson) {
       delimGroup.style.display = 'none';
     } else {
       delimGroup.style.display = '';

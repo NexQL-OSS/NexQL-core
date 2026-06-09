@@ -4,6 +4,8 @@ import { createAndShowNotebook, createMetadata, getConnectionWithPassword, valid
 import { ConnectionManager } from '../services/ConnectionManager';
 import { ErrorService } from '../services/ErrorService';
 import { SessionRegistry } from '../services/SessionRegistry';
+import { ConnectionUtils } from '../utils/connectionUtils';
+import { isProFeatureEnabled, ProFeature } from '../services/featureGates';
 
 /** Module-level ExtensionContext set once by NotebookBuilder.setContext() */
 let _extensionContext: vscode.ExtensionContext | undefined;
@@ -258,6 +260,30 @@ export class NotebookBuilder {
           'Open new notebook instead'
         );
         if (choice === 'Open new notebook instead') {
+          const connectionNameOrId = (this.metadata?.name ?? this.metadata?.connectionName ?? this.metadata?.connectionId) as string | undefined;
+          if (connectionNameOrId) {
+            const { count: totalNotebooks, uris: connectionNotebookUris } = await ConnectionUtils.countNotebooksInConnection(context, connectionNameOrId);
+            const isUnlimited = isProFeatureEnabled(ProFeature.UnlimitedNotebooks);
+
+            if (!isUnlimited && totalNotebooks >= 3) {
+              const choiceLimit = await vscode.window.showWarningMessage(
+                `Free tier is limited to 3 notebooks per connection. Upgrade to Sponsor or Team for unlimited notebooks.`,
+                'Open Existing Notebook',
+                'Upgrade'
+              );
+              if (choiceLimit === 'Upgrade') {
+                await vscode.commands.executeCommand('postgres-explorer.license.openUpgrade');
+              } else if (choiceLimit === 'Open Existing Notebook') {
+                const { pickNotebookFromList } = await import('./notebook');
+                const pick = await pickNotebookFromList(connectionNotebookUris, 'Open Existing Notebook', false);
+                if (pick.action === 'open') {
+                  const existingDoc = await vscode.workspace.openNotebookDocument(pick.uri);
+                  await vscode.window.showNotebookDocument(existingDoc, { preserveFocus: false });
+                }
+              }
+              return;
+            }
+          }
           await this.showNew();
           return;
         }

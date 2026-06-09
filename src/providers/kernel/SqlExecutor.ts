@@ -1,5 +1,6 @@
 
 import * as vscode from 'vscode';
+import { debugLog, debugWarn } from '../../common/logger';
 import { NotebookCellOutput, NotebookCellOutputItem } from 'vscode';
 import { ConnectionManager } from '../../services/ConnectionManager';
 import { TelemetryService } from '../../services/TelemetryService';
@@ -542,7 +543,7 @@ export class SqlExecutor {
   }
 
   public async executeCell(cell: vscode.NotebookCell) {
-    console.log(`SqlExecutor: Starting cell execution. Controller ID: ${this._controller.id}`);
+    debugLog(`SqlExecutor: Starting cell execution. Controller ID: ${this._controller.id}`);
     const execution = this._controller.createNotebookCellExecution(cell);
     const startTime = Date.now();
     execution.start(startTime);
@@ -576,12 +577,12 @@ export class SqlExecutor {
             connectionId: connection.id,
           });
           if (!persisted) {
-            console.warn(
+            debugWarn(
               'Notebook metadata connectionId corrected in memory only; workspace edit was not applied.',
             );
           }
         } catch (err) {
-          console.warn('Failed to update notebook metadata with correct connection ID:', err);
+          debugWarn('Failed to update notebook metadata with correct connection ID:', err);
         }
       }
 
@@ -604,16 +605,16 @@ export class SqlExecutor {
         name: connection.name
       }, cell.notebook.uri.toString());
 
-      console.log('SqlExecutor: Connected to database');
+      debugLog('SqlExecutor: Connected to database');
 
       // Get PostgreSQL backend PID for query cancellation
       let backendPid: number | null = null;
       try {
         const pidResult = await client.query('SELECT pg_backend_pid()');
         backendPid = pidResult.rows[0]?.pg_backend_pid || null;
-        console.log('SqlExecutor: Backend PID:', backendPid);
+        debugLog('SqlExecutor: Backend PID:', backendPid);
       } catch (err) {
-        console.warn('Failed to get backend PID:', err);
+        debugWarn('Failed to get backend PID:', err);
       }
 
       const queryText = cell.document.getText();
@@ -654,7 +655,7 @@ export class SqlExecutor {
       };
       client.on('notice', noticeListener);
 
-      console.log('SqlExecutor: Executing', statements.length, 'statement(s)');
+      debugLog('SqlExecutor: Executing', statements.length, 'statement(s)');
 
       // Safety check: Pre-analyze all queries for dangerous operations
       const queryAnalyzer = QueryAnalyzer.getInstance();
@@ -826,7 +827,7 @@ export class SqlExecutor {
           autoLimitApplied = queryForExecution !== originalQuery;
         }
 
-        console.log(`SqlExecutor: Executing statement ${stmtIndex + 1}/${statements.length}:`, queryForExecution.substring(0, 100));
+        debugLog(`SqlExecutor: Executing statement ${stmtIndex + 1}/${statements.length}:`, queryForExecution.substring(0, 100));
 
         let result;
         const telemetry = TelemetryService.getInstance();
@@ -906,10 +907,10 @@ export class SqlExecutor {
             explainPlan
           );
 
-          console.log('[Performance] Hash:', queryHash);
-          console.log('[Performance] Baseline:', JSON.stringify(baseline));
-          console.log('[Performance] Duration:', durationMs);
-          console.log('[Performance] Analysis:', JSON.stringify(performanceAnalysis));
+          debugLog('[Performance] Hash:', queryHash);
+          debugLog('[Performance] Baseline:', JSON.stringify(baseline));
+          debugLog('[Performance] Duration:', durationMs);
+          debugLog('[Performance] Analysis:', JSON.stringify(performanceAnalysis));
 
           // Build output data
           const tableInfo = await this.getTableInfo(client, result, queryForExecution);
@@ -1017,7 +1018,7 @@ export class SqlExecutor {
             } catch (sabError) {
               // Some renderer/runtime configurations can reject SAB usage.
               // Fall back to inline rows so result rendering still succeeds.
-              console.warn('SqlExecutor: SharedArrayBuffer transport unavailable, using inline rows.', sabError);
+              debugWarn('SqlExecutor: SharedArrayBuffer transport unavailable, using inline rows.', sabError);
             }
           }
 
@@ -1191,7 +1192,7 @@ export class SqlExecutor {
       execution.end(true, Date.now());
       void this.maybePromptForReview();
       // Update notebook title after successful cell execution
-      updateNotebookTitle(cell.notebook).catch(err => console.warn('Failed to update notebook title:', err));
+      updateNotebookTitle(cell.notebook).catch(err => debugWarn('Failed to update notebook title:', err));
 
     } catch (err: any) {
       console.error('SqlExecutor: Execution failed:', err);
@@ -1222,7 +1223,7 @@ export class SqlExecutor {
 
       execution.end(false, Date.now());
       // Update notebook title even after failed execution (cell content may have changed)
-      updateNotebookTitle(cell.notebook).catch(err => console.warn('Failed to update notebook title:', err));
+      updateNotebookTitle(cell.notebook).catch(err => debugWarn('Failed to update notebook title:', err));
     }
   }
 
@@ -1311,12 +1312,12 @@ export class SqlExecutor {
             connectionId: connection.id,
           });
           if (!persisted) {
-            console.warn(
+            debugWarn(
               'Notebook metadata connectionId corrected in memory only; workspace edit was not applied.',
             );
           }
         } catch (err) {
-          console.warn('Failed to update notebook metadata with correct connection ID:', err);
+          debugWarn('Failed to update notebook metadata with correct connection ID:', err);
         }
       }
 

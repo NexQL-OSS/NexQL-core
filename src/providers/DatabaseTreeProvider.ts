@@ -1,5 +1,6 @@
 import { Client, PoolClient } from 'pg';
 import * as vscode from 'vscode';
+import { debugWarn } from '../common/logger';
 import * as path from 'path';
 import { ConnectionManager } from '../services/ConnectionManager';
 import { getSchemaCache, SchemaCache } from '../lib/schema-cache';
@@ -71,7 +72,7 @@ export class DatabaseTreeProvider implements vscode.TreeDataProvider<DatabaseTre
    */
   public async revealItem(connectionId: string, databaseName?: string, schema?: string, objectName?: string, objectType?: string): Promise<void> {
     if (!this.treeView) {
-      console.warn('TreeView not initialized for reveal');
+      debugWarn('TreeView not initialized for reveal');
       return;
     }
 
@@ -96,19 +97,13 @@ export class DatabaseTreeProvider implements vscode.TreeDataProvider<DatabaseTre
         connectionId
       );
 
-      // Reveal with expand
-      await this.treeView.reveal(connectionItem, { select: true, focus: true, expand: 1 });
-
-      // If database is specified, try to expand and reveal it
-      if (databaseName) {
-        // TODO: Implement deeper reveal logic for database/schema/object
-        // This would require fetching children and finding the exact item
-        vscode.window.showInformationMessage(`Revealed connection: ${connection.name || connection.host}`);
-      } else {
-        vscode.window.showInformationMessage(`Revealed connection: ${connection.name || connection.host}`);
-      }
+      // Reveal and expand the connection. Deeper levels (database/schema/object)
+      // need TreeDataProvider.getParent to build a reveal path, which this tree
+      // does not implement; expanding the connection lets the user drill in from
+      // a focused, scrolled-into-view starting point without a misleading popup.
+      await this.treeView.reveal(connectionItem, { select: true, focus: true, expand: databaseName ? 3 : 1 });
     } catch (err) {
-      console.error('Error revealing item:', err);
+      debugWarn('Error revealing item:', err);
       vscode.window.showWarningMessage('Could not reveal item in explorer');
     }
   }

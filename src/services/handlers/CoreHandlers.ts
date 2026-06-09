@@ -8,6 +8,7 @@ import { ConnectionManager } from '../ConnectionManager';
 import { errorResponse, okResponse } from './messaging';
 import { extensionContext } from '../../extension';
 import { QueryAnalyzer } from '../../services/QueryAnalyzer';
+import { debugWarn } from '../../common/logger';
 
 export class ShowConnectionSwitcherHandler implements IMessageHandler {
   constructor(private statusBar: any) { }
@@ -361,7 +362,7 @@ export class ExportRequestHandler implements IMessageHandler {
       const doc = await vscode.workspace.openTextDocument(uri);
       await vscode.window.showTextDocument(doc, { preview: false, preserveFocus: false });
     } catch (err) {
-      console.warn('Export file open failed:', err);
+      debugWarn('Export file open failed:', err);
     }
   }
 

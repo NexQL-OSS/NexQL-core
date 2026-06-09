@@ -8,6 +8,7 @@
  * - webviewHtml: Provides the webview HTML template
  */
 import * as vscode from 'vscode';
+import { debugLog } from '../common/logger';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -32,7 +33,7 @@ import {
   writeAiScopeSettings,
 } from '../features/aiAssistant/aiConfig';
 import { AiModelCatalogService } from '../features/aiAssistant/AiModelCatalogService';
-import { isProFeatureEnabled, getUpgradeHtml, ProFeature } from '../services/featureGates';
+import { isProFeatureEnabled, getUpgradeHtml, ProFeature, requirePro } from '../services/featureGates';
 
 /** P1.4 — max rows sampled into the AI prompt for "Analyze Data" on large result sets. */
 const AI_ANALYZE_MAX_SAMPLE_ROWS = 200;
@@ -203,7 +204,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           await this._loadSession(data.sessionId);
           break;
         case 'deleteSession':
-          console.log('[ChatView] Received deleteSession request for:', data.sessionId);
+          debugLog('[ChatView] Received deleteSession request for:', data.sessionId);
           await this._deleteSession(data.sessionId);
           break;
         case 'explainError':
@@ -312,7 +313,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       return;
     }
 
-    console.log('[ChatViewProvider] Sending file attachments to webview');
+    debugLog('[ChatViewProvider] Sending file attachments to webview');
 
     try {
       const tempDir = os.tmpdir();
@@ -531,7 +532,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     }
 
     if (mentions && mentions.length > 0) {
-      console.log('[ChatView] Processing mentions for schema context...');
+      debugLog('[ChatView] Processing mentions for schema context...');
 
       if (mentions[0]) {
         this._currentDatabase = mentions[0].database;
@@ -560,7 +561,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       let schemaContext = '\n\n--- SCHEMA CONTEXT ---\n';
 
       for (const mention of mentions) {
-        console.log('[ChatView] Fetching schema for:', mention.schema + '.' + mention.name, 'type:', mention.type, 'connectionId:', mention.connectionId);
+        debugLog('[ChatView] Fetching schema for:', mention.schema + '.' + mention.name, 'type:', mention.type, 'connectionId:', mention.connectionId);
         const obj: DbObject = {
           name: mention.name,
           type: mention.type,
@@ -592,10 +593,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       schemaContext += '\n--- END SCHEMA CONTEXT ---\n\n';
 
       aiMessage = schemaContext + fullMessage;
-      console.log('[ChatView] AI message with schema context length:', aiMessage.length);
-      console.log('[ChatView] ========== FULL AI MESSAGE ==========');
-      console.log(aiMessage);
-      console.log('[ChatView] ========== END FULL AI MESSAGE ==========');
+      debugLog('[ChatView] AI message with schema context length:', aiMessage.length);
+      debugLog('[ChatView] ========== FULL AI MESSAGE ==========');
+      debugLog(aiMessage);
+      debugLog('[ChatView] ========== END FULL AI MESSAGE ==========');
     }
 
     return { fullMessage, aiMessage };
@@ -607,7 +608,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       const chatSettings = readAiScopeSettings(config, 'chat');
       const provider = chatSettings.provider;
       const modelInfo = await this._aiService.getModelInfo(provider, config, 'chat');
-      console.log('[ChatView] Using AI provider:', provider, 'Model:', modelInfo);
+      debugLog('[ChatView] Using AI provider:', provider, 'Model:', modelInfo);
 
       void this._pushModelCatalogToWebview();
 
@@ -618,7 +619,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       let usageInfo: string | undefined;
       const aiStartTime = Date.now();
 
-      console.log('[ChatView] Calling AI provider:', provider);
+      debugLog('[ChatView] Calling AI provider:', provider);
       // Reuse the existing customSystemPrompt channel: ChatViewProvider selects the
       // capability-specific prompt; AiService provider methods stay prompt-agnostic.
       const customSystem =
@@ -642,7 +643,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         usageInfo = `${aiElapsed}s`;
       }
 
-      console.log('[ChatView] AI response received, length:', responseText.length);
+      debugLog('[ChatView] AI response received, length:', responseText.length);
 
       responseText = this._sanitizeResponse(responseText);
 
@@ -737,14 +738,20 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       return;
     }
 
+    // Freemium: meter each AI message against the daily free quota (paid = unlimited).
+    // requirePro consumes one unit and surfaces a "resets …" nudge when exhausted.
+    if (!(await requirePro(ProFeature.AiAssistant))) {
+      return;
+    }
+
     this._isProcessing = true;
 
-    console.log('[ChatView] ========== HANDLING USER MESSAGE ==========');
-    console.log('[ChatView] Message:', message);
-    console.log('[ChatView] Attachments:', attachments?.length || 0);
-    console.log('[ChatView] Mentions:', mentions?.length || 0);
+    debugLog('[ChatView] ========== HANDLING USER MESSAGE ==========');
+    debugLog('[ChatView] Message:', message);
+    debugLog('[ChatView] Attachments:', attachments?.length || 0);
+    debugLog('[ChatView] Mentions:', mentions?.length || 0);
     if (mentions && mentions.length > 0) {
-      console.log('[ChatView] Mention details:', JSON.stringify(mentions, null, 2));
+      debugLog('[ChatView] Mention details:', JSON.stringify(mentions, null, 2));
     }
 
     try {
@@ -776,7 +783,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
     // Log if we found and cleaned anything
     if (cleaned !== response) {
-      console.log('[ChatView] Sanitized AI response - removed HTML artifacts');
+      debugLog('[ChatView] Sanitized AI response - removed HTML artifacts');
     }
 
     return cleaned;
@@ -995,9 +1002,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   }
 
   private async _deleteSession(sessionId: string): Promise<void> {
-    console.log('[ChatView] _deleteSession called with:', sessionId);
+    debugLog('[ChatView] _deleteSession called with:', sessionId);
     const wasCurrentSession = await this._sessionService.deleteSession(sessionId);
-    console.log('[ChatView] Session deleted, wasCurrentSession:', wasCurrentSession);
+    debugLog('[ChatView] Session deleted, wasCurrentSession:', wasCurrentSession);
 
     if (wasCurrentSession) {
       this._messages = [];
@@ -1005,7 +1012,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       this._updateChatHistory();
     }
 
-    console.log('[ChatView] Sending updated history to webview...');
+    debugLog('[ChatView] Sending updated history to webview...');
     this._sendHistoryToWebview();
   }
 

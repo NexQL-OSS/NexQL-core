@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { debugLog } from '../common/logger';
 import { CompletionProvider } from './kernel/CompletionProvider';
 import { ParamCommentCodeActionProvider } from './kernel/ParamCommentCodeActionProvider';
 import { SqlExecutor } from './kernel/SqlExecutor';
@@ -119,7 +120,7 @@ export class PostgresKernel implements vscode.Disposable {
     registry.register('notebookOutputToolbar', new NotebookOutputToolbarHandler());
 
     (this._controller as any).onDidReceiveMessage(async (event: any) => {
-      // console.log('[NotebookKernel] onDidReceiveMessage', event.message.type);
+      // debugLog('[NotebookKernel] onDidReceiveMessage', event.message.type);
       const msg = event.message;
 
       // Handle notebook-level TopBar actions

@@ -624,6 +624,7 @@ DROP DATABASE IF EXISTS "${item.label}";`)
 
 export async function cmdBackupDatabase(item: DatabaseTreeItem, context: vscode.ExtensionContext) {
   try {
+    if (!(await requirePro(ProFeature.BackupRestore, context))) return;
     if (!item.connectionId || !item.databaseName) {
       throw new Error('Select a database in the explorer');
     }
@@ -641,6 +642,7 @@ export async function cmdBackupDatabase(item: DatabaseTreeItem, context: vscode.
 
 export async function cmdRestoreDatabase(item: DatabaseTreeItem, context: vscode.ExtensionContext) {
   try {
+    if (!(await requirePro(ProFeature.BackupRestore, context))) return;
     if (!item.connectionId || !item.databaseName) {
       throw new Error('Select a database in the explorer');
     }
@@ -658,6 +660,7 @@ export async function cmdRestoreDatabase(item: DatabaseTreeItem, context: vscode
 
 /** Command Palette: pick connection → database, then open Backup & Restore panel. */
 export async function cmdOpenBackupWorkspaceFromPalette(context: vscode.ExtensionContext): Promise<void> {
+  if (!(await requirePro(ProFeature.BackupRestore, context))) return;
   const connections =
     vscode.workspace.getConfiguration().get<Array<Record<string, unknown>>>('postgresExplorer.connections') || [];
   if (connections.length === 0) {

@@ -340,7 +340,9 @@ async function gatherCellContext(cell: vscode.NotebookCell, context: vscode.Exte
   try {
     const metadata = cell.notebook.metadata as PostgresMetadata;
     if (metadata?.databaseName) databaseInfo = { name: metadata.databaseName };
-  } catch { }
+  } catch (e) {
+    outputChannel.appendLine('Failed to read notebook metadata for AI context: ' + e);
+  }
 
   return {
     currentQuery,

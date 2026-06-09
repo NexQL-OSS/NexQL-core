@@ -7,6 +7,7 @@ import { ConnectionUtils } from '../../utils/connectionUtils';
 import { SqlExecutor } from '../../providers/kernel/SqlExecutor';
 import { safelyPostMessage } from './messaging';
 import { extensionContext } from '../../extension';
+import { debugLog, debugWarn } from '../../common/logger';
 export { FkLookupHandler } from './FkLookupHandler';
 
 function quoteIdentifier(identifier: string): string {
@@ -133,7 +134,7 @@ export class CancelQueryHandler implements IMessageHandler {
     if (context.executor) {
       await context.executor.cancelQuery(message);
     } else {
-      console.warn('CancelQueryHandler: No executor provided in context');
+      debugWarn('CancelQueryHandler: No executor provided in context');
     }
   }
 }
@@ -142,7 +143,7 @@ export class DeleteRowsHandler implements IMessageHandler {
   async handle(message: any, context: { editor: vscode.NotebookEditor }) {
     if (!context.editor) return;
 
-    console.log('[DeleteRowsHandler] Called', message);
+    debugLog('[DeleteRowsHandler] Called', message);
     const { tableInfo, rows, row } = message; // Support both 'rows' (array) and legacy 'row' (single)
     const targets = rows || (row ? [row] : []);
 

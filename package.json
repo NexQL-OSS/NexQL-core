@@ -718,6 +718,12 @@
         "icon": "$(archive)"
       },
       {
+        "command": "postgres-explorer.migrationHub",
+        "title": "Migration Hub: Detect Framework & Show Runbook",
+        "category": "NexQL",
+        "icon": "$(git-commit)"
+      },
+      {
         "command": "postgres-explorer.generateCreateScript",
         "title": "CREATE Script",
         "icon": "$(file-code)"
@@ -1253,6 +1259,12 @@
         "category": "NexQL"
       },
       {
+        "command": "postgres-explorer.createPolicy",
+        "title": "RLS Policy Studio...",
+        "icon": "$(shield)",
+        "category": "NexQL"
+      },
+      {
         "command": "postgres-explorer.enableTrigger",
         "title": "Enable Trigger",
         "icon": "$(play)",
@@ -1719,21 +1731,25 @@
     "configuration": {
       "title": "PostgreSQL Explorer",
       "properties": {
+        "postgresExplorer.debug": {
+          "type": "boolean",
+          "default": false,
+          "scope": "machine",
+          "markdownDescription": "Write verbose diagnostic logging to the **NexQL Debug** output channel. Off by default to keep SQL, schema, and AI payloads out of logs."
+        },
         "postgresExplorer.license.enforcement": {
           "type": "string",
           "enum": [
             "off",
-            "soft",
-            "hard"
+            "freemium"
           ],
           "enumDescriptions": [
-            "No gating — all features available to everyone.",
-            "Show upgrade nudges on paid features but never block.",
-            "Require an active subscription to use paid features (default)."
+            "No metering — all features unlimited for everyone (development / dark-ship).",
+            "Freemium: free tier gets daily/weekly per-feature allowances; paid tiers are unlimited (default)."
           ],
-          "default": "hard",
+          "default": "freemium",
           "scope": "machine",
-          "markdownDescription": "Controls premium feature gating. Set to `hard` to require an active subscription for paid features by default."
+          "markdownDescription": "Controls premium feature access. `freemium` (default) gives the free tier metered daily/weekly use of premium features and unlimited use to paid subscribers. `off` disables all metering. Legacy values `soft`/`hard` are treated as `freemium`."
         },
         "postgresExplorer.license.endpoint": {
           "type": "string",
@@ -1877,16 +1893,6 @@
           "default": 8000,
           "minimum": 512,
           "description": "Approximate token budget for AI requests (system prompt + schema context + chat history). Oldest history is dropped first, then schema is trimmed, to keep requests within this budget."
-        },
-        "postgresExplorer.streaming.enabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "Enable cursor-based streaming for large result sets"
-        },
-        "postgresExplorer.streaming.batchSize": {
-          "type": "number",
-          "default": 200,
-          "description": "Number of rows per batch when streaming results"
         },
         "postgresExplorer.telemetry.mode": {
           "type": "string",
@@ -2987,6 +2993,11 @@
           "command": "postgres-explorer.dropPolicy",
           "when": "view == postgresExplorer && viewItem == policy",
           "group": "9_destructive"
+        },
+        {
+          "command": "postgres-explorer.createPolicy",
+          "when": "view == postgresExplorer && viewItem == table",
+          "group": "1_actions"
         },
         {
           "command": "postgres-explorer.createTrigger",

@@ -9,6 +9,7 @@ import { ConnectionManager } from '../services/ConnectionManager';
 import { resolveTreeItemConnection } from '../schemaDesigner/connectionHelper';
 import { ErrorHandlers } from './helper';
 import { requirePro, ProFeature } from '../services/featureGates';
+import { debugLog } from '../common/logger';
 
 /**
  * Open the Visual Table Designer for an existing table (Edit mode)
@@ -17,7 +18,7 @@ export async function cmdOpenTableDesigner(
   item: DatabaseTreeItem,
   context: vscode.ExtensionContext
 ): Promise<void> {
-  console.log('[SchemaDesigner] cmdOpenTableDesigner called with item:', JSON.stringify({
+  debugLog('[SchemaDesigner] cmdOpenTableDesigner called with item:', JSON.stringify({
     label: item?.label,
     type: item?.type,
     connectionId: item?.connectionId,
@@ -59,7 +60,7 @@ export async function cmdOpenSchemaDiff(
   item: DatabaseTreeItem,
   context: vscode.ExtensionContext
 ): Promise<void> {
-  console.log('[SchemaDesigner] cmdOpenSchemaDiff called with item:', JSON.stringify({
+  debugLog('[SchemaDesigner] cmdOpenSchemaDiff called with item:', JSON.stringify({
     label: item?.label,
     type: item?.type,
     connectionId: item?.connectionId,
@@ -308,5 +309,6 @@ export async function cmdImportData(
   item: DatabaseTreeItem,
   context: vscode.ExtensionContext
 ): Promise<void> {
+  if (!(await requirePro(ProFeature.DataImport, context))) return;
   await ImportDataPanel.open(item, context);
 }

@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { getTransactionManager } from '../services/TransactionManager';
 import { createTransactionToolbar, updateToolbarState } from './TransactionUI';
+import { debugLog } from '../common/logger';
 
 /**
  * Manages transaction toolbar injection and lifecycle for notebooks
@@ -137,7 +138,7 @@ export class TransactionToolbarManager {
       ...payload,
     };
 
-    console.log('[TransactionToolbarManager] Sending message:', message);
+    debugLog('[TransactionToolbarManager] Sending message:', message);
 
     // Use VS Code API to send message to kernel
     (window as any).acquireVsCodeApi().postMessage({

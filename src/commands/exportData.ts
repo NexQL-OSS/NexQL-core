@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
+import { debugLog } from '../common/logger';
 
 export async function cmdExportData(args: any) {
-    console.log('Extension: Export command triggered with args:', args);
+    debugLog('Extension: Export command triggered with args:', args);
     try {
         const { format, content, filename } = args;
         const saveUri = await vscode.window.showSaveDialog({
@@ -13,14 +14,14 @@ export async function cmdExportData(args: any) {
             saveLabel: `Export as ${format.toUpperCase()}`
         });
 
-        console.log('Extension: Save dialog result:', saveUri?.fsPath);
+        debugLog('Extension: Save dialog result:', saveUri?.fsPath);
         if (saveUri) {
-            console.log('Extension: Writing file content, size:', content.length);
+            debugLog('Extension: Writing file content, size:', content.length);
             await vscode.workspace.fs.writeFile(
                 saveUri,
                 Buffer.from(content, 'utf-8')
             );
-            console.log('Extension: File written successfully');
+            debugLog('Extension: File written successfully');
             vscode.window.showInformationMessage(
                 `Successfully exported to ${saveUri.fsPath}`
             );
@@ -33,7 +34,7 @@ export async function cmdExportData(args: any) {
 
 export async function cmdSaveFile(args: any) {
     try {
-        console.log('Saving file with args:', args);
+        debugLog('Saving file with args:', args);
         const { content, filename, type } = args;
 
         const saveUri = await vscode.window.showSaveDialog({

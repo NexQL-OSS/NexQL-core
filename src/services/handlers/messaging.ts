@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { debugWarn } from '../../common/logger';
 
 interface SafePostMessageOptions {
   contextLabel: string;
@@ -45,7 +46,7 @@ export async function safelyPostMessage(
   try {
     const delivered = await postMessage(message);
     if (!delivered) {
-      console.warn(`[${options.contextLabel}] postMessage returned false; webview may be closed.`);
+      debugWarn(`[${options.contextLabel}] postMessage returned false; webview may be closed.`);
       if (options.notifyOnFailure) {
         await vscode.window.showWarningMessage(
           `${options.contextLabel}: could not deliver update to the result view.`,

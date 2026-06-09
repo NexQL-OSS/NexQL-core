@@ -1,3 +1,39 @@
+function quoteIdent(value: string): string {
+  return `"${value.replace(/"/g, '""')}"`;
+}
+
+export type PartitionStrategy = 'range' | 'list' | 'hash' | 'default';
+
+export interface PartitionDefinition {
+  parentSchema: string;
+  parentTable: string;
+  partitionSchema?: string;
+  partitionName: string;
+  strategy: PartitionStrategy;
+  /** RANGE: raw lower/upper bound expressions, e.g. "'2024-01-01'" or "MINVALUE". */
+  from?: string;
+  to?: string;
+  /** LIST: raw comma-separated value expressions, e.g. "'EU', 'US'". */
+  values?: string;
+  /** HASH: modulus + remainder. */
+  modulus?: number;
+  remainder?: number;
+}
+
+/** Render the FOR VALUES / DEFAULT bound clause for a partition definition. */
+export function renderPartitionBound(def: PartitionDefinition): string {
+  switch (def.strategy) {
+    case 'range':
+      return `FOR VALUES FROM (${def.from ?? ''}) TO (${def.to ?? ''})`;
+    case 'list':
+      return `FOR VALUES IN (${def.values ?? ''})`;
+    case 'hash':
+      return `FOR VALUES WITH (MODULUS ${def.modulus ?? 0}, REMAINDER ${def.remainder ?? 0})`;
+    case 'default':
+      return 'DEFAULT';
+  }
+}
+
 export const PartitionSQL = {
   list: (schema: string, table: string) => `
 SELECT c.relname AS partition_name,
@@ -37,4 +73,12 @@ CREATE TABLE "${schema}"."partition_name" PARTITION OF "${schema}"."${table}"
 CREATE TABLE "${schema}"."partition_name" PARTITION OF "${schema}"."${table}"
   FOR VALUES IN ('value1', 'value2');
 `,
+
+  /** Build a concrete CREATE TABLE ... PARTITION OF statement from a definition. */
+  createPartition: (def: PartitionDefinition): string => {
+    const partSchema = def.partitionSchema || def.parentSchema;
+    const child = `${quoteIdent(partSchema)}.${quoteIdent(def.partitionName)}`;
+    const parent = `${quoteIdent(def.parentSchema)}.${quoteIdent(def.parentTable)}`;
+    return `CREATE TABLE ${child} PARTITION OF ${parent}\n  ${renderPartitionBound(def)};`;
+  },
 };

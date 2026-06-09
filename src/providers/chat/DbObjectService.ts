@@ -2,6 +2,7 @@
  * Database object fetching service for @ mentions
  */
 import * as vscode from 'vscode';
+import { debugLog } from '../../common/logger';
 import { Client, PoolClient } from 'pg';
 import { ConnectionManager } from '../../services/ConnectionManager';
 import { getSchemaCache, SchemaCache } from '../../lib/schema-cache';
@@ -239,10 +240,10 @@ export class DbObjectService {
     const objects: DbObject[] = [];
     const connections = vscode.workspace.getConfiguration().get<any[]>('postgresExplorer.connections') || [];
 
-    console.log('[ChatView] Fetching DB objects, connections found:', connections.length);
+    debugLog('[ChatView] Fetching DB objects, connections found:', connections.length);
 
     if (connections.length === 0) {
-      console.log('[ChatView] No connections configured');
+      debugLog('[ChatView] No connections configured');
       return objects;
     }
 
@@ -250,7 +251,7 @@ export class DbObjectService {
       let client: PoolClient | undefined;
       try {
         const connName = conn.name || conn.host;
-        console.log('[ChatView] Processing connection:', connName);
+        debugLog('[ChatView] Processing connection:', connName);
 
         client = await ConnectionManager.getInstance().getPooledClient({
           id: conn.id,
@@ -265,7 +266,7 @@ export class DbObjectService {
           "SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname"
         );
 
-        console.log('[ChatView] Found databases:', dbResult.rows.length);
+        debugLog('[ChatView] Found databases:', dbResult.rows.length);
 
         for (const dbRow of dbResult.rows) {
           const dbName = dbRow.datname;
@@ -396,7 +397,7 @@ export class DbObjectService {
       }
     }
 
-    console.log('[ChatView] Total objects found:', objects.length);
+    debugLog('[ChatView] Total objects found:', objects.length);
     this._cache = objects;
     return objects;
   }
@@ -576,7 +577,7 @@ export class DbObjectService {
 
     // Check cache first
     if (this._objectSchemaCache.has(cacheKey)) {
-      console.log('[ChatView] Cache hit for:', cacheKey);
+      debugLog('[ChatView] Cache hit for:', cacheKey);
       const cached = this._objectSchemaCache.get(cacheKey)!;
       // Refresh LRU order (delete and re-add)
       this._objectSchemaCache.delete(cacheKey);
@@ -660,7 +661,7 @@ export class DbObjectService {
   clearCache(): void {
     this._objectSchemaCache.clear();
     this._dbListCache.clear();
-    console.log('[ChatView] Schema caches cleared');
+    debugLog('[ChatView] Schema caches cleared');
   }
 
   /**

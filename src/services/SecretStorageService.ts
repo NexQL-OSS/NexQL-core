@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { debugLog } from '../common/logger';
 
 export class SecretStorageService {
   private static instance: SecretStorageService;
@@ -147,6 +148,6 @@ export async function migrateExistingPasswords(context: vscode.ExtensionContext)
   }
 
   if (migratedCount > 0) {
-    console.log(`Migrated ${migratedCount} passwords to Secret Storage`);
+    debugLog(`Migrated ${migratedCount} passwords to Secret Storage`);
   }
 }

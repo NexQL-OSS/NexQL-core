@@ -32,6 +32,7 @@ const EVENT_SCHEMA: Record<string, { kind: TelemetryEventKind; allowedProps: Set
   saved_query_used: { kind: 'usage', allowedProps: new Set(['queryAgeBucket', 'querySize']) },
   schema_diff_generated: { kind: 'usage', allowedProps: new Set(['tableCountBucket', 'diffSizeBucket']) },
   dashboard_opened: { kind: 'usage', allowedProps: new Set([]) },
+  gate_decision: { kind: 'usage', allowedProps: new Set(['feature', 'enforcement', 'allowed', 'paid']) },
   daily_active_user: { kind: 'usage', allowedProps: new Set(['version']) },
   span_completed: { kind: 'performance', allowedProps: new Set(['spanName', 'durationBucket', 'success']) },
 };
@@ -376,6 +377,15 @@ export class TelemetryService {
    */
   public trackDashboardOpened(): void {
     this.trackEvent('dashboard_opened', {});
+  }
+
+  /**
+   * Track a license gate decision so feature-gating conversion can be measured.
+   * `feature` is the ProFeature key, `enforcement` is off/soft/hard, `allowed`
+   * whether the feature proceeded, `paid` the current entitlement state.
+   */
+  public trackGateDecision(feature: string, enforcement: string, allowed: boolean, paid: boolean): void {
+    this.trackEvent('gate_decision', { feature, enforcement, allowed, paid });
   }
 
   /**

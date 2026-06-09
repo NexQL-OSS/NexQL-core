@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import type { Client } from 'pg';
 import { randomUUID } from 'crypto';
 import { getPgDataTypeName } from '../common/pgDataTypeNames';
+import { debugLog, debugWarn } from '../common/logger';
 
 /** Idle cursor sessions are closed to free server resources */
 const SESSION_IDLE_CLOSE_MS = 30 * 60 * 1000;
@@ -106,7 +107,7 @@ export class ResultCursorService {
     try {
       await s.client.query(`CLOSE ${s.cursorQuoted}`);
     } catch (e) {
-      console.warn('[ResultCursorService] CLOSE cursor failed:', e);
+      debugWarn('[ResultCursorService] CLOSE cursor failed:', e);
     }
   }
 
@@ -182,11 +183,11 @@ export class ResultCursorService {
 
       let countSql: string | undefined;
       try {
-        console.log(`[ResultCursorService] Starting row count for session ${sessionId.substring(0, 8)}`);
+        debugLog(`[ResultCursorService] Starting row count for session ${sessionId.substring(0, 8)}`);
         // Strip comments from inner SQL to avoid syntax errors in wrapped COUNT query
         const innerSqlClean = stripSqlComments(innerSql);
         countSql = `SELECT COUNT(*) AS cnt FROM (${innerSqlClean}) AS pgstudio_count`;
-        console.log(`[ResultCursorService] COUNT query: ${countSql.substring(0, 120)}...`);
+        debugLog(`[ResultCursorService] COUNT query: ${countSql.substring(0, 120)}...`);
         
         const cres = await client.query(countSql);
         const countDuration = Date.now() - countStartTime;
@@ -197,7 +198,7 @@ export class ResultCursorService {
         sessionRecord = ResultCursorService.sessions.get(sessionId);
         if (sessionRecord) {
           sessionRecord.totalRows = Number.isFinite(n) ? n : undefined;
-          console.log(`[ResultCursorService] Row count succeeded: ${sessionRecord.totalRows} rows (${countDuration}ms) for session ${sessionId.substring(0, 8)}`);
+          debugLog(`[ResultCursorService] Row count succeeded: ${sessionRecord.totalRows} rows (${countDuration}ms) for session ${sessionId.substring(0, 8)}`);
         }
       } catch (e) {
         const countDuration = Date.now() - countStartTime;
@@ -206,7 +207,7 @@ export class ResultCursorService {
         if (sessionRecord) {
           sessionRecord.countError = errorMsg;
           const queryPreview = countSql ? countSql.substring(0, 150) : 'unknown';
-          console.warn(
+          debugWarn(
             `[ResultCursorService] Row count failed after ${countDuration}ms for session ${sessionId.substring(0, 8)}:\n` +
             `  Error: ${errorMsg}\n` +
             `  Query: ${queryPreview}...`,
@@ -219,7 +220,7 @@ export class ResultCursorService {
       try {
         page = await ResultCursorService.fetchWindowInternal(sessionId, 1);
       } catch (e) {
-        console.warn('[ResultCursorService] first FETCH failed:', e);
+        debugWarn('[ResultCursorService] first FETCH failed:', e);
         await ResultCursorService.closeSession(sessionId);
         return null;
       }
@@ -252,7 +253,7 @@ export class ResultCursorService {
         },
       };
     } catch (e) {
-      console.warn('[ResultCursorService] tryOpenSession failed, falling back to buffered query:', e);
+      debugWarn('[ResultCursorService] tryOpenSession failed, falling back to buffered query:', e);
       if (beganOwnReadOnlyTx) {
         await client.query('ROLLBACK').catch(() => {});
       }

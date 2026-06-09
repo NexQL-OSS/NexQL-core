@@ -6,6 +6,7 @@ import { ConnectionManager } from '../services/ConnectionManager';
 import { SecretStorageService } from '../services/SecretStorageService';
 import { resolvePgPassPassword } from '../utils/pgPassUtils';
 import { ErrorHandlers } from './helper';
+import { debugLog } from '../common/logger';
 
 /**
  * createMetadata - Creates metadata for the PostgreSQL connection.
@@ -153,7 +154,7 @@ export async function cmdDisconnectDatabase(item: DatabaseTreeItem, context: vsc
                 await SecretStorageService.getInstance().deletePassword(item.connectionId!);
             } catch (err) {
                 // Password might not exist if connection was created without credentials
-                console.log(`No password to delete for connection ${item.connectionId}`);
+                debugLog(`No password to delete for connection ${item.connectionId}`);
             }
 
             // Close any active connections in ConnectionManager
@@ -167,7 +168,7 @@ export async function cmdDisconnectDatabase(item: DatabaseTreeItem, context: vsc
                 });
             } catch (err) {
                 // Connection might not be open, that's okay
-                console.log(`No active connection to close for ${item.connectionId}`);
+                debugLog(`No active connection to close for ${item.connectionId}`);
             }
 
             // Refresh the tree view

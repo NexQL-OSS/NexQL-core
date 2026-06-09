@@ -2,6 +2,18 @@ import * as vscode from 'vscode';
 import { DatabaseTreeItem } from '../providers/DatabaseTreeProvider';
 import { getDatabaseConnection, NotebookBuilder, MarkdownUtils } from './helper';
 import { PolicySQL } from './sql/policies';
+import { requirePro, ProFeature } from '../services/featureGates';
+import { RlsPolicyStudioPanel } from '../schemaDesigner/RlsPolicyStudioPanel';
+
+/**
+ * Open the visual RLS Policy Studio for a table: click-to-configure command,
+ * permissive/restrictive, roles, and USING / WITH CHECK expressions with AI
+ * natural-language generation and a live SQL preview (execute via notebook).
+ */
+export async function cmdCreatePolicy(item: DatabaseTreeItem, context: vscode.ExtensionContext): Promise<void> {
+  if (!(await requirePro(ProFeature.SchemaDesigner, context))) { return; }
+  await RlsPolicyStudioPanel.openForTable(item, context);
+}
 
 export async function cmdDropPolicy(item: DatabaseTreeItem, _context: vscode.ExtensionContext): Promise<void> {
   if (item.type !== 'policy' || !item.schema || !item.tableName) {
@@ -39,3 +51,4 @@ export async function cmdDropPolicy(item: DatabaseTreeItem, _context: vscode.Ext
     release();
   }
 }
+

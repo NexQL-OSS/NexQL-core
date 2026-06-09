@@ -46,7 +46,7 @@ export class LicenseService {
   private readonly _onDidChangeLicense = new vscode.EventEmitter<LicenseTier>();
   public readonly onDidChangeLicense = this._onDidChangeLicense.event;
 
-  private constructor(private readonly context: vscode.ExtensionContext) {}
+  private constructor(private readonly context: vscode.ExtensionContext) { }
 
   public static getInstance(context?: vscode.ExtensionContext): LicenseService {
     if (!LicenseService.instance) {

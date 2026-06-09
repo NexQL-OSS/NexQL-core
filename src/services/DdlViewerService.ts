@@ -328,7 +328,7 @@ class DdlContentProvider implements vscode.TextDocumentContentProvider {
           ddl = await this.generateForeignServerDdl(client, target);
           break;
         case 'foreign-data-wrapper':
-          ddl = `-- DDL generation for ${toTitleType(target.objectType)} is not yet supported.`;
+          ddl = await this.generateForeignDataWrapperDdl(client, target);
           break;
       }
 
@@ -1226,7 +1226,23 @@ class DdlContentProvider implements vscode.TextDocumentContentProvider {
       );
     }
 
-    return '-- DDL generation for TYPE is not yet supported.';
+    // Reaches here for base/range/multirange types whose definitions depend on
+    // C-level support functions that cannot be faithfully reconstructed from the
+    // catalog. Report the category instead of a bare "not supported".
+    const cat = await client.query(
+      `SELECT t.typtype
+       FROM pg_type t
+       JOIN pg_namespace n ON n.oid = t.typnamespace
+       WHERE n.nspname = $1 AND t.typname = $2`,
+      [target.schema, target.objectName]
+    );
+    if (cat.rowCount === 0) {
+      return '-- Object not found. The tree may be out of sync - try refreshing.';
+    }
+    const kind: Record<string, string> = { b: 'base', r: 'range', m: 'multirange', p: 'pseudo' };
+    const label = kind[cat.rows[0].typtype] || 'this';
+    return `-- ${quoteIdent(target.schema!)}.${quoteIdent(target.objectName!)} is a ${label} type.\n` +
+      `-- ${label} types rely on C support functions and cannot be scripted from the catalog.`;
   }
 
   private async generateDomainDdl(client: PoolClient, target: DdlViewerTarget): Promise<string> {
@@ -1535,6 +1551,49 @@ class DdlContentProvider implements vscode.TextDocumentContentProvider {
       mappingLines.length > 0 ? ['-- User Mappings', ...mappingLines].join('\n') : ''
     ].filter(Boolean).join('\n\n'),
     `DROP SERVER ${quoteIdent(row.srvname)} CASCADE;`);
+  }
+
+  private async generateForeignDataWrapperDdl(client: PoolClient, target: DdlViewerTarget): Promise<string> {
+    const res = await client.query(
+      `SELECT
+         w.fdwname,
+         pg_get_userbyid(w.fdwowner) AS owner,
+         hn.nspname AS handler_schema,
+         h.proname  AS handler_name,
+         vn.nspname AS validator_schema,
+         v.proname  AS validator_name,
+         w.fdwoptions
+       FROM pg_foreign_data_wrapper w
+       LEFT JOIN pg_proc h ON h.oid = w.fdwhandler
+       LEFT JOIN pg_namespace hn ON hn.oid = h.pronamespace
+       LEFT JOIN pg_proc v ON v.oid = w.fdwvalidator
+       LEFT JOIN pg_namespace vn ON vn.oid = v.pronamespace
+       WHERE w.fdwname = $1`,
+      [target.objectName]
+    );
+    const row = res.rows[0];
+    if (!row) {
+      return '-- Object not found. The tree may be out of sync - try refreshing.';
+    }
+
+    const handler = row.handler_name
+      ? `    HANDLER ${quoteIdent(row.handler_schema)}.${quoteIdent(row.handler_name)}`
+      : '    NO HANDLER';
+    const validator = row.validator_name
+      ? `    VALIDATOR ${quoteIdent(row.validator_schema)}.${quoteIdent(row.validator_name)}`
+      : '    NO VALIDATOR';
+    const options = Array.isArray(row.fdwoptions) && row.fdwoptions.length > 0
+      ? `\n    OPTIONS (${row.fdwoptions.join(', ')})`
+      : '';
+
+    return appendDownOperation([
+      '-- Foreign data wrapper definition',
+      `CREATE FOREIGN DATA WRAPPER ${quoteIdent(row.fdwname)}`,
+      handler,
+      `${validator}${options};`,
+      `ALTER FOREIGN DATA WRAPPER ${quoteIdent(row.fdwname)} OWNER TO ${quoteIdent(row.owner)};`
+    ].filter(Boolean).join('\n'),
+    `DROP FOREIGN DATA WRAPPER ${quoteIdent(row.fdwname)} CASCADE;`);
   }
 }
 

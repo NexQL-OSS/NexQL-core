@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { HandlerMessageBase } from '../core/types/handlerMessages';
+import { debugWarn } from '../common/logger';
 
 export interface MessageEnvelope extends HandlerMessageBase {
   [key: string]: unknown;
@@ -31,7 +32,7 @@ export class MessageHandlerRegistry {
 
   public register(type: string, handler: IMessageHandler) {
     if (this.handlers.has(type)) {
-      console.warn(`Overwriting handler for message type: ${type}`);
+      debugWarn(`Overwriting handler for message type: ${type}`);
     }
     this.handlers.set(type, handler);
   }
@@ -47,7 +48,7 @@ export class MessageHandlerRegistry {
 
   public async handleMessage(message: unknown, context: MessageHandlerContext) {
     if (!this.isValidEnvelope(message)) {
-      console.warn('Rejected invalid message envelope:', message);
+      debugWarn('Rejected invalid message envelope:', message);
       return;
     }
 
@@ -60,7 +61,7 @@ export class MessageHandlerRegistry {
         vscode.window.showErrorMessage(`Error processing ${message.type}: ${error instanceof Error ? error.message : String(error)}`);
       }
     } else {
-      console.warn(`No handler registered for message type: ${message.type}`);
+      debugWarn(`No handler registered for message type: ${message.type}`);
     }
   }
 }

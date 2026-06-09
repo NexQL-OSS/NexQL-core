@@ -175,4 +175,36 @@ export class ConnectionUtils {
       return undefined;
     }
   }
+
+  static toSafeSegment(value: string): string {
+    return value.replace(/[^a-zA-Z0-9_-]/g, '_');
+  }
+
+  static async countNotebooksInConnection(
+    context: vscode.ExtensionContext,
+    connectionNameOrId: string
+  ): Promise<{ count: number; uris: vscode.Uri[] }> {
+    const connectionFolder = vscode.Uri.joinPath(context.globalStorageUri, this.toSafeSegment(connectionNameOrId));
+    const uris: vscode.Uri[] = [];
+
+    async function walk(dir: vscode.Uri) {
+      let entries: [string, vscode.FileType][];
+      try {
+        entries = await vscode.workspace.fs.readDirectory(dir);
+      } catch {
+        return;
+      }
+      for (const [name, type] of entries) {
+        const uri = vscode.Uri.joinPath(dir, name);
+        if (type === vscode.FileType.Directory) {
+          await walk(uri);
+        } else if (type === vscode.FileType.File && name.endsWith('.pgsql')) {
+          uris.push(uri);
+        }
+      }
+    }
+
+    await walk(connectionFolder);
+    return { count: uris.length, uris };
+  }
 }
