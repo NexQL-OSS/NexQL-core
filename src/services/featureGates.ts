@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { LicenseService } from './LicenseService';
+import { LicenseService, LicenseTier } from './LicenseService';
 import { TelemetryService } from './TelemetryService';
 import { FeatureQuota, formatReset } from './quotaMath';
 
@@ -23,6 +23,15 @@ export enum ProFeature {
   BackupRestore = 'backupRestore',
   DataImport = 'dataImport',
   UnlimitedNotebooks = 'unlimitedNotebooks',
+  AuditLog = 'auditLog',
+  /** Manual single-device backup to the user's own Postgres (free tier). */
+  CloudBackup = 'cloudBackup',
+  /** Automatic multi-device sync via consumer storage backends (sponsor+). */
+  CloudSync = 'cloudSync',
+  /** Sharing synced items with other team members (singularity). */
+  SyncSharing = 'syncSharing',
+  /** Re-binding a free-tier backup to a new device (metered on free). */
+  SyncDeviceRebind = 'syncDeviceRebind',
 }
 
 const FEATURE_LABELS: Record<ProFeature, string> = {
@@ -35,7 +44,52 @@ const FEATURE_LABELS: Record<ProFeature, string> = {
   [ProFeature.BackupRestore]: 'Backup & Restore',
   [ProFeature.DataImport]: 'Data Import',
   [ProFeature.UnlimitedNotebooks]: 'Unlimited Notebooks',
+  [ProFeature.AuditLog]: 'Production Audit Log',
+  [ProFeature.CloudBackup]: 'Cloud Backup',
+  [ProFeature.CloudSync]: 'Cloud Sync',
+  [ProFeature.SyncSharing]: 'Team Sync Sharing',
+  [ProFeature.SyncDeviceRebind]: 'Backup Device Rebind',
 };
+
+/** Ordering for entitlement comparison: a tier unlocks everything at or below its rank. */
+const TIER_RANK: Record<LicenseTier, number> = { free: 0, sponsor: 1, singularity: 2 };
+
+export const TIER_DISPLAY: Record<LicenseTier, string> = {
+  free: 'Free',
+  sponsor: 'Sponsor',
+  singularity: 'Singularity (Team)',
+};
+
+/**
+ * Minimum tier that fully unlocks a feature. Features absent here unlock at
+ * `sponsor` (any paid tier). Free-tier metered access via {@link FREE_QUOTAS}
+ * only applies to `sponsor`-level features — `singularity`-level features are
+ * team capabilities and are never metered to lower tiers.
+ */
+const FEATURE_MIN_TIER: Partial<Record<ProFeature, LicenseTier>> = {
+  [ProFeature.AuditLog]: 'singularity',
+  [ProFeature.CloudBackup]: 'free',
+  [ProFeature.CloudSync]: 'sponsor',
+  [ProFeature.SyncSharing]: 'singularity',
+};
+
+/** User-facing upgrade copy for above-tier features. */
+const TEAM_UPGRADE_MESSAGES: Partial<Record<ProFeature, string>> = {
+  [ProFeature.CloudSync]: 'Automatic multi-device sync requires NexQL Sponsor or Teams.',
+  [ProFeature.SyncSharing]: 'Team sync sharing requires a Teams (Singularity) subscription.',
+};
+
+export function minTierFor(feature: ProFeature): LicenseTier {
+  return FEATURE_MIN_TIER[feature] ?? 'sponsor';
+}
+
+export function featureLabel(feature: ProFeature): string {
+  return FEATURE_LABELS[feature];
+}
+
+export function meetsTier(actual: LicenseTier, required: LicenseTier): boolean {
+  return TIER_RANK[actual] >= TIER_RANK[required];
+}
 
 /**
  * Free-tier allowances (the freemium model). Paid tiers are unlimited. A feature
@@ -55,7 +109,38 @@ export const FREE_QUOTAS: Partial<Record<ProFeature, FeatureQuota>> = {
   [ProFeature.SchemaDesigner]: { limit: 5, period: 'day' },
   [ProFeature.DataImport]: { limit: 3, period: 'week' },
   [ProFeature.BackupRestore]: { limit: 3, period: 'week' },
+  [ProFeature.SyncDeviceRebind]: { limit: 1, period: 'week' },
 };
+
+/**
+ * Storage backends per tier (cumulative). Free = bring-your-own Postgres,
+ * manual sync, single device. Sponsor adds consumer clouds + auto multi-device
+ * sync. Singularity adds hosted NexQL Cloud and team sharing.
+ */
+const SYNC_PROVIDERS_BY_TIER: Record<LicenseTier, ReadonlyArray<string>> = {
+  free: ['postgres'],
+  sponsor: ['postgres', 'gist', 'onedrive', 'gdrive'],
+  singularity: ['postgres', 'gist', 'onedrive', 'gdrive', 'cloud'],
+};
+
+export function allowedSyncProviders(): ReadonlyArray<string> {
+  if (enforcement() === 'off') {
+    return SYNC_PROVIDERS_BY_TIER.singularity;
+  }
+  return SYNC_PROVIDERS_BY_TIER[LicenseService.getInstance().getTier()];
+}
+
+export function isSyncProviderAllowed(providerId: string): boolean {
+  return allowedSyncProviders().includes(providerId);
+}
+
+/** Tier required to use a given sync backend (for upgrade copy). */
+export function syncProviderMinTier(providerId: string): LicenseTier {
+  if (SYNC_PROVIDERS_BY_TIER.free.includes(providerId)) {
+    return 'free';
+  }
+  return SYNC_PROVIDERS_BY_TIER.sponsor.includes(providerId) ? 'sponsor' : 'singularity';
+}
 
 const PRICING_URL = 'https://nexql.astrx.dev/#pricing';
 
@@ -86,10 +171,13 @@ export function isProFeatureEnabled(feature: ProFeature): boolean {
   if (enforcement() === 'off') {
     return true;
   }
-  if (LicenseService.getInstance().isPaid()) {
+  const tier = LicenseService.getInstance().getTier();
+  if (meetsTier(tier, minTierFor(feature))) {
     return true;
   }
-  return FREE_QUOTAS[feature] !== undefined;
+  // Below the required tier: free users may still have metered access to
+  // sponsor-level features; singularity-level features stay locked.
+  return tier === 'free' && minTierFor(feature) === 'sponsor' && FREE_QUOTAS[feature] !== undefined;
 }
 
 /**
@@ -104,10 +192,24 @@ export async function requirePro(feature: ProFeature, _context?: vscode.Extensio
     return true;
   }
 
-  const paid = LicenseService.getInstance().isPaid();
-  if (paid) {
+  const tier = LicenseService.getInstance().getTier();
+  const paid = tier !== 'free';
+  const required = minTierFor(feature);
+
+  if (meetsTier(tier, required)) {
     reportGate(feature, mode, true, paid);
     return true;
+  }
+
+  // Paid but below the required tier (e.g. Sponsor using a Team feature):
+  // no metering ladder — prompt for the higher plan.
+  if (paid || required !== 'sponsor') {
+    reportGate(feature, mode, false, paid);
+    promptUpgrade(
+      TEAM_UPGRADE_MESSAGES[feature] ??
+        `${FEATURE_LABELS[feature]} requires NexQL ${TIER_DISPLAY[required]}.`,
+    );
+    return false;
   }
 
   // Free tier → meter against the periodic quota.
@@ -146,12 +248,12 @@ export async function requirePro(feature: ProFeature, _context?: vscode.Extensio
 
 function promptUpgrade(message: string): void {
   void vscode.window
-    .showInformationMessage(message, 'Upgrade', 'Activate License')
+    .showInformationMessage(message, 'View Plans', 'Activate License')
     .then((choice) => handleUpgradeChoice(choice));
 }
 
 async function handleUpgradeChoice(choice: string | undefined): Promise<void> {
-  if (choice === 'Upgrade') {
+  if (choice === 'View Plans') {
     await vscode.env.openExternal(vscode.Uri.parse(PRICING_URL));
   } else if (choice === 'Activate License') {
     await vscode.commands.executeCommand('postgres-explorer.license.activate');
@@ -161,6 +263,8 @@ async function handleUpgradeChoice(choice: string | undefined): Promise<void> {
 /** Inline upgrade HTML for webviews that gate synchronously (paid-only features). */
 export function getUpgradeHtml(feature: ProFeature): string {
   const label = FEATURE_LABELS[feature];
+  const required = minTierFor(feature);
+  const plans = required === 'singularity' ? `NexQL ${TIER_DISPLAY.singularity}` : 'NexQL Sponsor or Singularity';
   return `<!DOCTYPE html><html><head><meta charset="UTF-8">
     <style>
       body { font-family: var(--vscode-font-family); color: var(--vscode-foreground);
@@ -173,7 +277,7 @@ export function getUpgradeHtml(feature: ProFeature): string {
     </style></head>
     <body>
       <h2>${label} is a paid feature</h2>
-      <p>Upgrade to NexQL Sponsor or Singularity to unlock ${label}.</p>
+      <p>Upgrade to ${plans} to unlock ${label}.</p>
       <a class="btn" href="${PRICING_URL}">View plans</a>
       <p style="margin-top:20px;font-size:12px">Already subscribed? Run
         <b>NexQL: Activate License</b> from the command palette.</p>

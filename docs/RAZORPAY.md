@@ -269,6 +269,14 @@ Success: `{ "success": true }`. Signature mismatch → `400` (do not treat as pa
 
 Body: `{ "email" }`. Emails the license key to the address on file. Always returns `200 { "ok": true }` regardless of match (prevents email enumeration). Requires `RESEND_API_KEY` to actually deliver.
 
+### `POST /api/license/devices`
+
+Body: `{ "licenseKey", "email", "action": "list"|"remove", "instanceId"? }`. Authenticated by license key + email on file (both must match; mismatch returns the same `404` as an unknown key). `list` returns the bound VS Code machine ids; `remove` unbinds one id to free a device slot.
+
+Success: `{ "ok": true, "limit", "devices": [{ "instanceId" }] }`.
+
+**Device limits (per tier, enforced in `validate.js`):** Sponsor = 3 devices (personal license), Singularity = 25 devices (flat org license). Existing bindings above a limit are kept; the cap only blocks *new* device binds. Keep `DEVICE_LIMITS` in `validate.js` and `devices.js` in sync.
+
 ---
 
 ## Currency detection (UI)

@@ -36,6 +36,8 @@ export interface PostgresMetadata {
   databaseName: string | undefined;
   host: string;
   port: number;
+  /** Stable sync identity embedded in .pgsql metadata */
+  syncId?: string;
   username?: string;
   password?: string;
   // Profile settings
@@ -60,6 +62,7 @@ export interface PostgresMetadata {
       username?: string;
       password?: string;
       enableScripts: boolean;
+      syncId?: string;
     };
   };
 }

@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NexQL Cloud Sync — Authorize Device</title>
+  <link rel="stylesheet" href="css/site.css">
+  <style>
+    .auth-card {
+      max-width: 28rem;
+      margin: 4rem auto;
+      padding: 2rem;
+      border: 1px solid var(--border, #333);
+      border-radius: 12px;
+      background: var(--surface, #111);
+    }
+    .auth-card h1 { font-size: 1.35rem; margin-bottom: 0.5rem; }
+    .auth-card p { color: var(--muted, #aaa); margin-bottom: 1.25rem; line-height: 1.5; }
+    .auth-card label { display: block; font-size: 0.85rem; margin-bottom: 0.35rem; }
+    .auth-card input {
+      width: 100%;
+      box-sizing: border-box;
+      margin-bottom: 1rem;
+      padding: 0.65rem 0.75rem;
+      border-radius: 8px;
+      border: 1px solid var(--border, #444);
+      background: var(--bg, #0a0a0a);
+      color: inherit;
+      font: inherit;
+    }
+    .auth-card button {
+      width: 100%;
+      padding: 0.75rem;
+      border: none;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+      background: #7c5cff;
+      color: #fff;
+    }
+    .auth-card button:disabled { opacity: 0.6; cursor: wait; }
+    #authStatus { margin-top: 1rem; min-height: 1.25rem; font-size: 0.9rem; }
+    #authStatus.ok { color: #3dd68c; }
+    #authStatus.err { color: #ff6b6b; }
+  </style>
+</head>
+<body>
+  <main class="auth-card">
+    <h1>Authorize NexQL Cloud Sync</h1>
+    <p>Enter the user code shown in your editor and your Teams license key. Cloud Sync requires an active Singularity subscription.</p>
+    <form id="authForm">
+      <label for="userCode">User code</label>
+      <input id="userCode" name="userCode" autocomplete="one-time-code" required placeholder="XXXX-XXXX">
+      <label for="licenseKey">Teams license key</label>
+      <input id="licenseKey" name="licenseKey" autocomplete="off" required placeholder="NEXQL-…">
+      <button type="submit" id="submitBtn">Authorize this device</button>
+    </form>
+    <div id="authStatus" role="status"></div>
+  </main>
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const userCodeInput = document.getElementById('userCode');
+    if (params.get('user_code')) {
+      userCodeInput.value = params.get('user_code');
+    }
+
+    document.getElementById('authForm').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const status = document.getElementById('authStatus');
+      const btn = document.getElementById('submitBtn');
+      status.textContent = '';
+      status.className = '';
+      btn.disabled = true;
+      try {
+        const res = await fetch('/api/auth/authorize', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_code: userCodeInput.value.trim(),
+            licenseKey: document.getElementById('licenseKey').value.trim(),
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(data.error || 'Authorization failed');
+        }
+        status.textContent = 'Device authorized. You can return to your editor — sync will continue automatically.';
+        status.className = 'ok';
+      } catch (err) {
+        status.textContent = err.message || 'Authorization failed';
+        status.className = 'err';
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

@@ -15,11 +15,11 @@ function createContext(initialQueries: SavedQuery[] = []) {
     extension: { packageJSON: { version: '0.0.0' } },
     workspaceState: {
       get: <T>(key: string, defaultValue?: T) => (state.has(key) ? state.get(key) : defaultValue as T),
-      update
+      update: async () => undefined
     },
     globalState: {
-      get: <T>(_key: string, defaultValue?: T) => defaultValue as T,
-      update: async () => undefined
+      get: <T>(key: string, defaultValue?: T) => (state.has(key) ? state.get(key) : defaultValue as T),
+      update
     },
     secrets: {
       get: async () => undefined,

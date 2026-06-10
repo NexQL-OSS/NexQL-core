@@ -12,8 +12,11 @@ interface NotebookMetadata {
   databaseName: string;
   host: string;
   port: number;
-  username: string;
-  password: string;
+  /** Stable sync identity; survives renames. */
+  syncId?: string;
+  /** Legacy fields — stripped on serialize, dropped on deserialize. */
+  username?: string;
+  password?: string;
 }
 
 interface Cell {
@@ -35,7 +38,15 @@ export class PostgresNotebookProvider implements vscode.NotebookSerializer {
       try {
         const data = JSON.parse(Buffer.from(content).toString());
         if (data.metadata) {
-          metadata = data.metadata;
+          metadata = data.metadata as NotebookMetadata;
+          const metaRecord = metadata as unknown as Record<string, unknown>;
+          delete metaRecord.password;
+          delete metaRecord.username;
+          const custom = metaRecord.custom as { metadata?: Record<string, unknown> } | undefined;
+          if (custom?.metadata) {
+            delete custom.metadata.password;
+            delete custom.metadata.username;
+          }
         }
         if (Array.isArray(data.cells)) {
           cells = data.cells.map((cell: Cell) => {
@@ -69,6 +80,8 @@ export class PostgresNotebookProvider implements vscode.NotebookSerializer {
     const notebookData = new vscode.NotebookData(cells);
     if (metadata) {
       const cleanMetadata = { ...metadata };
+      delete (cleanMetadata as Record<string, unknown>).password;
+      delete (cleanMetadata as Record<string, unknown>).username;
       delete (cleanMetadata as any).custom;
       notebookData.metadata = {
         ...cleanMetadata,
@@ -96,13 +109,19 @@ export class PostgresNotebookProvider implements vscode.NotebookSerializer {
 
     const cleanMetadata = data.metadata ? { ...data.metadata } : {};
     delete (cleanMetadata as any).custom;
+    delete (cleanMetadata as Record<string, unknown>).password;
+    delete (cleanMetadata as Record<string, unknown>).username;
+
+    const serializedMeta = { ...cleanMetadata };
+    delete (serializedMeta as Record<string, unknown>).password;
+    delete (serializedMeta as Record<string, unknown>).username;
 
     const metadata = {
-      ...cleanMetadata,
+      ...serializedMeta,
       custom: {
         cells: cells,
         metadata: {
-          ...cleanMetadata,
+          ...serializedMeta,
           enableScripts: true
         }
       }

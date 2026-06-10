@@ -61,16 +61,44 @@ async function rawGet(key) {
     return (await kv().get(key)) || null;
   }
   const store = readDevStore();
-  return store[key] || null;
+  const entry = store[key];
+  if (!entry) {
+    return null;
+  }
+  if (entry && typeof entry === 'object' && 'expiresAt' in entry && 'value' in entry) {
+    if (entry.expiresAt <= Date.now()) {
+      delete store[key];
+      writeDevStore(store);
+      return null;
+    }
+    return entry.value;
+  }
+  return entry;
 }
 
-async function rawSet(key, value) {
+async function rawSet(key, value, ttlSec) {
   if (useKv) {
-    await kv().set(key, value);
+    if (ttlSec && ttlSec > 0) {
+      await kv().set(key, value, { ex: ttlSec });
+    } else {
+      await kv().set(key, value);
+    }
     return;
   }
   const store = readDevStore();
-  store[key] = value;
+  store[key] = ttlSec && ttlSec > 0
+    ? { value, expiresAt: Date.now() + ttlSec * 1000 }
+    : value;
+  writeDevStore(store);
+}
+
+async function rawDel(key) {
+  if (useKv) {
+    await kv().del(key);
+    return;
+  }
+  const store = readDevStore();
+  delete store[key];
   writeDevStore(store);
 }
 
@@ -126,4 +154,7 @@ module.exports = {
   getKeyByEmail,
   getEntitlementByEmail,
   usingKv: useKv,
+  rawGet,
+  rawSet,
+  rawDel,
 };

@@ -30,6 +30,33 @@ const GRACE_MS = 7 * 24 * 60 * 60 * 1000; // tolerate 7 days offline
 const DEFAULT_ENDPOINT = 'https://nexql.astrx.dev/api';
 
 /**
+ * Temporary local test keys — remove before shipping.
+ * Settings Hub → License, or `postgres-explorer.license.activate`.
+ *
+ * | Key                              | Tier        |
+ * |----------------------------------|-------------|
+ * | PGST-TEST-SPON-SOR0-0001         | Sponsor     |
+ * | PGST-TEST-TEAM-SING-0001         | Team        |
+ */
+const DEV_LICENSE_KEYS: Readonly<Record<string, LicenseTier>> = {
+  'PGST-TEST-SPON-SOR0-0001': 'sponsor',
+  'PGST-TEST-TEAM-SING-0001': 'singularity',
+};
+
+function devLicenseResponse(licenseKey: string): ValidateResponse | null {
+  const tier = DEV_LICENSE_KEYS[licenseKey.trim().toUpperCase()];
+  if (!tier) {
+    return null;
+  }
+  return {
+    valid: true,
+    tier,
+    status: 'active',
+    expiresAt: null,
+  };
+}
+
+/**
  * Manages NexQL license activation and tier entitlement.
  *
  * Source of truth is the server (`/api/license/validate`); a cached snapshot in
@@ -226,6 +253,11 @@ export class LicenseService {
   }
 
   private callValidate(licenseKey: string): Promise<ValidateResponse> {
+    const dev = devLicenseResponse(licenseKey);
+    if (dev) {
+      return Promise.resolve(dev);
+    }
+
     const url = new URL(`${this.endpoint().replace(/\/$/, '')}/license/validate`);
     const payload = JSON.stringify({ licenseKey, instanceId: vscode.env.machineId });
     const lib = url.protocol === 'http:' ? http : https;

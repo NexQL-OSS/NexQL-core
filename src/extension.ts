@@ -161,6 +161,9 @@ export async function activate(context: vscode.ExtensionContext) {
 
   // Freemium usage metering (per-feature daily/weekly free quotas).
   QuotaService.getInstance().initialize(context);
+  // PROD DDL audit trail (Singularity feature).
+  const { AuditLogService } = await import('./features/audit/AuditLogService');
+  AuditLogService.getInstance().initialize(context);
   const planStore = new PlanStoreWorkspace(context);
 
   context.subscriptions.push(
@@ -509,6 +512,13 @@ export async function activate(context: vscode.ExtensionContext) {
   // Status bar for connection/database display
   statusBar = new statusBarModule.NotebookStatusBar();
   context.subscriptions.push(statusBar);
+
+  const { SyncController } = await import('./features/sync/SyncController');
+  const syncController = SyncController.getInstance(context, outputChannel);
+  const syncStatusBar = new statusBarModule.SyncStatusBar();
+  context.subscriptions.push(syncStatusBar);
+  syncController.initialize(syncStatusBar);
+  context.subscriptions.push(syncController);
 
   // License tier indicator + deep-link activation (vscode://ric-v.postgres-explorer/activate?key=...)
   const license = LicenseService.getInstance();

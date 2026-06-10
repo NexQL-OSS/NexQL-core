@@ -5,6 +5,8 @@ import { ProfileManager } from '../features/connections/ProfileManager';
 import { getTransactionManager } from '../services/TransactionManager';
 import { ConnectionUtils } from '../utils/connectionUtils';
 import { WorkspaceStateService } from '../services/WorkspaceStateService';
+import { FREE_QUOTAS, ProFeature, featureLabel } from '../services/featureGates';
+import { QuotaService } from '../services/QuotaService';
 
 /**
  * Manages the notebook status bar items that display connection and database info.
@@ -325,19 +327,122 @@ export class NotebookStatusBar implements vscode.Disposable {
     if (offline && tier !== 'free') {
       this.tierItem.text = `$(warning) ${tierLabel}${suffix} (offline)`;
       this.tierItem.tooltip = `${tierLabel} — running on cached license (offline grace). Click to manage.${envTooltip}`;
+      this.tierItem.command = 'postgres-explorer.license.manage';
       this.tierItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
       this.tierItem.color = undefined;
+    } else if (tier === 'free') {
+      this.tierItem.text = `${baseIcon} ${tierLabel}${suffix}`;
+      this.tierItem.tooltip = this.buildFreeUsageTooltip(envTooltip);
+      this.tierItem.command = 'postgres-explorer.license.showUsage';
+      this.tierItem.backgroundColor = undefined;
+      this.tierItem.color = finalColor;
     } else {
       this.tierItem.text = `${baseIcon} ${tierLabel}${suffix}`;
-      this.tierItem.tooltip = tier === 'free'
-        ? `Free tier — click to activate a license.${envTooltip}`
-        : `${tierLabel} — license active. Click to manage.${envTooltip}`;
+      this.tierItem.tooltip = `${tierLabel} — license active. Click to manage.${envTooltip}`;
+      this.tierItem.command = 'postgres-explorer.license.manage';
       this.tierItem.backgroundColor = undefined;
       this.tierItem.color = finalColor;
     }
   }
 
+  /** Free-tier tooltip: remaining metered usage per feature, refreshed on each render. */
+  private buildFreeUsageTooltip(envTooltip: string): vscode.MarkdownString {
+    const md = new vscode.MarkdownString();
+    md.appendMarkdown('**NexQL Free** — click for usage details\n\n');
+    const quotas = QuotaService.getInstance();
+    const now = new Date();
+    for (const feature of Object.keys(FREE_QUOTAS) as ProFeature[]) {
+      const status = quotas.peek(feature, now);
+      if (!status) { continue; }
+      const word = status.period === 'week' ? 'this week' : 'today';
+      md.appendMarkdown(`- ${featureLabel(feature)}: ${status.remaining}/${status.limit} left ${word}\n`);
+    }
+    if (envTooltip) {
+      md.appendMarkdown(`\n${envTooltip.trim()}`);
+    }
+    return md;
+  }
+
   dispose(): void {
     this.disposables.forEach(d => d.dispose());
+  }
+}
+
+/** Sync status indicator — click opens sync QuickPick menu. */
+export class SyncStatusBar implements vscode.Disposable {
+  private readonly item: vscode.StatusBarItem;
+  private status: string = 'not_configured';
+  private conflictCount = 0;
+
+  constructor() {
+    this.item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 93);
+    this.item.command = 'postgres-explorer.sync.statusMenu';
+    this.update('not_configured', 0, false);
+    this.item.show();
+  }
+
+  updateSyncStatus(status: string, conflicts = 0, configured = false): void {
+    this.update(status, conflicts, configured);
+  }
+
+  private update(status: string, conflicts: number, configured: boolean): void {
+    this.status = status;
+    this.conflictCount = conflicts;
+
+    if (!configured) {
+      this.item.text = '$(cloud-upload) Set up sync';
+      this.item.tooltip = 'PgStudio sync not configured. Click to set up.';
+      this.item.backgroundColor = undefined;
+      return;
+    }
+
+    switch (status) {
+      case 'synced':
+        this.item.text = '$(cloud) Synced';
+        this.item.tooltip = 'PgStudio sync is up to date. Click for options.';
+        this.item.backgroundColor = undefined;
+        break;
+      case 'idle':
+        this.item.text = '$(cloud) Sync ready';
+        this.item.tooltip = 'Sync is configured. Click for options.';
+        this.item.backgroundColor = undefined;
+        break;
+      case 'syncing':
+        this.item.text = '$(sync~spin) Syncing';
+        this.item.tooltip = 'Sync in progress…';
+        break;
+      case 'offline':
+        this.item.text = '$(cloud-offline) Offline';
+        this.item.tooltip = 'Offline — changes queued, will retry automatically.';
+        this.item.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
+        break;
+      case 'conflict':
+        this.item.text = `$(warning) Sync conflict (${conflicts})`;
+        this.item.tooltip = `${conflicts} conflict(s) — review copies saved locally.`;
+        this.item.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
+        break;
+      case 'error':
+        this.item.text = '$(error) Sync error';
+        this.item.tooltip = 'Sync error — click for options.';
+        this.item.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
+        break;
+      case 'locked':
+        this.item.text = '$(lock) Vault locked';
+        this.item.tooltip = 'Unlock sync with your vault secret key (re-run setup → Unlock existing vault).';
+        this.item.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
+        break;
+      case 'paused':
+        this.item.text = '$(debug-pause) Sync paused';
+        this.item.tooltip = 'Sync is paused. Click to resume.';
+        break;
+      default:
+        this.item.text = '$(cloud) Sync ready';
+        this.item.tooltip = 'Sync is configured. Click for options.';
+        this.item.backgroundColor = undefined;
+    }
+  }
+
+  dispose(): void {
+    this.item.dispose();
   }
 }

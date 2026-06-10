@@ -8,7 +8,13 @@
 
 const store = require('../_lib/store');
 
-const MAX_DEVICES = 10;
+// Sponsor is a personal license; Singularity is a flat org license shared by a team.
+const DEVICE_LIMITS = { sponsor: 3, singularity: 25 };
+const DEFAULT_DEVICE_LIMIT = 3;
+
+function deviceLimitFor(tier) {
+  return DEVICE_LIMITS[tier] || DEFAULT_DEVICE_LIMIT;
+}
 
 module.exports = async (req, res) => {
   if (req.method !== 'POST') {
@@ -37,7 +43,7 @@ module.exports = async (req, res) => {
   if (active && instanceId) {
     const ids = ent.instanceIds || [];
     if (!ids.includes(instanceId)) {
-      if (ids.length >= MAX_DEVICES) {
+      if (ids.length >= deviceLimitFor(ent.tier)) {
         return res.status(200).json({
           valid: false,
           status: ent.status,

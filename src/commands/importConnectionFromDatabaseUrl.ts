@@ -1,11 +1,11 @@
 import * as vscode from 'vscode';
-import { appendWorkspaceConnection, ConnectionInfo } from '../features/connections/connectionForm';
+import { appendWorkspaceConnection, ConnectionInfo } from '../features/connections/connectionStore';
 import { DatabaseTreeProvider } from '../providers/DatabaseTreeProvider';
 import { connectionInfoFromDatabaseUrl, previewDatabaseUrl } from '../utils/databaseUrl';
 import { DATABASE_URL_ENV_KEYS, extractDatabaseUrlsFromEnvText } from '../utils/envFileDatabaseUrls';
 import { ErrorHandlers } from './helper';
 
-interface EnvUrlCandidate {
+export interface EnvUrlCandidate {
   relativePath: string;
   key: string;
   value: string;
@@ -92,7 +92,7 @@ export async function cmdImportConnectionFromDatabaseUrl(
   }
 }
 
-async function scanWorkspaceEnvFiles(
+export async function scanWorkspaceEnvFiles(
   folders: readonly vscode.WorkspaceFolder[],
   acceptKey: (k: string) => boolean,
 ): Promise<EnvUrlCandidate[]> {

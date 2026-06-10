@@ -1,5 +1,5 @@
 import { parse } from 'pg-connection-string';
-import type { ConnectionInfo } from '../features/connections/connectionForm';
+import type { ConnectionInfo } from '../features/connections/connectionStore';
 
 const VALID_SSL = new Set<string>([
   'disable',

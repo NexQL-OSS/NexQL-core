@@ -74,6 +74,61 @@
         "category": "NexQL"
       },
       {
+        "command": "postgres-explorer.license.showUsage",
+        "title": "Show Free Usage",
+        "category": "NexQL"
+      },
+      {
+        "command": "postgres-explorer.audit.openLog",
+        "title": "Open Production Audit Log",
+        "category": "NexQL"
+      },
+      {
+        "command": "postgres-explorer.sync.setup",
+        "title": "Set Up Sync",
+        "category": "NexQL Sync"
+      },
+      {
+        "command": "postgres-explorer.sync.now",
+        "title": "Sync Now",
+        "category": "NexQL Sync"
+      },
+      {
+        "command": "postgres-explorer.sync.status",
+        "title": "Show Sync Status",
+        "category": "NexQL Sync"
+      },
+      {
+        "command": "postgres-explorer.sync.showSecretKey",
+        "title": "Show Sync Secret Key",
+        "category": "NexQL Sync"
+      },
+      {
+        "command": "postgres-explorer.sync.pause",
+        "title": "Pause Sync",
+        "category": "NexQL Sync"
+      },
+      {
+        "command": "postgres-explorer.sync.signOut",
+        "title": "Sign Out of Sync",
+        "category": "NexQL Sync"
+      },
+      {
+        "command": "postgres-explorer.sync.share",
+        "title": "Share Items with a Team Member",
+        "category": "NexQL Sync"
+      },
+      {
+        "command": "postgres-explorer.sync.importShares",
+        "title": "Import Shared Items",
+        "category": "NexQL Sync"
+      },
+      {
+        "command": "postgres-explorer.sync.statusMenu",
+        "title": "Sync Menu",
+        "category": "NexQL Sync"
+      },
+      {
         "command": "postgres-explorer.addConnection",
         "title": "Add PostgreSQL Connection",
         "icon": "$(add)"
@@ -111,6 +166,12 @@
       {
         "command": "postgres-explorer.manageConnections",
         "title": "Manage Connections",
+        "icon": "$(settings-gear)"
+      },
+      {
+        "command": "postgres-explorer.settingsHub",
+        "title": "Open Settings",
+        "category": "NexQL",
         "icon": "$(settings-gear)"
       },
       {
@@ -1687,6 +1748,46 @@
             ]
           }
         ]
+      },
+      {
+        "id": "pgstudioSyncSetup",
+        "title": "Set up PgStudio Sync",
+        "description": "E2E-encrypted sync for connections, notebooks, and saved queries across editors.",
+        "steps": [
+          {
+            "id": "pgstudioSyncSetup.openWizard",
+            "title": "Set up sync",
+            "description": "Run the guided wizard to create or unlock your encrypted vault.\n[Set Up Sync](command:postgres-explorer.sync.setup)",
+            "media": {
+              "markdown": "walkthroughs/step-sync-setup.md",
+              "altText": "Set up PgStudio Sync"
+            },
+            "completionEvents": [
+              "onCommand:postgres-explorer.sync.setup"
+            ]
+          },
+          {
+            "id": "pgstudioSyncSetup.chooseItems",
+            "title": "Choose what to sync",
+            "description": "Pick connections, saved queries, notebooks, and optionally passwords during setup.",
+            "media": {
+              "markdown": "walkthroughs/step-sync-items.md",
+              "altText": "Choose sync items"
+            }
+          },
+          {
+            "id": "pgstudioSyncSetup.firstSync",
+            "title": "Run your first sync",
+            "description": "Sync runs automatically after setup. Use the status bar to sync anytime.\n[Sync Now](command:postgres-explorer.sync.now)",
+            "media": {
+              "markdown": "walkthroughs/step-sync-first.md",
+              "altText": "First sync"
+            },
+            "completionEvents": [
+              "onCommand:postgres-explorer.sync.now"
+            ]
+          }
+        ]
       }
     ],
     "notebooks": [
@@ -1815,7 +1916,53 @@
                 "description": "Force read-only transactions for this connection"
               }
             }
-          }
+        }
+      },
+        "postgresExplorer.sync.auto": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable automatic sync (pull on activation, debounced push, periodic pull)."
+        },
+        "postgresExplorer.sync.notebookFolder": {
+          "type": "string",
+          "default": "~/PgStudioNotebooks",
+          "description": "Folder for synced .pgsql notebooks (supports ~ for home directory)."
+        },
+        "postgresExplorer.sync.pullIntervalMinutes": {
+          "type": "number",
+          "default": 5,
+          "minimum": 1,
+          "description": "Interval in minutes for periodic sync pulls."
+        },
+        "postgresExplorer.sync.apiEndpoint": {
+          "type": "string",
+          "default": "https://nexql.astrx.dev/api",
+          "scope": "machine",
+          "description": "Base URL for NexQL account and cloud sync API."
+        },
+        "postgresExplorer.sync.githubClientId": {
+          "type": "string",
+          "default": "Ov23liPLACEHOLDER_GITHUB_CLIENT",
+          "scope": "machine",
+          "markdownDescription": "GitHub OAuth app client ID for device-flow fallback when built-in GitHub auth is unavailable. Register at https://github.com/settings/developers (enable device flow)."
+        },
+        "postgresExplorer.sync.onedriveClientId": {
+          "type": "string",
+          "default": "00000000-0000-0000-0000-PLACEHOLDER",
+          "scope": "machine",
+          "markdownDescription": "Entra (Azure AD) public client app ID for OneDrive appFolder sync. Register at https://portal.azure.com."
+        },
+        "postgresExplorer.sync.googleClientId": {
+          "type": "string",
+          "default": "000000000000-placeholder.apps.googleusercontent.com",
+          "scope": "machine",
+          "markdownDescription": "Google OAuth client ID for Drive appdata sync (loopback PKCE). Requires Google verification for production."
+        },
+        "postgresExplorer.sync.postgresConnectionId": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "description": "Connection ID for optional team Postgres sync backend (pgstudio_sync schema)."
         },
         "postgresExplorer.aiProvider": {
           "type": "string",

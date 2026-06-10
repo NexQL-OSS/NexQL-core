@@ -89,25 +89,43 @@
 
 /* ── Buttons ── */
 .pg-btn,
-.btn {
+.btn,
+.btn-primary,
+.btn-secondary,
+.pg-btn--primary,
+.pg-btn--secondary {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 6px;
+  min-height: 28px;
   padding: 7px 14px;
   font-size: 12px;
   font-weight: 500;
+  font-family: var(--vscode-font-family);
+  line-height: 1.2;
   border-radius: var(--pg-radius-sm);
   border: none;
   cursor: pointer;
-  transition: filter var(--pg-transition-fast), background var(--pg-transition-fast), opacity var(--pg-transition-fast);
+  appearance: none;
+  -webkit-appearance: none;
+  box-sizing: border-box;
+  text-decoration: none;
+  transition:
+    background var(--pg-transition-fast),
+    color var(--pg-transition-fast),
+    opacity var(--pg-transition-fast),
+    border-color var(--pg-transition-fast),
+    box-shadow var(--pg-transition-fast);
 }
+
 .btn-primary,
 .pg-btn--primary {
   background: var(--vscode-button-background);
   color: var(--vscode-button-foreground);
 }
-.btn-primary:hover,
-.pg-btn--primary:hover {
+.btn-primary:hover:not(:disabled),
+.pg-btn--primary:hover:not(:disabled) {
   background: var(--vscode-button-hoverBackground);
 }
 .btn-secondary,
@@ -115,9 +133,25 @@
   background: var(--vscode-button-secondaryBackground);
   color: var(--vscode-button-secondaryForeground);
 }
-.btn-secondary:hover,
-.pg-btn--secondary:hover {
+.btn-secondary:hover:not(:disabled),
+.pg-btn--secondary:hover:not(:disabled) {
   background: var(--vscode-button-secondaryHoverBackground);
+}
+
+.btn-primary:disabled,
+.btn-secondary:disabled,
+.pg-btn:disabled,
+.pg-btn--primary:disabled,
+.pg-btn--secondary:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.btn-primary:focus-visible,
+.btn-secondary:focus-visible,
+.pg-btn:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 2px;
 }
 .pg-btn--ghost {
   background: transparent;
@@ -131,14 +165,20 @@
 }
 .pg-btn--link,
 .btn-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: auto;
+  padding: 0;
   background: none;
   border: none;
   color: var(--vscode-textLink-foreground);
   text-decoration: none;
   cursor: pointer;
-  padding: 0;
   font-size: 12px;
   font-weight: 400;
+  font-family: var(--vscode-font-family);
+  appearance: none;
+  -webkit-appearance: none;
 }
 .pg-btn--link:hover,
 .btn-link:hover {

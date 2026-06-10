@@ -31,6 +31,7 @@ import { ResultCursorService } from '../../services/ResultCursorService';
 import { CursorStreamBannerPolicy } from '../../services/CursorStreamBannerPolicy';
 import { FullDatasetPreferenceService } from '../../services/FullDatasetPreferenceService';
 import { ConnectionUtils } from '../../utils/connectionUtils';
+import { AuditLogService } from '../../features/audit/AuditLogService';
 
 /** Streaming NOTICE feed during a single-statement cell run (replaced by final result output). */
 const MIME_NOTICES_LIVE = 'application/vnd.postgres-notebook.notices-live';
@@ -723,6 +724,17 @@ export class SqlExecutor {
           await this.insertTransactionControlCell(cell);
         }
       }
+
+      // Audit trail (Singularity): record DDL/destructive statements on PROD-tagged connections.
+      void AuditLogService.getInstance().record(
+        {
+          connectionName: connection.name || connection.id,
+          host: connection.host,
+          database: metadata.databaseName || connection.database || '',
+          environment: connection.environment || '',
+        },
+        statements,
+      );
 
       // Execute each statement
       const statementsResults: StatementResult[] = [];

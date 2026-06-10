@@ -28,9 +28,7 @@ import { cmdAllOperationsTypes, cmdCreateType, cmdDropType, cmdEditTypes, cmdRef
 import { cmdAddRole, cmdAddUser, cmdDropRole, cmdEditRole, cmdGrantRevokeRole, cmdRefreshRole, cmdRoleOperations, cmdShowRoleProperties } from '../commands/usersRoles';
 import { cmdCreateView, cmdDropView, cmdEditView, cmdRefreshView, cmdScriptCreate as cmdViewScriptCreate, cmdScriptSelect as cmdViewScriptSelect, cmdShowViewProperties, cmdViewData, cmdViewOperations } from '../commands/views';
 
-import { AiSettingsPanel } from '../features/aiAssistant/settings/aiSettingsPanel';
-import { ConnectionFormPanel } from '../features/connections/connectionForm';
-import { ConnectionManagementPanel } from '../features/connections/connectionManagement';
+import { SettingsHubPanel, SettingsHubShowOptions } from '../features/settings/SettingsHubPanel';
 import { ConnectionUtils } from '../utils/connectionUtils';
 
 // Phase 7: Advanced Power User & AI features
@@ -96,7 +94,18 @@ import { cmdSearchSchema } from '../commands/schemaSearch';
 import { WorkspaceStateService } from '../services/WorkspaceStateService';
 import { switchWorkspaceDefaultConnection } from '../commands/workspaceConnection';
 import { WhatsNewManager } from './WhatsNewManager';
-import { cmdLicenseActivate, cmdLicenseManage, cmdLicenseOpenUpgrade } from '../commands/license';
+import { cmdLicenseActivate, cmdLicenseManage, cmdLicenseOpenUpgrade, cmdLicenseShowUsage } from '../commands/license';
+import {
+  cmdSyncNow,
+  cmdSyncPause,
+  cmdSyncSetup,
+  cmdSyncShare,
+  cmdSyncImportShares,
+  cmdSyncShowSecretKey,
+  cmdSyncSignOut,
+  cmdSyncStatus,
+  cmdSyncStatusMenu,
+} from '../features/sync/syncCommands';
 
 export function getCommandSpecs(
   context: vscode.ExtensionContext,
@@ -108,6 +117,42 @@ export function getCommandSpecs(
   notebooksTreeProvider?: NotebooksTreeProvider
 ): Array<{ command: string; callback: (...args: any[]) => any }> {
   const commands = [
+    {
+      command: 'postgres-explorer.sync.setup',
+      callback: () => cmdSyncSetup(context),
+    },
+    {
+      command: 'postgres-explorer.sync.now',
+      callback: () => cmdSyncNow(),
+    },
+    {
+      command: 'postgres-explorer.sync.status',
+      callback: () => cmdSyncStatus(),
+    },
+    {
+      command: 'postgres-explorer.sync.statusMenu',
+      callback: () => cmdSyncStatusMenu(context),
+    },
+    {
+      command: 'postgres-explorer.sync.showSecretKey',
+      callback: () => cmdSyncShowSecretKey(),
+    },
+    {
+      command: 'postgres-explorer.sync.pause',
+      callback: () => cmdSyncPause(),
+    },
+    {
+      command: 'postgres-explorer.sync.signOut',
+      callback: () => cmdSyncSignOut(),
+    },
+    {
+      command: 'postgres-explorer.sync.share',
+      callback: () => cmdSyncShare(context),
+    },
+    {
+      command: 'postgres-explorer.sync.importShares',
+      callback: () => cmdSyncImportShares(context),
+    },
     {
       command: 'postgres-explorer.license.activate',
       callback: (prefillKey?: string) => cmdLicenseActivate(prefillKey)
@@ -125,10 +170,23 @@ export function getCommandSpecs(
       callback: () => cmdLicenseOpenUpgrade()
     },
     {
+      command: 'postgres-explorer.license.showUsage',
+      callback: () => cmdLicenseShowUsage()
+    },
+    {
+      command: 'postgres-explorer.audit.openLog',
+      callback: async () => {
+        const { AuditLogService } = await import('../features/audit/AuditLogService');
+        await AuditLogService.getInstance().openLog();
+      }
+    },
+    {
       command: 'postgres-explorer.addConnection',
       callback: () => {
-        // Explicitly pass undefined to force "Add" mode, ignoring any arguments VS Code might pass
-        ConnectionFormPanel.show(context.extensionUri, context, undefined);
+        SettingsHubPanel.show(context.extensionUri, context, {
+          section: 'connections',
+          addConnection: true,
+        });
       }
     },
     {
@@ -141,7 +199,10 @@ export function getCommandSpecs(
         if (!item || !item.connectionId) return;
         const connection = ConnectionUtils.findConnection(item.connectionId);
         if (connection) {
-          ConnectionFormPanel.show(context.extensionUri, context, connection);
+          SettingsHubPanel.show(context.extensionUri, context, {
+            section: 'connections',
+            editConnectionId: item.connectionId,
+          });
         }
       }
     },
@@ -430,13 +491,19 @@ export function getCommandSpecs(
     {
       command: 'postgres-explorer.manageConnections',
       callback: () => {
-        ConnectionManagementPanel.show(context.extensionUri, context);
+        SettingsHubPanel.show(context.extensionUri, context, { section: 'connections' });
       }
     },
     {
       command: 'postgres-explorer.aiSettings',
       callback: () => {
-        AiSettingsPanel.show(context.extensionUri, context);
+        SettingsHubPanel.show(context.extensionUri, context, { section: 'ai' });
+      }
+    },
+    {
+      command: 'postgres-explorer.settingsHub',
+      callback: (options?: SettingsHubShowOptions) => {
+        SettingsHubPanel.show(context.extensionUri, context, options ?? {});
       }
     },
     {
@@ -502,6 +569,30 @@ export function getCommandSpecs(
         if (!newName || newName === oldName) { return; }
         const newUri = vscode.Uri.joinPath(item.uri, '..', `${newName}.pgsql`);
         await vscode.workspace.fs.rename(item.uri, newUri, { overwrite: false });
+        try {
+          const raw = await vscode.workspace.fs.readFile(newUri);
+          const parsed = JSON.parse(Buffer.from(raw).toString()) as Record<string, unknown>;
+          const { readNotebookSyncId } = await import('../features/sync/notebookSyncId');
+          const { SyncIndex } = await import('../features/sync/SyncIndex');
+          const { recordSyncActivity } = await import('../features/sync/SyncActivityLog');
+          const syncId = readNotebookSyncId(parsed);
+          if (syncId) {
+            const index = new SyncIndex(context);
+            index.update(syncId, { kind: 'notebook', name: newName, filePath: newUri.fsPath });
+            await index.flush();
+            recordSyncActivity({
+              kind: 'notebook',
+              action: 'rename',
+              itemId: syncId,
+              name: newName,
+              previousName: oldName,
+            });
+          }
+        } catch {
+          /* index update is best-effort */
+        }
+        const { triggerInstantSync } = await import('../features/sync/syncTriggers');
+        triggerInstantSync();
         notebooksTreeProvider?.refresh();
       }
     },
@@ -514,7 +605,35 @@ export function getCommandSpecs(
           { modal: true }, 'Delete'
         );
         if (confirm !== 'Delete') { return; }
+        let syncId: string | undefined;
+        try {
+          const raw = await vscode.workspace.fs.readFile(item.uri);
+          const parsed = JSON.parse(Buffer.from(raw).toString()) as Record<string, unknown>;
+          const { readNotebookSyncId } = await import('../features/sync/notebookSyncId');
+          syncId = readNotebookSyncId(parsed);
+        } catch {
+          /* best-effort */
+        }
         await vscode.workspace.fs.delete(item.uri, { recursive: false });
+        if (syncId) {
+          try {
+            const { SyncIndex } = await import('../features/sync/SyncIndex');
+            const { recordSyncActivity } = await import('../features/sync/SyncActivityLog');
+            const index = new SyncIndex(context);
+            index.remove(syncId);
+            await index.flush();
+            recordSyncActivity({
+              kind: 'notebook',
+              action: 'delete',
+              itemId: syncId,
+              name: item.label as string,
+            });
+          } catch {
+            /* best-effort */
+          }
+        }
+        const { triggerInstantSync } = await import('../features/sync/syncTriggers');
+        triggerInstantSync();
         notebooksTreeProvider?.refresh();
       }
     },
@@ -530,6 +649,8 @@ export function getCommandSpecs(
         );
         if (confirm !== 'Delete Folder') { return; }
         await vscode.workspace.fs.delete(item.uri, { recursive: true, useTrash: false });
+        const { triggerInstantSync } = await import('../features/sync/syncTriggers');
+        triggerInstantSync();
         notebooksTreeProvider?.refresh();
       }
     },

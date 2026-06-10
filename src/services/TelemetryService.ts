@@ -35,6 +35,9 @@ const EVENT_SCHEMA: Record<string, { kind: TelemetryEventKind; allowedProps: Set
   gate_decision: { kind: 'usage', allowedProps: new Set(['feature', 'enforcement', 'allowed', 'paid']) },
   daily_active_user: { kind: 'usage', allowedProps: new Set(['version']) },
   span_completed: { kind: 'performance', allowedProps: new Set(['spanName', 'durationBucket', 'success']) },
+  sync_setup_completed: { kind: 'usage', allowedProps: new Set(['provider']) },
+  sync_run: { kind: 'usage', allowedProps: new Set(['pushed', 'pulled', 'conflicts', 'skipped', 'durationMs', 'provider']) },
+  sync_failure: { kind: 'usage', allowedProps: new Set(['failureClass', 'provider']) },
 };
 
 interface TelemetryEnvelope {
