@@ -71,7 +71,20 @@ export class LicenseSectionHandler implements SettingsSectionHandler {
 
     const quotas = QuotaService.getInstance();
     const now = new Date();
+    // Paid tiers are unmetered — present the same features as "Unlimited" rows
+    // (limit: null) so the usage section is visible on every tier.
     const quotaRows = (Object.keys(FREE_QUOTAS) as ProFeature[]).map((feature) => {
+      if (status.tier !== 'free') {
+        return {
+          feature,
+          label: featureLabel(feature),
+          used: 0,
+          remaining: null,
+          limit: null,
+          period: null,
+          resetHint: '',
+        };
+      }
       const peek = quotas.peek(feature, now);
       return {
         feature,
@@ -95,7 +108,7 @@ export class LicenseSectionHandler implements SettingsSectionHandler {
         gracePeriodStartedAt,
         cachedStatus,
         pricingUrl: PRICING_URL,
-        quotas: status.tier === 'free' ? quotaRows : [],
+        quotas: quotaRows,
       },
     });
   }

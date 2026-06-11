@@ -96,12 +96,17 @@ export async function cmdLicenseOpenUpgrade(): Promise<void> {
 export async function cmdLicenseShowUsage(): Promise<void> {
   const svc = LicenseService.getInstance();
   if (svc.isPaid()) {
-    vscode.window.showInformationMessage(
+    const choice = await vscode.window.showInformationMessage(
       `NexQL ${svc.getTier() === 'singularity' ? 'Singularity' : 'Sponsor'} — all features are unlimited.`,
+      'Open Settings',
     );
+    if (choice === 'Open Settings') {
+      await vscode.commands.executeCommand('postgres-explorer.settingsHub', { section: 'license' });
+    }
     return;
   }
 
+  const OPEN_SETTINGS_LABEL = '$(gear) Manage license & usage in Settings';
   const quotas = QuotaService.getInstance();
   const now = new Date();
   const items: vscode.QuickPickItem[] = (Object.keys(FREE_QUOTAS) as ProFeature[]).map((feature) => {
@@ -116,12 +121,18 @@ export async function cmdLicenseShowUsage(): Promise<void> {
       detail: quotas.resetHint(feature, now),
     };
   });
+  items.push(
+    { label: '', kind: vscode.QuickPickItemKind.Separator },
+    { label: OPEN_SETTINGS_LABEL, description: 'Full usage view in Settings → License' },
+  );
 
   const picked = await vscode.window.showQuickPick(items, {
     title: 'NexQL Free Usage',
     placeHolder: 'Remaining free usage per feature — upgrade for unlimited',
   });
-  if (picked) {
+  if (picked?.label === OPEN_SETTINGS_LABEL) {
+    await vscode.commands.executeCommand('postgres-explorer.settingsHub', { section: 'license' });
+  } else if (picked) {
     await vscode.env.openExternal(vscode.Uri.parse(PRICING_URL));
   }
 }

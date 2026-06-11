@@ -357,6 +357,7 @@ export class NotebookStatusBar implements vscode.Disposable {
       const word = status.period === 'week' ? 'this week' : 'today';
       md.appendMarkdown(`- ${featureLabel(feature)}: ${status.remaining}/${status.limit} left ${word}\n`);
     }
+    md.appendMarkdown('\nClick for details — full view in Settings → License.\n');
     if (envTooltip) {
       md.appendMarkdown(`\n${envTooltip.trim()}`);
     }

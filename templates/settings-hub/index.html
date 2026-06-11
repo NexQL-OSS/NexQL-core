@@ -141,6 +141,7 @@
               <option value="vscode-lm">VS Code Language Model (GitHub Copilot)</option>
               <option value="github">GitHub Models (GitHub account)</option>
               <option value="cursor">Cursor SDK (local agents)</option>
+              <option value="opencode">OpenCode (CLI / local agent)</option>
               <option value="openai">OpenAI (GPT-4, GPT-3.5)</option>
               <option value="anthropic">Anthropic (Claude)</option>
               <option value="gemini">Google Gemini</option>
@@ -221,6 +222,65 @@
                 <option value="">Select a model...</option>
               </select>
               <input type="text" id="model-cursor" placeholder="composer-2, auto, or another Cursor model">
+            </div>
+          </div>
+
+          <div id="provider-opencode" class="provider-details">
+            <div class="info-box info">
+              <span class="info-box-icon">🧠</span>
+              <div>
+                <strong>OpenCode</strong>
+                Uses the OpenCode CLI detected on your machine (<code>opencode</code>). Configure providers with <code>opencode auth login</code> — no API key in PgStudio.
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="opencodeCliPath">OpenCode CLI path <span class="label-description">(optional)</span></label>
+              <input type="text" id="opencodeCliPath" placeholder="Leave empty to auto-detect on PATH">
+            </div>
+            <div class="form-group checkbox-group">
+              <label class="checkbox-label">
+                <input type="checkbox" id="opencodeAutoServe" checked>
+                Auto-start <code>opencode serve</code> (recommended — avoids cold boot per request)
+              </label>
+            </div>
+            <div class="form-group checkbox-group">
+              <label class="checkbox-label">
+                <input type="checkbox" id="opencodeShowLog" checked>
+                Show OpenCode log output while requests run (View → Output → OpenCode)
+              </label>
+            </div>
+            <div class="form-group checkbox-group">
+              <label class="checkbox-label">
+                <input type="checkbox" id="opencodeSkipPermissions" checked>
+                Headless mode — auto-allow tool permissions (recommended)
+              </label>
+            </div>
+            <div class="form-group checkbox-group">
+              <label class="checkbox-label">
+                <input type="checkbox" id="opencodeAutoApprovePermissions" checked>
+                Auto-approve server permission prompts during requests
+              </label>
+            </div>
+            <div class="form-group">
+              <label for="opencodeServeUrl">Server URL</label>
+              <input type="text" id="opencodeServeUrl" placeholder="Auto-filled when serve starts, or set manually">
+              <p class="field-hint">PgStudio reuses this URL across requests. Clear and reload if a request hangs on “Permission required”. Use models from providers you have authed (<code>opencode auth login</code>) — Microsoft/Copilot models need separate OAuth.</p>
+            </div>
+            <div class="form-group">
+              <label for="opencodeServePort">Serve port <span class="label-description">(0 = free port)</span></label>
+              <input type="number" id="opencodeServePort" min="0" max="65535" placeholder="0">
+            </div>
+            <div class="form-group">
+              <label for="model-opencode">
+                Model
+                <span class="label-description">
+                  <button type="button" class="btn-link list-models-btn" data-provider="opencode">List available models</button>
+                </span>
+              </label>
+              <select id="model-opencode-select" class="hidden">
+                <option value="">Select a model...</option>
+              </select>
+              <input type="text" id="model-opencode" placeholder="provider/model, e.g. opencode/gpt-5, or auto">
             </div>
           </div>
 
@@ -528,7 +588,7 @@
           </div>
 
           <div id="licenseQuotaBox" hidden>
-            <h2 class="pref-group-title">Free usage remaining</h2>
+            <h2 id="licenseQuotaTitle" class="pref-group-title">Free usage remaining</h2>
             <table class="conn-table quota-table">
               <thead>
                 <tr>

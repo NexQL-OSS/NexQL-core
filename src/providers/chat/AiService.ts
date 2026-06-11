@@ -14,6 +14,11 @@ import { DirectApiKeyProvider } from '../../features/aiAssistant/types';
 import { TelemetryService } from '../../services/TelemetryService';
 import { AiCapability, buildSystemPrompt as composeSystemPrompt } from './prompts';
 import { debugLog, debugWarn } from '../../common/logger';
+import {
+  listOpencodeModels,
+  resolveOpencodeWorkingDirectory,
+  runOpencodePrompt,
+} from '../../features/aiAssistant/opencode';
 
 // GitHub Models permission applies to fine-grained tokens/GitHub Apps.
 // For VS Code OAuth sessions, request no explicit scope.
@@ -22,6 +27,7 @@ const GITHUB_MODELS_API_BASE = 'https://models.github.ai';
 const GITHUB_MODELS_API_VERSION = '2026-03-10';
 const DEFAULT_GITHUB_MODEL = 'openai/gpt-4.1';
 const DEFAULT_CURSOR_MODEL = 'auto';
+const DEFAULT_OPENCODE_MODEL = 'auto';
 const DIRECT_API_PROVIDERS = new Set([
   'openai',
   'anthropic',
@@ -115,6 +121,10 @@ export class AiService {
 
     if (provider === 'cursor') {
       return await this.callCursorAgent(userMessage, config, customSystemPrompt, scope);
+    }
+
+    if (provider === 'opencode') {
+      return await this.callOpenCodeAgent(userMessage, config, customSystemPrompt, scope);
     }
 
     return await this.callDirectApi(provider, userMessage, config, customSystemPrompt, scope);
@@ -404,6 +414,68 @@ export class AiService {
     ].filter(Boolean);
 
     return sections.join('\n\n');
+  }
+
+  private async _resolveOpencodeModel(
+    config: vscode.WorkspaceConfiguration,
+    scope: AiConfigScope = 'notebook',
+  ): Promise<string | undefined> {
+    const configuredModel = this._resolveConfiguredModel(config, scope);
+    if (configuredModel && configuredModel !== 'auto') {
+      return configuredModel;
+    }
+
+    try {
+      const models = await listOpencodeModels(config);
+      return models[0];
+    } catch {
+      return undefined;
+    }
+  }
+
+  private async callOpenCodeAgent(
+    userMessage: string,
+    config: vscode.WorkspaceConfiguration,
+    customSystemPrompt?: string,
+    scope: AiConfigScope = 'notebook',
+  ): Promise<{ text: string; usage?: string }> {
+    const telemetry = TelemetryService.getInstance();
+    if (!userMessage || !userMessage.trim()) {
+      throw new Error('User message is required for AI requests.');
+    }
+
+    const model = await this._resolveOpencodeModel(config, scope);
+    const systemPrompt = customSystemPrompt !== undefined ? customSystemPrompt : this.buildSystemPrompt();
+    const prompt = this._buildCursorPrompt(userMessage, systemPrompt, config);
+    const workDir = resolveOpencodeWorkingDirectory(config);
+
+    this._cancellationTokenSource = new vscode.CancellationTokenSource();
+
+    try {
+      const result = await runOpencodePrompt(config, {
+        prompt,
+        model,
+        cwd: workDir,
+        serveUrl: config.get<string>('opencodeServeUrl')?.trim() || undefined,
+        cancellationToken: this._cancellationTokenSource.token,
+      });
+
+      const responseText = result.text;
+      if (!responseText.trim()) {
+        throw new Error('AI model returned an empty response. Please retry or select a different model.');
+      }
+
+      telemetry.trackEvent('ai_request', { provider: 'opencode', success: true });
+      return { text: responseText, usage: result.usage };
+    } catch (error) {
+      telemetry.trackEvent('ai_request', { provider: 'opencode', success: false });
+      throw error;
+    } finally {
+      if (this._cancellationTokenSource) {
+        this._cancellationTokenSource.dispose();
+        this._cancellationTokenSource = null;
+      }
+    }
   }
 
   private async callCursorAgent(
@@ -1430,6 +1502,16 @@ export class AiService {
         } catch {
           return 'Cursor';
         }
+      } else if (provider === 'opencode') {
+        if (configuredModel && configuredModel !== 'auto') {
+          return configuredModel;
+        }
+        try {
+          const models = await listOpencodeModels(config);
+          return models[0] || 'OpenCode (No Models)';
+        } catch {
+          return 'OpenCode';
+        }
       } else {
         return configuredModel || this._getDefaultModel(provider);
       }
@@ -1442,6 +1524,7 @@ export class AiService {
     switch (provider) {
       case 'github': return DEFAULT_GITHUB_MODEL;
       case 'cursor': return DEFAULT_CURSOR_MODEL;
+      case 'opencode': return DEFAULT_OPENCODE_MODEL;
       case 'openai': return DEFAULT_OPENAI_MODEL;
       case 'anthropic': return DEFAULT_ANTHROPIC_MODEL;
       case 'gemini': return DEFAULT_GEMINI_MODEL;

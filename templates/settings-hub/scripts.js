@@ -929,6 +929,8 @@ function autoLoadModels(provider, apiKey, endpoint, options = {}) {
     }
   } else if (provider === 'cursor') {
     vscode.postMessage({ command: 'ai/listModels', settings: { provider: 'cursor', apiKey: apiKey || '', endpoint: endpoint || '' } });
+  } else if (provider === 'opencode') {
+    vscode.postMessage({ command: 'ai/listModels', settings: { provider: 'opencode', apiKey: '', endpoint: '' } });
   } else if (provider === 'anthropic') {
     if (apiKey && apiKey.length > 0) {
       vscode.postMessage({ command: 'ai/listModels', settings: { provider: 'anthropic', apiKey, endpoint } });
@@ -974,6 +976,8 @@ function getAiFormData() {
   } else if (provider === 'cursor') {
     apiKey = $('apiKey-cursor').value;
     model = modelValueFor('cursor');
+  } else if (provider === 'opencode') {
+    model = modelValueFor('opencode');
   } else if (provider === 'custom') {
     apiKey = $('apiKey-custom').value;
     model = $('model-custom').value;
@@ -986,7 +990,29 @@ function getAiFormData() {
     endpoint = $('endpoint-lmstudio').value || DEFAULT_LMSTUDIO_ENDPOINT;
   }
 
-  return { configScope, provider, apiKey, apiKeys, model, endpoint };
+  const opencodeCliPath = $('opencodeCliPath')?.value || '';
+  const opencodeServeUrl = $('opencodeServeUrl')?.value || '';
+  const opencodeAutoServe = $('opencodeAutoServe')?.checked !== false;
+  const opencodeShowLog = $('opencodeShowLog')?.checked !== false;
+  const opencodeSkipPermissions = $('opencodeSkipPermissions')?.checked !== false;
+  const opencodeAutoApprovePermissions = $('opencodeAutoApprovePermissions')?.checked !== false;
+  const opencodeServePort = parseInt($('opencodeServePort')?.value || '0', 10) || 0;
+
+  return {
+    configScope,
+    provider,
+    apiKey,
+    apiKeys,
+    model,
+    endpoint,
+    opencodeCliPath,
+    opencodeServeUrl,
+    opencodeAutoServe,
+    opencodeShowLog,
+    opencodeSkipPermissions,
+    opencodeAutoApprovePermissions,
+    opencodeServePort,
+  };
 }
 
 function setAiFormData(settings) {
@@ -1010,6 +1036,19 @@ function setAiFormData(settings) {
   if (p === 'cursor') {
     setVal('apiKey-cursor', settings.cursorApiKey || '');
     setVal('model-cursor', settings.model || '');
+  } else if (p === 'opencode') {
+    setVal('opencodeCliPath', settings.opencodeCliPath || '');
+    setVal('opencodeServeUrl', settings.opencodeServeUrl || '');
+    const autoServeEl = $('opencodeAutoServe');
+    if (autoServeEl) { autoServeEl.checked = settings.opencodeAutoServe !== false; }
+    const showLogEl = $('opencodeShowLog');
+    if (showLogEl) { showLogEl.checked = settings.opencodeShowLog !== false; }
+    const skipPermEl = $('opencodeSkipPermissions');
+    if (skipPermEl) { skipPermEl.checked = settings.opencodeSkipPermissions !== false; }
+    const autoApproveEl = $('opencodeAutoApprovePermissions');
+    if (autoApproveEl) { autoApproveEl.checked = settings.opencodeAutoApprovePermissions !== false; }
+    setVal('opencodeServePort', String(settings.opencodeServePort || 0));
+    setVal('model-opencode', settings.model || '');
   } else if (p === 'custom') {
     setVal('model-custom', settings.model || '');
     setVal('endpoint-custom', settings.endpoint || '');
@@ -1068,11 +1107,11 @@ document.querySelectorAll('.list-models-btn').forEach((btn) => {
     this.textContent = 'Loading models...';
 
     const apiKey = (provider === 'github') ? '' : settings.apiKey;
-    vscode.postMessage({ command: 'ai/listModels', settings: { provider, apiKey, endpoint: provider === 'github' || provider === 'cursor' ? '' : endpoint } });
+    vscode.postMessage({ command: 'ai/listModels', settings: { provider, apiKey, endpoint: provider === 'github' || provider === 'cursor' || provider === 'opencode' ? '' : endpoint } });
   });
 });
 
-['vscode-lm', 'github', 'cursor', 'openai', 'anthropic', 'gemini', 'ollama', 'lmstudio'].forEach((provider) => {
+['vscode-lm', 'github', 'cursor', 'opencode', 'openai', 'anthropic', 'gemini', 'ollama', 'lmstudio'].forEach((provider) => {
   const selectEl = $('model-' + provider + '-select');
   const inputEl = $('model-' + provider);
   if (selectEl && inputEl) {
@@ -1676,6 +1715,9 @@ function handleLicenseMessage(message) {
       $('licenseActivateBox').hidden = isPaid;
       $('licenseQuotaBox').hidden = !(lic.quotas && lic.quotas.length);
       if (lic.quotas && lic.quotas.length) {
+        $('licenseQuotaTitle').textContent = isPaid
+          ? 'Usage — unlimited on your plan'
+          : 'Free usage remaining';
         renderQuotas(lic.quotas);
       }
       break;

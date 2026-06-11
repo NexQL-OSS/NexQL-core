@@ -140,6 +140,9 @@ export async function activate(context: vscode.ExtensionContext) {
 
   outputChannel = vscode.window.createOutputChannel('NexQL');
   outputChannel.appendLine('Activating NexQL extension');
+
+  const { OpencodeServeManager } = await import('./features/aiAssistant/opencode');
+  OpencodeServeManager.getInstance().init(context);
   const telemetry = TelemetryService.getInstance();
   telemetry.initialize(context);
   const version = context.extension.packageJSON.version;
@@ -602,6 +605,13 @@ export async function deactivate() {
 
   // Flush after connection shutdown so close events are not dropped.
   await telemetry.flush();
+
+  try {
+    const { OpencodeServeManager } = await import('./features/aiAssistant/opencode');
+    OpencodeServeManager.getInstance().dispose();
+  } catch {
+    // ignore if module unavailable
+  }
 
   outputChannel?.appendLine('NexQL extension deactivated');
 }

@@ -139,6 +139,8 @@ export function providerDisplayName(provider: AiProviderId): string {
       return 'GitHub Models';
     case 'cursor':
       return 'Cursor';
+    case 'opencode':
+      return 'OpenCode';
     case 'openai':
       return 'OpenAI';
     case 'anthropic':

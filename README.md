@@ -141,6 +141,23 @@
 
 ---
 
+## 🌐 Platform Compatibility
+
+NexQL works with **any database that speaks the PostgreSQL wire protocol** — not just self-hosted Postgres.
+
+| Platform | Status | Tip |
+|---|---|---|
+| PostgreSQL 12–17 | ✅ Fully supported | Integration-tested every release |
+| **Neon** | ✅ Works | Use the direct (non-`-pooler`) endpoint, SSL `require` |
+| **Supabase** | ✅ Works | Use direct or session pooler (port 5432); avoid transaction pooler (6543) |
+| **TimescaleDB** / Timescale Cloud | ✅ Fully compatible | It's a Postgres extension — everything works |
+| **YugabyteDB** (YSQL) | ✅ Mostly works | Port 5433; version-gated features fall back automatically |
+| AWS RDS / Aurora, Cloud SQL / AlloyDB, Azure Flexible | ✅ Works | Set SSL Mode `require` |
+
+📖 Full matrix, connection guides, and caveats: [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md). First-class platform support (auto-detection, capability-aware menus, connection-string paste) is planned — see [the roadmap](docs/roadmap/4.postgres-compatible-platforms-roadmap.md).
+
+---
+
 ## 🚀 Quick Start
 
 ```bash
@@ -194,6 +211,7 @@ If `posthogApiKey` is empty, telemetry stays local (debug sink only).
 ## 📚 Documentation Map
 
 - `README.md` - Product overview, installation, development, and troubleshooting
+- `docs/COMPATIBILITY.md` - Platform compatibility matrix (Neon, Supabase, TimescaleDB, YugabyteDB, RDS, …)
 - `docs/ARCHITECTURE.md` - System architecture and component/data-flow details
 - `docs/STYLING_GUIDE.md` - Centralized styling/templates and UI refactoring patterns
 - `docs/WEBSITE_CONTEXT.md` - Website architecture and content context

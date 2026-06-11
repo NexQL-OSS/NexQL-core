@@ -12,6 +12,7 @@ export type AiProviderId =
   | 'vscode-lm'
   | 'github'
   | 'cursor'
+  | 'opencode'
   | DirectApiKeyProvider
   | 'ollama'
   | 'lmstudio';

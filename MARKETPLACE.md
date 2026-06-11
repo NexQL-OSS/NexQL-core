@@ -147,6 +147,21 @@
 
 ---
 
+## 🌐 Works With Your Postgres — Wherever It Runs
+
+NexQL connects to **any PostgreSQL-wire-compatible database**:
+
+- ✅ **PostgreSQL 12–17** — self-hosted, Docker, on-prem
+- ✅ **Neon** — serverless Postgres (use the direct endpoint, SSL `require`)
+- ✅ **Supabase** — direct or session pooler connections
+- ✅ **TimescaleDB** & Timescale Cloud — 100% compatible (Postgres extension)
+- ✅ **YugabyteDB** (YSQL) — distributed Postgres, port 5433
+- ✅ **AWS RDS / Aurora**, **Google Cloud SQL / AlloyDB**, **Azure Database for PostgreSQL**
+
+See the [compatibility guide](https://github.com/dev-asterix/PgStudio/blob/main/docs/COMPATIBILITY.md) for per-platform connection settings and caveats.
+
+---
+
 ## 🌳 Database Explorer
 
 Navigate your database with an intuitive hierarchical tree view:

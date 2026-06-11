@@ -21,6 +21,7 @@ import {
   listVsCodeLanguageModels,
   resolveVsCodeLanguageModel,
 } from '../../aiAssistant/modelListing';
+import { listOpencodeModels, testOpencodeConnection } from '../../aiAssistant/opencode';
 import type { SettingsHubHostContext, SettingsHubMessage, SettingsSectionHandler } from '../types';
 
 export interface AiSettings {
@@ -29,6 +30,13 @@ export interface AiSettings {
   apiKey?: string;
   apiKeys?: Partial<Record<DirectApiKeyProvider, string>>;
   cursorApiKey?: string;
+  opencodeCliPath?: string;
+  opencodeServeUrl?: string;
+  opencodeAutoServe?: boolean;
+  opencodeShowLog?: boolean;
+  opencodeSkipPermissions?: boolean;
+  opencodeAutoApprovePermissions?: boolean;
+  opencodeServePort?: number;
   model?: string;
   endpoint?: string;
 }
@@ -105,6 +113,13 @@ export class AiSectionHandler implements SettingsSectionHandler {
         provider: scoped.provider,
         apiKeys,
         cursorApiKey,
+        opencodeCliPath: config.get('opencodeCliPath', ''),
+        opencodeServeUrl: config.get('opencodeServeUrl', ''),
+        opencodeAutoServe: config.get('opencodeAutoServe', true),
+        opencodeShowLog: config.get('opencodeShowLog', true),
+        opencodeSkipPermissions: config.get('opencodeSkipPermissions', true),
+        opencodeAutoApprovePermissions: config.get('opencodeAutoApprovePermissions', true),
+        opencodeServePort: config.get('opencodeServePort', 0),
         model: scoped.model,
         endpoint: config.get('aiEndpoint', ''),
         githubAuth: {
@@ -135,6 +150,43 @@ export class AiSectionHandler implements SettingsSectionHandler {
       const ck = cursorApiKeyFromSettings(settings);
       await credentials.setCursorApiKey(ck || undefined);
 
+      const config = vscode.workspace.getConfiguration('postgresExplorer');
+      await config.update(
+        'opencodeCliPath',
+        settings.opencodeCliPath?.trim() || '',
+        vscode.ConfigurationTarget.Global,
+      );
+      await config.update(
+        'opencodeServeUrl',
+        settings.opencodeServeUrl?.trim() || '',
+        vscode.ConfigurationTarget.Global,
+      );
+      await config.update(
+        'opencodeAutoServe',
+        settings.opencodeAutoServe !== false,
+        vscode.ConfigurationTarget.Global,
+      );
+      await config.update(
+        'opencodeShowLog',
+        settings.opencodeShowLog !== false,
+        vscode.ConfigurationTarget.Global,
+      );
+      await config.update(
+        'opencodeSkipPermissions',
+        settings.opencodeSkipPermissions !== false,
+        vscode.ConfigurationTarget.Global,
+      );
+      await config.update(
+        'opencodeAutoApprovePermissions',
+        settings.opencodeAutoApprovePermissions !== false,
+        vscode.ConfigurationTarget.Global,
+      );
+      await config.update(
+        'opencodeServePort',
+        typeof settings.opencodeServePort === 'number' ? settings.opencodeServePort : 0,
+        vscode.ConfigurationTarget.Global,
+      );
+
       if (settings.model) {
         await rememberLastModelForProvider(
           this.host.extensionContext,
@@ -158,6 +210,7 @@ export class AiSectionHandler implements SettingsSectionHandler {
 
   private async test(settings: AiSettings): Promise<void> {
     try {
+      const config = vscode.workspace.getConfiguration('postgresExplorer');
       let testResult = '';
 
       if (settings.provider === 'vscode-lm') {
@@ -185,6 +238,8 @@ export class AiSectionHandler implements SettingsSectionHandler {
         testResult = await testGitHubModels(session.accessToken, settings.model || DEFAULT_GITHUB_MODEL);
       } else if (settings.provider === 'cursor') {
         testResult = await testCursor(cursorApiKeyFromSettings(settings), settings.model || 'auto');
+      } else if (settings.provider === 'opencode') {
+        testResult = await testOpencodeConnection(config, settings.model || 'auto');
       } else if (settings.provider === 'openai') {
         const openaiKey = directApiKeyFromSettings(settings, 'openai');
         if (!openaiKey) {
@@ -237,6 +292,8 @@ export class AiSectionHandler implements SettingsSectionHandler {
         models = await listGitHubModels(session.accessToken);
       } else if (settings.provider === 'cursor') {
         models = await listCursorModels(cursorApiKeyFromSettings(settings));
+      } else if (settings.provider === 'opencode') {
+        models = await listOpencodeModels(vscode.workspace.getConfiguration('postgresExplorer'));
       } else if (settings.provider === 'openai') {
         const openaiKey = directApiKeyFromSettings(settings, 'openai');
         if (!openaiKey) {

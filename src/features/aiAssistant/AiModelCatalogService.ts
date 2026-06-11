@@ -6,6 +6,7 @@ import {
   providerDisplayName,
   readAiScopeSettings,
 } from './aiConfig';
+import { listOpencodeModels } from './opencode';
 import {
   getGitHubSession,
   listAnthropicModels,
@@ -104,6 +105,8 @@ export class AiModelCatalogService {
         return rows.map((r) => r.displayName || r.id);
       });
     }
+
+    await this._appendProviderModels(catalog, 'opencode', async () => listOpencodeModels(config));
 
     for (const provider of ['openai', 'anthropic', 'gemini'] as DirectApiKeyProvider[]) {
       const apiKey = await this.credentials.getApiKey(provider);
@@ -229,6 +232,8 @@ export class AiModelCatalogService {
       case 'github':
         return 'openai/gpt-4.1';
       case 'cursor':
+        return 'auto';
+      case 'opencode':
         return 'auto';
       case 'custom':
         return 'custom-model';
