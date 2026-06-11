@@ -1364,6 +1364,16 @@ body.editor-minimized .site-footer.landing-site-footer {
   color: var(--nex-muted);
 }
 
+a.landing-chip {
+  text-decoration: none;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+a.landing-chip:hover {
+  border-color: color-mix(in srgb, var(--nex-accent) 55%, var(--nex-line-2));
+  color: var(--nex-fg);
+}
+
 /* ── Comparison table ──────────────────────────────────── */
 .landing-section-center {
   text-align: center;
@@ -1482,6 +1492,39 @@ body.editor-minimized .site-footer.landing-site-footer {
   color: var(--nex-muted);
   font-size: 13px;
   line-height: 1.55;
+}
+
+.landing-compat-strip {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin: 36px auto 0;
+  max-width: 720px;
+}
+
+.landing-compat-strip-label {
+  color: var(--nex-muted);
+  font-size: 13px;
+  letter-spacing: 0.02em;
+}
+
+.landing-compat-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+
+.landing-compat-guide {
+  color: var(--nex-accent);
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.landing-compat-guide:hover {
+  text-decoration: underline;
 }
 
 /* ── FAQ ───────────────────────────────────────────────── */

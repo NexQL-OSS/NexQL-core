@@ -2,6 +2,8 @@
 
 NexQL works with **any database that speaks the PostgreSQL wire protocol**. This page covers what works out of the box on popular Postgres platforms, known caveats, and recommended connection settings.
 
+> **Where to find this:** Linked from the [NexQL site](https://nexql.astrx.dev/) (workflow platform strip, FAQ, footer), [README](../README.md), and [Marketplace listing](../MARKETPLACE.md).
+
 > Roadmap for first-class platform support (auto-detection, capability-aware menus, connection-string paste): see [`docs/roadmap/4.postgres-compatible-platforms-roadmap.md`](roadmap/4.postgres-compatible-platforms-roadmap.md).
 
 ## Compatibility Matrix
@@ -20,6 +22,26 @@ NexQL works with **any database that speaks the PostgreSQL wire protocol**. This
 
 ## Connection Guides
 
+<a id="postgresql"></a>
+
+### PostgreSQL 12–17
+
+Self-hosted, Docker, and on-prem deployments are NexQL's primary target — **PostgreSQL 12 through 17** are integration-tested every release.
+
+- Default port: `5432` · SSL optional on localhost; use `require` when the server is network-exposed
+- Full superuser and extension support when your deployment allows it
+
+<a id="aws-rds"></a>
+
+### AWS RDS / Aurora PostgreSQL
+
+Managed Postgres on AWS — real PostgreSQL with full NexQL feature support.
+
+- SSL Mode: `require`
+- Use the instance or cluster endpoint from the RDS console; SSH tunnel via a bastion if the instance is in a private VPC
+
+<a id="neon"></a>
+
 ### Neon
 
 Neon dashboards give you a URL like `postgresql://user:pass@ep-xxx.region.aws.neon.tech/dbname?sslmode=require`.
@@ -29,6 +51,8 @@ Neon dashboards give you a URL like `postgresql://user:pass@ep-xxx.region.aws.ne
 - **Prefer the direct endpoint** (without `-pooler`) for NexQL. The pooled endpoint runs in transaction mode, which breaks multi-statement transactions across notebook cells, `SET`, LISTEN/NOTIFY, and temp tables.
 - **Autosuspend**: Neon suspends idle computes. The first query after a long pause may take a few seconds (cold start) or drop a stale pooled connection — just re-run the cell.
 - No superuser: tablespace and event-trigger operations are unavailable (Neon restriction, not a NexQL one).
+
+<a id="supabase"></a>
 
 ### Supabase
 
@@ -44,6 +68,8 @@ Supabase offers three connection paths (Project Settings → Database):
 - Supabase platform schemas (`auth`, `storage`, `realtime`, `vault`, …) appear in the explorer; use the tree search filter to focus on `public`.
 - Supabase is RLS-first — NexQL's **RLS Policy Studio** pairs well for authoring and reviewing policies.
 
+<a id="timescaledb"></a>
+
 ### TimescaleDB
 
 TimescaleDB is a PostgreSQL extension, so compatibility is 100%: explorer, notebooks, dashboard, AI assistant, and all object operations work unchanged.
@@ -51,6 +77,8 @@ TimescaleDB is a PostgreSQL extension, so compatibility is 100%: explorer, noteb
 - Hypertables appear as regular tables; continuous aggregates appear as materialized views. Dedicated hypertable/chunk/compression views are on the roadmap.
 - On Timescale Cloud: SSL Mode `require`; no superuser (same hosted-platform restrictions as Neon).
 - Avoid `VACUUM FULL` on compressed hypertables (Timescale guidance, independent of NexQL).
+
+<a id="yugabytedb"></a>
 
 ### YugabyteDB (YSQL)
 

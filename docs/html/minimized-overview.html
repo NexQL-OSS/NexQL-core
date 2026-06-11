@@ -52,9 +52,10 @@
           <span class="kpi-value">50+</span>
           <span class="kpi-label">capabilities</span>
         </div>
-        <div class="kpi-item">
-          <span class="kpi-value">PG 12–17</span>
-          <span class="kpi-label">RDS · Supabase · Neon</span>
+        <div class="kpi-item"
+          aria-label="Compatible with PostgreSQL 12 through 17 and pg-wire platforms including Neon, Supabase, TimescaleDB, YugabyteDB, and RDS">
+          <span class="kpi-value">PG 12+</span>
+          <span class="kpi-label">compatible</span>
         </div>
       </div>
     </div>
@@ -450,6 +451,31 @@
         <p>Charts, EXPLAIN, profiling, export.</p>
       </div>
     </div>
+    <div class="landing-compat-strip" aria-label="Supported database platforms">
+      <span class="landing-compat-strip-label">Works with any PostgreSQL-wire database</span>
+      <div class="landing-compat-chips">
+        <a class="landing-chip landing-chip-muted"
+          href="https://github.com/dev-asterix/PgStudio/blob/main/docs/COMPATIBILITY.md#postgresql" target="_blank"
+          rel="noopener noreferrer">PG 12–17</a>
+        <a class="landing-chip landing-chip-muted"
+          href="https://github.com/dev-asterix/PgStudio/blob/main/docs/COMPATIBILITY.md#neon" target="_blank"
+          rel="noopener noreferrer">Neon</a>
+        <a class="landing-chip landing-chip-muted"
+          href="https://github.com/dev-asterix/PgStudio/blob/main/docs/COMPATIBILITY.md#supabase" target="_blank"
+          rel="noopener noreferrer">Supabase</a>
+        <a class="landing-chip landing-chip-muted"
+          href="https://github.com/dev-asterix/PgStudio/blob/main/docs/COMPATIBILITY.md#timescaledb" target="_blank"
+          rel="noopener noreferrer">TimescaleDB</a>
+        <a class="landing-chip landing-chip-muted"
+          href="https://github.com/dev-asterix/PgStudio/blob/main/docs/COMPATIBILITY.md#yugabytedb" target="_blank"
+          rel="noopener noreferrer">YugabyteDB</a>
+        <a class="landing-chip landing-chip-muted"
+          href="https://github.com/dev-asterix/PgStudio/blob/main/docs/COMPATIBILITY.md#aws-rds"
+          target="_blank" rel="noopener noreferrer">RDS · Aurora</a>
+      </div>
+      <a class="landing-compat-guide" href="https://github.com/dev-asterix/PgStudio/blob/main/docs/COMPATIBILITY.md"
+        target="_blank" rel="noopener noreferrer">Platform compatibility guide ↗</a>
+    </div>
   </section>
 
   <hr class="section-divider" aria-hidden="true">
@@ -476,9 +502,14 @@
           assistant stay in the same window as your code.</p>
       </details>
       <details>
-        <summary>What PostgreSQL versions are supported?</summary>
-        <p>PostgreSQL 12 through 17, plus compatible managed services like Amazon RDS, Supabase, Neon, and other
-          pg-compatible databases.</p>
+        <summary>Which databases work with NexQL?</summary>
+        <p>Any database that speaks the PostgreSQL wire protocol. Verified platforms include PostgreSQL 12–17,
+          <strong>Neon</strong>, <strong>Supabase</strong>, <strong>TimescaleDB</strong> (and Timescale Cloud),
+          <strong>YugabyteDB</strong> (YSQL), and managed Postgres on <strong>AWS RDS / Aurora</strong>, <strong>Google
+            Cloud SQL / AlloyDB</strong>, and <strong>Azure Database for PostgreSQL</strong>. CockroachDB is not
+          supported today. See the <a href="https://github.com/dev-asterix/PgStudio/blob/main/docs/COMPATIBILITY.md"
+            target="_blank" rel="noopener noreferrer">platform compatibility guide</a> for per-provider connection
+          settings and caveats.</p>
       </details>
       <details>
         <summary>Does it support SSH tunnels?</summary>
@@ -594,6 +625,8 @@
       <div class="footer-col">
         <h4>Resources</h4>
         <a href="https://nexql.astrx.dev/">Documentation</a>
+        <a href="https://github.com/dev-asterix/PgStudio/blob/main/docs/COMPATIBILITY.md" target="_blank"
+          rel="noopener noreferrer">Platform compatibility ↗</a>
         <a href="https://nexql-themes.astrx.dev/" target="_blank" rel="noopener noreferrer">NexQL Themes ↗</a>
         <a href="https://github.com/dev-asterix/PgStudio/blob/main/CHANGELOG.md" target="_blank"
           rel="noopener noreferrer">Changelog</a>

@@ -64,12 +64,14 @@ Scroll container: `.hero-shell` (scroll-snap in minimized mode).
 4. **AI showcase** (`#ai`) — plain-English → SQL + provider chips
 5. **Comparison** (`#compare`) — NexQL vs pgAdmin / DBeaver / TablePlus
 6. **Workflow** — Connect → Explore → Query → Analyze
-7. **FAQ** (`#faq`)
+7. **FAQ** (`#faq`) — includes “Which databases work with NexQL?” → [COMPATIBILITY.md](./COMPATIBILITY.md) on GitHub
 8. **Pricing** — Free / Sponsor / Singularity (Razorpay)
 9. **Install CTA** (`#install`)
 10. **Footer** — Resources · Community · Install
 
 Top nav: **Features · AI · Compare · FAQ · Pricing · Themes · GitHub · Install — free**
+
+**Platform compatibility:** NexQL works with any PostgreSQL-wire database. Canonical matrix and per-provider connection guides live in [COMPATIBILITY.md](./COMPATIBILITY.md) (chip strip below the workflow loop, FAQ, and footer **Platform compatibility**). Hero KPI strip shows **PG 12+ / compatible**; named platforms appear in the workflow chip strip.
 
 ## Pricing tiers
 
