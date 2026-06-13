@@ -333,7 +333,7 @@ WHERE schemaname = '${schema}' AND relname = '${table}'`,
      * Build table info query
      * @param serverVersionNum from `SHOW server_version_num` (default assumes PostgreSQL 16+ features).
      */
-    tableInfo: (schema: string, table: string, serverVersionNum: number = 160_000): string => {
+    tableInfo: (schema: string, table: string, serverVersionNum: number = 120_000): string => {
         const isPartitionExpr =
             serverVersionNum >= PG_VERSION_10 ? 'c.relispartition as is_partition' : 'false AS is_partition';
         return `SELECT 
@@ -593,7 +593,7 @@ WHERE n.nspname = '${schema}'`,
      * Build schema object counts query
      * @param serverVersionNum from `SHOW server_version_num` (default assumes PostgreSQL 16+).
      */
-    schemaObjectCounts: (schema: string, serverVersionNum: number = 160_000): string => {
+    schemaObjectCounts: (schema: string, serverVersionNum: number = 120_000): string => {
         const procedureCountExpr =
             serverVersionNum >= PG_VERSION_11
                 ? `(SELECT COUNT(*) FROM pg_proc p WHERE p.pronamespace = n.oid AND p.prokind = 'p') as procedure_count`

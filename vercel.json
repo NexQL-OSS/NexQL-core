@@ -33,8 +33,18 @@
     "api/license/[...route].js": {
       "memory": 128,
       "maxDuration": 10
+    },
+    "api/cron/license-expiry.js": {
+      "memory": 128,
+      "maxDuration": 30
     }
   },
+  "crons": [
+    {
+      "path": "/api/cron/license-expiry",
+      "schedule": "0 3 * * *"
+    }
+  ],
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/$1" },
     { "source": "/(.*)", "destination": "/$1" }

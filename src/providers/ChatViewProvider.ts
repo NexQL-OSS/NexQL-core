@@ -34,6 +34,7 @@ import {
 } from '../features/aiAssistant/aiConfig';
 import { AiModelCatalogService } from '../features/aiAssistant/AiModelCatalogService';
 import { isProFeatureEnabled, getUpgradeHtml, ProFeature, requirePro } from '../services/featureGates';
+import type { SentinelContext } from '../features/sentinel/types';
 
 /** P1.4 — max rows sampled into the AI prompt for "Analyze Data" on large result sets. */
 const AI_ANALYZE_MAX_SAMPLE_ROWS = 200;
@@ -105,6 +106,25 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
    */
   public refreshModelInfo(): void {
     void this._pushModelCatalogToWebview();
+  }
+
+  /** Sync SQL Assistant header context from Sentinel (active or last tagged notebook). */
+  public syncSentinelContext(context: SentinelContext | null): void {
+    if (!context) {
+      this._sendContextUpdate();
+      return;
+    }
+
+    this._currentConnectionName = context.connectionName;
+    this._currentDatabase = context.database;
+    this._currentEnvironment = context.environment;
+    this._currentReadOnlyMode = context.readOnlyMode;
+    this._aiService.setConnectionContext({
+      environment: this._currentEnvironment,
+      readOnlyMode: this._currentReadOnlyMode,
+      connectionName: this._currentConnectionName,
+    });
+    this._sendContextUpdate();
   }
 
   public async openInEditor(column: vscode.ViewColumn = vscode.ViewColumn.Beside): Promise<void> {
@@ -242,6 +262,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           break;
         case 'openAiSettings':
           vscode.commands.executeCommand('postgres-explorer.aiSettings');
+          break;
+        case 'openConnectionSafety':
+          await vscode.commands.executeCommand('postgres-explorer.showConnectionSafety');
           break;
         case 'getModelCatalog':
           await this._pushModelCatalogToWebview();

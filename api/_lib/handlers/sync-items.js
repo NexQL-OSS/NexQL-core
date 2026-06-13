@@ -2,7 +2,7 @@
 // PUT /api/sync/items/:itemId — upsert encrypted blob + metadata.
 
 const { authenticateBearer } = require('../sync-auth');
-const { getItemBlob, upsertItem } = require('../sync-db');
+const { getItemBlob, upsertItem, refreshAccountQuota } = require('../sync-db');
 
 module.exports = async (req, res) => {
   const itemId = req.query.itemId;
@@ -62,6 +62,7 @@ module.exports = async (req, res) => {
         device_id: String(body.device_id || ''),
         deleted: !!body.deleted,
       });
+      await refreshAccountQuota(auth.account_id);
       return res.status(204).end();
     } catch (err) {
       console.error('sync/items PUT:', err);

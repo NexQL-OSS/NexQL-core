@@ -92,8 +92,19 @@ module.exports = async (req, res) => {
   }
 
   const subscriptionId = subEntity.id;
+  const razorpayEventId =
+    body.id ||
+    req.headers['x-razorpay-event-id'] ||
+    `${event}:${subscriptionId}:${subEntity.current_end || ''}`;
 
   try {
+    if (store.usingNeon) {
+      const { isNew } = await store.licenseDb.recordWebhookEvent(String(razorpayEventId));
+      if (!isNew) {
+        return res.status(200).json({ ok: true, duplicate: true, event });
+      }
+    }
+
     const existing = await store.getEntitlementBySubscription(subscriptionId);
 
     if (ACTIVE_EVENTS.has(event)) {
@@ -134,7 +145,10 @@ module.exports = async (req, res) => {
         instanceIds: existing ? existing.instanceIds || [] : [],
       };
 
-      await store.putEntitlement(entitlement);
+      await store.putEntitlement(entitlement, {
+        source: 'webhook',
+        razorpayEvent: razorpayEventId,
+      });
 
       if (isNew && email) {
         await sendLicenseEmail(email, licenseKey, tier);
@@ -146,7 +160,10 @@ module.exports = async (req, res) => {
     if (STATUS_EVENTS[event]) {
       if (existing) {
         existing.status = STATUS_EVENTS[event];
-        await store.putEntitlement(existing);
+        await store.putEntitlement(existing, {
+          source: 'webhook',
+          razorpayEvent: razorpayEventId,
+        });
       }
       return res.status(200).json({ ok: true, event, status: STATUS_EVENTS[event] });
     }

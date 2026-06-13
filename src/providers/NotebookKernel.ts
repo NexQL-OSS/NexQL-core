@@ -147,18 +147,7 @@ export class PostgresKernel implements vscode.Disposable {
         return;
       }
       if (msg.type === 'showConnectionInfo') {
-        const notebook = event.editor?.notebook;
-        if (notebook) {
-          const effectiveMetadata = ConnectionUtils.getEffectiveMetadata(notebook.metadata);
-          const conn = ConnectionUtils.findConnectionWithFallback(effectiveMetadata?.connectionId, notebook.metadata);
-          if (conn) {
-            vscode.window.showInformationMessage(
-              `Connection: ${conn.name || conn.host} | Host: ${conn.host}:${conn.port} | Database: ${effectiveMetadata?.databaseName || conn.database}`
-            );
-          } else {
-            vscode.window.showInformationMessage('No active connection for this notebook.');
-          }
-        }
+        await vscode.commands.executeCommand('postgres-explorer.showConnectionSafety');
         return;
       }
 

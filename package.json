@@ -134,6 +134,51 @@
         "category": "NexQL Sync"
       },
       {
+        "command": "postgres-explorer.sync.pull",
+        "title": "Pull Only",
+        "category": "NexQL Sync"
+      },
+      {
+        "command": "postgres-explorer.sync.push",
+        "title": "Push Only",
+        "category": "NexQL Sync"
+      },
+      {
+        "command": "postgres-explorer.sync.preview",
+        "title": "Preview Sync",
+        "category": "NexQL Sync"
+      },
+      {
+        "command": "postgres-explorer.sync.conflicts",
+        "title": "Resolve Sync Conflicts",
+        "category": "NexQL Sync"
+      },
+      {
+        "command": "postgres-explorer.sync.replaceLocal",
+        "title": "Replace Local with Cloud",
+        "category": "NexQL Sync"
+      },
+      {
+        "command": "postgres-explorer.sync.replaceRemote",
+        "title": "Replace Cloud with Local",
+        "category": "NexQL Sync"
+      },
+      {
+        "command": "postgres-explorer.sync.rebuildIndex",
+        "title": "Rebuild Sync Index",
+        "category": "NexQL Sync"
+      },
+      {
+        "command": "postgres-explorer.sync.diagnostics",
+        "title": "Sync Diagnostics",
+        "category": "NexQL Sync"
+      },
+      {
+        "command": "postgres-explorer.sync.excludeItem",
+        "title": "Don't Sync This Item",
+        "category": "NexQL Sync"
+      },
+      {
         "command": "postgres-explorer.addConnection",
         "title": "Add PostgreSQL Connection",
         "icon": "$(add)"
@@ -142,6 +187,11 @@
         "command": "postgres-explorer.importConnectionFromDatabaseUrl",
         "title": "Import Connection from DATABASE_URL (.env)",
         "icon": "$(file-symlink-file)"
+      },
+      {
+        "command": "postgres-explorer.smartPasteConnection",
+        "title": "Add Connection from Clipboard URL",
+        "icon": "$(clippy)"
       },
       {
         "command": "postgres-explorer.refreshConnections",
@@ -178,6 +228,16 @@
         "title": "Open Settings",
         "category": "NexQL",
         "icon": "$(settings-gear)"
+      },
+      {
+        "command": "postgres-explorer.sentinel.toggleNotebookStrip",
+        "title": "Toggle Notebook Context Strip",
+        "category": "NexQL: Sentinel"
+      },
+      {
+        "command": "postgres-explorer.sentinel.openSettings",
+        "title": "Open Sentinel Settings",
+        "category": "NexQL: Sentinel"
       },
       {
         "command": "postgres-explorer.aiSettings",
@@ -1111,7 +1171,8 @@
         "command": "postgres-explorer.switchWorkspaceDefaultConnection",
         "title": "Set Workspace Default PostgreSQL Connection",
         "icon": "$(root-folder)",
-        "category": "NexQL"
+        "category": "NexQL",
+        "enablement": "false"
       },
       {
         "command": "postgres-explorer.createConnectionProfile",
@@ -1923,6 +1984,60 @@
             }
         }
       },
+        "postgresExplorer.sentinel.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Sentinel environment signaling when a tagged .pgsql notebook is focused."
+        },
+        "postgresExplorer.sentinel.statusBarAccent": {
+          "type": "boolean",
+          "default": true,
+          "description": "Tint status bar connection items by environment (production, staging, development)."
+        },
+        "postgresExplorer.sentinel.notebookContextStrip": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show in-notebook connection context strip with environment chip."
+        },
+        "postgresExplorer.sentinel.chromeAccent": {
+          "type": "boolean",
+          "default": true,
+          "description": "Tint workbench title bar, activity bar, and status bar chrome by environment."
+        },
+        "postgresExplorer.sentinel.tabBadges": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show [P]/[S]/[D] badges on open .pgsql notebook tabs for tagged connections."
+        },
+        "postgresExplorer.sentinel.chatEnvChip": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show environment chip in the SQL Assistant context bar."
+        },
+        "postgresExplorer.sentinel.notifyOnTransition": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show a notification when the active notebook environment changes (e.g. staging → production)."
+        },
+        "postgresExplorer.sentinel.themeSwap.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Advanced: suggest or auto-switch the entire color theme by environment."
+        },
+        "postgresExplorer.sentinel.themeSwap.mode": {
+          "type": "string",
+          "enum": [
+            "suggest",
+            "auto"
+          ],
+          "default": "suggest",
+          "description": "How theme swap behaves when themeSwap.enabled is true."
+        },
+        "postgresExplorer.sentinel.themeSwap.themes": {
+          "type": "object",
+          "default": {},
+          "description": "Map of environment (production, staging, development) to color theme label."
+        },
         "postgresExplorer.sync.auto": {
           "type": "boolean",
           "default": true,
@@ -2350,6 +2465,11 @@
         },
         {
           "command": "postgres-explorer.importConnectionFromDatabaseUrl",
+          "when": "view == postgresExplorer",
+          "group": "navigation"
+        },
+        {
+          "command": "postgres-explorer.smartPasteConnection",
           "when": "view == postgresExplorer",
           "group": "navigation"
         },
@@ -3131,6 +3251,26 @@
           "group": "2_delete@1"
         },
         {
+          "command": "postgres-explorer.sync.share",
+          "when": "view == postgresExplorer.savedQueries && viewItem == savedQuery",
+          "group": "3_sync@1"
+        },
+        {
+          "command": "postgres-explorer.sync.excludeItem",
+          "when": "view == postgresExplorer.savedQueries && viewItem == savedQuery",
+          "group": "3_sync@2"
+        },
+        {
+          "command": "postgres-explorer.sync.share",
+          "when": "view == postgresExplorer.notebooks && viewItem == notebook-file",
+          "group": "3_sync@1"
+        },
+        {
+          "command": "postgres-explorer.sync.excludeItem",
+          "when": "view == postgresExplorer.notebooks && viewItem == notebook-file",
+          "group": "3_sync@2"
+        },
+        {
           "command": "postgres-explorer.openTableDesigner",
           "when": "view == postgresExplorer && viewItem =~ /^(table|partition)$/",
           "group": "1_actions"
@@ -3517,6 +3657,7 @@
       "postgres-explorer.maintenanceMenu": [
         {
           "command": "postgres-explorer.maintenanceVacuum",
+          "when": "viewItem =~ /^table/ && viewItem !~ /:novacuum/",
           "group": "1_maintenance"
         },
         {
@@ -3525,6 +3666,7 @@
         },
         {
           "command": "postgres-explorer.maintenanceReindex",
+          "when": "viewItem =~ /^table/ && viewItem !~ /:noreindex/",
           "group": "1_maintenance"
         }
       ],

@@ -1,4 +1,6 @@
 import type { CloudAuthContext } from '../core/connection/cloudAuth/types';
+import type { ConnectionPlatformPreset } from '../lib/platform/connectionPresets';
+import type { PlatformProfile } from '../lib/platform/PlatformProfile';
 
 export interface ConnectionConfig {
   id: string;
@@ -29,6 +31,9 @@ export interface ConnectionConfig {
   };
   /** Optional tag for future IAM token auth (password/pgpass still used until implemented). */
   cloudAuth?: CloudAuthContext;
+  platformPreset?: ConnectionPlatformPreset;
+  /** Hide Supabase platform schemas in the explorer (default true for Supabase). */
+  hidePlatformSchemas?: boolean;
 }
 
 export interface PostgresMetadata {
@@ -52,6 +57,8 @@ export interface PostgresMetadata {
     readOnly?: boolean;
     deferrable?: boolean;
   };
+  platformProfile?: PlatformProfile;
+  serverVersionNum?: number;
   custom?: {
     cells: any[];
     metadata: {

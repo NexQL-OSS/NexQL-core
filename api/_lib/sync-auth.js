@@ -50,10 +50,10 @@ async function kvDel(key) {
   return store.rawDel(key);
 }
 
-function isActiveSingularity(ent) {
+function isActivePaid(ent) {
   return (
     ent
-    && ent.tier === 'singularity'
+    && (ent.tier === 'sponsor' || ent.tier === 'singularity')
     && ent.status === 'active'
     && (!ent.expiresAt || ent.expiresAt > Date.now())
   );
@@ -61,8 +61,8 @@ function isActiveSingularity(ent) {
 
 async function validateLicenseKey(licenseKey) {
   const ent = await store.getEntitlement(licenseKey);
-  if (!isActiveSingularity(ent)) {
-    return { ok: false, error: 'Cloud Sync requires an active Teams (Singularity) license.' };
+  if (!isActivePaid(ent)) {
+    return { ok: false, error: 'NexQL Cloud Sync requires an active Sponsor or Teams license.' };
   }
   return { ok: true, entitlement: ent };
 }
@@ -150,6 +150,7 @@ async function pollDeviceToken(deviceCode) {
     refresh_token: refresh.token,
     token_type: 'Bearer',
     expires_in: access.expires_in,
+    email: pending.email || null,
   };
 }
 
@@ -192,9 +193,19 @@ async function authenticateBearer(req) {
     return null;
   }
 
+  const { upsertDevice, setAccountTier } = require('./sync-db');
+  await setAccountTier(record.account_id, license.entitlement.tier || 'sponsor');
+
+  const deviceId = req.headers['x-device-id'] || req.headers['X-Device-Id'];
+  const deviceName = req.headers['x-device-name'] || req.headers['X-Device-Name'];
+  if (deviceId) {
+    await upsertDevice(record.account_id, String(deviceId), deviceName ? String(deviceName) : undefined);
+  }
+
   return {
     account_id: record.account_id,
     email: license.entitlement.email || null,
+    tier: license.entitlement.tier || 'sponsor',
   };
 }
 

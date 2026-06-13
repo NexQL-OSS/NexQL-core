@@ -1,9 +1,10 @@
 import * as crypto from 'crypto';
 import * as vscode from 'vscode';
-import { SYNC_ACTIVITY_LOG_KEY } from './constants';
-import type { SyncActivity, SyncActivityAction, SyncActivityInput, SyncActivityView, SyncKind } from './types';
+import { SYNC_ACTIVITY_LOG_KEY, SYNC_INBOUND_LOG_KEY } from './constants';
+import type { SyncActivity, SyncActivityAction, SyncActivityInput, SyncActivityView, SyncKind, InboundEntry } from './types';
 
 const MAX_PENDING = 200;
+const MAX_INBOUND = 200;
 
 function activityKey(kind: SyncKind, itemId: string): string {
   return `${kind}:${itemId}`;
@@ -115,6 +116,24 @@ export class SyncActivityLog {
 
   clearAll(): void {
     this.save([]);
+    void this.context.globalState.update(SYNC_INBOUND_LOG_KEY, []);
+  }
+
+  recordInbound(entry: Omit<InboundEntry, 'appliedAt'> & { appliedAt?: number }): void {
+    const log = this.loadInbound();
+    log.push({
+      ...entry,
+      appliedAt: entry.appliedAt ?? Date.now(),
+    });
+    void this.context.globalState.update(SYNC_INBOUND_LOG_KEY, log.slice(-MAX_INBOUND));
+  }
+
+  listInbound(): InboundEntry[] {
+    return this.loadInbound().slice().sort((a, b) => b.appliedAt - a.appliedAt);
+  }
+
+  private loadInbound(): InboundEntry[] {
+    return this.context.globalState.get<InboundEntry[]>(SYNC_INBOUND_LOG_KEY, []);
   }
 
   private newEntry(input: SyncActivityInput, queuedAt: number): SyncActivity {

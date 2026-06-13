@@ -8,8 +8,11 @@ import { AiSectionHandler } from './handlers/ai';
 import { PreferencesSectionHandler } from './handlers/preferences';
 import { SyncSectionHandler } from './handlers/sync';
 import { LicenseSectionHandler } from './handlers/license';
+import { SentinelSectionHandler } from '../sentinel/SentinelSectionHandler';
+import { SentinelThemeSwapService } from '../sentinel/SentinelThemeSwapService';
+import { CONNECTION_PLATFORM_PRESETS } from '../../lib/platform/connectionPresets';
 
-export type SettingsHubSection = 'connections' | 'ai' | 'prefs' | 'sync' | 'license';
+export type SettingsHubSection = 'connections' | 'ai' | 'prefs' | 'sentinel' | 'sync' | 'license';
 
 export interface SettingsHubShowOptions {
   section?: SettingsHubSection;
@@ -17,6 +20,12 @@ export interface SettingsHubShowOptions {
   editConnectionId?: string;
   /** Open the inline form in add mode. */
   addConnection?: boolean;
+  /** Launch sync onboarding wizard (`cloud` default path or `advanced`). */
+  wizard?: 'cloud' | 'advanced';
+  /** Prefill the connection editor from a postgres:// URL. */
+  prefillConnectionUrl?: string;
+  /** Deep-link sync hub sub-tab. */
+  tab?: 'preview' | 'conflicts' | 'shares' | 'devices' | 'advanced';
 }
 
 const DEFAULT_SECTION: SettingsHubSection = 'connections';
@@ -40,6 +49,7 @@ export class SettingsHubPanel {
     extensionUri: vscode.Uri,
     extensionContext: vscode.ExtensionContext,
     private readonly _initialOptions: SettingsHubShowOptions,
+    sentinelThemeSwap?: SentinelThemeSwapService,
   ) {
     this._panel = panel;
     this._extensionUri = extensionUri;
@@ -56,6 +66,7 @@ export class SettingsHubPanel {
         new ConnectionsSectionHandler(host),
         new AiSectionHandler(host),
         new PreferencesSectionHandler(host),
+        new SentinelSectionHandler(host, sentinelThemeSwap ?? new SentinelThemeSwapService(extensionContext)),
         new SyncSectionHandler(host),
         new LicenseSectionHandler(host),
       ].map((h) => [h.section, h]),
@@ -84,6 +95,7 @@ export class SettingsHubPanel {
     extensionUri: vscode.Uri,
     extensionContext: vscode.ExtensionContext,
     options: SettingsHubShowOptions = {},
+    sentinelThemeSwap?: SentinelThemeSwapService,
   ): void {
     if (SettingsHubPanel.currentPanel) {
       const current = SettingsHubPanel.currentPanel;
@@ -93,6 +105,8 @@ export class SettingsHubPanel {
         section: options.section ?? DEFAULT_SECTION,
         editConnectionId: options.editConnectionId ?? null,
         addConnection: !!options.addConnection,
+        wizard: options.wizard ?? null,
+        tab: options.tab ?? null,
       });
       return;
     }
@@ -114,6 +128,7 @@ export class SettingsHubPanel {
       extensionUri,
       extensionContext,
       options,
+      sentinelThemeSwap,
     );
   }
 
@@ -165,10 +180,32 @@ export class SettingsHubPanel {
       const inlineStyles = `${MODERN_WEBVIEW_BASE_CSS}\n${sharedCss}\n${css}`;
       let js = new TextDecoder().decode(jsBuffer);
 
+      const platformPresets = CONNECTION_PLATFORM_PRESETS.map((preset) => ({
+        id: preset.id,
+        label: preset.label,
+        hint: preset.hint,
+        hostPlaceholder: preset.hostPlaceholder,
+        defaults: preset.defaults,
+        iconUri: this._panel.webview
+          .asWebviewUri(
+            vscode.Uri.joinPath(
+              this._extensionUri,
+              'resources',
+              'platform-icons',
+              `${preset.icon}.svg`,
+            ),
+          )
+          .toString(),
+      }));
+
       const initialState = JSON.stringify({
         section: this._initialOptions.section ?? DEFAULT_SECTION,
         editConnectionId: this._initialOptions.editConnectionId ?? null,
         addConnection: !!this._initialOptions.addConnection,
+        wizard: this._initialOptions.wizard ?? null,
+        tab: this._initialOptions.tab ?? null,
+        platformPresets,
+        prefillConnectionUrl: this._initialOptions.prefillConnectionUrl ?? null,
       });
       js = js.replace(/{{\s*INITIAL_STATE\s*}}/, () => initialState);
 

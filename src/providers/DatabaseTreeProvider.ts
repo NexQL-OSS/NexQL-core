@@ -7,6 +7,8 @@ import { getSchemaCache, SchemaCache } from '../lib/schema-cache';
 import { Debouncer } from '../lib/debounce';
 import { AutoRefreshService } from '../services/AutoRefreshService';
 import { buildTreeItemKey, buildTreeItemKeyFromParts } from './tree/treeItemKey';
+import { PlatformConnectionService } from '../services/PlatformConnectionService';
+import { profileDisplayLabel } from '../lib/platform/PlatformProfile';
 import {
   PG_VERSION_10,
   PG_VERSION_11,
@@ -454,7 +456,7 @@ export class DatabaseTreeProvider implements vscode.TreeDataProvider<DatabaseTre
 
       // Add ungrouped connections
       ungroupedConnections.forEach(conn => {
-        rootItems.push(new DatabaseTreeItem(
+        const item = new DatabaseTreeItem(
           conn.name || `${conn.host}:${conn.port}`,
           vscode.TreeItemCollapsibleState.Collapsed,
           'connection',
@@ -474,7 +476,21 @@ export class DatabaseTreeProvider implements vscode.TreeDataProvider<DatabaseTre
           undefined, // size
           conn.environment, // environment
           conn.readOnlyMode // readOnlyMode
-        ));
+        );
+        const platformSuffix =
+          PlatformConnectionService.getInstance().connectionTooltipSuffix(conn);
+        item.tooltip = item.tooltip
+          ? `${item.tooltip}\n${platformSuffix}`
+          : platformSuffix;
+        const profile =
+          PlatformConnectionService.getInstance().getEstimatedProfile(conn);
+        if (profile.platform !== 'vanilla') {
+          const platformLabel = profileDisplayLabel(profile);
+          item.description = item.description
+            ? `${item.description} · ${platformLabel}`
+            : platformLabel;
+        }
+        rootItems.push(item);
       });
 
       return rootItems;
@@ -508,7 +524,16 @@ export class DatabaseTreeProvider implements vscode.TreeDataProvider<DatabaseTre
           ? await this.getCachedServerVersion(element.connectionId, client)
           : PG_VERSION_11;
 
-      const ctx = { provider: this, client, element, pgVer };
+      await PlatformConnectionService.getInstance().probeIfNeeded(
+        { ...connection, database: dbName },
+        client,
+      );
+      const platformProfile = PlatformConnectionService.getInstance().getProfile(
+        element.connectionId!,
+        dbName,
+      );
+
+      const ctx = { provider: this, client, element, pgVer, platformProfile };
 
       // Connection/Databases/Favorites/Recent Loader
       if (
@@ -598,6 +623,7 @@ export class DatabaseTreeItem extends vscode.TreeItem {
     public readonly cronJobId?: number,
     public readonly cronSchedule?: string,
     public readonly cronJobActive?: boolean,
+    public readonly capabilityTags?: string[],
   ) {
     super(label, collapsibleState);
     if (type === 'category' && label) {
@@ -609,9 +635,11 @@ export class DatabaseTreeItem extends vscode.TreeItem {
     } else if (type === 'cron-job' && cronJobId === undefined) {
       this.contextValue = 'cron-setup';
     } else {
-      // Keep original contextValue - isFavorite flag is stored separately for star indicator
-      // For favorites menu detection, we use description containing ★
-      this.contextValue = isInstalled ? `${type}-installed` : type;
+      let contextValue = isInstalled ? `${type}-installed` : type;
+      if (capabilityTags?.length) {
+        contextValue += `:${capabilityTags.join(':')}`;
+      }
+      this.contextValue = contextValue;
     }
     this.tooltip = this.getTooltip(type, comment, roleAttributes, environment, readOnlyMode);
     this.description = this.getDescription(type, isInstalled, installedVersion, roleAttributes, isFavorite, count, rowCount, size, environment, readOnlyMode);

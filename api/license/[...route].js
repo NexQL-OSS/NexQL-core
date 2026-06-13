@@ -6,6 +6,7 @@ const handlers = {
   status: require('../_lib/handlers/license-status'),
   recover: require('../_lib/handlers/license-recover'),
   devices: require('../_lib/handlers/license-devices'),
+  history: require('../_lib/handlers/license-history'),
 };
 
 function routeName(req) {

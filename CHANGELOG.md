@@ -8,6 +8,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Sentinel environment signaling** — Ambient prod/staging/dev awareness when a tagged `.pgsql` notebook is focused: status bar shield + user item, workbench chrome tint (syntax theme untouched), in-notebook context strip, Settings Hub **Sentinel** tab, and optional transition toasts.
+- **Sentinel 5.1 polish** — Tab badges `[P]`/`[S]`/`[D]`, SQL Assistant env chip, optional full theme swap (suggest/auto), per-notebook context strip toggle, connection environment tagging nudges + bulk tag, NexQL Themes bridge, first-focus production tour.
+
 ## [1.5.0] - 2026-06-09
 
 ### Added

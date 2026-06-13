@@ -292,10 +292,13 @@ export async function showConnectionSafety(): Promise<void> {
         const result = await vscode.window.showInformationMessage(
             title,
             { modal: true, detail: `${message}\n\n${action}` },
-            'Edit Connection'
+            'Configure Sentinel',
+            'Edit Connection',
         );
 
-        if (result === 'Edit Connection') {
+        if (result === 'Configure Sentinel') {
+            await vscode.commands.executeCommand('postgres-explorer.settingsHub', { section: 'sentinel' });
+        } else if (result === 'Edit Connection') {
             await vscode.commands.executeCommand('postgres-explorer.editConnection', 
                 new DatabaseTreeItem(
                     connection.name || connection.host,

@@ -119,8 +119,8 @@ export const FREE_QUOTAS: Partial<Record<ProFeature, FeatureQuota>> = {
  */
 const SYNC_PROVIDERS_BY_TIER: Record<LicenseTier, ReadonlyArray<string>> = {
   free: ['postgres'],
-  sponsor: ['postgres', 'gist', 'onedrive', 'gdrive'],
-  singularity: ['postgres', 'gist', 'onedrive', 'gdrive', 'cloud'],
+  sponsor: ['cloud', 'postgres', 'gist', 'onedrive', 'gdrive'],
+  singularity: ['cloud', 'postgres', 'gist', 'onedrive', 'gdrive'],
 };
 
 export function allowedSyncProviders(): ReadonlyArray<string> {

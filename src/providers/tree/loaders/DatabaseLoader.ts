@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { BaseLoader, LoaderContext } from './BaseLoader';
 import { DatabaseTreeItem } from '../../DatabaseTreeProvider';
 import { PG_VERSION_10, PG_VERSION_11 } from '../../../lib/postgresServerVersion';
+import { isSupabasePlatformSchema } from '../../../lib/platform/supabaseSchemas';
 
 export class DatabaseLoader extends BaseLoader {
   async getChildren(ctx: LoaderContext): Promise<DatabaseTreeItem[]> {
@@ -70,7 +71,19 @@ export class DatabaseLoader extends BaseLoader {
                WHERE nspname NOT LIKE 'pg_%' AND nspname != 'information_schema'
                ORDER BY nspname`
             );
-            return schemaResult.rows.map(row => new DatabaseTreeItem(
+            const connections =
+              vscode.workspace.getConfiguration().get<any[]>('postgresExplorer.connections') ||
+              [];
+            const connection = connections.find((c) => c.id === element.connectionId);
+            const hideSupabaseSchemas =
+              ctx.platformProfile?.platform === 'supabase' &&
+              connection?.hidePlatformSchemas !== false;
+            return schemaResult.rows
+              .filter(
+                (row) =>
+                  !hideSupabaseSchemas || !isSupabasePlatformSchema(row.nspname),
+              )
+              .map(row => new DatabaseTreeItem(
               row.nspname,
               vscode.TreeItemCollapsibleState.Collapsed,
               'schema',

@@ -3,9 +3,16 @@ import { DatabaseTreeItem } from '../../providers/DatabaseTreeProvider';
 import { CommandBase } from '../../common/commands/CommandBase';
 import { NotebookBuilder, MarkdownUtils } from '../helper';
 import { TableSQL } from '../sql';
+import { PlatformConnectionService } from '../../services/PlatformConnectionService';
+import { assertPlatformCapability } from '../../lib/platform/platformCapabilityGate';
 
 export async function cmdMaintenanceVacuum(item: DatabaseTreeItem, context: vscode.ExtensionContext) {
   await CommandBase.run(context, item, 'create VACUUM notebook', async (conn, client, metadata) => {
+    const profile = PlatformConnectionService.getInstance().getProfile(
+      conn.id,
+      metadata.databaseName,
+    );
+    await assertPlatformCapability(profile, 'vacuum');
     await new NotebookBuilder(metadata)
       .addMarkdown(
         MarkdownUtils.header(`🧹 VACUUM: \`${item.schema}.${item.label}\``) +
@@ -73,6 +80,11 @@ export async function cmdMaintenanceAnalyze(item: DatabaseTreeItem, context: vsc
 
 export async function cmdMaintenanceReindex(item: DatabaseTreeItem, context: vscode.ExtensionContext) {
   await CommandBase.run(context, item, 'create REINDEX notebook', async (conn, client, metadata) => {
+    const profile = PlatformConnectionService.getInstance().getProfile(
+      conn.id,
+      metadata.databaseName,
+    );
+    await assertPlatformCapability(profile, 'reindex');
     await new NotebookBuilder(metadata)
       .addMarkdown(
         MarkdownUtils.header(`🔄 REINDEX: \`${item.schema}.${item.label}\``) +

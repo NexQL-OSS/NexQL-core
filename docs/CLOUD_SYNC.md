@@ -7,8 +7,8 @@ PgStudio Cloud Sync keeps your **connections**, **saved queries**, and **SQL not
 | Plan | Backends | Trigger | Devices |
 |------|----------|---------|---------|
 | **Free** | Shared Postgres (your own DB) | Manual **Sync Now** only | 1 — backup is bound to a single device |
-| **Sponsor** | + GitHub Gist, OneDrive, Google Drive | Automatic + manual | Multi-device (same user) |
-| **Teams (Singularity)** | + NexQL Cloud | Automatic + manual | Multi-device + team sharing |
+| **Sponsor** | + **NexQL Cloud**, GitHub Gist, OneDrive, Google Drive | Automatic + manual | Multi-device (same user) |
+| **Teams (Singularity)** | Same as Sponsor + team sharing | Automatic + manual | Multi-device + team sharing |
 
 On the free plan the backup is bound to the first device that syncs. A different device can **claim** the backup (the old device stops syncing) at most once per week — upgrade to [Sponsor or Teams](https://nexql.astrx.dev/#pricing) for true multi-device sync.
 
@@ -75,7 +75,7 @@ Or use the walkthrough: **Set up PgStudio Sync** (from the Welcome / Getting Sta
 | **GitHub Gist** | Sponsor+ | Quick start; private gist; works in most editors |
 | **OneDrive** | Sponsor+ | Microsoft 365 users; files in app folder |
 | **Google Drive** | Sponsor+ | Google accounts; `drive.appdata` hidden folder |
-| **NexQL Cloud** | Teams | Hosted sync on [nexql.astrx.dev](https://nexql.astrx.dev) |
+| **NexQL Cloud** | Sponsor+ | Hosted sync on [nexql.astrx.dev](https://nexql.astrx.dev) — default for paid plans |
 
 ### 3. Create or unlock your vault
 

@@ -1,10 +1,15 @@
 import * as vscode from 'vscode';
 import { SyncController } from '../../sync/SyncController';
+import { SyncSetupWizard } from '../../sync/SyncSetupWizard';
+import { ConflictResolutionService } from '../../sync/ConflictResolutionService';
+import { SharingService } from '../../sync/SharingService';
+import { LicenseService } from '../../../services/LicenseService';
 import {
   allowedSyncProviders,
   isProFeatureEnabled,
   ProFeature,
   requirePro,
+  TIER_DISPLAY,
 } from '../../../services/featureGates';
 import type { SettingsHubHostContext, SettingsHubMessage, SettingsSectionHandler } from '../types';
 
@@ -20,6 +25,7 @@ const AUTO_SYNC_KEY = 'postgresExplorer.sync.auto';
 const PULL_INTERVAL_KEY = 'postgresExplorer.sync.pullIntervalMinutes';
 const MIN_PULL_INTERVAL_MINUTES = 1;
 const MAX_PULL_INTERVAL_MINUTES = 1440;
+const REPAIR_CONFIRM = 'REPLACE';
 
 export class SyncSectionHandler implements SettingsSectionHandler {
   readonly section = 'sync';
@@ -32,7 +38,19 @@ export class SyncSectionHandler implements SettingsSectionHandler {
         this.sendState();
         break;
       case 'now':
-        await this.syncNow();
+        await this.syncNow('both');
+        break;
+      case 'pull':
+        await this.syncNow('pull');
+        break;
+      case 'push':
+        await this.syncNow('push');
+        break;
+      case 'preview':
+        await this.previewSync(message.transientExcludedIds as string[] | undefined);
+        break;
+      case 'applyPreview':
+        await this.applyPreview(message.transientExcludedIds as string[] | undefined);
         break;
       case 'pauseResume':
         await this.pauseResume();
@@ -41,7 +59,25 @@ export class SyncSectionHandler implements SettingsSectionHandler {
         await this.signOut();
         break;
       case 'setup':
-        await this.launchSetup();
+        this.host.post({ type: 'sync/openWizard', mode: message.mode ?? 'cloud' });
+        break;
+      case 'wizardWelcome':
+        this.sendWizardWelcome();
+        break;
+      case 'wizardSignIn':
+        await this.wizardSignIn();
+        break;
+      case 'wizardTestBackend':
+        await this.wizardTestBackend(String(message.providerId ?? 'cloud'));
+        break;
+      case 'wizardVault':
+        await this.wizardVault(message);
+        break;
+      case 'wizardComplete':
+        await this.wizardComplete(message);
+        break;
+      case 'wizardRecoveryKit':
+        await this.wizardRecoveryKit(String(message.email ?? ''), String(message.secretKey ?? ''));
         break;
       case 'saveFlags':
         await this.saveFlags(message.flags as Record<string, boolean>);
@@ -54,6 +90,39 @@ export class SyncSectionHandler implements SettingsSectionHandler {
         break;
       case 'pending':
         this.sendPending();
+        break;
+      case 'history':
+        this.sendHistory();
+        break;
+      case 'conflicts':
+        this.sendConflicts();
+        break;
+      case 'resolveConflict':
+        await this.resolveConflict(message);
+        break;
+      case 'shares':
+        await this.sendShares();
+        break;
+      case 'revokeShare':
+        await this.revokeShare(String(message.shareId ?? ''));
+        break;
+      case 'devices':
+        await this.sendDevices();
+        break;
+      case 'revokeDevice':
+        await this.revokeDevice(String(message.deviceId ?? ''));
+        break;
+      case 'replaceLocal':
+        await this.replaceLocal();
+        break;
+      case 'replaceRemote':
+        await this.replaceRemote();
+        break;
+      case 'rebuildIndex':
+        await this.rebuildIndex();
+        break;
+      case 'diagnostics':
+        await SyncController.getInstance().runDiagnostics();
         break;
       case 'stopSyncingItem':
         await this.stopSyncingItem(String(message.itemId ?? ''), String(message.itemName ?? ''));
@@ -72,6 +141,56 @@ export class SyncSectionHandler implements SettingsSectionHandler {
     }
   }
 
+  private sendWizardWelcome(): void {
+    const wizard = new SyncSetupWizard(this.host.extensionContext);
+    this.host.post({ type: 'sync/wizardWelcome', ...wizard.getWelcomeState() });
+  }
+
+  private async wizardSignIn(): Promise<void> {
+    const wizard = new SyncSetupWizard(this.host.extensionContext);
+    const result = await wizard.signInCloud();
+    this.host.post({ type: 'sync/wizardSignInResult', ...result });
+  }
+
+  private async wizardTestBackend(providerId: string): Promise<void> {
+    const wizard = new SyncSetupWizard(this.host.extensionContext);
+    const result = await wizard.testBackend(providerId as never);
+    this.host.post({ type: 'sync/wizardBackendResult', providerId, ...result });
+  }
+
+  private async wizardVault(message: SettingsHubMessage): Promise<void> {
+    const wizard = new SyncSetupWizard(this.host.extensionContext);
+    const result = await wizard.setupVault(
+      String(message.email ?? ''),
+      message.mode === 'unlock' ? 'unlock' : 'create',
+      message.secretKey ? String(message.secretKey) : undefined,
+    );
+    this.host.post({ type: 'sync/wizardVaultResult', ...result });
+  }
+
+  private async wizardComplete(message: SettingsHubMessage): Promise<void> {
+    const wizard = new SyncSetupWizard(this.host.extensionContext);
+    const flags = (message.flags ?? {}) as Record<string, boolean>;
+    const result = await wizard.completeSetup(
+      String(message.providerId ?? 'cloud') as never,
+      {
+        syncConnections: flags.syncConnections !== false,
+        syncQueries: flags.syncQueries !== false,
+        syncNotebooks: flags.syncNotebooks !== false,
+        syncPasswords: !!flags.syncPasswords,
+      },
+      String(message.email ?? ''),
+      message.vaultMode === 'unlock' ? 'unlock' : 'create',
+    );
+    this.host.post({ type: 'sync/wizardCompleteResult', ...result });
+    this.sendState();
+    this.sendItems();
+  }
+
+  private async wizardRecoveryKit(email: string, secretKey: string): Promise<void> {
+    await new SyncSetupWizard(this.host.extensionContext).exportRecoveryKit(email, secretKey);
+  }
+
   private sendItems(): void {
     this.host.post({
       type: 'sync/items',
@@ -88,7 +207,128 @@ export class SyncSectionHandler implements SettingsSectionHandler {
     });
   }
 
-  /** Per-item de-sync: the user chooses between keeping or deleting the cloud copy. */
+  private sendHistory(): void {
+    this.host.post({
+      type: 'sync/history',
+      history: SyncController.getInstance().listInboundHistory(),
+    });
+  }
+
+  private sendConflicts(): void {
+    const service = new ConflictResolutionService(this.host.extensionContext);
+    this.host.post({ type: 'sync/conflicts', conflicts: service.listConflicts() });
+  }
+
+  private async resolveConflict(message: SettingsHubMessage): Promise<void> {
+    const service = new ConflictResolutionService(this.host.extensionContext);
+    const id = String(message.conflictId ?? '');
+    const action = String(message.resolveAction ?? '');
+    if (action === 'keepMine') {
+      await service.resolveKeepMine(id);
+    } else if (action === 'keepTheirs') {
+      await service.resolveKeepTheirs(id);
+    } else if (action === 'keepBoth') {
+      await service.resolveKeepBoth(id, String(message.newName ?? `${id}-copy`));
+    } else if (action === 'delete') {
+      await service.deleteConflictCopy(id);
+    } else if (action === 'diff') {
+      await service.openDiff(id);
+      return;
+    }
+    this.sendConflicts();
+    this.sendItems();
+    this.sendState();
+  }
+
+  private async sendShares(): Promise<void> {
+    try {
+      const service = new SharingService(this.host.extensionContext);
+      const [incoming, outgoing] = await Promise.all([
+        service.listIncomingShares(),
+        service.listOutgoingShares(),
+      ]);
+      this.host.post({ type: 'sync/shares', incoming, outgoing });
+    } catch (e) {
+      this.host.post({
+        type: 'sync/shares',
+        incoming: [],
+        outgoing: [],
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
+
+  private async revokeShare(shareId: string): Promise<void> {
+    if (!shareId) {
+      return;
+    }
+    try {
+      await new SharingService(this.host.extensionContext).revokeShare(shareId);
+    } catch (e) {
+      void vscode.window.showErrorMessage(`Revoke failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+    await this.sendShares();
+  }
+
+  private async sendDevices(): Promise<void> {
+    const devices = await SyncController.getInstance().listCloudDevices();
+    this.host.post({ type: 'sync/devices', devices });
+  }
+
+  private async revokeDevice(deviceId: string): Promise<void> {
+    if (!deviceId) {
+      return;
+    }
+    const ok = await SyncController.getInstance().revokeCloudDevice(deviceId);
+    if (!ok) {
+      void vscode.window.showWarningMessage('Could not revoke device.');
+    }
+    await this.sendDevices();
+  }
+
+  private async replaceLocal(): Promise<void> {
+    const typed = await vscode.window.showInputBox({
+      title: 'Replace local with cloud',
+      prompt: `Type ${REPAIR_CONFIRM} to overwrite all local sync items with the cloud copy`,
+      ignoreFocusOut: true,
+    });
+    if (typed !== REPAIR_CONFIRM) {
+      return;
+    }
+    const ok = await SyncController.getInstance().replaceLocalWithCloud();
+    void vscode.window.showInformationMessage(ok ? 'Local data replaced from cloud.' : 'Replace failed.');
+    this.sendState();
+    this.sendItems();
+  }
+
+  private async replaceRemote(): Promise<void> {
+    const typed = await vscode.window.showInputBox({
+      title: 'Replace cloud with local',
+      prompt: `Type ${REPAIR_CONFIRM} to overwrite cloud with this device's data`,
+      ignoreFocusOut: true,
+    });
+    if (typed !== REPAIR_CONFIRM) {
+      return;
+    }
+    const ok = await SyncController.getInstance().replaceCloudWithLocal();
+    void vscode.window.showInformationMessage(ok ? 'Cloud replaced from local.' : 'Replace failed.');
+    this.sendState();
+  }
+
+  private async rebuildIndex(): Promise<void> {
+    const typed = await vscode.window.showInputBox({
+      title: 'Rebuild sync index',
+      prompt: `Type ${REPAIR_CONFIRM} to rebuild the local sync index from disk`,
+      ignoreFocusOut: true,
+    });
+    if (typed !== REPAIR_CONFIRM) {
+      return;
+    }
+    const count = await SyncController.getInstance().rebuildSyncIndex();
+    void vscode.window.showInformationMessage(`Rebuilt index for ${count} item(s).`);
+    this.sendItems();
+  }
+
   private async stopSyncingItem(itemId: string, itemName: string): Promise<void> {
     if (!itemId) {
       return;
@@ -126,13 +366,19 @@ export class SyncSectionHandler implements SettingsSectionHandler {
   }
 
   private sendState(): void {
-    // Backup (manual, own Postgres) is available on every tier; automatic
-    // multi-device sync needs Sponsor+.
     const enabled = isProFeatureEnabled(ProFeature.CloudBackup);
     const autoAllowed = isProFeatureEnabled(ProFeature.CloudSync);
     const controller = SyncController.getInstance();
     const config = controller.getConfig();
     const wsConfig = vscode.workspace.getConfiguration();
+    const tier = LicenseService.getInstance().getTier();
+    const pullInterval = wsConfig.get<number>(PULL_INTERVAL_KEY, 5);
+    const lastSyncAt = controller.getLastSyncAt();
+    const lastError = controller.getLastError();
+
+    void controller.getCloudQuota().then((quota) => {
+      this.host.post({ type: 'sync/quota', quota: quota ?? null });
+    });
 
     this.host.post({
       type: 'sync/state',
@@ -148,6 +394,14 @@ export class SyncSectionHandler implements SettingsSectionHandler {
         accountEmail: config.accountEmail ?? null,
         paused: config.paused,
         sharingAvailable: config.providerId === 'cloud' && isProFeatureEnabled(ProFeature.SyncSharing),
+        tier,
+        tierLabel: TIER_DISPLAY[tier],
+        cloudDefault: tier !== 'free',
+        lastSyncAt: lastSyncAt ?? null,
+        lastError: lastError ?? null,
+        nextPullEtaMs: lastSyncAt && autoAllowed && !config.paused
+          ? Math.max(0, lastSyncAt + pullInterval * 60 * 1000 - Date.now())
+          : null,
         flags: {
           syncConnections: config.syncConnections,
           syncQueries: config.syncQueries,
@@ -155,22 +409,52 @@ export class SyncSectionHandler implements SettingsSectionHandler {
           syncPasswords: config.syncPasswords,
         },
         auto: wsConfig.get<boolean>(AUTO_SYNC_KEY, true),
-        pullIntervalMinutes: wsConfig.get<number>(PULL_INTERVAL_KEY, 5),
+        pullIntervalMinutes: pullInterval,
       },
     });
   }
 
-  private async syncNow(): Promise<void> {
+  private async syncNow(direction: 'both' | 'pull' | 'push'): Promise<void> {
     if (!(await requirePro(ProFeature.CloudBackup))) {
       this.sendState();
       return;
     }
     this.host.post({ type: 'sync/running' });
-    const result = await SyncController.getInstance().runSync();
+    const controller = SyncController.getInstance();
+    const result = direction === 'pull'
+      ? await controller.pullOnly()
+      : direction === 'push'
+        ? await controller.pushOnly()
+        : await controller.runSync();
     this.host.post({ type: 'sync/runComplete', result: result ?? null });
     this.sendState();
     this.sendPending();
     this.sendItems();
+    this.sendHistory();
+  }
+
+  private async previewSync(transientExcludedIds?: string[]): Promise<void> {
+    if (!(await requirePro(ProFeature.CloudBackup))) {
+      return;
+    }
+    this.host.post({ type: 'sync/running' });
+    const preview = await SyncController.getInstance().previewSync(transientExcludedIds);
+    this.host.post({ type: 'sync/preview', preview: preview ?? null });
+    this.sendState();
+  }
+
+  private async applyPreview(transientExcludedIds?: string[]): Promise<void> {
+    if (!(await requirePro(ProFeature.CloudBackup))) {
+      return;
+    }
+    this.host.post({ type: 'sync/running' });
+    const result = await SyncController.getInstance().runSync({ transientExcludedIds });
+    this.host.post({ type: 'sync/runComplete', result: result ?? null });
+    this.sendState();
+    this.sendPending();
+    this.sendItems();
+    this.sendHistory();
+    this.sendConflicts();
   }
 
   private async pauseResume(): Promise<void> {
@@ -192,13 +476,6 @@ export class SyncSectionHandler implements SettingsSectionHandler {
     if (confirm === 'Sign Out') {
       await SyncController.getInstance().signOut();
     }
-    this.sendState();
-  }
-
-  private async launchSetup(): Promise<void> {
-    // Device-flow OAuth + vault creation stay on the existing wizard; the hub
-    // just launches it and refreshes status when it returns.
-    await vscode.commands.executeCommand('postgres-explorer.sync.setup');
     this.sendState();
   }
 

@@ -1,14 +1,15 @@
 // Neon Postgres pool for NexQL Cloud sync storage.
-// Requires DATABASE_URL (or POSTGRES_URL) in the environment.
+// Connection URL: DATABASE_URL, POSTGRES_URL, or Vercel-prefixed variants (see db-url.js).
 
 const { neon } = require('@neondatabase/serverless');
+const { resolveDatabaseUrl } = require('./db-url');
 
 let sql = null;
 let schemaReady = null;
 
 function getSql() {
   if (!sql) {
-    const url = process.env.DATABASE_URL || process.env.POSTGRES_URL;
+    const url = resolveDatabaseUrl();
     if (!url) {
       throw new Error('DATABASE_URL is not configured');
     }
@@ -73,6 +74,28 @@ async function ensureSchema() {
       await db`
         CREATE INDEX IF NOT EXISTS sync_shares_owner_idx
           ON pgstudio_sync.sync_shares (owner_email)
+      `;
+      await db`
+        CREATE TABLE IF NOT EXISTS pgstudio_sync.sync_accounts (
+          account_id   TEXT        PRIMARY KEY,
+          tier         TEXT        NOT NULL DEFAULT 'sponsor',
+          bytes_used   BIGINT      NOT NULL DEFAULT 0,
+          item_count   INT         NOT NULL DEFAULT 0,
+          updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+      `;
+      await db`
+        CREATE TABLE IF NOT EXISTS pgstudio_sync.sync_devices (
+          account_id   TEXT        NOT NULL,
+          device_id    TEXT        NOT NULL,
+          device_name  TEXT,
+          last_seen    TIMESTAMPTZ NOT NULL DEFAULT now(),
+          PRIMARY KEY (account_id, device_id)
+        )
+      `;
+      await db`
+        CREATE INDEX IF NOT EXISTS sync_devices_account_idx
+          ON pgstudio_sync.sync_devices (account_id, last_seen DESC)
       `;
     })();
   }
@@ -242,6 +265,99 @@ async function upsertManifestMeta(accountId, entries) {
       deleted: !!entry.deleted,
     });
   }
+  await refreshAccountQuota(accountId);
+}
+
+async function refreshAccountQuota(accountId) {
+  await ensureSchema();
+  const db = getSql();
+  const rows = await db`
+    SELECT
+      COALESCE(SUM(octet_length(blob)), 0)::bigint AS bytes_used,
+      COUNT(*) FILTER (WHERE NOT deleted)::int AS item_count
+    FROM pgstudio_sync.sync_items
+    WHERE account_id = ${accountId}
+  `;
+  const stats = rows[0] || { bytes_used: 0, item_count: 0 };
+  await db`
+    INSERT INTO pgstudio_sync.sync_accounts (account_id, bytes_used, item_count, updated_at)
+    VALUES (${accountId}, ${stats.bytes_used}, ${stats.item_count}, now())
+    ON CONFLICT (account_id) DO UPDATE SET
+      bytes_used = EXCLUDED.bytes_used,
+      item_count = EXCLUDED.item_count,
+      updated_at = now()
+  `;
+}
+
+async function getAccountQuota(accountId) {
+  await ensureSchema();
+  const db = getSql();
+  const rows = await db`
+    SELECT tier, bytes_used, item_count, updated_at
+    FROM pgstudio_sync.sync_accounts
+    WHERE account_id = ${accountId}
+    LIMIT 1
+  `;
+  if (!rows.length) {
+    await refreshAccountQuota(accountId);
+    const again = await db`
+      SELECT tier, bytes_used, item_count, updated_at
+      FROM pgstudio_sync.sync_accounts
+      WHERE account_id = ${accountId}
+      LIMIT 1
+    `;
+    return again[0] || { tier: 'sponsor', bytes_used: 0, item_count: 0, updated_at: new Date() };
+  }
+  return rows[0];
+}
+
+async function setAccountTier(accountId, tier) {
+  await ensureSchema();
+  const db = getSql();
+  await db`
+    INSERT INTO pgstudio_sync.sync_accounts (account_id, tier, updated_at)
+    VALUES (${accountId}, ${tier}, now())
+    ON CONFLICT (account_id) DO UPDATE SET
+      tier = EXCLUDED.tier,
+      updated_at = now()
+  `;
+}
+
+async function upsertDevice(accountId, deviceId, deviceName) {
+  if (!deviceId) {
+    return;
+  }
+  await ensureSchema();
+  const db = getSql();
+  await db`
+    INSERT INTO pgstudio_sync.sync_devices (account_id, device_id, device_name, last_seen)
+    VALUES (${accountId}, ${deviceId}, ${deviceName || null}, now())
+    ON CONFLICT (account_id, device_id) DO UPDATE SET
+      device_name = COALESCE(EXCLUDED.device_name, pgstudio_sync.sync_devices.device_name),
+      last_seen = now()
+  `;
+}
+
+async function listDevices(accountId) {
+  await ensureSchema();
+  const db = getSql();
+  return db`
+    SELECT device_id, device_name, last_seen
+    FROM pgstudio_sync.sync_devices
+    WHERE account_id = ${accountId}
+    ORDER BY last_seen DESC
+  `;
+}
+
+async function revokeDevice(accountId, deviceId) {
+  await ensureSchema();
+  const db = getSql();
+  const rows = await db`
+    DELETE FROM pgstudio_sync.sync_devices
+    WHERE account_id = ${accountId} AND device_id = ${deviceId}
+    RETURNING device_id
+  `;
+  return rows.length > 0;
 }
 
 module.exports = {
@@ -256,4 +372,10 @@ module.exports = {
   listSharesForGrantee,
   listSharesByOwner,
   revokeShare,
+  refreshAccountQuota,
+  getAccountQuota,
+  setAccountTier,
+  upsertDevice,
+  listDevices,
+  revokeDevice,
 };

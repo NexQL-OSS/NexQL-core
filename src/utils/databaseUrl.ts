@@ -1,5 +1,6 @@
 import { parse } from 'pg-connection-string';
 import type { ConnectionInfo } from '../features/connections/connectionStore';
+import { inferPlatformPresetFromHost } from '../lib/platform/connectionPresets';
 
 const VALID_SSL = new Set<string>([
   'disable',
@@ -50,6 +51,7 @@ export function connectionInfoFromDatabaseUrl(rawUrl: string, id: string): Conne
     sslmode,
     environment: 'development',
     readOnlyMode: false,
+    platformPreset: inferPlatformPresetFromHost(host, port),
   };
 }
 

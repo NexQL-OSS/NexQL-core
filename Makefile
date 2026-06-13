@@ -127,7 +127,7 @@ coverage-report:
 docker-up:
 	docker-compose -f docker-compose.test.yml up -d
 	@echo "PostgreSQL test containers started"
-	@echo "Versions available on ports: 12(5412), 14(5414), 15(5415), 16(5416), 17(5417)"
+	@echo "Versions available on ports: 12(5412), 13(5413), 14(5414), 15(5415), 16(5416), 17(5417), Timescale(5418)"
 
 docker-down:
 	docker-compose -f docker-compose.test.yml down
