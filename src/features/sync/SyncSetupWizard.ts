@@ -19,6 +19,8 @@ export interface WizardCompleteResult {
   pulled?: number;
 }
 
+export type CloudSignInMode = 'license' | 'browser';
+
 /**
  * Settings-hub onboarding wizard — cloud-first path with Advanced backends.
  */
@@ -34,10 +36,16 @@ export class SyncSetupWizard {
     };
   }
 
-  async signInCloud(): Promise<{ ok: boolean; email?: string; error?: string }> {
+  async signInCloud(
+    mode: CloudSignInMode = 'license',
+    onStatus?: (message: string) => void,
+  ): Promise<{ ok: boolean; email?: string; error?: string }> {
     try {
-      const { email } = await AccountService.getInstance(this.context).signInWithDeviceFlow();
-      return { ok: true, email: email ?? undefined };
+      const account = AccountService.getInstance(this.context);
+      const result = mode === 'browser'
+        ? await account.signInWithDeviceFlow(onStatus)
+        : await account.signInWithLicense();
+      return { ok: true, email: result.email ?? undefined };
     } catch (e) {
       return { ok: false, error: e instanceof Error ? e.message : String(e) };
     }
@@ -62,37 +70,23 @@ export class SyncSetupWizard {
   }
 
   async setupVault(
-    email: string,
     mode: 'create' | 'unlock',
     secretKey?: string,
-  ): Promise<{ ok: boolean; secretKey?: string; error?: string }> {
-    const entitlementEmail = await AccountService.getInstance(this.context).getAccountEmail();
-    const resolvedEmail = email.trim() || entitlementEmail || '';
-    if (!resolvedEmail) {
-      return { ok: false, error: 'Account email is required.' };
-    }
-    if (entitlementEmail && VaultService.normalizeEmail(entitlementEmail) !== VaultService.normalizeEmail(resolvedEmail)) {
-      const proceed = await vscode.window.showWarningMessage(
-        'Vault email differs from your NexQL account email. Continue anyway?',
-        'Continue',
-        'Cancel',
-      );
-      if (proceed !== 'Continue') {
-        return { ok: false, error: 'Cancelled.' };
-      }
-    }
-
+    options?: { passphrase?: string; legacyEmail?: string },
+  ): Promise<{ ok: boolean; secretKey?: string; generation?: string; error?: string }> {
     const vault = VaultService.getInstance(this.context);
     if (mode === 'create') {
-      const { secretKey: created } = await vault.createVault(resolvedEmail);
-      return { ok: true, secretKey: created };
+      const { secretKey: created, generation } = await vault.createVault({
+        passphrase: options?.passphrase,
+      });
+      return { ok: true, secretKey: created, generation };
     }
     if (!secretKey) {
       return { ok: false, error: 'Secret key required to unlock.' };
     }
     try {
-      await vault.unlock(secretKey, resolvedEmail);
-      return { ok: true };
+      await vault.unlock(secretKey, options?.legacyEmail);
+      return { ok: true, generation: vault.getGeneration() };
     } catch (e) {
       return { ok: false, error: e instanceof Error ? e.message : 'Unlock failed' };
     }
@@ -101,7 +95,6 @@ export class SyncSetupWizard {
   async completeSetup(
     providerId: SyncProviderId,
     flags: { syncConnections: boolean; syncQueries: boolean; syncNotebooks: boolean; syncPasswords: boolean },
-    accountEmail: string,
     vaultMode: 'create' | 'unlock',
   ): Promise<WizardCompleteResult> {
     if (!allowedSyncProviders().includes(providerId)) {
@@ -117,6 +110,8 @@ export class SyncSetupWizard {
       ? await this.context.secrets.get('postgresExplorer.sync.gistId')
       : undefined;
 
+    const accountEmail = await AccountService.getInstance(this.context).getAccountEmail();
+
     await controller.saveConfig({
       providerId,
       gistId,
@@ -125,7 +120,7 @@ export class SyncSetupWizard {
       syncNotebooks: flags.syncNotebooks,
       syncPasswords: flags.syncPasswords,
       paused: false,
-      accountEmail: accountEmail.trim(),
+      accountEmail: accountEmail?.trim(),
       vaultGeneration: vault.getGeneration(),
     });
 
@@ -151,16 +146,19 @@ export class SyncSetupWizard {
     };
   }
 
-  async exportRecoveryKit(email: string, secretKey: string): Promise<void> {
+  async exportRecoveryKit(generation: string, secretKey: string, customPassphrase?: boolean): Promise<void> {
     const uri = await vscode.window.showSaveDialog({
       defaultUri: vscode.Uri.file('pgstudio-recovery-kit.txt'),
       filters: { Text: ['txt'] },
     });
     if (uri) {
+      const secretLine = customPassphrase
+        ? 'Secret: (your custom passphrase — not stored here)'
+        : `Secret: ${secretKey}`;
       await vscode.workspace.fs.writeFile(
         uri,
         Buffer.from(
-          `PgStudio Sync Recovery Kit\nEmail: ${email}\nSecret Key: ${secretKey}\n\nKeep this file safe. Without the secret key, encrypted data cannot be recovered.`,
+          `PgStudio Sync Recovery Kit\nVault ID: ${generation}\n${secretLine}\n\nKeep this safe. Without the secret, encrypted data cannot be recovered.`,
         ),
       );
     }

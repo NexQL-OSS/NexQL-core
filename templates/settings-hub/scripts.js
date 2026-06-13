@@ -1655,7 +1655,183 @@ document.querySelectorAll('.sync-tab').forEach((btn) => {
   btn.addEventListener('click', () => showSyncTab(btn.getAttribute('data-sync-tab')));
 });
 
-const syncWizardState = { step: 0, mode: 'cloud', providerId: 'cloud', email: '', secretKey: '', vaultMode: 'create' };
+const syncWizardState = {
+  step: 0,
+  mode: 'cloud',
+  providerId: 'cloud',
+  signedIn: false,
+  vaultReady: false,
+  secretKey: '',
+  generation: '',
+  vaultMode: 'create',
+  customPassphrase: false,
+  legacyVault: false,
+};
+
+const SYNC_WIZARD_STEP_TITLES = ['Connect', 'Protect', 'Done'];
+
+function updateSyncWizardNextBtn() {
+  const s = syncWizardState.step;
+  const btn = $('syncWizardNextBtn');
+  if (!btn) { return; }
+  if (s === 0) {
+    btn.textContent = 'Next';
+    btn.disabled = syncWizardState.providerId === 'cloud' && !syncWizardState.signedIn;
+  } else if (s === 1) {
+    btn.textContent = 'Next';
+    btn.disabled = !syncWizardState.vaultReady;
+  } else if (s === 2) {
+    btn.textContent = 'Finish';
+    btn.disabled = false;
+  } else if (s === 3) {
+    btn.textContent = 'Done';
+    btn.disabled = false;
+  }
+}
+
+function openSyncWizard(mode) {
+  syncWizardState.step = 0;
+  syncWizardState.mode = mode || 'cloud';
+  syncWizardState.providerId = mode === 'advanced' ? 'postgres' : 'cloud';
+  syncWizardState.signedIn = mode === 'advanced';
+  syncWizardState.vaultReady = false;
+  syncWizardState.secretKey = '';
+  syncWizardState.generation = '';
+  syncWizardState.vaultMode = 'create';
+  syncWizardState.customPassphrase = false;
+  syncWizardState.legacyVault = false;
+  $('syncWizardBackdrop').hidden = false;
+  vscode.postMessage({ command: 'sync/wizardWelcome' });
+  renderSyncWizardStep();
+}
+
+function renderSyncWizardStep() {
+  const body = $('syncWizardBody');
+  const title = $('syncWizardTitle');
+  body.textContent = '';
+  const s = syncWizardState.step;
+  title.textContent = 'Set Up Cloud Sync — ' + (SYNC_WIZARD_STEP_TITLES[s] || 'Done');
+
+  if (s === 0) {
+    if (syncWizardState.providerId === 'cloud') {
+      body.innerHTML = [
+        '<p>Enable encrypted sync to NexQL Cloud. Your data is encrypted on this device before upload.</p>',
+        '<p id="syncWizardTier" class="label-hint"></p>',
+        '<button type="button" id="syncWizardEnableBtn" class="btn-primary">Enable Cloud Sync</button>',
+        '<p id="syncWizardSignInStatus" class="status-line"></p>',
+        '<button type="button" id="syncWizardBrowserBtn" class="btn-secondary btn-sm">Authorize in browser instead</button>',
+      ].join('');
+      $('syncWizardEnableBtn')?.addEventListener('click', () => {
+        $('syncWizardEnableBtn').disabled = true;
+        $('syncWizardSignInStatus').textContent = 'Connecting…';
+        vscode.postMessage({ command: 'sync/wizardSignIn', mode: 'license' });
+      });
+      $('syncWizardBrowserBtn')?.addEventListener('click', () => {
+        $('syncWizardBrowserBtn').disabled = true;
+        $('syncWizardSignInStatus').textContent = 'Opening browser…';
+        vscode.postMessage({ command: 'sync/wizardSignIn', mode: 'browser' });
+      });
+    } else {
+      body.innerHTML = '<p>Connect to your chosen backend.</p><p class="label-hint">Advanced backends use the same auth flows as before.</p>';
+      syncWizardState.signedIn = true;
+    }
+  } else if (s === 1) {
+    body.innerHTML = [
+      '<p>Your sync vault encrypts connections and queries. Save the secret key — it is shown only once.</p>',
+      '<label><input type="radio" name="vaultMode" value="create" checked> Create new vault</label>',
+      '<label><input type="radio" name="vaultMode" value="unlock"> Unlock existing vault</label>',
+      '<div id="syncWizardCreateBlock">',
+      '  <label><input type="checkbox" id="syncWizardCustomPass"> Use custom passphrase</label>',
+      '  <input type="password" id="syncWizardPassphrase" placeholder="Custom passphrase (optional)" class="mono" hidden>',
+      '</div>',
+      '<div id="syncWizardUnlockBlock" hidden>',
+      '  <input type="password" id="syncWizardSecret" placeholder="Secret key" class="mono">',
+      '  <label id="syncWizardLegacyEmailLabel" hidden>Account email (legacy vault)<input type="email" id="syncWizardLegacyEmail" class="mono"></label>',
+      '</div>',
+      '<p id="syncWizardVaultStatus" class="status-line"></p>',
+      '<div id="syncWizardSecretReveal" class="sync-secret-reveal" hidden>',
+      '  <p class="label-hint">Save this secret key — you will need it on other devices.</p>',
+      '  <code id="syncWizardSecretValue" class="mono"></code>',
+      '  <button type="button" id="syncWizardCopySecret" class="btn-secondary btn-sm">Copy</button>',
+      '</div>',
+    ].join('');
+    document.querySelectorAll('input[name="vaultMode"]').forEach((el) => {
+      el.addEventListener('change', () => {
+        const unlock = document.querySelector('input[name="vaultMode"]:checked')?.value === 'unlock';
+        $('syncWizardCreateBlock').hidden = unlock;
+        $('syncWizardUnlockBlock').hidden = !unlock;
+        $('syncWizardLegacyEmailLabel').hidden = !unlock;
+      });
+    });
+    $('syncWizardCustomPass')?.addEventListener('change', (e) => {
+      const on = e.target.checked;
+      syncWizardState.customPassphrase = on;
+      $('syncWizardPassphrase').hidden = !on;
+    });
+    if (syncWizardState.vaultReady && syncWizardState.secretKey) {
+      $('syncWizardSecretReveal').hidden = false;
+      $('syncWizardSecretValue').textContent = syncWizardState.secretKey;
+      $('syncWizardCopySecret')?.addEventListener('click', () => {
+        navigator.clipboard?.writeText(syncWizardState.secretKey);
+      });
+    }
+  } else if (s === 2) {
+    body.innerHTML = [
+      '<p>Choose what to sync, then click Finish.</p>',
+      '<label><input type="checkbox" id="wizConn" checked> Connections</label>',
+      '<label><input type="checkbox" id="wizQueries" checked> Saved queries</label>',
+      '<label><input type="checkbox" id="wizNotebooks" checked> Notebooks</label>',
+      '<label><input type="checkbox" id="wizPasswords"> Passwords</label>',
+      '<p id="syncWizardCompleteStatus" class="status-line"></p>',
+    ].join('');
+  } else if (s === 3) {
+    body.innerHTML = '<p class="success">Cloud sync is ready.</p><button type="button" id="syncWizardDoneBtn" class="btn-primary">Open Sync Settings</button>';
+    $('syncWizardDoneBtn')?.addEventListener('click', () => { $('syncWizardBackdrop').hidden = true; showSyncTab('overview'); });
+  }
+
+  $('syncWizardBackBtn').hidden = s === 0;
+  updateSyncWizardNextBtn();
+}
+
+$('syncWizardNextBtn')?.addEventListener('click', () => {
+  const s = syncWizardState.step;
+  if (s === 1 && !syncWizardState.vaultReady) {
+    syncWizardState.vaultMode = document.querySelector('input[name="vaultMode"]:checked')?.value || 'create';
+    const unlock = syncWizardState.vaultMode === 'unlock';
+    vscode.postMessage({
+      command: 'sync/wizardVault',
+      mode: syncWizardState.vaultMode,
+      secretKey: unlock ? ($('syncWizardSecret')?.value || '') : undefined,
+      passphrase: !unlock && syncWizardState.customPassphrase ? ($('syncWizardPassphrase')?.value || '') : undefined,
+      legacyEmail: unlock ? ($('syncWizardLegacyEmail')?.value || '') : undefined,
+    });
+    return;
+  }
+  if (s === 2) {
+    $('syncWizardCompleteStatus').textContent = 'Running first sync…';
+    updateSyncWizardNextBtn();
+    const btn = $('syncWizardNextBtn');
+    if (btn) { btn.disabled = true; }
+    vscode.postMessage({
+      command: 'sync/wizardComplete',
+      providerId: syncWizardState.providerId,
+      vaultMode: syncWizardState.vaultMode,
+      flags: {
+        syncConnections: $('wizConn')?.checked !== false,
+        syncQueries: $('wizQueries')?.checked !== false,
+        syncNotebooks: $('wizNotebooks')?.checked !== false,
+        syncPasswords: !!$('wizPasswords')?.checked,
+      },
+    });
+    return;
+  }
+  if (s >= 3) {
+    $('syncWizardBackdrop').hidden = true;
+    return;
+  }
+  syncWizardState.step += 1;
+  renderSyncWizardStep();
+});
 
 function showSyncTab(tab) {
   const tabIdMap = {
@@ -1679,72 +1855,14 @@ function showSyncTab(tab) {
   if (tab === 'preview') { vscode.postMessage({ command: 'sync/preview' }); }
 }
 
-function openSyncWizard(mode) {
-  syncWizardState.step = 0;
-  syncWizardState.mode = mode || 'cloud';
-  syncWizardState.providerId = mode === 'advanced' ? 'postgres' : 'cloud';
-  $('syncWizardBackdrop').hidden = false;
-  vscode.postMessage({ command: 'sync/wizardWelcome' });
-  renderSyncWizardStep();
-}
-
-function renderSyncWizardStep() {
-  const body = $('syncWizardBody');
-  body.textContent = '';
-  const s = syncWizardState.step;
-  if (s === 0) {
-    body.innerHTML = '<p>Welcome — your NexQL plan includes encrypted cloud sync.</p><p id="syncWizardTier" class="label-hint"></p>';
-  } else if (s === 1 && syncWizardState.providerId === 'cloud') {
-    body.innerHTML = '<p>Sign in with your NexQL license via device flow.</p><button type="button" id="syncWizardSignInBtn" class="btn-primary">Sign In</button><p id="syncWizardSignInStatus" class="status-line"></p>';
-    $('syncWizardSignInBtn')?.addEventListener('click', () => vscode.postMessage({ command: 'sync/wizardSignIn' }));
-  } else if (s === 1) {
-    body.innerHTML = '<p>Connect to your chosen backend.</p><p class="label-hint">Advanced backends use the same auth flows as before.</p>';
-  } else if (s === 2) {
-    body.innerHTML = '<label>Vault email<input type="email" id="syncWizardEmail" class="mono"></label><label><input type="radio" name="vaultMode" value="create" checked> Create vault</label><label><input type="radio" name="vaultMode" value="unlock"> Unlock vault</label><input type="password" id="syncWizardSecret" placeholder="Secret key (unlock only)" class="mono"><p id="syncWizardVaultStatus" class="status-line"></p>';
-  } else if (s === 3) {
-    body.innerHTML = '<label><input type="checkbox" id="wizConn" checked> Connections</label><label><input type="checkbox" id="wizQueries" checked> Saved queries</label><label><input type="checkbox" id="wizNotebooks" checked> Notebooks</label><label><input type="checkbox" id="wizPasswords"> Passwords</label>';
-  } else if (s === 4) {
-    body.innerHTML = '<p>Running first sync…</p>';
-    const email = $('syncWizardEmail')?.value || syncWizardState.email;
-    vscode.postMessage({
-      command: 'sync/wizardComplete',
-      providerId: syncWizardState.providerId,
-      email,
-      vaultMode: syncWizardState.vaultMode,
-      flags: {
-        syncConnections: $('wizConn')?.checked !== false,
-        syncQueries: $('wizQueries')?.checked !== false,
-        syncNotebooks: $('wizNotebooks')?.checked !== false,
-        syncPasswords: !!$('wizPasswords')?.checked,
-      },
-    });
-  } else if (s === 5) {
-    body.innerHTML = '<p class="success">Cloud sync is ready.</p><button type="button" id="syncWizardDoneBtn" class="btn-primary">Open Sync Settings</button>';
-    $('syncWizardDoneBtn')?.addEventListener('click', () => { $('syncWizardBackdrop').hidden = true; showSyncTab('overview'); });
-  }
-  $('syncWizardBackBtn').hidden = s === 0;
-  $('syncWizardNextBtn').textContent = s >= 4 ? (s === 5 ? 'Done' : 'Finish') : 'Next';
-}
-
-$('syncWizardNextBtn')?.addEventListener('click', () => {
-  if (syncWizardState.step === 2) {
-    syncWizardState.email = $('syncWizardEmail')?.value || syncWizardState.email;
-    syncWizardState.vaultMode = document.querySelector('input[name="vaultMode"]:checked')?.value || 'create';
-    vscode.postMessage({
-      command: 'sync/wizardVault',
-      email: syncWizardState.email,
-      mode: syncWizardState.vaultMode,
-      secretKey: $('syncWizardSecret')?.value || '',
-    });
-    return;
-  }
-  syncWizardState.step += 1;
-  if (syncWizardState.step === 4) { renderSyncWizardStep(); return; }
-  if (syncWizardState.step > 5) { $('syncWizardBackdrop').hidden = true; return; }
-  renderSyncWizardStep();
-});
 $('syncWizardBackBtn')?.addEventListener('click', () => {
-  if (syncWizardState.step > 0) { syncWizardState.step -= 1; renderSyncWizardStep(); }
+  if (syncWizardState.step > 0) {
+    syncWizardState.step -= 1;
+    if (syncWizardState.step === 1) {
+      syncWizardState.vaultReady = false;
+    }
+    renderSyncWizardStep();
+  }
 });
 
 function renderPreviewList(el, items) {
@@ -2168,32 +2286,75 @@ function handleSyncMessage(message) {
       openSyncWizard(message.mode || 'cloud');
       break;
     case 'sync/wizardWelcome':
-      $('syncWizardTier').textContent = 'Plan: ' + (message.tierLabel || message.tier);
-      break;
-    case 'sync/wizardSignInResult':
-      $('syncWizardSignInStatus').textContent = message.ok ? ('Signed in' + (message.email ? ': ' + message.email : '')) : (message.error || 'Sign-in failed');
-      if (message.email) { syncWizardState.email = message.email; }
-      break;
-    case 'sync/wizardVaultResult':
-      $('syncWizardVaultStatus').textContent = message.ok ? 'Vault ready' : (message.error || 'Vault failed');
-      if (message.secretKey) { syncWizardState.secretKey = message.secretKey; }
-      if (message.ok && syncWizardState.vaultMode === 'create' && message.secretKey) {
-        vscode.postMessage({ command: 'sync/wizardRecoveryKit', email: syncWizardState.email, secretKey: message.secretKey });
-        syncWizardState.step += 1;
-        renderSyncWizardStep();
-      } else if (message.ok) {
-        syncWizardState.step += 1;
-        renderSyncWizardStep();
+      if ($('syncWizardTier')) {
+        $('syncWizardTier').textContent = 'Plan: ' + (message.tierLabel || message.tier);
       }
       break;
-    case 'sync/wizardCompleteResult':
+    case 'sync/wizardSignInStatus':
+      if ($('syncWizardSignInStatus')) {
+        $('syncWizardSignInStatus').textContent = message.status || '';
+      }
+      break;
+    case 'sync/wizardSignInResult': {
+      const statusEl = $('syncWizardSignInStatus');
+      if (statusEl) {
+        statusEl.textContent = message.ok
+          ? ('Connected' + (message.email ? ' — ' + message.email : ''))
+          : (message.error || 'Sign-in failed');
+        statusEl.className = 'status-line' + (message.ok ? ' success' : ' error');
+      }
       if (message.ok) {
-        syncWizardState.step = 5;
+        syncWizardState.signedIn = true;
+        $('syncWizardEnableBtn') && ($('syncWizardEnableBtn').disabled = true);
+        updateSyncWizardNextBtn();
+      } else {
+        $('syncWizardEnableBtn') && ($('syncWizardEnableBtn').disabled = false);
+        $('syncWizardBrowserBtn') && ($('syncWizardBrowserBtn').disabled = false);
+      }
+      break;
+    }
+    case 'sync/wizardVaultResult': {
+      const vaultStatus = $('syncWizardVaultStatus');
+      if (vaultStatus) {
+        vaultStatus.textContent = message.ok ? 'Vault ready' : (message.error || 'Vault failed');
+        vaultStatus.className = 'status-line' + (message.ok ? ' success' : ' error');
+      }
+      if (message.secretKey) { syncWizardState.secretKey = message.secretKey; }
+      if (message.generation) { syncWizardState.generation = message.generation; }
+      if (message.ok) {
+        syncWizardState.vaultReady = true;
+        if (syncWizardState.vaultMode === 'create' && message.secretKey) {
+          vscode.postMessage({
+            command: 'sync/wizardRecoveryKit',
+            generation: syncWizardState.generation,
+            secretKey: message.secretKey,
+            customPassphrase: syncWizardState.customPassphrase,
+          });
+          renderSyncWizardStep();
+        }
+        updateSyncWizardNextBtn();
+      }
+      break;
+    }
+    case 'sync/wizardCompleteResult': {
+      const completeStatus = $('syncWizardCompleteStatus');
+      if (message.ok) {
+        if (completeStatus) {
+          completeStatus.textContent = 'Sync complete.';
+          completeStatus.className = 'status-line success';
+        }
+        syncWizardState.step = 3;
         renderSyncWizardStep();
       } else {
-        $('syncWizardBody').innerHTML = '<p class="error">' + (message.error || 'Setup failed') + '</p>';
+        if (completeStatus) {
+          completeStatus.textContent = message.error || 'Setup failed';
+          completeStatus.className = 'status-line error';
+        }
+        const btn = $('syncWizardNextBtn');
+        if (btn) { btn.disabled = false; }
       }
       break;
+    }
   }
 }
 

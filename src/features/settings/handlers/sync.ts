@@ -65,7 +65,7 @@ export class SyncSectionHandler implements SettingsSectionHandler {
         this.sendWizardWelcome();
         break;
       case 'wizardSignIn':
-        await this.wizardSignIn();
+        await this.wizardSignIn(message);
         break;
       case 'wizardTestBackend':
         await this.wizardTestBackend(String(message.providerId ?? 'cloud'));
@@ -77,7 +77,7 @@ export class SyncSectionHandler implements SettingsSectionHandler {
         await this.wizardComplete(message);
         break;
       case 'wizardRecoveryKit':
-        await this.wizardRecoveryKit(String(message.email ?? ''), String(message.secretKey ?? ''));
+        await this.wizardRecoveryKit(message);
         break;
       case 'saveFlags':
         await this.saveFlags(message.flags as Record<string, boolean>);
@@ -146,9 +146,12 @@ export class SyncSectionHandler implements SettingsSectionHandler {
     this.host.post({ type: 'sync/wizardWelcome', ...wizard.getWelcomeState() });
   }
 
-  private async wizardSignIn(): Promise<void> {
+  private async wizardSignIn(message: SettingsHubMessage): Promise<void> {
     const wizard = new SyncSetupWizard(this.host.extensionContext);
-    const result = await wizard.signInCloud();
+    const mode = message.mode === 'browser' ? 'browser' : 'license';
+    const result = await wizard.signInCloud(mode, (status) => {
+      this.host.post({ type: 'sync/wizardSignInStatus', status });
+    });
     this.host.post({ type: 'sync/wizardSignInResult', ...result });
   }
 
@@ -161,9 +164,12 @@ export class SyncSectionHandler implements SettingsSectionHandler {
   private async wizardVault(message: SettingsHubMessage): Promise<void> {
     const wizard = new SyncSetupWizard(this.host.extensionContext);
     const result = await wizard.setupVault(
-      String(message.email ?? ''),
       message.mode === 'unlock' ? 'unlock' : 'create',
       message.secretKey ? String(message.secretKey) : undefined,
+      {
+        passphrase: message.passphrase ? String(message.passphrase) : undefined,
+        legacyEmail: message.legacyEmail ? String(message.legacyEmail) : undefined,
+      },
     );
     this.host.post({ type: 'sync/wizardVaultResult', ...result });
   }
@@ -179,7 +185,6 @@ export class SyncSectionHandler implements SettingsSectionHandler {
         syncNotebooks: flags.syncNotebooks !== false,
         syncPasswords: !!flags.syncPasswords,
       },
-      String(message.email ?? ''),
       message.vaultMode === 'unlock' ? 'unlock' : 'create',
     );
     this.host.post({ type: 'sync/wizardCompleteResult', ...result });
@@ -187,8 +192,12 @@ export class SyncSectionHandler implements SettingsSectionHandler {
     this.sendItems();
   }
 
-  private async wizardRecoveryKit(email: string, secretKey: string): Promise<void> {
-    await new SyncSetupWizard(this.host.extensionContext).exportRecoveryKit(email, secretKey);
+  private async wizardRecoveryKit(message: SettingsHubMessage): Promise<void> {
+    await new SyncSetupWizard(this.host.extensionContext).exportRecoveryKit(
+      String(message.generation ?? ''),
+      String(message.secretKey ?? ''),
+      !!message.customPassphrase,
+    );
   }
 
   private sendItems(): void {

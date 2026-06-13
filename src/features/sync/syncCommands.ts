@@ -332,7 +332,8 @@ export async function cmdSyncShowSecretKey(context: vscode.ExtensionContext): Pr
     );
     return;
   }
-  const email = vault.getAccountEmail() ?? SyncController.getInstance().getConfig().accountEmail ?? '';
+  const generation = vault.getGeneration() ?? '';
+  const legacyEmail = vault.getAccountEmail() ?? SyncController.getInstance().getConfig().accountEmail ?? '';
   const secretKey = await vscode.window.showInputBox({
     title: 'Export recovery kit',
     prompt: 'Enter your secret key to re-export the recovery kit (not stored by PgStudio)',
@@ -343,13 +344,13 @@ export async function cmdSyncShowSecretKey(context: vscode.ExtensionContext): Pr
     return;
   }
   try {
-    await vault.unlock(secretKey, email);
+    await vault.unlock(secretKey, legacyEmail || undefined);
   } catch {
     await vscode.window.showErrorMessage('Secret key did not unlock the vault.');
     return;
   }
   const { SyncSetupWizard } = await import('./SyncSetupWizard');
-  await new SyncSetupWizard(context).exportRecoveryKit(email, secretKey);
+  await new SyncSetupWizard(context).exportRecoveryKit(generation, secretKey);
 }
 
 export async function cmdSyncPause(): Promise<void> {

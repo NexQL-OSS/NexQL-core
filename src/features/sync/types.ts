@@ -246,10 +246,14 @@ export interface NotebookSyncPayload {
 }
 
 export interface VaultManifest {
+  /** v2 uses random salt; v1 (legacy) uses email as scrypt salt. */
+  version?: 1 | 2;
   generation: string;
   wrappedVaultKey: string;
   salt: string;
-  email: string;
+  kdf?: 'scrypt';
+  /** Present on v1 vaults only. */
+  email?: string;
 }
 
 /** Device authorization flow responses (nexql.astrx.dev). */

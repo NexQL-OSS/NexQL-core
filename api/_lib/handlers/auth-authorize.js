@@ -1,4 +1,4 @@
-// POST /api/auth/authorize — complete device flow with Teams license key + user code.
+// POST /api/auth/authorize — complete device flow (pre-bound or manual license key).
 
 const { authorizeDevice } = require('../sync-auth');
 
@@ -8,8 +8,8 @@ module.exports = async (req, res) => {
   }
 
   const { user_code: userCode, licenseKey } = req.body || {};
-  if (!userCode || !licenseKey) {
-    return res.status(400).json({ error: 'user_code and licenseKey are required' });
+  if (!userCode) {
+    return res.status(400).json({ error: 'user_code is required' });
   }
 
   try {

@@ -2,12 +2,29 @@ import * as https from 'https';
 import * as http from 'http';
 import { URL } from 'url';
 import * as vscode from 'vscode';
+import { LicenseService } from '../../services/LicenseService';
 import { DEFAULT_SYNC_API_ENDPOINT } from './constants';
+import { getDeviceName, getOrCreateDeviceId } from './deviceId';
 import type { DeviceAuthStartResponse, DeviceAuthTokenResponse } from './types';
 
 const ACCESS_TOKEN_KEY = 'postgresExplorer.sync.accessToken';
 const REFRESH_TOKEN_KEY = 'postgresExplorer.sync.refreshToken';
 const ACCOUNT_EMAIL_KEY = 'postgresExplorer.sync.accountEmail';
+
+interface SessionAuthResponse {
+  access_token?: string;
+  refresh_token?: string;
+  token_type?: string;
+  expires_in?: number;
+  email?: string | null;
+  tier?: string | null;
+  error?: string;
+}
+
+interface ApiErrorBody {
+  error?: string;
+  error_description?: string;
+}
 
 /**
  * Device authorization flow client for nexql.astrx.dev.
@@ -58,9 +75,46 @@ export class AccountService {
     await this.context.secrets.delete(ACCOUNT_EMAIL_KEY);
   }
 
+  /** Fast-path sign-in using the activated license key (no browser). */
+  async signInWithLicense(): Promise<{ email?: string }> {
+    const licenseKey = LicenseService.getInstance().getLicenseKey();
+    if (!licenseKey) {
+      throw new Error('Activate your NexQL license first (Settings → License).');
+    }
+
+    const res = await this.postJson<SessionAuthResponse>('/auth/session', {
+      licenseKey,
+      instanceId: vscode.env.machineId,
+      deviceId: getOrCreateDeviceId(this.context),
+      deviceName: getDeviceName(this.context),
+    });
+
+    if (!res.access_token) {
+      throw new Error(res.error ?? 'Sign-in failed');
+    }
+
+    await this.completeSignIn(res as DeviceAuthTokenResponse, res.email ?? undefined);
+    return { email: res.email ?? (await this.getAccountEmail()) };
+  }
+
   /** Start device flow; returns user_code and verification URL. */
   async startDeviceAuth(): Promise<DeviceAuthStartResponse> {
     return this.postJson<DeviceAuthStartResponse>('/auth/device', {});
+  }
+
+  /** Pre-bind license to pending device session before opening browser. */
+  async bindDeviceLicense(deviceCode: string): Promise<void> {
+    const licenseKey = LicenseService.getInstance().getLicenseKey();
+    if (!licenseKey) {
+      throw new Error('Activate your NexQL license first (Settings → License).');
+    }
+
+    await this.postJson<{ ok?: boolean; error?: string }>('/auth/device-bind', {
+      device_code: deviceCode,
+      licenseKey,
+      instanceId: vscode.env.machineId,
+      deviceName: getDeviceName(this.context),
+    });
   }
 
   /** Poll for tokens until authorized or timeout. */
@@ -131,27 +185,28 @@ export class AccountService {
     return undefined;
   }
 
-  /** Run full device authorization flow with browser open. */
-  async signInWithDeviceFlow(): Promise<{ email?: string }> {
+  /** Browser confirm flow — license pre-bound from extension. */
+  async signInWithDeviceFlow(onStatus?: (message: string) => void): Promise<{ email?: string }> {
     const start = await this.startDeviceAuth();
-    const verifyUrl = start.verification_uri_complete ?? `${start.verification_uri}?user_code=${start.user_code}`;
+    await this.bindDeviceLicense(start.device_code);
 
-    const choice = await vscode.window.showInformationMessage(
-      `Sign in to NexQL Sync. Your code: ${start.user_code}`,
-      'Open Browser',
-      'Copy Code',
-    );
-    if (choice === 'Open Browser') {
-      await vscode.env.openExternal(vscode.Uri.parse(verifyUrl));
-    } else if (choice === 'Copy Code') {
-      await vscode.env.clipboard.writeText(start.user_code);
+    const deviceName = getDeviceName(this.context);
+    const verifyParams = new URLSearchParams({ user_code: start.user_code });
+    if (deviceName) {
+      verifyParams.set('device', deviceName);
     }
+    const verifyBase = start.verification_uri_complete?.split('?')[0]
+      ?? start.verification_uri;
+    const verifyUrl = `${verifyBase}?${verifyParams.toString()}`;
+
+    onStatus?.(`Opening browser — confirm device authorization (code ${start.user_code})`);
+    await vscode.env.openExternal(vscode.Uri.parse(verifyUrl));
 
     const tokens = await this.pollDeviceToken(
       start.device_code,
       start.interval,
       start.expires_in,
-      (msg) => vscode.window.setStatusBarMessage(msg, 3000),
+      onStatus,
     );
 
     await this.completeSignIn(tokens, tokens.email ?? undefined);
@@ -181,11 +236,18 @@ export class AccountService {
           let data = '';
           res.on('data', (c) => (data += c));
           res.on('end', () => {
+            let parsed: T & ApiErrorBody;
             try {
-              resolve(JSON.parse(data || '{}') as T);
+              parsed = JSON.parse(data || '{}') as T & ApiErrorBody;
             } catch {
               reject(new Error(`Invalid JSON from ${path}`));
+              return;
             }
+            if (res.statusCode && res.statusCode >= 400) {
+              reject(new Error(parsed.error ?? parsed.error_description ?? `HTTP ${res.statusCode}`));
+              return;
+            }
+            resolve(parsed);
           });
         },
       );

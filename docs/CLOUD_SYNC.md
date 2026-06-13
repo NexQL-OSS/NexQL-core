@@ -38,12 +38,12 @@ Sync uses a merge model: changes from any signed-in device are combined. Conflic
 
 ## End-to-end encryption
 
-PgStudio uses a **1Password-style vault**:
+PgStudio encrypts sync data with a **client-side vault**:
 
 1. **Vault key** — random 256-bit key used to encrypt all sync payloads (AES-256-GCM).
-2. **Secret key** — shown **once** when you create a vault (~26 characters). You must save it.
-3. **Account email** — used with the secret key to derive a **key-encryption key (KEK)** via scrypt. Not sent to storage backends for encryption purposes.
-4. **Unlock** — on each device, enter your email + secret key to unwrap the vault key.
+2. **Secret key** — auto-generated (~26 characters) when you create a vault, or a **custom passphrase** if you prefer. Shown **once** at setup.
+3. **Key-encryption key (KEK)** — derived via scrypt from your secret + a random salt stored in the vault manifest (v2). Legacy vaults used account email as the salt.
+4. **Unlock** — on each device, enter your secret key (and account email only for legacy vaults).
 
 **On the wire:** payloads are optionally Brotli-compressed (for larger items), then encrypted. Storage providers never receive plaintext connection details or query text.
 
@@ -51,9 +51,18 @@ If you lose your **secret key**, encrypted data **cannot be recovered** — not 
 
 ---
 
+## NexQL Cloud sign-in
+
+| Method | When |
+|--------|------|
+| **Enable Cloud Sync** (default) | Extension uses your activated Sponsor/Teams license — no browser step |
+| **Authorize in browser** | Optional confirm step at [device-auth.html](https://nexql.astrx.dev/device-auth.html) — license is pre-bound; click once to authorize |
+
+---
+
 ## Cross-editor support
 
-Sync is editor-agnostic. Install NexQL/PgStudio in any VS Code–compatible editor, run the same setup wizard, unlock with the same email + secret key, and point at the same storage backend. GitHub Gist works well when built-in GitHub authentication is available; other backends use OAuth device or loopback flows.
+Sync is editor-agnostic. Install NexQL/PgStudio in any VS Code–compatible editor, run the same setup wizard, unlock with the same secret key, and point at the same storage backend. GitHub Gist works well when built-in GitHub authentication is available; other backends use OAuth device or loopback flows.
 
 ---
 
@@ -79,8 +88,8 @@ Or use the walkthrough: **Set up PgStudio Sync** (from the Welcome / Getting Sta
 
 ### 3. Create or unlock your vault
 
-- **First device:** choose **Create new vault**, set your account email, and **save the secret key** (copy or save recovery kit).
-- **New device:** choose **Unlock existing vault**, enter the same email and secret key from your recovery kit.
+- **First device:** choose **Create new vault** — a secret key is generated automatically (or set a custom passphrase). **Save the secret key** (copy or save recovery kit).
+- **New device:** choose **Unlock existing vault** and enter the secret key from your recovery kit. Legacy vaults also require the account email used at creation.
 
 ### 4. Choose what to sync
 

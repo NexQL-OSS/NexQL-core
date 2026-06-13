@@ -7,6 +7,9 @@ const handlers = {
   token: require('../_lib/handlers/auth-token'),
   refresh: require('../_lib/handlers/auth-refresh'),
   authorize: require('../_lib/handlers/auth-authorize'),
+  session: require('../_lib/handlers/auth-session'),
+  'device-bind': require('../_lib/handlers/auth-device-bind'),
+  status: require('../_lib/handlers/auth-status'),
 };
 
 module.exports = async (req, res) => {

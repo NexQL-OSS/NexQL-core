@@ -11,8 +11,14 @@ const VAULT_MANIFEST_SECRET = 'postgresExplorer.sync.vaultManifest';
 const IDENTITY_PUBLIC_SECRET = 'postgresExplorer.sync.identityPublicKey';
 const IDENTITY_PRIVATE_SECRET = 'postgresExplorer.sync.identityPrivateKey';
 const SECRET_KEY_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+const VAULT_MANIFEST_VERSION = 2;
 
-/** 1Password-style vault: email + secret key → KEK → wrapped vault key. */
+export interface CreateVaultOptions {
+  /** User-chosen passphrase; auto-generated secret key when omitted. */
+  passphrase?: string;
+}
+
+/** Client-side encrypted vault: scrypt KEK → wrapped vault key (AES-256-GCM). */
 export class VaultService {
   private static instance: VaultService;
   private vaultKey: Buffer | null = null;
@@ -42,24 +48,45 @@ export class VaultService {
     return this.manifest?.generation;
   }
 
+  /** @deprecated v1 vaults only — v2 vaults have no account email. */
   getAccountEmail(): string | undefined {
     return this.manifest?.email;
   }
 
-  /** Normalize email for scrypt salt. */
+  isLegacyManifest(manifest: VaultManifest): boolean {
+    return manifest.version !== VAULT_MANIFEST_VERSION && !!manifest.email;
+  }
+
+  /** Normalize email for v1 scrypt salt. */
   static normalizeEmail(email: string): string {
     return email.trim().toLowerCase();
   }
 
-  /** Deterministic KEK from secret key + normalized email. */
+  /** v1 KEK: secret key + normalized email as salt. */
   static deriveKek(secretKey: string, email: string): Buffer {
     const salt = Buffer.from(VaultService.normalizeEmail(email), 'utf8');
+    return VaultService.scryptKek(secretKey, salt);
+  }
+
+  /** v2 KEK: secret key + random salt from manifest. */
+  static deriveKekFromSalt(secretKey: string, saltHex: string): Buffer {
+    return VaultService.scryptKek(secretKey, Buffer.from(saltHex, 'hex'));
+  }
+
+  private static scryptKek(secretKey: string, salt: Buffer): Buffer {
     return crypto.scryptSync(secretKey.trim().toUpperCase(), salt, 32, {
       N: SCRYPT_N,
       r: SCRYPT_R,
       p: SCRYPT_P,
       maxmem: 128 * 1024 * 1024,
     });
+  }
+
+  private static resolveKek(secretKey: string, manifest: VaultManifest): Buffer {
+    if (manifest.version === VAULT_MANIFEST_VERSION || !manifest.email) {
+      return VaultService.deriveKekFromSalt(secretKey, manifest.salt);
+    }
+    return VaultService.deriveKek(secretKey, manifest.email);
   }
 
   /** Generate ~26 char base32 secret key for one-time display. */
@@ -72,20 +99,25 @@ export class VaultService {
     return result;
   }
 
-  /** Create a new vault; returns secret key (shown once) and generation id. */
-  async createVault(email: string): Promise<{ secretKey: string; generation: string }> {
+  /**
+   * Create a new v2 vault.
+   * Auto-generates a secret key unless a custom passphrase is provided.
+   */
+  async createVault(options?: CreateVaultOptions): Promise<{ secretKey: string; generation: string }> {
     const vaultKey = crypto.randomBytes(32);
-    const secretKey = VaultService.generateSecretKey();
+    const customPassphrase = options?.passphrase?.trim();
+    const secretKey = customPassphrase || VaultService.generateSecretKey();
     const generation = crypto.randomUUID();
-    const kek = VaultService.deriveKek(secretKey, email);
     const salt = crypto.randomBytes(16).toString('hex');
+    const kek = VaultService.deriveKekFromSalt(secretKey, salt);
 
     const wrapped = encodeEnvelope(vaultKey, kek);
     this.manifest = {
+      version: VAULT_MANIFEST_VERSION,
       generation,
       wrappedVaultKey: wrapped.toString('base64'),
       salt,
-      email: VaultService.normalizeEmail(email),
+      kdf: 'scrypt',
     };
     this.vaultKey = vaultKey;
 
@@ -96,21 +128,28 @@ export class VaultService {
     return { secretKey, generation };
   }
 
-  /** Unlock vault with secret key; throws on GCM auth failure. */
-  async unlock(secretKey: string, email?: string): Promise<void> {
+  /** Unlock vault with secret key; legacyEmail required for v1 vaults. */
+  async unlock(secretKey: string, legacyEmail?: string): Promise<void> {
     const raw = await this.context.secrets.get(VAULT_MANIFEST_SECRET);
     if (!raw) {
       throw new Error('No vault found. Set up sync first.');
     }
     this.manifest = JSON.parse(raw) as VaultManifest;
-    const resolvedEmail = email ?? this.manifest.email;
-    const kek = VaultService.deriveKek(secretKey, resolvedEmail);
+
+    if (this.isLegacyManifest(this.manifest) && !legacyEmail && !this.manifest.email) {
+      throw new Error('Account email is required to unlock this vault.');
+    }
+    if (this.isLegacyManifest(this.manifest) && legacyEmail) {
+      this.manifest.email = VaultService.normalizeEmail(legacyEmail);
+    }
+
+    const kek = VaultService.resolveKek(secretKey, this.manifest);
     const wrapped = Buffer.from(this.manifest.wrappedVaultKey, 'base64');
 
     try {
       this.vaultKey = decodeEnvelope(wrapped, kek);
     } catch {
-      throw new Error('Secret key is incorrect for this account');
+      throw new Error('Secret key is incorrect for this vault');
     }
 
     await this.context.secrets.store(VAULT_KEY_SECRET, this.vaultKey.toString('base64'));
