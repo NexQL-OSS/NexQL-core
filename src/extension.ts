@@ -23,6 +23,8 @@ import { ConnectionConfig } from './common/types';
 export let outputChannel: vscode.OutputChannel;
 export let extensionContext: vscode.ExtensionContext;
 export let statusBar: NotebookStatusBar;
+export let sentinelContextService: import('./features/sentinel').SentinelContextService | undefined;
+export let sentinelThemeSwapService: import('./features/sentinel').SentinelThemeSwapService | undefined;
 
 let chatViewProvider: ChatViewProvider | undefined;
 
@@ -515,6 +517,38 @@ export async function activate(context: vscode.ExtensionContext) {
   // Status bar for connection/database display
   statusBar = new statusBarModule.NotebookStatusBar();
   context.subscriptions.push(statusBar);
+
+  const {
+    SentinelAccentService,
+    SentinelContextService,
+    NotebookContextStripService,
+    SentinelThemeSwapService,
+    SentinelTabDecorationProvider,
+    registerSentinelCommands,
+  } = await import('./features/sentinel');
+  const sentinelAccent = new SentinelAccentService(context);
+  const sentinelThemeSwap = new SentinelThemeSwapService(context);
+  sentinelThemeSwapService = sentinelThemeSwap;
+  const sentinelStrip = new NotebookContextStripService(rendererMessaging);
+  sentinelContextService = new SentinelContextService(context, sentinelAccent, sentinelThemeSwap, sentinelStrip);
+  sentinelContextService.attachStatusBar(statusBar);
+  const tabDecorations = new SentinelTabDecorationProvider();
+  sentinelContextService.attachTabDecorations(tabDecorations);
+  context.subscriptions.push(
+    vscode.window.registerFileDecorationProvider(tabDecorations),
+    sentinelAccent,
+    sentinelThemeSwap,
+    sentinelContextService,
+  );
+  registerSentinelCommands(context, () => sentinelContextService);
+
+  if (chatView) {
+    const pushChatSentinel = () => chatView.syncSentinelContext(sentinelContextService!.getChatContext());
+    context.subscriptions.push(
+      sentinelContextService.onDidChangeContext(() => pushChatSentinel()),
+    );
+    pushChatSentinel();
+  }
 
   const { SyncController } = await import('./features/sync/SyncController');
   const syncController = SyncController.getInstance(context, outputChannel);

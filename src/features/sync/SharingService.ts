@@ -119,6 +119,32 @@ export class SharingService {
     }));
   }
 
+  async listOutgoingShares(): Promise<Array<{
+    shareId: string;
+    granteeEmail: string;
+    kind: SyncKind;
+    name?: string;
+    createdAt: string;
+    revoked: boolean;
+  }>> {
+    const rows = await this.request<Array<{
+      share_id: string;
+      grantee_email: string;
+      item_kind: SyncKind;
+      item_name?: string;
+      created_at: string;
+      revoked: boolean;
+    }>>('GET', '/sync/shares?direction=outgoing');
+    return (rows ?? []).map((r) => ({
+      shareId: r.share_id,
+      granteeEmail: r.grantee_email,
+      kind: r.item_kind,
+      name: r.item_name,
+      createdAt: r.created_at,
+      revoked: r.revoked,
+    }));
+  }
+
   async revokeShare(shareId: string): Promise<void> {
     await this.request('DELETE', `/sync/shares/${encodeURIComponent(shareId)}`);
   }

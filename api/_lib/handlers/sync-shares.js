@@ -4,7 +4,7 @@
 
 const crypto = require('crypto');
 const { authenticateBearer } = require('../sync-auth');
-const { createShares, listSharesForGrantee } = require('../sync-db');
+const { createShares, listSharesForGrantee, listSharesByOwner } = require('../sync-db');
 
 const MAX_ITEMS_PER_REQUEST = 100;
 const MAX_BLOB_CHARS = 2 * 1024 * 1024; // ~1.5MB binary after base64
@@ -26,6 +26,20 @@ module.exports = async (req, res) => {
 
   if (req.method === 'GET') {
     try {
+      const direction = req.query?.direction;
+      if (direction === 'outgoing') {
+        const rows = await listSharesByOwner(auth.email);
+        return res.status(200).json(
+          rows.map((r) => ({
+            share_id: r.share_id,
+            grantee_email: r.grantee_email,
+            item_kind: r.item_kind,
+            item_name: r.item_name,
+            created_at: r.created_at instanceof Date ? r.created_at.toISOString() : r.created_at,
+            revoked: r.revoked,
+          })),
+        );
+      }
       const rows = await listSharesForGrantee(auth.email);
       return res.status(200).json(
         rows.map((r) => ({

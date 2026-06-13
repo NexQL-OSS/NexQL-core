@@ -1850,6 +1850,37 @@
           font-size: 10px;
         }
 
+        .context-env-chip {
+          border: 1px solid var(--vscode-widget-border);
+          border-radius: 4px;
+          padding: 2px 8px;
+          font-size: 9px;
+          font-weight: 700;
+          letter-spacing: 0.06em;
+          cursor: pointer;
+          background: transparent;
+          color: var(--vscode-foreground);
+          font-family: var(--vscode-font-family);
+        }
+
+        .context-env-chip.env-production {
+          border-color: var(--vscode-inputValidation-errorBorder);
+          color: var(--vscode-inputValidation-errorForeground);
+          background: color-mix(in srgb, var(--vscode-inputValidation-errorBackground) 40%, transparent);
+        }
+
+        .context-env-chip.env-staging {
+          border-color: var(--vscode-inputValidation-warningBorder);
+          color: var(--vscode-inputValidation-warningForeground);
+          background: color-mix(in srgb, var(--vscode-inputValidation-warningBackground) 40%, transparent);
+        }
+
+        .context-env-chip.env-development {
+          border-color: var(--vscode-charts-blue);
+          color: var(--vscode-charts-blue);
+          background: color-mix(in srgb, var(--vscode-charts-blue) 16%, transparent);
+        }
+
         .context-value.badge {
           background: var(--vscode-inputOption-hoverBackground);
           border: 1px solid var(--vscode-widget-border);

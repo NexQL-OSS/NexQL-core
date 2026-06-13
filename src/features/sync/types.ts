@@ -65,6 +65,63 @@ export interface SyncRunResult {
   summary: SyncChangeSummary;
 }
 
+export type SyncDirection = 'both' | 'pull' | 'push';
+
+export type SyncChangeType = 'create' | 'update' | 'delete' | 'conflict';
+
+export interface SyncRunOptions {
+  dryRun?: boolean;
+  direction?: SyncDirection;
+  /** Per-run opt-outs; does not persist to config.excludedIds. */
+  transientExcludedIds?: string[];
+}
+
+export interface SyncPreviewItem {
+  id: string;
+  kind: SyncKind;
+  name?: string;
+  changeType: SyncChangeType;
+  deviceId?: string;
+}
+
+export interface SyncPreviewResult extends SyncRunResult {
+  outgoing: SyncPreviewItem[];
+  incoming: SyncPreviewItem[];
+  conflictItems: SyncPreviewItem[];
+}
+
+export interface InboundEntry {
+  itemId: string;
+  kind: SyncKind;
+  name?: string;
+  deviceId: string;
+  deviceName?: string;
+  appliedAt: number;
+}
+
+export interface OutgoingShareView {
+  shareId: string;
+  granteeEmail: string;
+  kind: SyncKind;
+  name?: string;
+  createdAt: string;
+  revoked: boolean;
+}
+
+export interface CloudQuotaView {
+  bytesUsed: number;
+  bytesLimit: number;
+  itemCount: number;
+  tier: string;
+}
+
+export interface SyncDeviceView {
+  deviceId: string;
+  deviceName?: string;
+  lastSeen?: string;
+  isThisDevice: boolean;
+}
+
 export type SyncStatus =
   | 'idle'
   | 'synced'
@@ -210,6 +267,7 @@ export interface DeviceAuthTokenResponse {
   refresh_token?: string;
   token_type?: string;
   expires_in?: number;
+  email?: string | null;
   error?: string;
   error_description?: string;
 }

@@ -11,15 +11,42 @@ import {
 import type { SettingsHubHostContext, SettingsHubMessage, SettingsSectionHandler } from '../types';
 
 const PRICING_URL = 'https://nexql.astrx.dev/#pricing';
-// Server-issued keys use the PGST- prefix; NXQL- accepted for forward compat.
 const KEY_HINT = /^(NXQL|PGST)-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/;
 const MASK_VISIBLE_CHARS = 4;
+const MACHINE_ID = vscode.env.machineId;
 
 function maskLicenseKey(key: string): string {
   if (key.length <= MASK_VISIBLE_CHARS) {
     return key;
   }
   return `${key.slice(0, 5)}····-····-····-${key.slice(-MASK_VISIBLE_CHARS)}`;
+}
+
+function formatEventSummary(eventType: string, detail: Record<string, unknown>): string {
+  switch (eventType) {
+    case 'issued':
+      return `License issued${detail.tier ? ` (${detail.tier})` : ''}`;
+    case 'renewed':
+    case 'expiry_extended': {
+      const oldAt = detail.old_expires_at as number | undefined;
+      const newAt = detail.new_expires_at as number | undefined;
+      const oldLabel = oldAt ? new Date(oldAt).toLocaleDateString() : '?';
+      const newLabel = newAt ? new Date(newAt).toLocaleDateString() : '?';
+      return eventType === 'renewed'
+        ? `Renewed — expiry ${oldLabel} → ${newLabel}`
+        : `Expiry extended — ${oldLabel} → ${newLabel}`;
+    }
+    case 'status_changed':
+      return `Status ${detail.old_status ?? '?'} → ${detail.new_status ?? '?'}`;
+    case 'device_bound':
+      return `Device bound (${String(detail.instance_id ?? '').slice(0, 8)}…)`;
+    case 'device_removed':
+      return `Device removed (${String(detail.instance_id ?? '').slice(0, 8)}…)`;
+    case 'tier_changed':
+      return `Tier ${detail.old_tier ?? '?'} → ${detail.new_tier ?? '?'}`;
+    default:
+      return eventType.replace(/_/g, ' ');
+  }
 }
 
 export class LicenseSectionHandler implements SettingsSectionHandler {
@@ -41,6 +68,15 @@ export class LicenseSectionHandler implements SettingsSectionHandler {
       case 'openUpgrade':
         await vscode.env.openExternal(vscode.Uri.parse(PRICING_URL));
         break;
+      case 'setEmail':
+        await this.setEmail(String(message.email ?? ''));
+        break;
+      case 'removeDevice':
+        await this.removeDevice(String(message.instanceId ?? ''));
+        break;
+      case 'refresh':
+        await this.sendState();
+        break;
     }
   }
 
@@ -48,11 +84,12 @@ export class LicenseSectionHandler implements SettingsSectionHandler {
     const svc = LicenseService.getInstance();
     const status = svc.getStatus();
 
-    // Cached snapshot only — masked key + grace info come from the local
-    // SecretStorage cache, never a fresh API call (plan: cached-only).
     let maskedKey: string | null = null;
     let gracePeriodStartedAt: number | null = null;
     let cachedStatus: string | null = null;
+    let ownerEmail: string | null = svc.getOwnerEmail();
+    let licenseKey: string | null = svc.getLicenseKey();
+
     try {
       const raw = await SecretStorageService.getInstance().getLicenseCache();
       if (raw) {
@@ -60,21 +97,42 @@ export class LicenseSectionHandler implements SettingsSectionHandler {
           licenseKey?: string;
           gracePeriodStartedAt?: number | null;
           status?: string;
+          email?: string | null;
         };
+        licenseKey = cache.licenseKey ?? licenseKey;
         maskedKey = cache.licenseKey ? maskLicenseKey(cache.licenseKey) : null;
         gracePeriodStartedAt = cache.gracePeriodStartedAt ?? null;
         cachedStatus = cache.status ?? null;
+        ownerEmail = cache.email ?? ownerEmail;
       }
     } catch {
       // Unreadable cache — present as free tier details only.
     }
 
+    const server = licenseKey
+      ? await svc.fetchServerStatus(ownerEmail)
+      : null;
+
+    const serverFound = Boolean(server?.found);
+    const effectiveTier = serverFound && server?.tier ? server.tier : status.tier;
+    const effectiveStatus = serverFound && server?.status ? server.status : cachedStatus;
+    const effectiveExpiresAt = serverFound && server?.expiresAt != null
+      ? server.expiresAt
+      : status.expiresAt;
+
+    let history: Array<{ createdAt: number | null; summary: string }> = [];
+    if (licenseKey && ownerEmail && serverFound) {
+      const events = await svc.fetchHistory(ownerEmail);
+      history = events.map((e) => ({
+        createdAt: e.createdAt,
+        summary: formatEventSummary(e.eventType, e.detail),
+      }));
+    }
+
     const quotas = QuotaService.getInstance();
     const now = new Date();
-    // Paid tiers are unmetered — present the same features as "Unlimited" rows
-    // (limit: null) so the usage section is visible on every tier.
     const quotaRows = (Object.keys(FREE_QUOTAS) as ProFeature[]).map((feature) => {
-      if (status.tier !== 'free') {
+      if (effectiveTier !== 'free') {
         return {
           feature,
           label: featureLabel(feature),
@@ -100,17 +158,73 @@ export class LicenseSectionHandler implements SettingsSectionHandler {
     this.host.post({
       type: 'license/state',
       license: {
-        tier: status.tier,
-        tierLabel: TIER_DISPLAY[status.tier],
+        tier: effectiveTier,
+        tierLabel: TIER_DISPLAY[effectiveTier],
         offline: status.offline,
-        expiresAt: status.expiresAt,
+        expiresAt: effectiveExpiresAt,
         maskedKey,
         gracePeriodStartedAt,
-        cachedStatus,
+        cachedStatus: effectiveStatus,
         pricingUrl: PRICING_URL,
         quotas: quotaRows,
+        serverFound,
+        period: server?.period ?? null,
+        maskedEmail: server?.email ?? null,
+        memberSince: server?.memberSince ?? null,
+        renewalCount: server?.renewalCount ?? null,
+        hasSubscription: server?.hasSubscription ?? false,
+        ownerEmail,
+        needsEmail: Boolean(licenseKey && effectiveTier !== 'free' && !ownerEmail),
+        devices: (server?.devices ?? []).map((d) => ({
+          instanceId: d.instanceId,
+          deviceName: d.deviceName,
+          lastSeen: d.lastSeen,
+          isCurrent: d.instanceId === MACHINE_ID,
+        })),
+        deviceLimit: server?.deviceLimit ?? null,
+        history,
+        machineId: MACHINE_ID,
       },
     });
+  }
+
+  private async setEmail(email: string): Promise<void> {
+    const trimmed = email.trim().toLowerCase();
+    if (!trimmed || !trimmed.includes('@')) {
+      this.host.post({ type: 'license/emailResult', ok: false, message: 'Enter the email on your subscription.' });
+      return;
+    }
+    await LicenseService.getInstance().setOwnerEmail(trimmed);
+    const server = await LicenseService.getInstance().fetchServerStatus(trimmed);
+    if (!server?.found) {
+      this.host.post({
+        type: 'license/emailResult',
+        ok: false,
+        message: 'Email does not match this license. Check the address from your purchase receipt.',
+      });
+      return;
+    }
+    this.host.post({ type: 'license/emailResult', ok: true, message: 'Email verified.' });
+    await this.sendState();
+  }
+
+  private async removeDevice(instanceId: string): Promise<void> {
+    const email = LicenseService.getInstance().getOwnerEmail();
+    if (!email) {
+      this.host.post({ type: 'license/deviceResult', ok: false, message: 'Verify your email first.' });
+      return;
+    }
+    if (instanceId === MACHINE_ID) {
+      this.host.post({
+        type: 'license/deviceResult',
+        ok: false,
+        message: 'Use Deactivate to remove this machine.',
+      });
+      return;
+    }
+    const result = await LicenseService.getInstance().removeDevice(email, instanceId);
+    this.host.post({ type: 'license/deviceResult', ok: result.ok, message: result.message });
+    await this.sendState();
   }
 
   private async activate(key: string): Promise<void> {

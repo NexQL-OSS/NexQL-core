@@ -1,20 +1,46 @@
 /**
  * TopBar component for the Notebook top-level action bar.
  * Renders a flex container with notebook-level action buttons and a right-aligned connection pill.
- *
- * Requirements: 1.1, 1.2, 1.3, 1.4
  */
+
+import type { SentinelEnvironment } from '../../features/sentinel/types';
 
 export interface TopBarOptions {
   connectionName: string;
   host: string;
+  port?: number;
   database: string;
+  username?: string;
+  environment?: SentinelEnvironment;
+  readOnlyMode?: boolean;
   isConnected: boolean;
+  showContextStrip?: boolean;
   onRunAll: () => void;
   onClearOutputs: () => void;
   onAddCodeCell: () => void;
   onAddMarkdownCell: () => void;
 }
+
+const ENV_CHIP_STYLES: Record<SentinelEnvironment, { bg: string; border: string; text: string; label: string }> = {
+  production: {
+    bg: 'color-mix(in srgb, var(--vscode-inputValidation-errorBackground) 55%, transparent)',
+    border: 'var(--vscode-inputValidation-errorBorder)',
+    text: 'var(--vscode-inputValidation-errorForeground)',
+    label: 'PROD',
+  },
+  staging: {
+    bg: 'color-mix(in srgb, var(--vscode-inputValidation-warningBackground) 55%, transparent)',
+    border: 'var(--vscode-inputValidation-warningBorder)',
+    text: 'var(--vscode-inputValidation-warningForeground)',
+    label: 'STAGING',
+  },
+  development: {
+    bg: 'color-mix(in srgb, var(--vscode-charts-blue) 22%, var(--vscode-editor-background))',
+    border: 'var(--vscode-charts-blue)',
+    text: 'var(--vscode-charts-blue)',
+    label: 'DEV',
+  },
+};
 
 /**
  * Creates a TopBar element with action buttons and a connection pill.
@@ -23,6 +49,7 @@ export function createTopBar(options: TopBarOptions, postMessage: (msg: any) => 
   ensureTopBarStyle();
 
   const bar = document.createElement('div');
+  bar.className = 'pgstudio-topbar';
   bar.style.cssText = `
     display: flex;
     align-items: center;
@@ -34,22 +61,75 @@ export function createTopBar(options: TopBarOptions, postMessage: (msg: any) => 
     font-size: 12px;
   `;
 
-  // Action buttons (left side)
+  if (options.showContextStrip !== false && options.isConnected) {
+    bar.appendChild(createContextStrip(options));
+  }
+
   bar.appendChild(createTopBarButton('▶ Run All', options.onRunAll));
   bar.appendChild(createTopBarButton('✕ Clear Outputs', options.onClearOutputs));
   bar.appendChild(createSeparator());
   bar.appendChild(createTopBarButton('+ Code Cell', options.onAddCodeCell));
   bar.appendChild(createTopBarButton('+ Markdown Cell', options.onAddMarkdownCell));
 
-  // Connection pill (right-aligned via margin-left: auto)
   const pill = createConnectionPill(options, postMessage);
   bar.appendChild(pill);
 
   return bar;
 }
 
+function createContextStrip(options: TopBarOptions): HTMLElement {
+  const strip = document.createElement('div');
+  strip.className = 'pgstudio-sentinel-strip';
+  strip.style.cssText = `
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-right: 8px;
+    padding: 2px 8px;
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--vscode-sideBar-background) 70%, transparent);
+    border: 1px solid var(--vscode-widget-border);
+    font-size: 11px;
+    white-space: nowrap;
+  `;
+
+  if (options.environment) {
+    const chip = createEnvChip(options.environment, !!options.readOnlyMode);
+    strip.appendChild(chip);
+  }
+
+  const context = document.createElement('span');
+  const userHost = options.username
+    ? `${options.username}@${options.host}`
+    : options.host;
+  const portSuffix = options.port ? `:${options.port}` : '';
+  context.textContent = `${options.connectionName} · ${options.database} · ${userHost}${portSuffix}`;
+  context.style.color = 'var(--vscode-descriptionForeground)';
+  strip.appendChild(context);
+
+  return strip;
+}
+
+function createEnvChip(environment: SentinelEnvironment, readOnly: boolean): HTMLElement {
+  const style = ENV_CHIP_STYLES[environment];
+  const chip = document.createElement('span');
+  chip.textContent = `${style.label}${readOnly ? ' RO' : ''}`;
+  chip.style.cssText = `
+    padding: 1px 7px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    background: ${style.bg};
+    border: 1px solid ${style.border};
+    color: ${style.text};
+  `;
+  return chip;
+}
+
 function createConnectionPill(options: TopBarOptions, postMessage: (msg: any) => void): HTMLElement {
   const pill = document.createElement('button');
+  pill.type = 'button';
   pill.style.cssText = `
     margin-left: auto;
     display: flex;
@@ -69,7 +149,6 @@ function createConnectionPill(options: TopBarOptions, postMessage: (msg: any) =>
     white-space: nowrap;
   `;
 
-  // Status dot
   const dot = document.createElement('span');
   dot.style.cssText = `
     width: 7px;
@@ -85,8 +164,15 @@ function createConnectionPill(options: TopBarOptions, postMessage: (msg: any) =>
 
   const label = document.createElement('span');
   if (options.isConnected) {
-    label.textContent = `${options.connectionName} · ${options.database}`;
-    pill.title = `Host: ${options.host}\nDatabase: ${options.database}`;
+    const userPart = options.username ? ` · ${options.username}` : '';
+    label.textContent = `${options.connectionName} · ${options.database}${userPart}`;
+    pill.title = [
+      options.environment ? `Environment: ${ENV_CHIP_STYLES[options.environment].label}` : '',
+      `Host: ${options.host}${options.port ? `:${options.port}` : ''}`,
+      options.username ? `User: ${options.username}` : '',
+      `Database: ${options.database}`,
+      options.readOnlyMode ? 'Read-only mode' : '',
+    ].filter(Boolean).join('\n');
   } else {
     label.textContent = 'Not connected';
     pill.title = 'No active connection';
@@ -106,6 +192,7 @@ function createConnectionPill(options: TopBarOptions, postMessage: (msg: any) =>
 
 function createTopBarButton(label: string, onClick: () => void): HTMLElement {
   const btn = document.createElement('button');
+  btn.type = 'button';
   btn.textContent = label;
   btn.style.cssText = `
     padding: 3px 8px;

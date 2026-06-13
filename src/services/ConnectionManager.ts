@@ -8,6 +8,8 @@ import { ErrorService } from './ErrorService';
 import { resolvePgPassPassword, pgPassFileDescription } from '../utils/pgPassUtils';
 import { TelemetryService } from './TelemetryService';
 import { debugLog, debugWarn } from '../common/logger';
+import { PlatformConnectionService } from './PlatformConnectionService';
+import { PoolerWarningService } from './PoolerWarningService';
 
 export interface PoolMetrics {
   connectionId: string;
@@ -126,7 +128,7 @@ export class ConnectionManager {
 
     if (!pool) {
       const clientConfig = await this.createClientConfig(config);
-      pool = this.createPool(clientConfig, key);
+      pool = this.createPool(clientConfig, key, config);
       this.pools.set(key, pool);
       trackNewPooledConnection = true;
     }
@@ -136,6 +138,8 @@ export class ConnectionManager {
       if (trackNewPooledConnection) {
         telemetry.trackEvent('connection_opened', { connectionKind: 'pooled' });
       }
+
+      await this.afterClientConnected(config, client, trackNewPooledConnection);
 
       // Apply read-only mode if configured
       if (config.readOnlyMode) {
@@ -163,11 +167,13 @@ export class ConnectionManager {
 
         // Create non-SSL pool
         const clientConfig = await this.createClientConfig(config, true);
-        pool = this.createPool(clientConfig, key);
+        pool = this.createPool(clientConfig, key, config);
         this.pools.set(key, pool);
 
         const client = await pool.connect();
         telemetry.trackEvent('connection_opened', { connectionKind: 'pooled' });
+
+        await this.afterClientConnected(config, client, true);
 
         // Apply read-only mode if configured
         if (config.readOnlyMode) {
@@ -195,11 +201,17 @@ export class ConnectionManager {
     }
   }
 
-  private createPool(clientConfig: ClientConfig, key: string): Pool {
+  private createPool(
+    clientConfig: ClientConfig,
+    key: string,
+    sourceConfig: ConnectionConfig,
+  ): Pool {
+    const host = sourceConfig.host || '';
     const poolConfig: PoolConfig = {
       ...clientConfig,
       max: 10,
       idleTimeoutMillis: 30000,
+      keepAlive: host.includes('.neon.tech'),
     };
     const pool = new Pool(poolConfig);
     pool.on('error', (err) => {
@@ -223,6 +235,8 @@ export class ConnectionManager {
       await client.connect();
       telemetry.trackEvent('connection_opened', { connectionKind: 'session' });
 
+      await this.afterClientConnected(config, client as unknown as PoolClient);
+
       // Apply read-only mode if configured
       if (config.readOnlyMode) {
         try {
@@ -240,6 +254,8 @@ export class ConnectionManager {
         client = new Client(nonSSLConfig);
         await client.connect();
         telemetry.trackEvent('connection_opened', { connectionKind: 'session' });
+
+        await this.afterClientConnected(config, client as unknown as PoolClient);
 
         // Apply read-only mode if configured
         if (config.readOnlyMode) {
@@ -344,7 +360,33 @@ export class ConnectionManager {
       }
     }
 
+    PlatformConnectionService.getInstance().invalidateConnection(connectionId);
     debugLog(`Closed resources for ID: ${connectionId}`);
+  }
+
+  private async afterClientConnected(
+    config: ConnectionConfig,
+    client: PoolClient,
+    showWarnings = true,
+  ): Promise<void> {
+    try {
+      const probed = await PlatformConnectionService.getInstance().probeIfNeeded(
+        config,
+        client,
+      );
+      if (!showWarnings) {
+        return;
+      }
+      if (probed.unsupportedVersion) {
+        const major = Math.floor(probed.serverVersionNum / 10_000);
+        void vscode.window.showWarningMessage(
+          `PostgreSQL ${major} is below NexQL's supported minimum (12). See docs/COMPATIBILITY.md.`,
+        );
+      }
+      void PoolerWarningService.getInstance().maybeWarn(config);
+    } catch (err) {
+      debugWarn('Platform connection probe failed:', err);
+    }
   }
 
   public async closeAll(): Promise<void> {

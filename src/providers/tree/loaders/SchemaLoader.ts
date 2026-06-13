@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { BaseLoader, LoaderContext } from './BaseLoader';
 import { DatabaseTreeItem } from '../../DatabaseTreeProvider';
 import { PG_VERSION_10, PG_VERSION_11 } from '../../../lib/postgresServerVersion';
+import { capabilityTagsForProfile } from '../../../lib/platform/PlatformProfile';
 
 export class SchemaLoader extends BaseLoader {
   async getChildren(ctx: LoaderContext): Promise<DatabaseTreeItem[]> {
@@ -151,6 +152,7 @@ export class SchemaLoader extends BaseLoader {
                ORDER BY t.table_name`,
               [element.schema]
             );
+            const tableCapabilityTags = capabilityTagsForProfile(ctx.platformProfile);
             return tableResult.rows.map(row => {
               const isFav = (provider as any).isFavoriteItem('table', element.connectionId, element.databaseName, element.schema, row.table_name);
               return new DatabaseTreeItem(
@@ -170,7 +172,13 @@ export class SchemaLoader extends BaseLoader {
                 isFav,
                 undefined,
                 row.estimated_rows,
-                row.size
+                row.size,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                tableCapabilityTags,
               );
             });
           }

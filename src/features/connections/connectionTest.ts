@@ -168,10 +168,15 @@ async function attachTransport(
   }
 }
 
+export interface ConnectionTestSuccess {
+  version: string;
+  serverVersionNum: number;
+}
+
 async function runOnce(
   config: Record<string, unknown>,
   isSave: boolean,
-): Promise<string | true> {
+): Promise<ConnectionTestSuccess | true> {
   const client = new Client(config as any);
   await client.connect();
   try {
@@ -179,8 +184,19 @@ async function runOnce(
       await client.query("SELECT 1");
       return true;
     }
-    const result = await client.query("SELECT version()");
-    return result.rows[0].version as string;
+    const result = await client.query<{
+      version: string;
+      server_version_num: string;
+    }>(`
+      SELECT
+        version() AS version,
+        current_setting('server_version_num') AS server_version_num
+    `);
+    const row = result.rows[0];
+    return {
+      version: row.version as string,
+      serverVersionNum: Number(row.server_version_num) || 0,
+    };
   } finally {
     await client.end().catch(() => undefined);
   }
@@ -194,7 +210,7 @@ async function runOnce(
 export async function runConnectionTest(
   connection: ConnectionTestInput,
   isSave: boolean,
-): Promise<string | true> {
+): Promise<ConnectionTestSuccess | true> {
   await preflightConnection(connection);
 
   // Always validate against the user's configured database so .pgpass
@@ -282,7 +298,13 @@ export async function runConnectionTest(
         if (isSave) {
           return true;
         }
-        return `${result} (connected to postgres database)`;
+        if (typeof result === 'object') {
+          return {
+            ...result,
+            version: `${result.version} (connected to postgres database)`,
+          };
+        }
+        return result;
       } catch {
         // Surface the original 3D000 error so the user knows their database
         // doesn't exist, rather than a confusing pgpass error for 'postgres'.

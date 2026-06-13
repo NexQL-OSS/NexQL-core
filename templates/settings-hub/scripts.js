@@ -5,6 +5,11 @@
 const vscode = acquireVsCodeApi();
 const initialState = {{INITIAL_STATE}};
 
+/** @type {Record<string, { id: string, label: string, hint: string, hostPlaceholder: string, iconUri: string, defaults: { port: number, sslmode: string, applicationName?: string } }>} */
+const platformPresetById = Object.fromEntries(
+  (initialState.platformPresets || []).map((p) => [p.id, p]),
+);
+
 window.onerror = function (msg) {
   console.error('[PgStudio Settings Hub] Error:', msg);
 };
@@ -99,6 +104,9 @@ function syncPgSelectWrapClasses(selectEl, wrap) {
   if (selectEl.dataset.pgSelectVariant === 'env') {
     wrap.classList.add('pg-select--env', 'pg-select--compact');
   }
+  if (selectEl.dataset.pgSelectVariant === 'platform') {
+    wrap.classList.add('pg-select--platform');
+  }
   selectEl.classList.forEach((cls) => {
     if (cls.startsWith('env-') && cls !== 'env-select') {
       wrap.classList.add(cls);
@@ -150,6 +158,21 @@ function enhanceSelect(selectEl) {
   wrap.appendChild(trigger);
   wrap.appendChild(panel);
 
+  function appendPgSelectOptionLabel(parent, opt) {
+    const iconUri = opt.dataset.iconUri || '';
+    if (iconUri) {
+      const img = document.createElement('img');
+      img.className = 'pg-select-platform-icon';
+      img.src = iconUri;
+      img.alt = '';
+      img.setAttribute('aria-hidden', 'true');
+      parent.appendChild(img);
+    }
+    const label = document.createElement('span');
+    label.textContent = opt.textContent;
+    parent.appendChild(label);
+  }
+
   function rebuildOptions() {
     panel.textContent = '';
     Array.from(selectEl.options).forEach((opt) => {
@@ -158,7 +181,7 @@ function enhanceSelect(selectEl) {
       optionBtn.className = 'pg-select-option';
       optionBtn.setAttribute('role', 'option');
       optionBtn.dataset.value = opt.value;
-      optionBtn.textContent = opt.textContent;
+      appendPgSelectOptionLabel(optionBtn, opt);
       optionBtn.disabled = !!opt.disabled;
       if (opt.value === selectEl.value) {
         optionBtn.classList.add('is-selected');
@@ -179,7 +202,12 @@ function enhanceSelect(selectEl) {
   function syncDisplay() {
     syncPgSelectWrapClasses(selectEl, wrap);
     const selected = selectEl.options[selectEl.selectedIndex];
-    valueSpan.textContent = selected ? selected.textContent : 'Select…';
+    valueSpan.textContent = '';
+    if (selected) {
+      appendPgSelectOptionLabel(valueSpan, selected);
+    } else {
+      valueSpan.textContent = 'Select…';
+    }
     trigger.disabled = !!selectEl.disabled;
     panel.querySelectorAll('.pg-select-option').forEach((btn) => {
       const isSelected = btn.dataset.value === selectEl.value;
@@ -231,7 +259,7 @@ function enhanceAllSelects(root) {
 // Section navigation
 // ─────────────────────────────────────────────────────────────────────────────
 
-const SECTIONS = ['connections', 'ai', 'prefs', 'sync', 'license'];
+const SECTIONS = ['connections', 'ai', 'prefs', 'sentinel', 'sync', 'license'];
 let activeSection = null;
 
 function loadSection(section) {
@@ -239,6 +267,7 @@ function loadSection(section) {
     case 'connections': vscode.postMessage({ command: 'connections/load' }); break;
     case 'ai': vscode.postMessage({ command: 'ai/load' }); break;
     case 'prefs': vscode.postMessage({ command: 'prefs/load' }); break;
+    case 'sentinel': vscode.postMessage({ command: 'sentinel/load' }); break;
     case 'sync': vscode.postMessage({ command: 'sync/load' }); break;
     case 'license': vscode.postMessage({ command: 'license/load' }); break;
   }
@@ -273,6 +302,7 @@ const connState = {
   isTested: false,
   pendingEditId: null, // deep-link: open editor once the list arrives
   pendingAdd: false,
+  selectedIds: new Set(),
 };
 
 const connForm = $('connectionForm');
@@ -290,11 +320,79 @@ const CONN_ACTION_ICONS = {
 };
 
 function syncConnFormSelects() {
-  ['environment', 'cloudAuthKind', 'sslmode'].forEach((id) => {
+  ['platformPreset', 'environment', 'cloudAuthKind', 'sslmode'].forEach((id) => {
     const el = $(id);
     const state = pgSelectRegistry.get(el);
     if (state) { state.syncDisplay(); }
   });
+}
+
+function initPlatformPresetSelect() {
+  const select = $('platformPreset');
+  if (!select || !initialState.platformPresets || !initialState.platformPresets.length) {
+    return;
+  }
+  select.textContent = '';
+  initialState.platformPresets.forEach((preset) => {
+    const option = document.createElement('option');
+    option.value = preset.id;
+    option.textContent = preset.label;
+    option.dataset.iconUri = preset.iconUri;
+    option.dataset.hint = preset.hint;
+    option.dataset.hostPlaceholder = preset.hostPlaceholder;
+    option.dataset.port = String(preset.defaults.port);
+    option.dataset.sslmode = preset.defaults.sslmode;
+    if (preset.defaults.applicationName) {
+      option.dataset.applicationName = preset.defaults.applicationName;
+    }
+    select.appendChild(option);
+  });
+  select.value = 'vanilla';
+  enhanceSelect(select);
+  select.addEventListener('change', () => {
+    applyPlatformPreset(select.value, false);
+    vscode.postMessage({
+      command: 'connections/trackTelemetry',
+      event: 'platform_preset_selected',
+      properties: { preset: select.value || 'vanilla' },
+    });
+  });
+}
+
+function updatePlatformPresetHint(hintText) {
+  const hint = $('platformPresetHint');
+  if (!hint) { return; }
+  if (hintText) {
+    hint.textContent = hintText;
+    hint.hidden = false;
+  } else {
+    hint.hidden = true;
+    hint.textContent = '';
+  }
+}
+
+function applyPlatformPreset(presetId, resetHostPlaceholder) {
+  const preset = platformPresetById[presetId];
+  if (!preset) { return; }
+  $('port').value = String(preset.defaults.port);
+  setSelectValue($('sslmode'), preset.defaults.sslmode);
+  if (preset.defaults.applicationName) {
+    $('applicationName').value = preset.defaults.applicationName;
+  }
+  $('host').placeholder = preset.hostPlaceholder;
+  if (resetHostPlaceholder) {
+    $('host').value = '';
+  }
+  updatePlatformPresetHint(preset.hint);
+  updateSSLCertFields();
+  if (preset.defaults.sslmode === 'require') {
+    $('advancedDetails').open = true;
+  }
+  syncConnFormSelects();
+}
+
+function platformIconUri(presetId) {
+  return (platformPresetById[presetId] || platformPresetById.vanilla || {}).iconUri || '';
 }
 
 function mkIconBtn(iconKey, title, onClick, opts) {
@@ -362,6 +460,8 @@ function resetConnForm() {
   $('sshPort').value = '22';
   $('sshDetails').open = false;
   $('advancedDetails').open = false;
+  setSelectValue($('platformPreset'), 'vanilla');
+  applyPlatformPreset('vanilla', true);
   updateSSHState();
   updateSSLCertFields();
   updateProductionWarning();
@@ -403,6 +503,14 @@ function openConnEditor(connection) {
       updateSSLCertFields();
     }
 
+    const presetId = connection.platformPreset || 'vanilla';
+    setSelectValue($('platformPreset'), presetId);
+    applyPlatformPreset(presetId, false);
+    const preset = platformPresetById[presetId];
+    if (preset) {
+      updatePlatformPresetHint(preset.hint);
+    }
+
     if (connection.ssh) {
       $('sshEnabled').checked = !!connection.ssh.enabled;
       $('sshHost').value = connection.ssh.host || '';
@@ -442,6 +550,7 @@ document.addEventListener('keydown', (event) => {
 
 function getConnFormData() {
   const data = {
+    platformPreset: $('platformPreset').value || 'vanilla',
     name: $('name').value,
     host: $('host').value,
     port: parseInt($('port').value, 10),
@@ -586,6 +695,12 @@ $('connEnvPasteBtn').addEventListener('click', () => {
   vscode.postMessage({ command: 'connections/parseEnvUrl', url });
 });
 
+$('connUrlPasteApplyBtn').addEventListener('click', () => {
+  const url = $('connUrlPasteInput').value.trim();
+  if (!url) { return; }
+  vscode.postMessage({ command: 'connections/parseEnvUrl', url });
+});
+
 function renderEnvCandidates(candidates) {
   envList.textContent = '';
   if (!candidates.length) {
@@ -634,11 +749,42 @@ function updateConnSectionSub(count) {
   connSectionSub.textContent = count + ' ' + noun + ' configured';
 }
 
+function syncConnBulkBar() {
+  const bar = $('connBulkBar');
+  if (!bar) { return; }
+  bar.hidden = connState.selectedIds.size === 0;
+}
+
+$('connSelectAll')?.addEventListener('change', (e) => {
+  const checked = e.target.checked;
+  connState.selectedIds.clear();
+  if (checked) {
+    connState.rows.forEach((row) => connState.selectedIds.add(row.id));
+  }
+  document.querySelectorAll('.conn-row-check').forEach((box) => {
+    box.checked = checked;
+  });
+  syncConnBulkBar();
+});
+
+$('connBulkApplyBtn')?.addEventListener('click', () => {
+  const env = $('connBulkEnv')?.value || 'production';
+  vscode.postMessage({
+    command: 'connections/bulkSetEnvironment',
+    ids: [...connState.selectedIds],
+    environment: env,
+  });
+});
+
 function renderConnectionRows(rows) {
   connState.rows = rows;
   connListState.hidden = true;
   connTableBody.textContent = '';
   updateConnSectionSub(rows.length);
+  connState.selectedIds.clear();
+  syncConnBulkBar();
+  const selectAll = $('connSelectAll');
+  if (selectAll) { selectAll.checked = false; }
 
   if (!rows.length) {
     connTable.hidden = true;
@@ -652,9 +798,41 @@ function renderConnectionRows(rows) {
     const tr = document.createElement('tr');
     tr.dataset.id = row.id;
 
+    const checkTd = document.createElement('td');
+    checkTd.className = 'td-check';
+    const check = document.createElement('input');
+    check.type = 'checkbox';
+    check.className = 'conn-row-check';
+    check.setAttribute('aria-label', 'Select ' + (row.name || row.host));
+    check.addEventListener('change', () => {
+      if (check.checked) { connState.selectedIds.add(row.id); }
+      else { connState.selectedIds.delete(row.id); }
+      syncConnBulkBar();
+    });
+    checkTd.appendChild(check);
+    tr.appendChild(checkTd);
+
     const nameTd = document.createElement('td');
     nameTd.className = 'cell-name';
-    nameTd.textContent = escapeText(row.name);
+    const nameText = document.createTextNode(escapeText(row.name));
+    nameTd.appendChild(nameText);
+    if (row.platformPreset && row.platformPreset !== 'vanilla') {
+      const badge = document.createElement('span');
+      badge.className = 'conn-platform-badge';
+      badge.title = escapeText(row.platformLabel || row.platformPreset);
+      const iconUri = platformIconUri(row.platformPreset);
+      if (iconUri) {
+        const img = document.createElement('img');
+        img.src = iconUri;
+        img.alt = '';
+        img.setAttribute('aria-hidden', 'true');
+        badge.appendChild(img);
+      }
+      const badgeLabel = document.createElement('span');
+      badgeLabel.textContent = escapeText(row.platformLabel || row.platformPreset);
+      badge.appendChild(badgeLabel);
+      nameTd.appendChild(badge);
+    }
     if (row.group) {
       const groupSpan = document.createElement('span');
       groupSpan.className = 'conn-group';
@@ -793,7 +971,27 @@ function handleConnectionsMessage(message) {
       connTestBtn.textContent = 'Test Connection';
       if (message.ok) {
         const versionMatch = message.version && String(message.version).match(/PostgreSQL\s+[\d.]+/i);
-        connShowFormMessage('Connected — ' + (versionMatch ? versionMatch[0] : 'OK'), 'success');
+        let successText = 'Connected — ' + (versionMatch ? versionMatch[0] : 'OK');
+        if (message.pgVersionWarning) {
+          successText += '\n\n' + message.pgVersionWarning;
+        }
+        if (message.poolerWarning) {
+          successText += '\n\n' + message.poolerWarning;
+        }
+        const envNudge = message.suggestEnvironmentTag
+          ? '\n\nTag an environment so Sentinel can highlight this server.'
+          : '';
+        const envActions = message.suggestEnvironmentTag ? [
+          { label: 'Production', onClick: () => { $('environment').value = 'production'; updateProductionWarning(); syncConnFormSelects(); } },
+          { label: 'Staging', onClick: () => { $('environment').value = 'staging'; updateProductionWarning(); syncConnFormSelects(); } },
+          { label: 'Development', onClick: () => { $('environment').value = 'development'; updateProductionWarning(); syncConnFormSelects(); } },
+          { label: 'Configure Sentinel', onClick: () => showSection('sentinel') },
+        ] : undefined;
+        connShowFormMessage(
+          successText + envNudge,
+          message.suggestEnvironmentTag || message.pgVersionWarning || message.poolerWarning ? 'info' : 'success',
+          envActions,
+        );
         connState.isTested = true;
         connSaveBtn.disabled = false;
       } else {
@@ -821,6 +1019,13 @@ function handleConnectionsMessage(message) {
     case 'connections/saved':
       connSaveBtn.textContent = connState.editingId ? 'Save Changes' : 'Add Connection';
       closeConnEditor();
+      break;
+
+    case 'connections/bulkTagged':
+      connState.selectedIds.clear();
+      syncConnBulkBar();
+      if ($('connSelectAll')) { $('connSelectAll').checked = false; }
+      document.querySelectorAll('.conn-row-check').forEach((box) => { box.checked = false; });
       break;
 
     case 'connections/saveError':
@@ -856,6 +1061,7 @@ function handleConnectionsMessage(message) {
     case 'connections/envParsed':
       envPicker.hidden = true;
       $('connEnvPasteInput').value = '';
+      $('connUrlPasteInput').value = '';
       openConnEditor({ ...message.connection, id: null });
       connShowFormMessage('Prefilled from DATABASE_URL — test and save to add this connection.', 'info');
       break;
@@ -1299,6 +1505,121 @@ function handlePrefsMessage(message) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Sentinel section
+// ─────────────────────────────────────────────────────────────────────────────
+
+const sentinelThemeSelects = {
+  production: $('sentinelThemeProd'),
+  staging: $('sentinelThemeStaging'),
+  development: $('sentinelThemeDev'),
+};
+
+function populateSentinelThemeSelects(themes, selected) {
+  const map = selected || {};
+  Object.entries(sentinelThemeSelects).forEach(([env, selectEl]) => {
+    if (!selectEl) { return; }
+    selectEl.replaceChildren();
+    const empty = document.createElement('option');
+    empty.value = '';
+    empty.textContent = '(use current theme)';
+    selectEl.appendChild(empty);
+    (themes || []).forEach((label) => {
+      const opt = document.createElement('option');
+      opt.value = label;
+      opt.textContent = label;
+      selectEl.appendChild(opt);
+    });
+    setSelectValue(selectEl, map[env] || '');
+    enhanceSelect(selectEl);
+  });
+}
+
+function postSentinelUpdate(key, value) {
+  vscode.postMessage({ command: 'sentinel/update', key, value });
+}
+
+function bindSentinelCheckbox(id, key) {
+  const el = $(id);
+  if (!el) { return; }
+  el.addEventListener('change', () => postSentinelUpdate(key, el.checked));
+}
+
+bindSentinelCheckbox('sentinelEnabled', 'enabled');
+bindSentinelCheckbox('sentinelStatusBar', 'statusBarAccent');
+bindSentinelCheckbox('sentinelNotebookStrip', 'notebookContextStrip');
+bindSentinelCheckbox('sentinelChrome', 'chromeAccent');
+bindSentinelCheckbox('sentinelTabBadges', 'tabBadges');
+bindSentinelCheckbox('sentinelChatChip', 'chatEnvChip');
+bindSentinelCheckbox('sentinelNotify', 'notifyOnTransition');
+bindSentinelCheckbox('sentinelThemeSwap', 'themeSwapEnabled');
+
+$('sentinelNexqlInstallBtn')?.addEventListener('click', () => {
+  vscode.postMessage({ command: 'sentinel/openNexqlThemes' });
+});
+$('sentinelNexqlPrefillBtn')?.addEventListener('click', () => {
+  vscode.postMessage({ command: 'sentinel/prefillNexqlThemes' });
+});
+
+$('sentinelThemeMode')?.addEventListener('change', (e) => {
+  postSentinelUpdate('themeSwapMode', e.target.value);
+});
+
+Object.entries(sentinelThemeSelects).forEach(([env, selectEl]) => {
+  selectEl?.addEventListener('change', () => {
+    const themes = {};
+    Object.entries(sentinelThemeSelects).forEach(([k, sel]) => {
+      if (sel?.value) { themes[k] = sel.value; }
+    });
+    postSentinelUpdate('themeSwapThemes', themes);
+  });
+});
+
+const connSentinelLink = $('connSentinelLink');
+if (connSentinelLink) {
+  connSentinelLink.addEventListener('click', (e) => {
+    e.preventDefault();
+    showSection('sentinel');
+  });
+}
+
+function handleSentinelMessage(message) {
+  switch (message.type) {
+    case 'sentinel/state': {
+      $('sentinelState').hidden = true;
+      $('sentinelList').hidden = false;
+      const s = message.sentinel || {};
+      $('sentinelEnabled').checked = s.enabled !== false;
+      $('sentinelStatusBar').checked = s.statusBarAccent !== false;
+      $('sentinelNotebookStrip').checked = s.notebookContextStrip !== false;
+      $('sentinelChrome').checked = s.chromeAccent !== false;
+      $('sentinelTabBadges').checked = s.tabBadges !== false;
+      $('sentinelChatChip').checked = s.chatEnvChip !== false;
+      $('sentinelNotify').checked = !!s.notifyOnTransition;
+      $('sentinelThemeSwap').checked = !!s.themeSwapEnabled;
+      const nexqlHint = $('sentinelNexqlHint');
+      const prefillBtn = $('sentinelNexqlPrefillBtn');
+      if (nexqlHint) { nexqlHint.hidden = false; }
+      if (prefillBtn) {
+        prefillBtn.hidden = !message.nexqlThemesInstalled || !Object.keys(message.detectedNexqlThemes || {}).length;
+      }
+      setSelectValue($('sentinelThemeMode'), s.themeSwapMode || 'suggest');
+      populateSentinelThemeSelects(message.themes, s.themeSwapThemes);
+      const masterOff = s.enabled === false;
+      ['sentinelStatusBar', 'sentinelNotebookStrip', 'sentinelChrome', 'sentinelTabBadges', 'sentinelChatChip', 'sentinelNotify'].forEach((id) => {
+        const el = $(id);
+        if (el) { el.disabled = masterOff; }
+      });
+      break;
+    }
+    case 'sentinel/error':
+      $('sentinelState').hidden = false;
+      $('sentinelState').classList.add('error');
+      $('sentinelState').textContent = message.error || 'Failed to update Sentinel settings';
+      break;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Cloud Sync section
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1317,8 +1638,151 @@ const SYNC_STATUS_LABELS = {
 let syncFlagsDirtyGuard = false;
 
 $('syncSetupBtn').addEventListener('click', () => {
-  vscode.postMessage({ command: 'sync/setup' });
+  vscode.postMessage({ command: 'sync/setup', mode: 'cloud' });
 });
+$('syncPullBtn')?.addEventListener('click', () => vscode.postMessage({ command: 'sync/pull' }));
+$('syncPushBtn')?.addEventListener('click', () => vscode.postMessage({ command: 'sync/push' }));
+$('syncPreviewBtn')?.addEventListener('click', () => vscode.postMessage({ command: 'sync/preview' }));
+$('syncPreviewRefreshBtn')?.addEventListener('click', () => vscode.postMessage({ command: 'sync/preview' }));
+$('syncApplyPreviewBtn')?.addEventListener('click', () => vscode.postMessage({ command: 'sync/applyPreview' }));
+$('syncReplaceLocalBtn')?.addEventListener('click', () => vscode.postMessage({ command: 'sync/replaceLocal' }));
+$('syncReplaceRemoteBtn')?.addEventListener('click', () => vscode.postMessage({ command: 'sync/replaceRemote' }));
+$('syncRebuildIndexBtn')?.addEventListener('click', () => vscode.postMessage({ command: 'sync/rebuildIndex' }));
+$('syncDiagnosticsBtn')?.addEventListener('click', () => vscode.postMessage({ command: 'sync/diagnostics' }));
+$('syncAdvancedSetupBtn')?.addEventListener('click', () => vscode.postMessage({ command: 'sync/setup', mode: 'advanced' }));
+$('syncWizardCloseBtn')?.addEventListener('click', () => { $('syncWizardBackdrop').hidden = true; });
+document.querySelectorAll('.sync-tab').forEach((btn) => {
+  btn.addEventListener('click', () => showSyncTab(btn.getAttribute('data-sync-tab')));
+});
+
+const syncWizardState = { step: 0, mode: 'cloud', providerId: 'cloud', email: '', secretKey: '', vaultMode: 'create' };
+
+function showSyncTab(tab) {
+  const tabIdMap = {
+    overview: 'syncTabOverview',
+    preview: 'syncTabPreview',
+    conflicts: 'syncTabConflicts',
+    history: 'syncTabHistory',
+    shares: 'syncTabShares',
+    devices: 'syncTabDevices',
+    advanced: 'syncTabAdvanced',
+  };
+  document.querySelectorAll('.sync-tab').forEach((b) => b.classList.toggle('active', b.getAttribute('data-sync-tab') === tab));
+  Object.entries(tabIdMap).forEach(([key, id]) => {
+    const el = $(id);
+    if (el) { el.hidden = key !== tab; }
+  });
+  if (tab === 'history') { vscode.postMessage({ command: 'sync/history' }); }
+  if (tab === 'conflicts') { vscode.postMessage({ command: 'sync/conflicts' }); }
+  if (tab === 'shares') { vscode.postMessage({ command: 'sync/shares' }); }
+  if (tab === 'devices') { vscode.postMessage({ command: 'sync/devices' }); }
+  if (tab === 'preview') { vscode.postMessage({ command: 'sync/preview' }); }
+}
+
+function openSyncWizard(mode) {
+  syncWizardState.step = 0;
+  syncWizardState.mode = mode || 'cloud';
+  syncWizardState.providerId = mode === 'advanced' ? 'postgres' : 'cloud';
+  $('syncWizardBackdrop').hidden = false;
+  vscode.postMessage({ command: 'sync/wizardWelcome' });
+  renderSyncWizardStep();
+}
+
+function renderSyncWizardStep() {
+  const body = $('syncWizardBody');
+  body.textContent = '';
+  const s = syncWizardState.step;
+  if (s === 0) {
+    body.innerHTML = '<p>Welcome — your NexQL plan includes encrypted cloud sync.</p><p id="syncWizardTier" class="label-hint"></p>';
+  } else if (s === 1 && syncWizardState.providerId === 'cloud') {
+    body.innerHTML = '<p>Sign in with your NexQL license via device flow.</p><button type="button" id="syncWizardSignInBtn" class="btn-primary">Sign In</button><p id="syncWizardSignInStatus" class="status-line"></p>';
+    $('syncWizardSignInBtn')?.addEventListener('click', () => vscode.postMessage({ command: 'sync/wizardSignIn' }));
+  } else if (s === 1) {
+    body.innerHTML = '<p>Connect to your chosen backend.</p><p class="label-hint">Advanced backends use the same auth flows as before.</p>';
+  } else if (s === 2) {
+    body.innerHTML = '<label>Vault email<input type="email" id="syncWizardEmail" class="mono"></label><label><input type="radio" name="vaultMode" value="create" checked> Create vault</label><label><input type="radio" name="vaultMode" value="unlock"> Unlock vault</label><input type="password" id="syncWizardSecret" placeholder="Secret key (unlock only)" class="mono"><p id="syncWizardVaultStatus" class="status-line"></p>';
+  } else if (s === 3) {
+    body.innerHTML = '<label><input type="checkbox" id="wizConn" checked> Connections</label><label><input type="checkbox" id="wizQueries" checked> Saved queries</label><label><input type="checkbox" id="wizNotebooks" checked> Notebooks</label><label><input type="checkbox" id="wizPasswords"> Passwords</label>';
+  } else if (s === 4) {
+    body.innerHTML = '<p>Running first sync…</p>';
+    const email = $('syncWizardEmail')?.value || syncWizardState.email;
+    vscode.postMessage({
+      command: 'sync/wizardComplete',
+      providerId: syncWizardState.providerId,
+      email,
+      vaultMode: syncWizardState.vaultMode,
+      flags: {
+        syncConnections: $('wizConn')?.checked !== false,
+        syncQueries: $('wizQueries')?.checked !== false,
+        syncNotebooks: $('wizNotebooks')?.checked !== false,
+        syncPasswords: !!$('wizPasswords')?.checked,
+      },
+    });
+  } else if (s === 5) {
+    body.innerHTML = '<p class="success">Cloud sync is ready.</p><button type="button" id="syncWizardDoneBtn" class="btn-primary">Open Sync Settings</button>';
+    $('syncWizardDoneBtn')?.addEventListener('click', () => { $('syncWizardBackdrop').hidden = true; showSyncTab('overview'); });
+  }
+  $('syncWizardBackBtn').hidden = s === 0;
+  $('syncWizardNextBtn').textContent = s >= 4 ? (s === 5 ? 'Done' : 'Finish') : 'Next';
+}
+
+$('syncWizardNextBtn')?.addEventListener('click', () => {
+  if (syncWizardState.step === 2) {
+    syncWizardState.email = $('syncWizardEmail')?.value || syncWizardState.email;
+    syncWizardState.vaultMode = document.querySelector('input[name="vaultMode"]:checked')?.value || 'create';
+    vscode.postMessage({
+      command: 'sync/wizardVault',
+      email: syncWizardState.email,
+      mode: syncWizardState.vaultMode,
+      secretKey: $('syncWizardSecret')?.value || '',
+    });
+    return;
+  }
+  syncWizardState.step += 1;
+  if (syncWizardState.step === 4) { renderSyncWizardStep(); return; }
+  if (syncWizardState.step > 5) { $('syncWizardBackdrop').hidden = true; return; }
+  renderSyncWizardStep();
+});
+$('syncWizardBackBtn')?.addEventListener('click', () => {
+  if (syncWizardState.step > 0) { syncWizardState.step -= 1; renderSyncWizardStep(); }
+});
+
+function renderPreviewList(el, items) {
+  el.textContent = '';
+  if (!items?.length) { el.textContent = 'None'; return; }
+  items.forEach((item) => {
+    const row = document.createElement('div');
+    row.className = 'sync-preview-row';
+    row.textContent = `[${item.changeType}] ${item.name || item.id} (${item.kind})`;
+    el.appendChild(row);
+  });
+}
+
+function renderConflicts(conflicts) {
+  const el = $('syncConflictsList');
+  el.textContent = '';
+  if (!conflicts?.length) { el.textContent = 'No conflicts.'; return; }
+  conflicts.forEach((c) => {
+    const row = document.createElement('div');
+    row.className = 'sync-conflict-row';
+    row.innerHTML = `<strong>${c.name || c.id}</strong> <span class="label-hint">${c.source}</span>`;
+    ['keepMine', 'keepTheirs', 'keepBoth', 'delete', 'diff'].forEach((action) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'btn-secondary btn-sm';
+      btn.textContent = action;
+      btn.addEventListener('click', () => vscode.postMessage({ command: 'sync/resolveConflict', conflictId: c.id, resolveAction: action }));
+      row.appendChild(btn);
+    });
+    el.appendChild(row);
+  });
+}
+
+function formatBytes(n) {
+  if (n >= 1073741824) { return (n / 1073741824).toFixed(1) + ' GB'; }
+  if (n >= 1048576) { return (n / 1048576).toFixed(1) + ' MB'; }
+  return Math.round(n / 1024) + ' KB';
+}
 $('syncNowBtn').addEventListener('click', () => {
   $('syncNowBtn').disabled = true;
   $('syncRunMessage').textContent = 'Syncing…';
@@ -1568,6 +2032,17 @@ function handleSyncMessage(message) {
       if (sync.featureEnabled && sync.configured) {
         vscode.postMessage({ command: 'sync/items' });
         vscode.postMessage({ command: 'sync/pending' });
+        $('syncHealthHeader').hidden = false;
+        $('syncHealthLast').textContent = sync.lastSyncAt
+          ? 'Last sync: ' + new Date(sync.lastSyncAt).toLocaleString()
+          : 'Last sync: never';
+        $('syncHealthProvider').textContent = sync.providerLabel || '';
+        if (sync.lastError) {
+          $('syncHealthError').hidden = false;
+          $('syncHealthError').textContent = sync.lastError;
+        } else {
+          $('syncHealthError').hidden = true;
+        }
         $('syncStatusValue').textContent = SYNC_STATUS_LABELS[sync.status] || sync.status;
         $('syncProviderValue').textContent = sync.providerLabel || '—';
         $('syncAccountValue').textContent = sync.accountEmail || '—';
@@ -1612,6 +2087,113 @@ function handleSyncMessage(message) {
       }
       break;
     }
+    case 'sync/preview':
+      renderPreviewList($('syncPreviewOutgoing'), message.preview?.outgoing);
+      renderPreviewList($('syncPreviewIncoming'), message.preview?.incoming);
+      renderPreviewList($('syncPreviewConflicts'), message.preview?.conflictItems);
+      break;
+    case 'sync/history': {
+      const body = $('syncHistoryBody');
+      body.textContent = '';
+      const hist = message.history || [];
+      if (!hist.length) {
+        body.innerHTML = '<tr><td colspan="3" class="empty-state">No inbound history yet.</td></tr>';
+        break;
+      }
+      hist.forEach((h) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${h.name || h.itemId}</td><td>${h.deviceName || h.deviceId}</td><td>${formatSyncTimestamp(h.appliedAt)}</td>`;
+        body.appendChild(tr);
+      });
+      break;
+    }
+    case 'sync/conflicts':
+      renderConflicts(message.conflicts || []);
+      break;
+    case 'sync/shares': {
+      const outEl = $('syncOutgoingShares');
+      const inEl = $('syncIncomingShares');
+      outEl.textContent = '';
+      inEl.textContent = '';
+      (message.outgoing || []).forEach((s) => {
+        const row = document.createElement('div');
+        row.textContent = `${s.name || s.shareId} → ${s.granteeEmail}${s.revoked ? ' (revoked)' : ''} `;
+        if (!s.revoked) {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'btn-secondary btn-sm';
+          btn.textContent = 'Revoke';
+          btn.addEventListener('click', () => vscode.postMessage({ command: 'sync/revokeShare', shareId: s.shareId }));
+          row.appendChild(btn);
+        }
+        outEl.appendChild(row);
+      });
+      (message.incoming || []).forEach((s) => {
+        const row = document.createElement('div');
+        row.textContent = `${s.name || s.shareId} from ${s.ownerEmail}`;
+        inEl.appendChild(row);
+      });
+      break;
+    }
+    case 'sync/devices': {
+      const el = $('syncDevicesList');
+      el.textContent = '';
+      (message.devices || []).forEach((d) => {
+        const row = document.createElement('div');
+        row.textContent = `${d.deviceName || d.deviceId}${d.isThisDevice ? ' (this device)' : ''} — ${d.lastSeen ? new Date(d.lastSeen).toLocaleString() : ''} `;
+        if (!d.isThisDevice) {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'btn-secondary btn-sm';
+          btn.textContent = 'Revoke';
+          btn.addEventListener('click', () => vscode.postMessage({ command: 'sync/revokeDevice', deviceId: d.deviceId }));
+          row.appendChild(btn);
+        }
+        el.appendChild(row);
+      });
+      break;
+    }
+    case 'sync/quota': {
+      const q = message.quota;
+      const el = $('syncHealthQuota');
+      if (q) {
+        el.hidden = false;
+        el.textContent = `Cloud storage: ${formatBytes(q.bytesUsed)} / ${formatBytes(q.bytesLimit)} (${q.itemCount} items)`;
+      } else {
+        el.hidden = true;
+      }
+      break;
+    }
+    case 'sync/openWizard':
+      openSyncWizard(message.mode || 'cloud');
+      break;
+    case 'sync/wizardWelcome':
+      $('syncWizardTier').textContent = 'Plan: ' + (message.tierLabel || message.tier);
+      break;
+    case 'sync/wizardSignInResult':
+      $('syncWizardSignInStatus').textContent = message.ok ? ('Signed in' + (message.email ? ': ' + message.email : '')) : (message.error || 'Sign-in failed');
+      if (message.email) { syncWizardState.email = message.email; }
+      break;
+    case 'sync/wizardVaultResult':
+      $('syncWizardVaultStatus').textContent = message.ok ? 'Vault ready' : (message.error || 'Vault failed');
+      if (message.secretKey) { syncWizardState.secretKey = message.secretKey; }
+      if (message.ok && syncWizardState.vaultMode === 'create' && message.secretKey) {
+        vscode.postMessage({ command: 'sync/wizardRecoveryKit', email: syncWizardState.email, secretKey: message.secretKey });
+        syncWizardState.step += 1;
+        renderSyncWizardStep();
+      } else if (message.ok) {
+        syncWizardState.step += 1;
+        renderSyncWizardStep();
+      }
+      break;
+    case 'sync/wizardCompleteResult':
+      if (message.ok) {
+        syncWizardState.step = 5;
+        renderSyncWizardStep();
+      } else {
+        $('syncWizardBody').innerHTML = '<p class="error">' + (message.error || 'Setup failed') + '</p>';
+      }
+      break;
   }
 }
 
@@ -1648,6 +2230,87 @@ $('licenseDeactivateBtn').addEventListener('click', () => {
 $('licenseUpgradeBtn').addEventListener('click', () => {
   vscode.postMessage({ command: 'license/openUpgrade' });
 });
+
+$('licenseEmailVerifyBtn').addEventListener('click', () => {
+  const email = $('licenseOwnerEmailInput').value.trim();
+  const msg = $('licenseEmailMessage');
+  if (!email) {
+    msg.className = 'status-line error';
+    msg.textContent = 'Enter your subscription email.';
+    return;
+  }
+  msg.className = 'status-line';
+  msg.textContent = 'Verifying…';
+  vscode.postMessage({ command: 'license/setEmail', email });
+});
+
+$('licenseOwnerEmailInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    $('licenseEmailVerifyBtn').click();
+  }
+});
+
+function renderLicenseDevices(devices) {
+  const body = $('licenseDevicesBody');
+  body.replaceChildren();
+  devices.forEach((d) => {
+    const tr = document.createElement('tr');
+    const machineTd = document.createElement('td');
+    const label = d.isCurrent ? 'this machine' : (d.instanceId || '').slice(0, 8) + '…';
+    machineTd.textContent = label;
+    if (d.isCurrent) machineTd.className = 'device-current';
+
+    const seenTd = document.createElement('td');
+    seenTd.textContent = d.lastSeen
+      ? new Date(d.lastSeen).toLocaleDateString()
+      : '—';
+
+    const actionTd = document.createElement('td');
+    if (!d.isCurrent && d.instanceId) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'btn-link';
+      btn.textContent = 'Remove';
+      btn.addEventListener('click', () => {
+        $('licenseDeviceMessage').className = 'status-line';
+        $('licenseDeviceMessage').textContent = 'Removing…';
+        vscode.postMessage({ command: 'license/removeDevice', instanceId: d.instanceId });
+      });
+      actionTd.appendChild(btn);
+    }
+
+    tr.appendChild(machineTd);
+    tr.appendChild(seenTd);
+    tr.appendChild(actionTd);
+    body.appendChild(tr);
+  });
+}
+
+function renderLicenseHistory(events) {
+  const list = $('licenseHistoryList');
+  list.replaceChildren();
+  if (!events || !events.length) {
+    const li = document.createElement('li');
+    li.textContent = 'No history yet.';
+    list.appendChild(li);
+    return;
+  }
+  events.forEach((ev) => {
+    const li = document.createElement('li');
+    const date = document.createElement('span');
+    date.className = 'history-date';
+    date.textContent = ev.createdAt
+      ? new Date(ev.createdAt).toLocaleDateString()
+      : '—';
+    const summary = document.createElement('span');
+    summary.className = 'history-summary';
+    summary.textContent = ev.summary || '';
+    li.appendChild(date);
+    li.appendChild(summary);
+    list.appendChild(li);
+  });
+}
 
 function renderQuotas(quotas) {
   const body = $('licenseQuotaBody');
@@ -1702,10 +2365,36 @@ function handleLicenseMessage(message) {
       const isPaid = lic.tier !== 'free';
       $('licenseKeyRow').hidden = !lic.maskedKey;
       $('licenseKeyValue').textContent = lic.maskedKey || '—';
+
+      const statusLabel = lic.cachedStatus
+        ? String(lic.cachedStatus).toUpperCase()
+        : '—';
+      $('licenseStatusRow').hidden = !isPaid || !lic.cachedStatus;
+      $('licenseStatusValue').textContent = statusLabel;
+
+      $('licensePeriodRow').hidden = !lic.period;
+      $('licensePeriodValue').textContent = lic.period
+        ? lic.period.charAt(0).toUpperCase() + lic.period.slice(1)
+        : '—';
+
       $('licenseExpiryRow').hidden = !lic.expiresAt;
       $('licenseExpiryValue').textContent = lic.expiresAt
         ? new Date(lic.expiresAt).toLocaleDateString()
         : '—';
+
+      $('licenseEmailRow').hidden = !lic.maskedEmail;
+      $('licenseEmailValue').textContent = lic.maskedEmail || '—';
+
+      $('licenseMemberRow').hidden = !lic.memberSince;
+      $('licenseMemberValue').textContent = lic.memberSince
+        ? new Date(lic.memberSince).toLocaleDateString()
+        : '—';
+
+      $('licenseRenewalsRow').hidden = lic.renewalCount == null;
+      $('licenseRenewalsValue').textContent = lic.renewalCount != null
+        ? String(lic.renewalCount)
+        : '—';
+
       $('licenseGraceRow').hidden = !lic.gracePeriodStartedAt;
       $('licenseGraceValue').textContent = lic.gracePeriodStartedAt
         ? 'started ' + new Date(lic.gracePeriodStartedAt).toLocaleDateString()
@@ -1713,6 +2402,26 @@ function handleLicenseMessage(message) {
 
       $('licenseDeactivateBtn').hidden = !isPaid;
       $('licenseActivateBox').hidden = isPaid;
+      $('licenseEmailBox').hidden = !lic.needsEmail;
+      if (lic.ownerEmail) {
+        $('licenseOwnerEmailInput').value = lic.ownerEmail;
+      }
+
+      const hasDevices = lic.devices && lic.devices.length > 0;
+      $('licenseDevicesBox').hidden = !hasDevices;
+      if (hasDevices) {
+        const used = lic.devices.length;
+        const limit = lic.deviceLimit || used;
+        $('licenseDevicesTitle').textContent = 'Devices (' + used + '/' + limit + ')';
+        renderLicenseDevices(lic.devices);
+      }
+
+      const hasHistory = lic.history && lic.history.length > 0;
+      $('licenseHistoryBox').hidden = !hasHistory;
+      if (hasHistory) {
+        renderLicenseHistory(lic.history);
+      }
+
       $('licenseQuotaBox').hidden = !(lic.quotas && lic.quotas.length);
       if (lic.quotas && lic.quotas.length) {
         $('licenseQuotaTitle').textContent = isPaid
@@ -1731,6 +2440,18 @@ function handleLicenseMessage(message) {
       if (message.ok) { $('licenseKeyInput').value = ''; }
       break;
     }
+    case 'license/emailResult': {
+      const msg = $('licenseEmailMessage');
+      msg.className = 'status-line ' + (message.ok ? 'success' : 'error');
+      msg.textContent = (message.ok ? '✓ ' : '✗ ') + message.message;
+      break;
+    }
+    case 'license/deviceResult': {
+      const msg = $('licenseDeviceMessage');
+      msg.className = 'status-line ' + (message.ok ? 'success' : 'error');
+      msg.textContent = (message.ok ? '✓ ' : '✗ ') + message.message;
+      break;
+    }
   }
 }
 
@@ -1746,6 +2467,12 @@ window.addEventListener('message', (event) => {
     if (message.editConnectionId) { connState.pendingEditId = message.editConnectionId; }
     if (message.addConnection) { connState.pendingAdd = true; }
     showSection(message.section || 'connections');
+    if (message.wizard && message.section === 'sync') {
+      openSyncWizard(message.wizard);
+    }
+    if (message.tab && message.section === 'sync') {
+      showSyncTab(message.tab === 'preview' ? 'preview' : message.tab);
+    }
     return;
   }
 
@@ -1754,6 +2481,7 @@ window.addEventListener('message', (event) => {
     case 'connections': handleConnectionsMessage(message); break;
     case 'ai': handleAiMessage(message); break;
     case 'prefs': handlePrefsMessage(message); break;
+    case 'sentinel': handleSentinelMessage(message); break;
     case 'sync': handleSyncMessage(message); break;
     case 'license': handleLicenseMessage(message); break;
   }
@@ -1763,6 +2491,17 @@ window.addEventListener('message', (event) => {
 enhanceAllSelects(document);
 
 // Boot with the deep-linked initial state injected by the host.
+initPlatformPresetSelect();
+
+if (initialState.prefillConnectionUrl) {
+  vscode.postMessage({
+    command: 'connections/parseEnvUrl',
+    url: initialState.prefillConnectionUrl,
+  });
+}
+
 if (initialState.editConnectionId) { connState.pendingEditId = initialState.editConnectionId; }
 if (initialState.addConnection) { connState.pendingAdd = true; }
 showSection(initialState.section || 'connections');
+if (initialState.wizard && initialState.section === 'sync') { openSyncWizard(initialState.wizard); }
+if (initialState.tab && initialState.section === 'sync') { showSyncTab(initialState.tab); }

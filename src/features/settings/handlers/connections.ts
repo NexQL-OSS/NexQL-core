@@ -15,7 +15,44 @@ import {
   DATABASE_URL_ENV_KEYS,
 } from '../../../utils/envFileDatabaseUrls';
 import { scanWorkspaceEnvFiles } from '../../../commands/importConnectionFromDatabaseUrl';
+import {
+  getConnectionPreset,
+  inferPlatformPresetFromHost,
+  type ConnectionPlatformPreset,
+} from '../../../lib/platform/connectionPresets';
+import { isSupportedPostgresVersion } from '../../../lib/platform/pgVersionSupport';
+import { isTransactionPooler } from '../../../lib/platform/detectPlatform';
 import type { SettingsHubHostContext, SettingsHubMessage, SettingsSectionHandler } from '../types';
+
+function resolvePlatformPreset(
+  connection: ConnectionInfo,
+): ConnectionPlatformPreset {
+  if (connection.platformPreset) {
+    return connection.platformPreset;
+  }
+  return inferPlatformPresetFromHost(connection.host || '', connection.port || 5432);
+}
+
+function platformLabelFor(connection: ConnectionInfo): string {
+  return getConnectionPreset(resolvePlatformPreset(connection))?.label ?? 'PostgreSQL';
+}
+
+function pgVersionSupportWarning(serverVersionNum: number): string | undefined {
+  if (serverVersionNum > 0 && !isSupportedPostgresVersion(serverVersionNum)) {
+    const major = Math.floor(serverVersionNum / 10_000);
+    return `Server reports PostgreSQL ${major}. NexQL supports PostgreSQL 12 and newer.`;
+  }
+  return undefined;
+}
+
+function poolerWarningFor(connection: Record<string, unknown>): string | undefined {
+  const host = String(connection.host ?? '');
+  const port = Number(connection.port) || 5432;
+  if (!isTransactionPooler(host, port)) {
+    return undefined;
+  }
+  return 'Transaction-mode pooler detected — multi-cell transactions and session state may be unreliable. Prefer a direct or session pooler endpoint.';
+}
 
 /** Row shape sent to the webview — never includes passwords. */
 interface ConnectionRow {
@@ -31,6 +68,8 @@ interface ConnectionRow {
   readOnlyMode: boolean;
   sshEnabled: boolean;
   hasPassword: boolean;
+  platformPreset: string;
+  platformLabel: string;
 }
 
 function refreshTree(): void {
@@ -102,6 +141,12 @@ export class ConnectionsSectionHandler implements SettingsSectionHandler {
       case 'setEnvironment':
         await this.setEnvironment(String(message.id), String(message.environment ?? ''));
         break;
+      case 'bulkSetEnvironment':
+        await this.bulkSetEnvironment(
+          (message.ids as string[]) || [],
+          String(message.environment ?? ''),
+        );
+        break;
       case 'scanEnv':
         await this.scanEnv();
         break;
@@ -109,6 +154,12 @@ export class ConnectionsSectionHandler implements SettingsSectionHandler {
         await this.parseEnvUrl(String(message.url ?? ''));
         break;
       case 'trackTelemetry':
+        if (message.event === 'platform_preset_selected') {
+          const props = message.properties as { preset?: string } | undefined;
+          TelemetryService.getInstance().trackEvent('platform_preset_selected', {
+            preset: props?.preset || 'vanilla',
+          });
+        }
         if (message.event === 'cloud_auth_selected') {
           const props = message.properties as { authKind?: string } | undefined;
           TelemetryService.getInstance().trackEvent('cloud_auth_selected', {
@@ -136,6 +187,8 @@ export class ConnectionsSectionHandler implements SettingsSectionHandler {
         readOnlyMode: !!conn.readOnlyMode,
         sshEnabled: !!conn.ssh?.enabled,
         hasPassword: !!(await secrets.getPassword(conn.id)),
+        platformPreset: resolvePlatformPreset(conn),
+        platformLabel: platformLabelFor(conn),
       })),
     );
     this.host.post({ type: 'connections/list', connections: rows });
@@ -158,8 +211,20 @@ export class ConnectionsSectionHandler implements SettingsSectionHandler {
 
   private async testForm(connection: Record<string, unknown>): Promise<void> {
     try {
-      const version = await runConnectionTest(connection as never, false);
-      this.host.post({ type: 'connections/testResult', ok: true, version });
+      const testResult = await runConnectionTest(connection as never, false);
+      const pgVersionWarning =
+        typeof testResult === 'object'
+          ? pgVersionSupportWarning(testResult.serverVersionNum)
+          : undefined;
+      const poolerWarning = poolerWarningFor(connection);
+      this.host.post({
+        type: 'connections/testResult',
+        ok: true,
+        version: typeof testResult === 'object' ? testResult.version : testResult,
+        pgVersionWarning,
+        poolerWarning,
+        suggestEnvironmentTag: !connection.environment,
+      });
     } catch (err: unknown) {
       TelemetryService.getInstance().trackEvent('connection_error', {
         errorCategory: 'settings_hub_test',
@@ -183,7 +248,12 @@ export class ConnectionsSectionHandler implements SettingsSectionHandler {
         { ...connection, password: password || undefined },
         false,
       );
-      this.host.post({ type: 'connections/rowTestResult', id, ok: true, version });
+      this.host.post({
+        type: 'connections/rowTestResult',
+        id,
+        ok: true,
+        version: typeof version === 'object' ? version.version : version,
+      });
     } catch (err: unknown) {
       this.host.post({
         type: 'connections/rowTestResult',
@@ -224,6 +294,13 @@ export class ConnectionsSectionHandler implements SettingsSectionHandler {
         options: (payload.options as string) || undefined,
         ssh: payload.ssh as ConnectionInfo['ssh'],
         ...(cloudAuthParsed.kind !== 'none' ? { cloudAuth: cloudAuthParsed } : {}),
+        ...(typeof payload.platformPreset === 'string' && payload.platformPreset
+          ? { platformPreset: payload.platformPreset as ConnectionPlatformPreset }
+          : {}),
+        ...(payload.hidePlatformSchemas === true ||
+        (payload.platformPreset === 'supabase' && payload.hidePlatformSchemas !== false)
+          ? { hidePlatformSchemas: payload.hidePlatformSchemas !== false }
+          : {}),
       };
 
       const index = editingId
@@ -330,6 +407,39 @@ export class ConnectionsSectionHandler implements SettingsSectionHandler {
     await this.sendList();
   }
 
+  private async bulkSetEnvironment(ids: string[], environment: string): Promise<void> {
+    if (!ids.length) {
+      this.host.post({ type: 'connections/error', error: 'Select at least one connection.' });
+      return;
+    }
+    if (!['development', 'staging', 'production', ''].includes(environment)) {
+      this.host.post({ type: 'connections/error', error: 'Invalid environment value.' });
+      return;
+    }
+
+    const idSet = new Set(ids);
+    const connections = getStoredConnections();
+    let updated = 0;
+    for (const conn of connections) {
+      if (!idSet.has(conn.id)) {
+        continue;
+      }
+      if (environment === 'development' || environment === 'staging' || environment === 'production') {
+        conn.environment = environment;
+      } else {
+        delete conn.environment;
+      }
+      updated++;
+    }
+
+    await vscode.workspace
+      .getConfiguration()
+      .update('postgresExplorer.connections', connections, vscode.ConfigurationTarget.Global);
+    refreshTree();
+    await this.sendList();
+    this.host.post({ type: 'connections/bulkTagged', count: updated, environment });
+  }
+
   private async scanEnv(): Promise<void> {
     const folders = vscode.workspace.workspaceFolders;
     if (!folders?.length) {
@@ -352,6 +462,7 @@ export class ConnectionsSectionHandler implements SettingsSectionHandler {
   private async parseEnvUrl(url: string): Promise<void> {
     try {
       const info = connectionInfoFromDatabaseUrl(url.trim(), `env-${Date.now()}`);
+      info.platformPreset = inferPlatformPresetFromHost(info.host, info.port);
       this.host.post({ type: 'connections/envParsed', connection: info });
     } catch (e: unknown) {
       this.host.post({

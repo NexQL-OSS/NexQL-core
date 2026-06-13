@@ -36,6 +36,12 @@
           </button>
         </li>
         <li>
+          <button type="button" role="tab" class="nav-item" data-section="sentinel" aria-controls="section-sentinel">
+            <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none"><path d="M8 1.5l6 3v4c0 3.5-2.5 5.8-6 6.5C4.5 14.3 2 12 2 8.5v-4l6-3z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M6 8l1.5 1.5L10.5 6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+            <span class="nav-label">Sentinel</span>
+          </button>
+        </li>
+        <li>
           <button type="button" role="tab" class="nav-item" data-section="sync" aria-controls="section-sync">
             <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none"><path d="M4.5 11.5a4 4 0 0 1 5.8-3.2M11.5 4.5a4 4 0 0 1-5.8 3.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M11.5 2.5v2h-2M4.5 13.5v-2h2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
             <span class="nav-label">Cloud Sync</span>
@@ -60,6 +66,14 @@
             <p class="section-sub" id="connSectionSub">PostgreSQL servers available in the explorer</p>
           </div>
           <div class="section-actions">
+            <div id="connBulkBar" class="inline-row conn-bulk-bar" hidden>
+              <select id="connBulkEnv" aria-label="Environment for selected connections">
+                <option value="production">Production</option>
+                <option value="staging">Staging</option>
+                <option value="development">Development</option>
+              </select>
+              <button type="button" id="connBulkApplyBtn" class="btn-secondary">Tag selected</button>
+            </div>
             <button type="button" id="connImportEnvBtn" class="btn-secondary">Import from .env</button>
             <button type="button" id="connAddBtn" class="btn-primary">+ Add Connection</button>
           </div>
@@ -86,6 +100,7 @@
           <table class="conn-table" id="connTable" hidden>
             <thead>
               <tr>
+                <th scope="col" class="th-check"><input type="checkbox" id="connSelectAll" aria-label="Select all connections"></th>
                 <th scope="col">Name</th>
                 <th scope="col">Host</th>
                 <th scope="col">Database</th>
@@ -455,6 +470,113 @@
         </div>
       </section>
 
+      <!-- ════════════════ Sentinel ════════════════ -->
+      <section id="section-sentinel" class="hub-section" role="tabpanel" aria-label="Sentinel" hidden>
+        <header class="section-bar">
+          <div>
+            <h1>Sentinel</h1>
+            <p class="section-sub">Ambient environment signaling — know when you are on production without changing your syntax theme</p>
+          </div>
+        </header>
+
+        <div id="sentinelState" class="state-line" role="status">Loading Sentinel settings…</div>
+
+        <div id="sentinelList" class="pref-list" hidden>
+          <div class="sentinel-preview" aria-hidden="true">
+            <div class="sentinel-swatch sentinel-swatch-prod" title="Production preview">PROD</div>
+            <div class="sentinel-swatch sentinel-swatch-staging" title="Staging preview">STG</div>
+            <div class="sentinel-swatch sentinel-swatch-dev" title="Development preview">DEV</div>
+          </div>
+
+          <h2 class="pref-group-title">Visibility</h2>
+          <label class="pref-row">
+            <input type="checkbox" id="sentinelEnabled">
+            <span class="pref-row-text">
+              <span class="pref-row-label">Enable Sentinel</span>
+              <span class="label-hint">Master switch — when off, no environment accents appear</span>
+            </span>
+          </label>
+          <label class="pref-row">
+            <input type="checkbox" id="sentinelStatusBar">
+            <span class="pref-row-text">
+              <span class="pref-row-label">Highlight status bar by environment</span>
+              <span class="label-hint">Connection, database, user, and shield badge use environment colors</span>
+            </span>
+          </label>
+          <label class="pref-row">
+            <input type="checkbox" id="sentinelNotebookStrip">
+            <span class="pref-row-text">
+              <span class="pref-row-label">Show context inside notebook</span>
+              <span class="label-hint">Sticky strip at top of .pgsql notebooks with env chip and connection details</span>
+            </span>
+          </label>
+          <label class="pref-row">
+            <input type="checkbox" id="sentinelChrome">
+            <span class="pref-row-text">
+              <span class="pref-row-label">Tint workbench chrome</span>
+              <span class="label-hint">Subtle title bar, activity bar, and status bar tint — your editor theme stays unchanged</span>
+            </span>
+          </label>
+          <label class="pref-row">
+            <input type="checkbox" id="sentinelTabBadges">
+            <span class="pref-row-text">
+              <span class="pref-row-label">Badge notebook tabs</span>
+              <span class="label-hint">[P] / [S] / [D] on open .pgsql tabs</span>
+            </span>
+          </label>
+          <label class="pref-row">
+            <input type="checkbox" id="sentinelChatChip">
+            <span class="pref-row-text">
+              <span class="pref-row-label">Show environment in SQL Assistant</span>
+              <span class="label-hint">Context bar chip for the active or last tagged notebook</span>
+            </span>
+          </label>
+          <label class="pref-row">
+            <input type="checkbox" id="sentinelNotify">
+            <span class="pref-row-text">
+              <span class="pref-row-label">Notify on environment change</span>
+              <span class="label-hint">Toast only when switching between tagged environments — never on every focus</span>
+            </span>
+          </label>
+
+          <p class="label-hint" id="sentinelNexqlHint" hidden>
+            Optional <button type="button" id="sentinelNexqlInstallBtn" class="btn-link">NexQL Sentinel themes</button>
+            pair with theme swap.
+            <button type="button" id="sentinelNexqlPrefillBtn" class="btn-link" hidden>Pre-fill theme map</button>
+          </p>
+
+          <details class="form-details" id="sentinelAdvanced">
+            <summary>Advanced — full theme swap</summary>
+            <p class="label-hint">Off by default. Swaps the entire VS Code color theme — use only if you want maximum visual separation.</p>
+            <label class="pref-row">
+              <input type="checkbox" id="sentinelThemeSwap">
+              <span class="pref-row-text">
+                <span class="pref-row-label">Enable theme swap</span>
+              </span>
+            </label>
+            <div class="form-group">
+              <label for="sentinelThemeMode">Theme swap mode</label>
+              <select id="sentinelThemeMode">
+                <option value="suggest">Suggest (ask before switching)</option>
+                <option value="auto">Auto (switch silently)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="sentinelThemeProd">Production theme</label>
+              <select id="sentinelThemeProd" class="sentinel-theme-select"></select>
+            </div>
+            <div class="form-group">
+              <label for="sentinelThemeStaging">Staging theme</label>
+              <select id="sentinelThemeStaging" class="sentinel-theme-select"></select>
+            </div>
+            <div class="form-group">
+              <label for="sentinelThemeDev">Development theme</label>
+              <select id="sentinelThemeDev" class="sentinel-theme-select"></select>
+            </div>
+          </details>
+        </div>
+      </section>
+
       <!-- ════════════════ Cloud Sync ════════════════ -->
       <section id="section-sync" class="hub-section" role="tabpanel" aria-label="Cloud Sync" hidden>
         <header class="section-bar">
@@ -503,6 +625,30 @@
           </div>
           <div id="syncRunMessage" class="status-line" role="status"></div>
 
+          <div id="syncHealthHeader" class="sync-health-bar" hidden>
+            <span id="syncHealthLast">Last sync: —</span>
+            <span id="syncHealthProvider">—</span>
+            <span id="syncHealthQuota" class="label-hint" hidden></span>
+            <span id="syncHealthError" class="status-line error" hidden></span>
+          </div>
+
+          <div class="sync-subnav inline-row">
+            <button type="button" class="btn-secondary btn-sm sync-tab active" data-sync-tab="overview">Overview</button>
+            <button type="button" class="btn-secondary btn-sm sync-tab" data-sync-tab="preview">Preview</button>
+            <button type="button" class="btn-secondary btn-sm sync-tab" data-sync-tab="conflicts">Conflicts</button>
+            <button type="button" class="btn-secondary btn-sm sync-tab" data-sync-tab="history">History</button>
+            <button type="button" class="btn-secondary btn-sm sync-tab" data-sync-tab="shares">Shares</button>
+            <button type="button" class="btn-secondary btn-sm sync-tab" data-sync-tab="devices">Devices</button>
+            <button type="button" class="btn-secondary btn-sm sync-tab" data-sync-tab="advanced">Advanced</button>
+          </div>
+
+          <div id="syncTabOverview" class="sync-tab-panel">
+          <div class="inline-row sync-actions">
+            <button type="button" id="syncPullBtn" class="btn-secondary">Pull Only</button>
+            <button type="button" id="syncPushBtn" class="btn-secondary">Push Only</button>
+            <button type="button" id="syncPreviewBtn" class="btn-secondary">Preview</button>
+          </div>
+
           <h2 class="pref-group-title">What to sync</h2>
           <div class="pref-list">
             <label class="pref-row"><input type="checkbox" id="syncFlagConnections"><span class="pref-row-text"><span class="pref-row-label">Connections</span></span></label>
@@ -545,6 +691,71 @@
               </tbody>
             </table>
           </div>
+          </div>
+
+          <div id="syncTabPreview" class="sync-tab-panel" hidden>
+            <p class="label-hint">Dry-run — review outgoing/incoming changes before applying.</p>
+            <div class="inline-row">
+              <button type="button" id="syncPreviewRefreshBtn" class="btn-secondary">Refresh Preview</button>
+              <button type="button" id="syncApplyPreviewBtn" class="btn-primary">Apply Preview</button>
+            </div>
+            <h3 class="pref-group-title">Outgoing</h3>
+            <div id="syncPreviewOutgoing" class="sync-preview-list"></div>
+            <h3 class="pref-group-title">Incoming</h3>
+            <div id="syncPreviewIncoming" class="sync-preview-list"></div>
+            <h3 class="pref-group-title">Conflicts</h3>
+            <div id="syncPreviewConflicts" class="sync-preview-list"></div>
+          </div>
+
+          <div id="syncTabConflicts" class="sync-tab-panel" hidden>
+            <div id="syncConflictsList"></div>
+          </div>
+
+          <div id="syncTabHistory" class="sync-tab-panel" hidden>
+            <div class="conn-table-wrap">
+              <table class="conn-table sync-items-table">
+                <thead><tr><th>Item</th><th>From device</th><th>When</th></tr></thead>
+                <tbody id="syncHistoryBody"><tr><td colspan="3" class="empty-state">No inbound history yet.</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div id="syncTabShares" class="sync-tab-panel" hidden>
+            <h3 class="pref-group-title">Outgoing shares</h3>
+            <div id="syncOutgoingShares"></div>
+            <h3 class="pref-group-title">Incoming shares</h3>
+            <div id="syncIncomingShares"></div>
+          </div>
+
+          <div id="syncTabDevices" class="sync-tab-panel" hidden>
+            <div id="syncDevicesList"></div>
+          </div>
+
+          <div id="syncTabAdvanced" class="sync-tab-panel" hidden>
+            <div class="inline-row sync-actions">
+              <button type="button" id="syncReplaceLocalBtn" class="btn-secondary btn-danger-text">Replace Local with Cloud</button>
+              <button type="button" id="syncReplaceRemoteBtn" class="btn-secondary btn-danger-text">Replace Cloud with Local</button>
+              <button type="button" id="syncRebuildIndexBtn" class="btn-secondary">Rebuild Index</button>
+              <button type="button" id="syncDiagnosticsBtn" class="btn-secondary">Diagnostics</button>
+            </div>
+            <details class="sync-advanced-accordion">
+              <summary>Use a different backend (Advanced)</summary>
+              <p class="label-hint">Gist, OneDrive, Google Drive, or Shared Postgres — run setup again after signing out.</p>
+              <button type="button" id="syncAdvancedSetupBtn" class="btn-secondary">Advanced Setup…</button>
+            </details>
+          </div>
+        </div>
+
+        <div id="syncWizardBackdrop" class="hub-modal-backdrop" hidden>
+          <aside id="syncWizard" class="hub-modal conn-editor" role="dialog" aria-modal="true">
+            <div class="conn-editor-head"><h2 id="syncWizardTitle">Set Up Cloud Sync</h2></div>
+            <div id="syncWizardBody" class="sync-wizard-body"></div>
+            <div class="inline-row sync-wizard-actions">
+              <button type="button" id="syncWizardBackBtn" class="btn-secondary" hidden>Back</button>
+              <button type="button" id="syncWizardNextBtn" class="btn-primary">Next</button>
+              <button type="button" id="syncWizardCloseBtn" class="btn-secondary">Close</button>
+            </div>
+          </aside>
         </div>
       </section>
 
@@ -553,7 +764,7 @@
         <header class="section-bar">
           <div>
             <h1>License</h1>
-            <p class="section-sub">Subscription status and free-tier usage</p>
+            <p class="section-sub">Subscription status, devices, and usage</p>
           </div>
         </header>
 
@@ -567,7 +778,12 @@
             </div>
             <dl class="status-grid">
               <div id="licenseKeyRow" hidden><dt>License key</dt><dd id="licenseKeyValue" class="mono">—</dd></div>
-              <div id="licenseExpiryRow" hidden><dt>Expires</dt><dd id="licenseExpiryValue">—</dd></div>
+              <div id="licenseStatusRow" hidden><dt>Subscription</dt><dd id="licenseStatusValue">—</dd></div>
+              <div id="licensePeriodRow" hidden><dt>Billing</dt><dd id="licensePeriodValue">—</dd></div>
+              <div id="licenseExpiryRow" hidden><dt>Renews / expires</dt><dd id="licenseExpiryValue">—</dd></div>
+              <div id="licenseEmailRow" hidden><dt>Email</dt><dd id="licenseEmailValue">—</dd></div>
+              <div id="licenseMemberRow" hidden><dt>Member since</dt><dd id="licenseMemberValue">—</dd></div>
+              <div id="licenseRenewalsRow" hidden><dt>Renewals</dt><dd id="licenseRenewalsValue">—</dd></div>
               <div id="licenseGraceRow" hidden><dt>Offline grace</dt><dd id="licenseGraceValue">—</dd></div>
             </dl>
             <div class="inline-row">
@@ -585,6 +801,38 @@
               <button type="button" id="licenseActivateBtn" class="btn-primary">Activate</button>
             </div>
             <div id="licenseActivateMessage" class="status-line" role="status"></div>
+          </div>
+
+          <div id="licenseEmailBox" hidden>
+            <h2 class="pref-group-title">Verify email for device management</h2>
+            <p class="label-hint">Enter the email on your subscription to view devices and license history.</p>
+            <div class="inline-row">
+              <input type="email" id="licenseOwnerEmailInput" class="license-key-input"
+                placeholder="you@example.com" autocomplete="email" spellcheck="false"
+                aria-label="Subscription email">
+              <button type="button" id="licenseEmailVerifyBtn" class="btn-secondary">Verify</button>
+            </div>
+            <div id="licenseEmailMessage" class="status-line" role="status"></div>
+          </div>
+
+          <div id="licenseDevicesBox" hidden>
+            <h2 id="licenseDevicesTitle" class="pref-group-title">Devices</h2>
+            <table class="conn-table license-devices-table">
+              <thead>
+                <tr>
+                  <th scope="col">Machine</th>
+                  <th scope="col">Last seen</th>
+                  <th scope="col"></th>
+                </tr>
+              </thead>
+              <tbody id="licenseDevicesBody"></tbody>
+            </table>
+            <div id="licenseDeviceMessage" class="status-line" role="status"></div>
+          </div>
+
+          <div id="licenseHistoryBox" hidden>
+            <h2 class="pref-group-title">History</h2>
+            <ul id="licenseHistoryList" class="license-history-list" aria-label="License history"></ul>
           </div>
 
           <div id="licenseQuotaBox" hidden>
@@ -617,6 +865,22 @@
       </div>
 
       <form id="connectionForm">
+        <div class="form-group full-width platform-preset-block">
+          <label for="platformPreset">Database platform</label>
+          <span class="label-hint">Pre-fills SSL and port for hosted Postgres providers (PostgreSQL 12+)</span>
+          <select id="platformPreset" data-pg-select-variant="platform"></select>
+          <p id="platformPresetHint" class="platform-preset-hint" hidden></p>
+        </div>
+
+        <div class="form-group full-width conn-url-paste-block">
+          <label for="connUrlPasteInput">Connection URL</label>
+          <span class="label-hint">Paste postgresql://… to autofill host, port, database, and SSL</span>
+          <div class="inline-row">
+            <input type="text" id="connUrlPasteInput" placeholder="postgresql://user:pass@host:5432/db?sslmode=require" autocomplete="off">
+            <button type="button" id="connUrlPasteApplyBtn" class="btn-secondary">Apply URL</button>
+          </div>
+        </div>
+
         <div class="form-grid">
           <div class="form-group">
             <label for="name">Connection Name <span class="required-indicator">*</span></label>
@@ -666,6 +930,7 @@
               <option value="staging">Staging</option>
               <option value="production">Production</option>
             </select>
+            <p class="label-hint">Tags this connection for Sentinel safety signals. <button type="button" id="connSentinelLink" class="btn-link">Configure Sentinel</button></p>
           </div>
           <div class="form-group checkbox-cell">
             <label class="checkbox-label">

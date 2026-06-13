@@ -4,7 +4,20 @@ export const SYNC_CONFIG_KEY = 'postgres-explorer.sync.config';
 export const SYNC_PATH_OVERRIDES_KEY = 'postgres-explorer.sync.pathOverrides';
 export const SYNC_ITEM_INDEX_KEY = 'postgres-explorer.sync.itemIndex';
 export const SYNC_ACTIVITY_LOG_KEY = 'postgres-explorer.sync.activityLog';
+export const SYNC_INBOUND_LOG_KEY = 'postgres-explorer.sync.inboundLog';
+export const SYNC_LAST_CONFLICTS_KEY = 'postgres-explorer.sync.lastConflicts';
+export const SYNC_BOOTSTRAP_PROMPTED_KEY = 'postgres-explorer.sync.bootstrapPrompted';
+export const SYNC_LAST_SYNC_AT_KEY = 'postgres-explorer.sync.lastSyncAt';
+export const SYNC_LAST_ERROR_KEY = 'postgres-explorer.sync.lastError';
+export const SYNC_DEVICE_NAME_KEY = 'postgres-explorer.sync.deviceName';
+export const SYNC_PREVIEW_CACHE_KEY = 'postgres-explorer.sync.previewCache';
 export const SYNC_WORKSPACE_QUERIES_MIGRATED_KEY = 'postgres-explorer.sync.queriesMigratedToGlobal';
+
+/** Soft cloud storage caps (bytes). */
+export const CLOUD_QUOTA_BYTES: Record<'sponsor' | 'singularity', number> = {
+  sponsor: 500 * 1024 * 1024,
+  singularity: 5 * 1024 * 1024 * 1024,
+};
 
 export const DEFAULT_NOTEBOOK_FOLDER = 'PgStudioNotebooks';
 export const DEFAULT_SYNC_API_ENDPOINT = 'https://nexql.astrx.dev/api';

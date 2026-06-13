@@ -38,6 +38,9 @@ const EVENT_SCHEMA: Record<string, { kind: TelemetryEventKind; allowedProps: Set
   sync_setup_completed: { kind: 'usage', allowedProps: new Set(['provider']) },
   sync_run: { kind: 'usage', allowedProps: new Set(['pushed', 'pulled', 'conflicts', 'skipped', 'durationMs', 'provider']) },
   sync_failure: { kind: 'usage', allowedProps: new Set(['failureClass', 'provider']) },
+  sentinel_gate_open: { kind: 'usage', allowedProps: new Set(['environment']) },
+  sentinel_transition: { kind: 'usage', allowedProps: new Set(['fromEnv', 'toEnv']) },
+  sentinel_settings_change: { kind: 'usage', allowedProps: new Set(['key']) },
 };
 
 interface TelemetryEnvelope {

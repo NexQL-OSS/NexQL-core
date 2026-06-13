@@ -33,6 +33,49 @@ body {
   white-space: nowrap;
 }
 
+.sentinel-preview {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: var(--hub-accent-muted);
+  border: 1px solid var(--vscode-widget-border);
+}
+
+.sentinel-swatch {
+  flex: 1;
+  text-align: center;
+  padding: 10px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #fff;
+}
+
+.sentinel-swatch-prod {
+  background: linear-gradient(135deg, #5c1f1f, #8b2f2f);
+}
+
+.sentinel-swatch-staging {
+  background: linear-gradient(135deg, #5c4518, #8b6628);
+}
+
+.sentinel-swatch-dev {
+  background: linear-gradient(135deg, #1a3050, #2a5080);
+}
+
+.th-check,
+.td-check {
+  width: 28px;
+  text-align: center;
+}
+
+.conn-bulk-bar {
+  margin-right: 8px;
+}
+
 .hub {
   display: flex;
   height: 100vh;
@@ -691,6 +734,59 @@ body {
   background: color-mix(in srgb, var(--env-prod) 10%, var(--vscode-input-background));
 }
 
+/* Platform preset dropdown (connection editor) */
+.platform-preset-block {
+  margin-bottom: 14px;
+}
+
+.platform-preset-hint {
+  margin: 8px 0 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--vscode-descriptionForeground);
+}
+
+.pg-select--platform .pg-select-trigger,
+.pg-select--platform .pg-select-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pg-select--platform .pg-select-value {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pg-select-platform-icon {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+  border-radius: 3px;
+}
+
+.conn-platform-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 8px;
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--vscode-descriptionForeground);
+  background: color-mix(in srgb, var(--pg-ui-hover) 55%, transparent);
+  border-radius: var(--pg-radius-pill);
+  vertical-align: middle;
+}
+
+.conn-platform-badge img {
+  width: 14px;
+  height: 14px;
+  object-fit: contain;
+}
+
 .empty-state {
   text-align: center;
   padding: 64px 28px;
@@ -1323,8 +1419,56 @@ body {
   margin-top: 8px;
 }
 
-.quota-table {
+.quota-table,
+.license-devices-table {
   max-width: 640px;
+}
+
+#licenseEmailBox,
+#licenseDevicesBox,
+#licenseHistoryBox {
+  max-width: 640px;
+  margin-top: 16px;
+}
+
+.license-history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--pg-ui-border-strong);
+  border-radius: var(--pg-radius-lg);
+  background: var(--pg-ui-surface-raised);
+  overflow: hidden;
+}
+
+.license-history-list li {
+  display: flex;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--pg-ui-border);
+  font-size: 12px;
+}
+
+.license-history-list li:last-child {
+  border-bottom: none;
+}
+
+.license-history-list .history-date {
+  flex: 0 0 92px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.license-history-list .history-summary {
+  flex: 1;
+}
+
+.license-devices-table .device-current {
+  font-weight: 600;
+}
+
+.license-devices-table .btn-link {
+  font-size: 11px;
+  padding: 2px 6px;
 }
 
 .quota-table .quota-bar {

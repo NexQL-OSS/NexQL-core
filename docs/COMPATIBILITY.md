@@ -4,7 +4,15 @@ NexQL works with **any database that speaks the PostgreSQL wire protocol**. This
 
 > **Where to find this:** Linked from the [NexQL site](https://nexql.astrx.dev/) (workflow platform strip, FAQ, footer), [README](../README.md), and [Marketplace listing](../MARKETPLACE.md).
 
-> Roadmap for first-class platform support (auto-detection, capability-aware menus, connection-string paste): see [`docs/roadmap/4.postgres-compatible-platforms-roadmap.md`](roadmap/4.postgres-compatible-platforms-roadmap.md).
+> Implementation tracker: [`docs/roadmap/4.1.platform-presets-pg12-audit.md`](roadmap/4.1.platform-presets-pg12-audit.md) · Parent roadmap: [`4.postgres-compatible-platforms-roadmap.md`](roadmap/4.postgres-compatible-platforms-roadmap.md)
+
+## Adding a connection (Settings Hub)
+
+1. Open **PgStudio Settings** → **Connections** → **Add Connection**
+2. Choose a **Database platform** preset (PostgreSQL, Neon, Supabase, TimescaleDB, YugabyteDB, RDS, Aurora, Cloud SQL, AlloyDB, Azure) — icons pre-fill SSL mode and port
+3. Paste a `postgresql://` URL in **Connection URL** (or use **Import from .env** / explorer **Add Connection from Clipboard URL**)
+4. **Test Connection** — warns on PostgreSQL &lt; 12 or transaction-mode poolers
+5. Explorer connection nodes show a **platform badge** after connect; status bar shows `PG {major}`
 
 ## Compatibility Matrix
 

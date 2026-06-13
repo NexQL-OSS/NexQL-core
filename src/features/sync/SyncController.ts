@@ -13,7 +13,7 @@ import { AccountService } from './AccountService';
 import { VaultService } from './VaultService';
 import { buildSyncChangeSummary, formatCountsLine } from './syncChangeStats';
 import { attachEncryptedBlobs, mergeSyncState, tombstoneMeta } from './SyncEngine';
-import { getOrCreateDeviceId } from './deviceId';
+import { getOrCreateDeviceId, getDeviceName } from './deviceId';
 import { NotebookSyncService } from './NotebookSyncService';
 import { ConnectionSyncService } from './ConnectionSyncService';
 import { SyncIndex } from './SyncIndex';
@@ -24,7 +24,11 @@ import {
   SYNC_BASE_MANIFEST_KEY,
   SYNC_CONFIG_KEY,
   SYNC_DEBOUNCE_MS,
+  SYNC_LAST_CONFLICTS_KEY,
+  SYNC_LAST_ERROR_KEY,
+  SYNC_LAST_SYNC_AT_KEY,
   SYNC_PERIODIC_MS,
+  SYNC_PREVIEW_CACHE_KEY,
 } from './constants';
 import type {
   SyncConfig,
@@ -32,9 +36,14 @@ import type {
   SyncProvider,
   SyncProviderId,
   SyncRunResult,
+  SyncRunOptions,
+  SyncPreviewResult,
   SyncStatus,
   SyncActivityView,
   SyncedItemView,
+  CloudQuotaView,
+  SyncDeviceView,
+  InboundEntry,
 } from './types';
 import { GistSyncProvider, OversizedItemError } from './providers/GistSyncProvider';
 import { OneDriveSyncProvider } from './providers/OneDriveSyncProvider';
@@ -43,7 +52,12 @@ import { CloudSyncProvider } from './providers/CloudSyncProvider';
 import { PostgresSyncProvider } from './providers/PostgresSyncProvider';
 import { bindSyncActivityLog, recordSyncActivity, SyncActivityLog } from './SyncActivityLog';
 import { readNotebookSyncId } from './notebookSyncId';
+import { buildPreviewFromMerge, mergeBaseManifestPartial } from './syncPreviewUtils';
 import type { SyncStatusBar } from '../../activation/statusBar';
+
+function metaKey(m: SyncItemMeta): string {
+  return `${m.kind}:${m.id}`;
+}
 
 export class SyncController implements vscode.Disposable {
   private static instance: SyncController;
@@ -141,10 +155,23 @@ export class SyncController implements vscode.Disposable {
 
   /** Restore cached vault key after restart, then run an initial pull/push. */
   private async bootstrapVaultAndSync(): Promise<void> {
+    const config = this.getConfig();
     const vault = VaultService.getInstance();
+    const account = AccountService.getInstance();
+
     if (!vault.isUnlocked()) {
       const loaded = await vault.tryLoadCachedKey();
-      if (!loaded) {
+      if (!loaded && config.providerId === 'cloud') {
+        const token = await account.getAccessToken() ?? await account.refreshAccessToken();
+        if (token) {
+          const loadedAfterToken = await vault.tryLoadCachedKey();
+          if (loadedAfterToken) {
+            this.status = config.paused ? 'paused' : 'idle';
+            this.updateStatusBar();
+          }
+        }
+      }
+      if (!vault.isUnlocked()) {
         this.status = 'locked';
         this.updateStatusBar();
         return;
@@ -246,14 +273,15 @@ export class SyncController implements vscode.Disposable {
     void this.runSync();
   }
 
-  async runSync(): Promise<SyncRunResult | undefined> {
+  async runSync(options: SyncRunOptions = {}): Promise<SyncRunResult | SyncPreviewResult | undefined> {
     const config = this.getConfig();
     if (!config.providerId || config.paused) {
       return undefined;
     }
 
-    // Tier downgrade: the configured backend is no longer included in the
-    // current plan. Remote data stays intact; sync stops until upgrade.
+    const direction = options.direction ?? 'both';
+    const dryRun = !!options.dryRun;
+
     if (!isSyncProviderAllowed(config.providerId)) {
       this.status = 'error';
       this.updateStatusBar();
@@ -287,7 +315,6 @@ export class SyncController implements vscode.Disposable {
     const index = new SyncIndex(this.context);
 
     try {
-      // Free tier is single-device: the remote backup is bound to one device id.
       if (!isProFeatureEnabled(ProFeature.CloudSync)) {
         const bound = await this.ensureDeviceBinding(provider, deviceId);
         if (!bound) {
@@ -298,9 +325,10 @@ export class SyncController implements vscode.Disposable {
       }
 
       const baseManifest = this.getBaseManifest();
-      // Excluded items are invisible to the merge in both directions; their
-      // base entries survive untouched so re-including resumes a normal 3-way.
-      const excluded = new Set(config.excludedIds ?? []);
+      const excluded = new Set([
+        ...(config.excludedIds ?? []),
+        ...(options.transientExcludedIds ?? []),
+      ]);
       const localItems = (await this.collectLocalItems(config, deviceId, index))
         .filter((i) => !excluded.has(i.meta.id));
       this.appendLocalTombstones(baseManifest, localItems, config, deviceId, index, excluded);
@@ -323,60 +351,122 @@ export class SyncController implements vscode.Disposable {
 
       let encryptedPush = attachEncryptedBlobs(merge.toPush, localItems, (p) => vault.encrypt(p));
       let newBaseManifest = merge.newBaseManifest;
+      let toApply = merge.toApply;
+
+      if (excluded.size > 0) {
+        encryptedPush = encryptedPush.filter((i) => !excluded.has(i.meta.id));
+        toApply = merge.toApply.filter((i) => !excluded.has(i.meta.id));
+      }
+
+      const previewLists = buildPreviewFromMerge(
+        baseManifest,
+        localItems,
+        encryptedPush,
+        toApply,
+        merge.conflicts,
+        (id, kind) => this.resolveItemName(id, kind, index),
+      );
+
+      if (dryRun) {
+        const summary = buildSyncChangeSummary(baseManifest, localItems, encryptedPush, toApply);
+        const preview: SyncPreviewResult = {
+          pushed: encryptedPush.length,
+          pulled: toApply.length,
+          conflicts: merge.conflicts.length,
+          skipped: merge.skipped.length,
+          durationMs: Date.now() - start,
+          provider: config.providerId,
+          summary,
+          outgoing: previewLists.outgoing,
+          incoming: previewLists.incoming,
+          conflictItems: previewLists.conflictItems,
+        };
+        await this.context.globalState.update(SYNC_PREVIEW_CACHE_KEY, preview);
+        this.status = merge.conflicts.length > 0 ? 'conflict' : this.status;
+        this.updateStatusBar();
+        return preview;
+      }
 
       let skipped = merge.skipped.length;
-      const pushOptions = { manifest: newBaseManifest };
-      try {
-        await provider.push(encryptedPush, pushOptions);
-      } catch (e) {
-        if (e instanceof OversizedItemError) {
-          skipped += e.itemIds.length;
-          for (const id of e.itemIds) {
-            vscode.window.showWarningMessage(`Sync skipped oversized notebook: ${id}`);
+      const doPush = direction === 'both' || direction === 'push';
+      const doPull = direction === 'both' || direction === 'pull';
+
+      if (doPush) {
+        const pushOptions = { manifest: newBaseManifest };
+        try {
+          await provider.push(encryptedPush, pushOptions);
+        } catch (e) {
+          if (e instanceof OversizedItemError) {
+            skipped += e.itemIds.length;
+            for (const id of e.itemIds) {
+              vscode.window.showWarningMessage(`Sync skipped oversized notebook: ${id}`);
+            }
+            const oversized = new Set(e.itemIds);
+            encryptedPush = encryptedPush.filter((i) => !oversized.has(i.meta.id));
+            const baseById = new Map(baseManifest.map((m) => [m.id, m]));
+            newBaseManifest = newBaseManifest
+              .map((m) => (oversized.has(m.id) ? baseById.get(m.id) : m))
+              .filter((m): m is SyncItemMeta => m !== undefined);
+            await provider.push(encryptedPush, { manifest: newBaseManifest });
+          } else {
+            throw e;
           }
-          // Retry without the oversized items, and keep them out of the new
-          // base manifest so their changes are retried on a later run.
-          const oversized = new Set(e.itemIds);
-          encryptedPush = encryptedPush.filter((i) => !oversized.has(i.meta.id));
-          const baseById = new Map(baseManifest.map((m) => [m.id, m]));
-          newBaseManifest = newBaseManifest
-            .map((m) => (oversized.has(m.id) ? baseById.get(m.id) : m))
-            .filter((m): m is SyncItemMeta => m !== undefined);
-          await provider.push(encryptedPush, { manifest: newBaseManifest });
-        } else {
-          throw e;
         }
       }
 
-      await this.applyRemoteItems(merge.toApply, config, index);
-      await this.setBaseManifest(newBaseManifest);
-      index.markSynced(newBaseManifest);
-      this.purgeStaleNotebookIndex(index, newBaseManifest);
-      await index.flush();
+      if (doPull) {
+        await this.applyRemoteItems(toApply, config, index);
+        this.logInboundApplied(toApply, index);
+      }
 
       const syncedKeys = new Set<string>();
-      for (const item of encryptedPush) {
-        syncedKeys.add(`${item.meta.kind}:${item.meta.id}`);
+      if (doPush) {
+        for (const item of encryptedPush) {
+          syncedKeys.add(metaKey(item.meta));
+        }
       }
-      for (const item of merge.toApply) {
-        syncedKeys.add(`${item.meta.kind}:${item.meta.id}`);
+      if (doPull) {
+        for (const item of toApply) {
+          syncedKeys.add(metaKey(item.meta));
+        }
       }
+
+      const updatedBase = mergeBaseManifestPartial(baseManifest, newBaseManifest, syncedKeys);
+      await this.setBaseManifest(updatedBase);
+      index.markSynced(updatedBase);
+      this.purgeStaleNotebookIndex(index, updatedBase);
+      await index.flush();
+
       SyncActivityLog.getInstance(this.context).acknowledge(syncedKeys);
 
-      this.conflictCount = merge.conflicts.length;
-      this.status = merge.conflicts.length > 0 ? 'conflict' : 'synced';
+      await this.context.globalState.update(SYNC_LAST_CONFLICTS_KEY, merge.conflicts);
+      this.conflictCount = merge.conflicts.length + this.countConflictCopies();
+      this.status = this.conflictCount > 0 ? 'conflict' : 'synced';
       this.backoffMs = SYNC_BACKOFF_INITIAL_MS;
+
+      await this.context.globalState.update(SYNC_LAST_SYNC_AT_KEY, Date.now());
+      await this.context.globalState.update(SYNC_LAST_ERROR_KEY, undefined);
+
+      if (merge.conflicts.length > 0) {
+        const choice = await vscode.window.showWarningMessage(
+          `${merge.conflicts.length} sync conflict(s) — review and resolve.`,
+          'Resolve…',
+        );
+        if (choice === 'Resolve…') {
+          void vscode.commands.executeCommand('postgres-explorer.settingsHub', { section: 'sync', tab: 'conflicts' });
+        }
+      }
 
       const summary = buildSyncChangeSummary(
         baseManifest,
         localItems,
-        encryptedPush,
-        merge.toApply,
+        doPush ? encryptedPush : [],
+        doPull ? toApply : [],
       );
 
       const result: SyncRunResult = {
-        pushed: encryptedPush.length,
-        pulled: merge.toApply.length,
+        pushed: doPush ? encryptedPush.length : 0,
+        pulled: doPull ? toApply.length : 0,
         conflicts: merge.conflicts.length,
         skipped,
         durationMs: Date.now() - start,
@@ -385,7 +475,7 @@ export class SyncController implements vscode.Disposable {
       };
 
       this.outputChannel.appendLine(
-        `sync: pushed=${result.pushed} pulled=${result.pulled} conflicts=${result.conflicts} skipped=${result.skipped} durationMs=${result.durationMs} provider=${result.provider} ` +
+        `sync: dir=${direction} pushed=${result.pushed} pulled=${result.pulled} conflicts=${result.conflicts} skipped=${result.skipped} durationMs=${result.durationMs} provider=${result.provider} ` +
         `push(+/~/-)=${formatCountsLine(summary.pushed)} pull(+/~/-)=${formatCountsLine(summary.pulled)}`,
       );
 
@@ -396,6 +486,7 @@ export class SyncController implements vscode.Disposable {
         skipped: result.skipped,
         durationMs: result.durationMs,
         provider: result.provider,
+        direction,
       });
 
       this.updateStatusBar();
@@ -404,6 +495,10 @@ export class SyncController implements vscode.Disposable {
       const isNetwork = e instanceof Error && /timeout|ECONNREFUSED|ENOTFOUND|network/i.test(e.message);
       this.status = isNetwork ? 'offline' : 'error';
       this.backoffMs = Math.min(this.backoffMs * 2, SYNC_BACKOFF_MAX_MS);
+      await this.context.globalState.update(
+        SYNC_LAST_ERROR_KEY,
+        e instanceof Error ? e.message : String(e),
+      );
       this.updateStatusBar();
 
       TelemetryService.getInstance().trackEvent('sync_failure', {
@@ -415,6 +510,244 @@ export class SyncController implements vscode.Disposable {
       setTimeout(() => void this.runSync(), this.backoffMs);
       return undefined;
     }
+  }
+
+  async previewSync(transientExcludedIds?: string[]): Promise<SyncPreviewResult | undefined> {
+    return this.runSync({ dryRun: true, transientExcludedIds }) as Promise<SyncPreviewResult | undefined>;
+  }
+
+  async pullOnly(): Promise<SyncRunResult | undefined> {
+    return this.runSync({ direction: 'pull' });
+  }
+
+  async pushOnly(): Promise<SyncRunResult | undefined> {
+    return this.runSync({ direction: 'push' });
+  }
+
+  getLastSyncAt(): number | undefined {
+    return this.context.globalState.get<number>(SYNC_LAST_SYNC_AT_KEY);
+  }
+
+  getLastError(): string | undefined {
+    return this.context.globalState.get<string>(SYNC_LAST_ERROR_KEY);
+  }
+
+  listInboundHistory(): InboundEntry[] {
+    return SyncActivityLog.getInstance(this.context).listInbound();
+  }
+
+  async getCloudQuota(): Promise<CloudQuotaView | undefined> {
+    const config = this.getConfig();
+    if (config.providerId !== 'cloud') {
+      return undefined;
+    }
+    const provider = this.createProvider('cloud') as CloudSyncProvider;
+    return provider.getQuota();
+  }
+
+  async listCloudDevices(): Promise<SyncDeviceView[]> {
+    const config = this.getConfig();
+    if (config.providerId !== 'cloud') {
+      return [];
+    }
+    const provider = this.createProvider('cloud') as CloudSyncProvider;
+    return provider.listDevices();
+  }
+
+  async revokeCloudDevice(deviceId: string): Promise<boolean> {
+    const config = this.getConfig();
+    if (config.providerId !== 'cloud') {
+      return false;
+    }
+    const provider = this.createProvider('cloud') as CloudSyncProvider;
+    return provider.revokeDevice(deviceId);
+  }
+
+  async replaceLocalWithCloud(): Promise<boolean> {
+    const config = this.getConfig();
+    if (!config.providerId) {
+      return false;
+    }
+    const vault = VaultService.getInstance();
+    if (!vault.isUnlocked() && !(await vault.tryLoadCachedKey())) {
+      return false;
+    }
+    const provider = this.createProvider(config.providerId);
+    const index = new SyncIndex(this.context);
+    const remoteSnapshot = await provider.pull();
+    const toApply: Array<{ meta: SyncItemMeta; plaintext: Buffer }> = [];
+    for (const meta of remoteSnapshot.manifest.filter((m) => !m.deleted)) {
+      const blob = await remoteSnapshot.getBlob(meta.id);
+      if (!blob) {
+        continue;
+      }
+      toApply.push({ meta, plaintext: vault.decrypt(blob) });
+    }
+    await this.applyRemoteItems(toApply, config, index);
+    await this.setBaseManifest(remoteSnapshot.manifest);
+    index.markSynced(remoteSnapshot.manifest);
+    await index.flush();
+    await this.context.globalState.update(SYNC_LAST_SYNC_AT_KEY, Date.now());
+    this.status = 'synced';
+    this.updateStatusBar();
+    return true;
+  }
+
+  async replaceCloudWithLocal(): Promise<boolean> {
+    const config = this.getConfig();
+    if (!config.providerId) {
+      return false;
+    }
+    const vault = VaultService.getInstance();
+    if (!vault.isUnlocked() && !(await vault.tryLoadCachedKey())) {
+      return false;
+    }
+    const deviceId = getOrCreateDeviceId(this.context);
+    const index = new SyncIndex(this.context);
+    const localItems = await this.collectLocalItems(config, deviceId, index);
+    const pushItems = localItems.map((i) => ({
+      meta: i.meta,
+      blob: vault.encrypt(i.plaintext),
+    }));
+    const manifest = localItems.map((i) => i.meta);
+    const provider = this.createProvider(config.providerId);
+    await provider.push(pushItems, { manifest });
+    await this.setBaseManifest(manifest);
+    index.markSynced(manifest);
+    await index.flush();
+    await this.context.globalState.update(SYNC_LAST_SYNC_AT_KEY, Date.now());
+    this.status = 'synced';
+    this.updateStatusBar();
+    return true;
+  }
+
+  async rebuildSyncIndex(): Promise<number> {
+    const config = this.getConfig();
+    const deviceId = getOrCreateDeviceId(this.context);
+    const index = new SyncIndex(this.context);
+    for (const id of Object.keys(index.getAll())) {
+      index.remove(id);
+    }
+    const items = await this.collectLocalItems(config, deviceId, index);
+    for (const item of items) {
+      index.update(item.meta.id, {
+        kind: item.meta.kind,
+        name: this.resolveItemName(item.meta.id, item.meta.kind, index),
+        modifiedAt: item.meta.updatedAt,
+        syncedRevision: item.meta.revision,
+        lastObservedHash: item.meta.contentHash,
+      });
+    }
+    await index.flush();
+    return items.length;
+  }
+
+  async runDiagnostics(): Promise<void> {
+    const config = this.getConfig();
+    const lines: string[] = ['PgStudio Sync Diagnostics', '========================'];
+    lines.push(`Status: ${this.status}`);
+    lines.push(`Provider: ${config.providerId ?? 'none'}`);
+    lines.push(`Vault unlocked: ${VaultService.getInstance().isUnlocked()}`);
+    lines.push(`Device id: ${getOrCreateDeviceId(this.context)}`);
+    lines.push(`Device name: ${getDeviceName(this.context) ?? '(unset)'}`);
+    lines.push(`Base manifest items: ${this.getBaseManifest().length}`);
+    lines.push(`Index items: ${Object.keys(new SyncIndex(this.context).getAll()).length}`);
+    lines.push(`Conflicts (last run): ${this.context.globalState.get(SYNC_LAST_CONFLICTS_KEY, []).length}`);
+    lines.push(`Conflict copies: ${this.countConflictCopies()}`);
+    lines.push(`Pending outbound: ${this.listPendingActivities().length}`);
+    lines.push(`Inbound history: ${this.listInboundHistory().length}`);
+    if (config.providerId) {
+      try {
+        const test = await this.createProvider(config.providerId).testConnection();
+        lines.push(`Provider reachable: ${test.ok}${test.error ? ` (${test.error})` : ''}`);
+      } catch (e) {
+        lines.push(`Provider reachable: false (${e instanceof Error ? e.message : String(e)})`);
+      }
+    }
+    if (config.providerId === 'cloud') {
+      const quota = await this.getCloudQuota();
+      if (quota) {
+        lines.push(`Cloud quota: ${quota.bytesUsed}/${quota.bytesLimit} bytes, ${quota.itemCount} items`);
+      }
+    }
+    const lastErr = this.getLastError();
+    if (lastErr) {
+      lines.push(`Last error: ${lastErr}`);
+    }
+    this.outputChannel.appendLine(lines.join('\n'));
+    this.outputChannel.show(true);
+  }
+
+  async getItemPlaintext(id: string): Promise<string | undefined> {
+    const config = this.getConfig();
+    const deviceId = getOrCreateDeviceId(this.context);
+    const index = new SyncIndex(this.context);
+    const entry = index.get(id);
+    if (!entry) {
+      return undefined;
+    }
+    try {
+      if (entry.kind === 'query') {
+        const q = SavedQueriesService.getInstance().getQueries().find((x) => x.id === id);
+        return q ? JSON.stringify(q, null, 2) : undefined;
+      }
+      if (entry.kind === 'notebook') {
+        const items = await new NotebookSyncService(this.context, index).collectLocalNotebooks(deviceId);
+        const match = items.find((i) => i.meta.id === id);
+        return match ? match.plaintext.toString() : undefined;
+      }
+    } catch {
+      return undefined;
+    }
+    return undefined;
+  }
+
+  schedulePushAfterConflict(): void {
+    this.schedulePush();
+  }
+
+  private resolveItemName(id: string, kind: SyncItemMeta['kind'], index: SyncIndex): string | undefined {
+    const entry = index.get(id);
+    if (entry?.name) {
+      return entry.name;
+    }
+    if (kind === 'query') {
+      try {
+        const q = SavedQueriesService.getInstance().getQueries().find((x) => x.id === id);
+        return q?.title;
+      } catch {
+        return undefined;
+      }
+    }
+    if (kind === 'connection') {
+      const connections = vscode.workspace.getConfiguration().get<any[]>('postgresExplorer.connections') || [];
+      const conn = connections.find((c) => String(c.id) === id);
+      return conn?.name ?? `${conn?.host}:${conn?.port}`;
+    }
+    return undefined;
+  }
+
+  private logInboundApplied(
+    items: Array<{ meta: SyncItemMeta; plaintext: Buffer }>,
+    index: SyncIndex,
+  ): void {
+    const log = SyncActivityLog.getInstance(this.context);
+    for (const { meta } of items) {
+      if (meta.deleted) {
+        continue;
+      }
+      log.recordInbound({
+        itemId: meta.id,
+        kind: meta.kind,
+        name: this.resolveItemName(meta.id, meta.kind, index),
+        deviceId: meta.deviceId,
+        deviceName: undefined,
+      });
+    }
+  }
+
+  private countConflictCopies(): number {
+    return this.listSyncedItems().filter((i) => /-conflict-\d+$/.test(i.id)).length;
   }
 
   /**
@@ -586,7 +919,10 @@ export class SyncController implements vscode.Disposable {
 
   private updateStatusBar(): void {
     const configured = !!this.getConfig().providerId;
-    this.statusBar?.updateSyncStatus(this.status, this.conflictCount, configured);
+    this.statusBar?.updateSyncStatus(this.status, this.conflictCount, configured, {
+      lastSyncAt: this.getLastSyncAt(),
+      pendingCount: this.listPendingActivities().length,
+    });
   }
 
   /**

@@ -22,8 +22,14 @@ module.exports = async (req, res) => {
   try {
     const ent = await store.getEntitlementByEmail(email);
     if (ent && ent.licenseKey) {
-      // Fire-and-await; email.js is a no-op (logs only) when RESEND is unset.
       await sendLicenseEmail(ent.email || email, ent.licenseKey, ent.tier);
+      if (store.usingNeon) {
+        try {
+          await store.licenseDb.appendEvent(ent.licenseKey, 'recovered', { email }, 'recover');
+        } catch (logErr) {
+          console.error('recover: failed to log event', logErr);
+        }
+      }
     }
   } catch (err) {
     console.error('recover: store error', err);

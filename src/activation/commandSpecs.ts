@@ -9,6 +9,7 @@ import { showColumnProperties, copyColumnName, copyColumnNameQuoted, generateSel
 import { showConstraintProperties, copyConstraintName, generateDropConstraintScript, generateAlterConstraintScript, validateConstraint, generateAddConstraintScript, viewConstraintDependencies, cmdConstraintOperations, cmdAddConstraint } from '../commands/constraints';
 import { cmdConnectDatabase, cmdDisconnectConnection, cmdDisconnectDatabase, cmdReconnectConnection, cmdDuplicateConnection, showConnectionSafety, revealInExplorer } from '../commands/connection';
 import { cmdImportConnectionFromDatabaseUrl } from '../commands/importConnectionFromDatabaseUrl';
+import { cmdSmartPasteConnection } from '../commands/smartPasteConnection';
 import { showIndexProperties, copyIndexName, generateDropIndexScript, generateReindexScript, generateScriptCreate, analyzeIndexUsage, generateAlterIndexScript, addIndexComment, cmdIndexOperations, cmdAddIndex } from '../commands/indexes';
 import { cmdAddObjectInDatabase, cmdBackupDatabase, cmdCreateDatabase, cmdDatabaseDashboard, cmdDatabaseDashboardFromPalette, cmdDatabaseOperations, cmdDeleteDatabase, cmdDisconnectDatabase as cmdDisconnectDatabaseLegacy, cmdGenerateCreateScript, cmdMaintenanceDatabase, cmdOpenBackupWorkspaceFromPalette, cmdPsqlTool, cmdQueryTool, cmdRestoreDatabase, cmdScriptAlterDatabase, cmdShowConfiguration } from '../commands/database';
 import { cmdDropExtension, cmdEnableExtension, cmdExtensionOperations, cmdRefreshExtension } from '../commands/extensions';
@@ -30,6 +31,7 @@ import { cmdCreateView, cmdDropView, cmdEditView, cmdRefreshView, cmdScriptCreat
 
 import { SettingsHubPanel, SettingsHubShowOptions } from '../features/settings/SettingsHubPanel';
 import { ConnectionUtils } from '../utils/connectionUtils';
+import { sentinelThemeSwapService } from '../extension';
 
 // Phase 7: Advanced Power User & AI features
 import {
@@ -105,6 +107,15 @@ import {
   cmdSyncSignOut,
   cmdSyncStatus,
   cmdSyncStatusMenu,
+  cmdSyncPull,
+  cmdSyncPush,
+  cmdSyncPreview,
+  cmdSyncConflicts,
+  cmdSyncReplaceLocal,
+  cmdSyncReplaceRemote,
+  cmdSyncRebuildIndex,
+  cmdSyncDiagnostics,
+  cmdSyncExcludeItem,
 } from '../features/sync/syncCommands';
 
 export function getCommandSpecs(
@@ -135,7 +146,7 @@ export function getCommandSpecs(
     },
     {
       command: 'postgres-explorer.sync.showSecretKey',
-      callback: () => cmdSyncShowSecretKey(),
+      callback: () => cmdSyncShowSecretKey(context),
     },
     {
       command: 'postgres-explorer.sync.pause',
@@ -147,11 +158,51 @@ export function getCommandSpecs(
     },
     {
       command: 'postgres-explorer.sync.share',
-      callback: () => cmdSyncShare(context),
+      callback: (treeItem?: { id?: string; query?: { id?: string }; uri?: vscode.Uri }) =>
+        cmdSyncShare(context, treeItem),
     },
     {
       command: 'postgres-explorer.sync.importShares',
       callback: () => cmdSyncImportShares(context),
+    },
+    {
+      command: 'postgres-explorer.sync.pull',
+      callback: () => cmdSyncPull(),
+    },
+    {
+      command: 'postgres-explorer.sync.push',
+      callback: () => cmdSyncPush(),
+    },
+    {
+      command: 'postgres-explorer.sync.preview',
+      callback: () => cmdSyncPreview(),
+    },
+    {
+      command: 'postgres-explorer.sync.conflicts',
+      callback: () => cmdSyncConflicts(),
+    },
+    {
+      command: 'postgres-explorer.sync.replaceLocal',
+      callback: () => cmdSyncReplaceLocal(),
+    },
+    {
+      command: 'postgres-explorer.sync.replaceRemote',
+      callback: () => cmdSyncReplaceRemote(),
+    },
+    {
+      command: 'postgres-explorer.sync.rebuildIndex',
+      callback: () => cmdSyncRebuildIndex(),
+    },
+    {
+      command: 'postgres-explorer.sync.diagnostics',
+      callback: () => cmdSyncDiagnostics(),
+    },
+    {
+      command: 'postgres-explorer.sync.excludeItem',
+      callback: async (treeItem?: { id?: string; query?: { id?: string }; uri?: vscode.Uri }) => {
+        const { resolveSyncItemIdFromTreeItem } = await import('../features/sync/syncCommands');
+        await cmdSyncExcludeItem(await resolveSyncItemIdFromTreeItem(treeItem));
+      },
     },
     {
       command: 'postgres-explorer.license.activate',
@@ -192,6 +243,10 @@ export function getCommandSpecs(
     {
       command: 'postgres-explorer.importConnectionFromDatabaseUrl',
       callback: () => cmdImportConnectionFromDatabaseUrl(context, databaseTreeProvider)
+    },
+    {
+      command: 'postgres-explorer.smartPasteConnection',
+      callback: () => cmdSmartPasteConnection(context, databaseTreeProvider),
     },
     {
       command: 'postgres-explorer.editConnection',
@@ -503,7 +558,7 @@ export function getCommandSpecs(
     {
       command: 'postgres-explorer.settingsHub',
       callback: (options?: SettingsHubShowOptions) => {
-        SettingsHubPanel.show(context.extensionUri, context, options ?? {});
+        SettingsHubPanel.show(context.extensionUri, context, options ?? {}, sentinelThemeSwapService);
       }
     },
     {

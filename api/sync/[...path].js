@@ -5,6 +5,8 @@ const items = require('../_lib/handlers/sync-items');
 const shares = require('../_lib/handlers/sync-shares');
 const sharesById = require('../_lib/handlers/sync-shares-id');
 const keys = require('../_lib/handlers/sync-keys');
+const quota = require('../_lib/handlers/sync-quota');
+const devices = require('../_lib/handlers/sync-devices');
 
 function pathSegments(req) {
   const raw = req.query.path;
@@ -33,6 +35,16 @@ module.exports = async (req, res) => {
   }
   if (head === 'keys' && segments.length === 1) {
     return keys(req, res);
+  }
+  if (head === 'quota' && segments.length === 1) {
+    return quota(req, res);
+  }
+  if (head === 'devices' && segments.length === 1) {
+    return devices(req, res);
+  }
+  if (head === 'devices' && segments.length === 2) {
+    req.query.deviceId = id;
+    return devices(req, res);
   }
 
   return res.status(404).json({ error: 'Not Found' });

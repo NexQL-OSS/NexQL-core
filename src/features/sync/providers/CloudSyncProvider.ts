@@ -1,10 +1,19 @@
 import * as vscode from 'vscode';
-import type { CloudSyncManifestEntry, SyncProvider, SyncPushItem, SyncSnapshot, SyncItemMeta } from '../types';
+import type {
+  CloudQuotaView,
+  CloudSyncManifestEntry,
+  SyncDeviceView,
+  SyncProvider,
+  SyncPushItem,
+  SyncSnapshot,
+  SyncItemMeta,
+} from '../types';
 import { AccountService } from '../AccountService';
+import { getDeviceName, getOrCreateDeviceId } from '../deviceId';
 import { httpRequest } from './httpUtils';
 import { DEFAULT_SYNC_API_ENDPOINT } from '../constants';
 
-/** Teams-gated NexQL cloud sync backend (nexql.astrx.dev). */
+/** NexQL Cloud sync backend (nexql.astrx.dev) — Sponsor+ tier. */
 export class CloudSyncProvider implements SyncProvider {
   readonly id = 'cloud' as const;
 
@@ -25,7 +34,14 @@ export class CloudSyncProvider implements SyncProvider {
     if (!token) {
       throw new Error('Not signed in to NexQL account');
     }
-    return { Authorization: `Bearer ${token}` };
+    const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
+    const deviceId = getOrCreateDeviceId(this.context);
+    headers['X-Device-Id'] = deviceId;
+    const deviceName = getDeviceName(this.context);
+    if (deviceName) {
+      headers['X-Device-Name'] = deviceName;
+    }
+    return headers;
   }
 
   async testConnection(): Promise<{ ok: boolean; account?: string; error?: string }> {
@@ -109,5 +125,58 @@ export class CloudSyncProvider implements SyncProvider {
       headers,
       body: JSON.stringify(remoteManifest),
     });
+  }
+
+  async getQuota(): Promise<CloudQuotaView | undefined> {
+    try {
+      const headers = await this.authHeaders();
+      const res = await httpRequest(`${this.baseUrl()}/sync/quota`, { headers });
+      if (res.statusCode >= 400) {
+        return undefined;
+      }
+      const data = JSON.parse(res.body.toString()) as {
+        tier: string;
+        bytes_used: number;
+        bytes_limit: number;
+        item_count: number;
+      };
+      return {
+        tier: data.tier,
+        bytesUsed: data.bytes_used,
+        bytesLimit: data.bytes_limit,
+        itemCount: data.item_count,
+      };
+    } catch {
+      return undefined;
+    }
+  }
+
+  async listDevices(): Promise<SyncDeviceView[]> {
+    const headers = await this.authHeaders();
+    const res = await httpRequest(`${this.baseUrl()}/sync/devices`, { headers });
+    if (res.statusCode >= 400) {
+      return [];
+    }
+    const rows = JSON.parse(res.body.toString()) as Array<{
+      device_id: string;
+      device_name?: string;
+      last_seen: string;
+    }>;
+    const thisId = getOrCreateDeviceId(this.context);
+    return rows.map((r) => ({
+      deviceId: r.device_id,
+      deviceName: r.device_name,
+      lastSeen: r.last_seen,
+      isThisDevice: r.device_id === thisId,
+    }));
+  }
+
+  async revokeDevice(deviceId: string): Promise<boolean> {
+    const headers = await this.authHeaders();
+    const res = await httpRequest(
+      `${this.baseUrl()}/sync/devices/${encodeURIComponent(deviceId)}`,
+      { method: 'DELETE', headers },
+    );
+    return res.statusCode === 204;
   }
 }

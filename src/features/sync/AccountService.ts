@@ -154,8 +154,8 @@ export class AccountService {
       (msg) => vscode.window.setStatusBarMessage(msg, 3000),
     );
 
-    await this.completeSignIn(tokens);
-    return { email: await this.getAccountEmail() };
+    await this.completeSignIn(tokens, tokens.email ?? undefined);
+    return { email: tokens.email ?? (await this.getAccountEmail()) };
   }
 
   private postJson<T>(path: string, body: Record<string, unknown>): Promise<T> {

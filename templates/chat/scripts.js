@@ -2029,8 +2029,8 @@ window.addEventListener('message', event => {
 
     // Phase B: Context bar update
     case 'contextUpdate':
-      updateContextBar(message.connectionName || null, message.database || null);
       updateEnvironmentBanner(message.environment || null, message.readOnlyMode || false);
+      updateContextBar(message.connectionName || null, message.database || null);
       break;
 
     // Phase B: Error card display
@@ -2398,6 +2398,30 @@ function renderMessages(messages, animate = false) {
  * @param {string} database - Name of the active database
  * @param {string} tableName - Name of the referenced table (optional)
  */
+const ENV_CHIP_LABELS = {
+  production: 'PROD',
+  staging: 'STAGING',
+  development: 'DEV',
+};
+
+function updateEnvironmentBanner(environment, readOnlyMode) {
+  const chip = document.getElementById('contextEnvChip');
+  if (!chip) { return; }
+
+  chip.className = 'context-env-chip';
+  if (!environment) {
+    chip.hidden = true;
+    chip.textContent = '';
+    return;
+  }
+
+  const label = ENV_CHIP_LABELS[environment] || String(environment).toUpperCase();
+  chip.textContent = label + (readOnlyMode ? ' RO' : '');
+  chip.classList.add('env-' + environment);
+  chip.hidden = false;
+  chip.title = (readOnlyMode ? 'Read-only · ' : '') + label + ' environment — click for safety details';
+}
+
 function updateContextBar(connectionName, database, tableName) {
   currentContext.connectionName = connectionName;
   currentContext.database = database;
@@ -2405,20 +2429,21 @@ function updateContextBar(connectionName, database, tableName) {
   const contextBar = document.getElementById('contextBar');
   if (!contextBar) return;
   
-  if (connectionName || database || tableName) {
+  const envChip = document.getElementById('contextEnvChip');
+  const hasEnv = envChip && !envChip.hidden;
+
+  if (connectionName || database || tableName || hasEnv) {
     contextBar.style.display = 'flex';
     const connElem = document.getElementById('contextConnection');
     const tableElem = document.getElementById('contextTable');
     
     if (connElem) {
-      // Format: "Connection Name • database_name"
       const connInfo = connectionName ? connectionName : 'Connected';
       const dbInfo = database ? database : '';
       connElem.textContent = [connInfo, dbInfo].filter(Boolean).join(' • ');
     }
     
     if (tableElem) {
-      // Format: "@table_name" or "@schema.table_name"
       if (tableName) {
         tableElem.textContent = '@' + tableName;
         tableElem.parentElement.style.display = 'flex';
@@ -2427,9 +2452,16 @@ function updateContextBar(connectionName, database, tableName) {
       }
     }
   } else {
-    contextBar.style.display = 'none';
+    const envChip = document.getElementById('contextEnvChip');
+    if (!envChip || envChip.hidden) {
+      contextBar.style.display = 'none';
+    }
   }
 }
+
+document.getElementById('contextEnvChip')?.addEventListener('click', () => {
+  vscode.postMessage({ type: 'openConnectionSafety' });
+});
 
 /**
  * Show suggestion bubbles from AI next-step recommendations

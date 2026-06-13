@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import type { CloudAuthContext } from "../../core/connection/cloudAuth/types";
+import type { ConnectionPlatformPreset } from "../../lib/platform/connectionPresets";
 
 export interface ConnectionInfo {
   id: string;
@@ -37,6 +38,10 @@ export interface ConnectionInfo {
   };
   /** Planned IAM flows; connections still use password or pgpass today. */
   cloudAuth?: CloudAuthContext;
+  /** User-selected platform preset (connection form); used for hints and future detection. */
+  platformPreset?: ConnectionPlatformPreset;
+  /** Hide Supabase-managed schemas in the explorer. */
+  hidePlatformSchemas?: boolean;
 }
 
 const CONNECTIONS_CONFIG_KEY = "postgresExplorer.connections";

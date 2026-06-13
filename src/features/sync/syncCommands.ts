@@ -1,208 +1,57 @@
 import * as vscode from 'vscode';
 import { SyncController } from './SyncController';
 import { VaultService } from './VaultService';
-import { AccountService } from './AccountService';
 import {
   allowedSyncProviders,
   ProFeature,
   requirePro,
-  syncProviderMinTier,
-  TIER_DISPLAY,
 } from '../../services/featureGates';
-import type { SyncProviderId } from './types';
 import { GistSyncProvider } from './providers/GistSyncProvider';
-import { OneDriveSyncProvider } from './providers/OneDriveSyncProvider';
-import { GoogleDriveSyncProvider } from './providers/GoogleDriveSyncProvider';
-import { CloudSyncProvider } from './providers/CloudSyncProvider';
-import { PostgresSyncProvider } from './providers/PostgresSyncProvider';
+import { readNotebookSyncId } from './notebookSyncId';
 
-export async function cmdSyncSetup(context: vscode.ExtensionContext): Promise<void> {
+/** Tree context-menu item shape (saved query or notebook). */
+type SyncContextTreeItem = {
+  id?: string;
+  query?: { id?: string };
+  uri?: vscode.Uri;
+};
+
+export async function resolveSyncItemIdFromTreeItem(
+  item?: SyncContextTreeItem,
+): Promise<string | undefined> {
+  if (!item) {
+    return undefined;
+  }
+  if (item.query?.id) {
+    return item.query.id;
+  }
+  if (item.uri) {
+    try {
+      const bytes = await vscode.workspace.fs.readFile(item.uri);
+      const parsed = JSON.parse(Buffer.from(bytes).toString('utf8')) as Record<string, unknown>;
+      return readNotebookSyncId(parsed);
+    } catch {
+      return undefined;
+    }
+  }
+  return item.id;
+}
+
+export async function cmdSyncSetup(_context: vscode.ExtensionContext): Promise<void> {
   if (!(await requirePro(ProFeature.CloudBackup))) {
     return;
   }
-
-  const allProviders: Array<{ label: string; id: SyncProviderId; description?: string }> = [
-    { label: 'Shared Postgres', id: 'postgres', description: 'pgstudio_sync schema in your own database' },
-    { label: 'GitHub Gist', id: 'gist', description: 'Private gist — works in most editors' },
-    { label: 'OneDrive', id: 'onedrive', description: 'Microsoft appFolder' },
-    { label: 'Google Drive', id: 'gdrive', description: 'drive.appdata — loopback OAuth' },
-    { label: 'NexQL Cloud', id: 'cloud', description: 'Hosted sync on nexql.astrx.dev' },
-  ];
-  const allowed = allowedSyncProviders();
-  const providers = allProviders.map((p) =>
-    allowed.includes(p.id)
-      ? p
-      : {
-          ...p,
-          label: `$(lock) ${p.label}`,
-          description: `Requires NexQL ${TIER_DISPLAY[syncProviderMinTier(p.id)]} — ${p.description}`,
-        });
-
-  const picked = await vscode.window.showQuickPick(providers, {
-    title: 'PgStudio: Set Up Sync',
-    placeHolder: 'Choose storage backend',
+  await vscode.commands.executeCommand('postgres-explorer.settingsHub', {
+    section: 'sync',
+    wizard: allowedSyncProviders().includes('cloud') ? 'cloud' : 'advanced',
   });
-  if (!picked) {
-    return;
-  }
-  if (!allowed.includes(picked.id)) {
-    const tier = syncProviderMinTier(picked.id);
-    const choice = await vscode.window.showInformationMessage(
-      `The ${picked.id === 'cloud' ? 'NexQL Cloud' : picked.id} backend requires NexQL ${TIER_DISPLAY[tier]}.`,
-      'View Plans',
-    );
-    if (choice === 'View Plans') {
-      await vscode.env.openExternal(vscode.Uri.parse('https://nexql.astrx.dev/#pricing'));
-    }
-    return;
-  }
-
-  const controller = SyncController.getInstance();
-  const provider = createProviderForSetup(context, picked.id);
-
-  await vscode.window.withProgress(
-    { location: vscode.ProgressLocation.Notification, title: 'Connecting…' },
-    async () => {
-      if (picked.id === 'cloud') {
-        await AccountService.getInstance().signInWithDeviceFlow();
-      } else if (picked.id === 'gist') {
-        await (provider as GistSyncProvider).ensureAuth();
-      } else if (picked.id === 'onedrive') {
-        await (provider as OneDriveSyncProvider).ensureAuth();
-      } else if (picked.id === 'gdrive') {
-        await (provider as GoogleDriveSyncProvider).ensureAuth();
-      }
-
-      const test = await provider.testConnection();
-      if (!test.ok) {
-        throw new Error(test.error ?? 'Connection failed');
-      }
-    },
-  );
-
-  const email = await vscode.window.showInputBox({
-    title: 'Account email (for vault encryption)',
-    prompt: 'Used to derive your encryption key — not sent to storage backends',
-    ignoreFocusOut: true,
-  });
-  if (!email) {
-    return;
-  }
-
-  const vaultAction = await vscode.window.showQuickPick(
-    [
-      { label: 'Create new vault', id: 'create' },
-      { label: 'Unlock existing vault', id: 'unlock' },
-    ],
-    { title: 'Vault setup' },
-  );
-  if (!vaultAction) {
-    return;
-  }
-
-  const vault = VaultService.getInstance(context);
-
-  if (vaultAction.id === 'create') {
-    const { secretKey } = await vault.createVault(email);
-    const copy = await vscode.window.showWarningMessage(
-      'Save your secret key now — we cannot recover it if lost.',
-      'Copy Secret Key',
-      'Save Recovery Kit…',
-    );
-    if (copy === 'Copy Secret Key') {
-      await vscode.env.clipboard.writeText(secretKey);
-    } else if (copy === 'Save Recovery Kit…') {
-      const uri = await vscode.window.showSaveDialog({
-        defaultUri: vscode.Uri.file('pgstudio-recovery-kit.txt'),
-        filters: { 'Text': ['txt'] },
-      });
-      if (uri) {
-        await vscode.workspace.fs.writeFile(
-          uri,
-          Buffer.from(`PgStudio Sync Recovery Kit\nEmail: ${email}\nSecret Key: ${secretKey}\n\nKeep this file safe. Without the secret key, encrypted data cannot be recovered.`),
-        );
-      }
-    }
-  } else {
-    const secretKey = await vscode.window.showInputBox({
-      title: 'Enter secret key',
-      password: true,
-      ignoreFocusOut: true,
-    });
-    if (!secretKey) {
-      return;
-    }
-    try {
-      await vault.unlock(secretKey, email);
-    } catch (e) {
-      await vscode.window.showErrorMessage(
-        e instanceof Error ? e.message : 'Failed to unlock vault',
-      );
-      return;
-    }
-  }
-
-  const syncWhat = await vscode.window.showQuickPick(
-    [
-      { label: 'Connections', picked: true, id: 'connections' },
-      { label: 'Saved queries', picked: true, id: 'queries' },
-      { label: 'Notebooks', picked: true, id: 'notebooks' },
-      { label: 'Passwords (opt-in)', picked: false, id: 'passwords' },
-    ],
-    { title: 'What to sync?', canPickMany: true },
-  );
-  if (!syncWhat?.length) {
-    return;
-  }
-
-  if (picked.id === 'gist') {
-    const linked = await (provider as GistSyncProvider).linkToRemoteStorage({
-      mode: vaultAction.id === 'unlock' ? 'unlock' : 'create',
-      vaultGeneration: vault.getGeneration(),
-    });
-    if (!linked) {
-      return;
-    }
-  }
-
-  const ids = new Set(syncWhat.map((s) => s.id));
-  const gistId = picked.id === 'gist'
-    ? await context.secrets.get('postgresExplorer.sync.gistId')
-    : undefined;
-  await controller.saveConfig({
-    providerId: picked.id,
-    gistId,
-    syncConnections: ids.has('connections'),
-    syncQueries: ids.has('queries'),
-    syncNotebooks: ids.has('notebooks'),
-    syncPasswords: ids.has('passwords'),
-    paused: false,
-    accountEmail: email,
-    vaultGeneration: vault.getGeneration(),
-  });
-
-  await vscode.window.withProgress(
-    { location: vscode.ProgressLocation.Notification, title: 'Running first sync…' },
-    () => controller.runSync() ?? Promise.resolve(),
-  );
-
-  // Register this vault's public key so team members can share to this account
-  // (NexQL Cloud backend + Teams tier only).
-  if (picked.id === 'cloud') {
-    try {
-      const { SharingService } = await import('./SharingService');
-      await new SharingService(context).registerPublicKey();
-    } catch {
-      /* sharing key registration is best-effort */
-    }
-  }
-
-  const { TelemetryService } = await import('../../services/TelemetryService');
-  TelemetryService.getInstance().trackEvent('sync_setup_completed', { provider: picked.id });
 }
 
 /** Share selected notebooks / saved queries with another team member. */
-export async function cmdSyncShare(context: vscode.ExtensionContext): Promise<void> {
+export async function cmdSyncShare(
+  context: vscode.ExtensionContext,
+  treeItem?: SyncContextTreeItem,
+): Promise<void> {
   if (!(await requirePro(ProFeature.SyncSharing))) {
     return;
   }
@@ -220,16 +69,29 @@ export async function cmdSyncShare(context: vscode.ExtensionContext): Promise<vo
     return;
   }
 
-  const picks = await vscode.window.showQuickPick(
-    shareable.map((i) => ({
-      label: i.name || i.id,
-      description: i.kind === 'notebook' ? 'Notebook' : 'Saved query',
-      id: i.id,
-    })),
-    { title: 'Share items', placeHolder: 'Select items to share', canPickMany: true },
-  );
-  if (!picks?.length) {
-    return;
+  const fromMenu = await resolveSyncItemIdFromTreeItem(treeItem);
+  let itemIds: string[];
+  if (fromMenu) {
+    if (!shareable.some((i) => i.id === fromMenu)) {
+      await vscode.window.showWarningMessage(
+        'This item is not in the sync index yet. Run sync first, then share again.',
+      );
+      return;
+    }
+    itemIds = [fromMenu];
+  } else {
+    const picks = await vscode.window.showQuickPick(
+      shareable.map((i) => ({
+        label: i.name || i.id,
+        description: i.kind === 'notebook' ? 'Notebook' : 'Saved query',
+        id: i.id,
+      })),
+      { title: 'Share items', placeHolder: 'Select items to share', canPickMany: true },
+    );
+    if (!picks?.length) {
+      return;
+    }
+    itemIds = picks.map((p) => p.id);
   }
 
   const granteeEmail = await vscode.window.showInputBox({
@@ -247,7 +109,7 @@ export async function cmdSyncShare(context: vscode.ExtensionContext): Promise<vo
     const { SharingService } = await import('./SharingService');
     const count = await vscode.window.withProgress(
       { location: vscode.ProgressLocation.Notification, title: 'Sharing items…' },
-      () => new SharingService(context).shareItems(granteeEmail.trim(), picks.map((p) => p.id)),
+      () => new SharingService(context).shareItems(granteeEmail.trim(), itemIds),
     );
     await vscode.window.showInformationMessage(
       count > 0
@@ -362,6 +224,92 @@ export async function cmdSyncNow(): Promise<void> {
   await SyncController.getInstance().runSync();
 }
 
+export async function cmdSyncPull(): Promise<void> {
+  if (!(await requirePro(ProFeature.CloudBackup))) {
+    return;
+  }
+  await SyncController.getInstance().pullOnly();
+}
+
+export async function cmdSyncPush(): Promise<void> {
+  if (!(await requirePro(ProFeature.CloudBackup))) {
+    return;
+  }
+  await SyncController.getInstance().pushOnly();
+}
+
+export async function cmdSyncPreview(): Promise<void> {
+  if (!(await requirePro(ProFeature.CloudBackup))) {
+    return;
+  }
+  await vscode.commands.executeCommand('postgres-explorer.settingsHub', { section: 'sync', tab: 'preview' });
+}
+
+export async function cmdSyncConflicts(): Promise<void> {
+  await vscode.commands.executeCommand('postgres-explorer.settingsHub', { section: 'sync', tab: 'conflicts' });
+}
+
+export async function cmdSyncReplaceLocal(): Promise<void> {
+  if (!(await requirePro(ProFeature.CloudBackup))) {
+    return;
+  }
+  const typed = await vscode.window.showInputBox({
+    title: 'Replace local with cloud',
+    prompt: 'Type REPLACE to confirm',
+    ignoreFocusOut: true,
+  });
+  if (typed !== 'REPLACE') {
+    return;
+  }
+  await SyncController.getInstance().replaceLocalWithCloud();
+}
+
+export async function cmdSyncReplaceRemote(): Promise<void> {
+  if (!(await requirePro(ProFeature.CloudBackup))) {
+    return;
+  }
+  const typed = await vscode.window.showInputBox({
+    title: 'Replace cloud with local',
+    prompt: 'Type REPLACE to confirm',
+    ignoreFocusOut: true,
+  });
+  if (typed !== 'REPLACE') {
+    return;
+  }
+  await SyncController.getInstance().replaceCloudWithLocal();
+}
+
+export async function cmdSyncRebuildIndex(): Promise<void> {
+  if (!(await requirePro(ProFeature.CloudBackup))) {
+    return;
+  }
+  const typed = await vscode.window.showInputBox({
+    title: 'Rebuild sync index',
+    prompt: 'Type REPLACE to confirm',
+    ignoreFocusOut: true,
+  });
+  if (typed !== 'REPLACE') {
+    return;
+  }
+  const count = await SyncController.getInstance().rebuildSyncIndex();
+  void vscode.window.showInformationMessage(`Rebuilt index for ${count} item(s).`);
+}
+
+export async function cmdSyncDiagnostics(): Promise<void> {
+  await SyncController.getInstance().runDiagnostics();
+}
+
+export async function cmdSyncExcludeItem(itemId?: string): Promise<void> {
+  if (!itemId) {
+    void vscode.window.showWarningMessage(
+      'Could not resolve this item for sync exclusion. Exclude it from NexQL Sync settings instead.',
+    );
+    return;
+  }
+  await SyncController.getInstance().setItemExcluded(itemId, true);
+  void vscode.window.showInformationMessage('Item excluded from sync on this device.');
+}
+
 export async function cmdSyncStatus(): Promise<void> {
   const controller = SyncController.getInstance();
   const config = controller.getConfig();
@@ -373,13 +321,35 @@ export async function cmdSyncStatus(): Promise<void> {
   );
 }
 
-export async function cmdSyncShowSecretKey(): Promise<void> {
+export async function cmdSyncShowSecretKey(context: vscode.ExtensionContext): Promise<void> {
   if (!(await requirePro(ProFeature.CloudBackup))) {
     return;
   }
-  await vscode.window.showWarningMessage(
-    'Secret keys are shown only once at vault creation. Use your saved recovery kit.',
-  );
+  const vault = VaultService.getInstance(context);
+  if (!vault.isUnlocked()) {
+    await vscode.window.showWarningMessage(
+      'Unlock your vault first (Settings → Cloud Sync → wizard, or re-run setup).',
+    );
+    return;
+  }
+  const email = vault.getAccountEmail() ?? SyncController.getInstance().getConfig().accountEmail ?? '';
+  const secretKey = await vscode.window.showInputBox({
+    title: 'Export recovery kit',
+    prompt: 'Enter your secret key to re-export the recovery kit (not stored by PgStudio)',
+    password: true,
+    ignoreFocusOut: true,
+  });
+  if (!secretKey) {
+    return;
+  }
+  try {
+    await vault.unlock(secretKey, email);
+  } catch {
+    await vscode.window.showErrorMessage('Secret key did not unlock the vault.');
+    return;
+  }
+  const { SyncSetupWizard } = await import('./SyncSetupWizard');
+  await new SyncSetupWizard(context).exportRecoveryKit(email, secretKey);
 }
 
 export async function cmdSyncPause(): Promise<void> {
@@ -424,10 +394,14 @@ export async function cmdSyncStatusMenu(context?: vscode.ExtensionContext): Prom
   const items = configured
     ? [
         { label: '$(sync) Sync Now', id: 'now' },
+        { label: '$(cloud-download) Pull Only', id: 'pull' },
+        { label: '$(cloud-upload) Push Only', id: 'push' },
+        { label: '$(eye) Preview Sync…', id: 'preview' },
+        { label: '$(warning) Resolve Conflicts…', id: 'conflicts' },
         ...gistItems,
         ...shareItems,
         { label: '$(info) Show Status', id: 'status' },
-        { label: '$(key) Show Secret Key', id: 'secret' },
+        { label: '$(key) Export Recovery Kit…', id: 'secret' },
         {
           label: config.paused ? '$(play) Resume Sync' : '$(debug-pause) Pause Sync',
           id: 'pause',
@@ -462,6 +436,18 @@ export async function cmdSyncStatusMenu(context?: vscode.ExtensionContext): Prom
       }
       await cmdSyncNow();
       break;
+    case 'pull':
+      await cmdSyncPull();
+      break;
+    case 'push':
+      await cmdSyncPush();
+      break;
+    case 'preview':
+      await cmdSyncPreview();
+      break;
+    case 'conflicts':
+      await cmdSyncConflicts();
+      break;
     case 'linkGist':
       if (!context) {
         return;
@@ -482,7 +468,9 @@ export async function cmdSyncStatusMenu(context?: vscode.ExtensionContext): Prom
       await cmdSyncStatus();
       break;
     case 'secret':
-      await cmdSyncShowSecretKey();
+      if (context) {
+        await cmdSyncShowSecretKey(context);
+      }
       break;
     case 'pause':
       await cmdSyncPause();
@@ -493,20 +481,5 @@ export async function cmdSyncStatusMenu(context?: vscode.ExtensionContext): Prom
     case 'settings':
       await vscode.commands.executeCommand('postgres-explorer.settingsHub', { section: 'sync' });
       break;
-  }
-}
-
-function createProviderForSetup(context: vscode.ExtensionContext, id: SyncProviderId) {
-  switch (id) {
-    case 'gist':
-      return new GistSyncProvider(context);
-    case 'onedrive':
-      return new OneDriveSyncProvider(context);
-    case 'gdrive':
-      return new GoogleDriveSyncProvider(context);
-    case 'cloud':
-      return new CloudSyncProvider(context);
-    case 'postgres':
-      return new PostgresSyncProvider(context);
   }
 }

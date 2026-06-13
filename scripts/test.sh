@@ -158,7 +158,7 @@ start_docker_containers() {
   print_info "Waiting for PostgreSQL containers to be ready..."
   sleep 5
   
-  for port in 5412 5414 5415 5416 5417; do
+  for port in 5412 5413 5414 5415 5416 5417 5418; do
     local counter=0
     while ! nc -z localhost $port &> /dev/null; do
       if [ $counter -eq 30 ]; then
@@ -190,7 +190,7 @@ run_integration_tests() {
   print_header "Running Integration Tests"
   check_node
   
-  local port_map=("12:5412" "14:5414" "15:5415" "16:5416" "17:5417")
+  local port_map=("12:5412" "13:5413" "14:5414" "15:5415" "16:5416" "17:5417")
   local port=5416
   
   for mapping in "${port_map[@]}"; do
@@ -227,7 +227,7 @@ run_version_tests() {
   print_header "Running Version Compatibility Tests"
   check_node
   
-  for port in 5412 5414 5415 5416 5417; do
+  for port in 5412 5413 5414 5415 5416 5417 5418; do
     local version="pg$(($port - 5400))"
     print_info "Testing on $version (port $port)..."
     export DB_PORT=$port

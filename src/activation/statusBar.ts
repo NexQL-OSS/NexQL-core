@@ -4,9 +4,13 @@ import { extensionContext } from '../extension';
 import { ProfileManager } from '../features/connections/ProfileManager';
 import { getTransactionManager } from '../services/TransactionManager';
 import { ConnectionUtils } from '../utils/connectionUtils';
-import { WorkspaceStateService } from '../services/WorkspaceStateService';
 import { FREE_QUOTAS, ProFeature, featureLabel } from '../services/featureGates';
 import { QuotaService } from '../services/QuotaService';
+import { environmentLabel } from '../features/sentinel/constants';
+import type { SentinelEnvironment } from '../features/sentinel/types';
+import type { SentinelContext, SentinelSettings } from '../features/sentinel/types';
+import { PlatformConnectionService } from '../services/PlatformConnectionService';
+import { profileDisplayLabel } from '../lib/platform/PlatformProfile';
 
 /**
  * Manages the notebook status bar items that display connection and database info.
@@ -15,11 +19,10 @@ import { QuotaService } from '../services/QuotaService';
 export class NotebookStatusBar implements vscode.Disposable {
   private readonly connectionItem: vscode.StatusBarItem;
   private readonly databaseItem: vscode.StatusBarItem;
-  private readonly riskIndicatorItem: vscode.StatusBarItem;
+  private readonly userItem: vscode.StatusBarItem;
+  private readonly environmentItem: vscode.StatusBarItem;
   private readonly profileItem: vscode.StatusBarItem;
   private readonly transactionItem: vscode.StatusBarItem;
-  /** Shown when no PostgreSQL notebook is active: workspace default connection (per-folder state). */
-  private readonly workspaceDefaultItem: vscode.StatusBarItem;
   /** Always-visible license tier indicator (independent of notebook focus). */
   private readonly tierItem: vscode.StatusBarItem;
   private readonly disposables: vscode.Disposable[] = [];
@@ -28,6 +31,8 @@ export class NotebookStatusBar implements vscode.Disposable {
   private currentReadOnlyMode = false;
   private currentTier = 'free';
   private currentOffline = false;
+  private sentinelActive = false;
+  private sentinelSettings: SentinelSettings | undefined;
 
   constructor() {
     this.connectionItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
@@ -38,19 +43,19 @@ export class NotebookStatusBar implements vscode.Disposable {
     this.databaseItem.command = 'postgres-explorer.switchDatabase';
     this.databaseItem.tooltip = 'Click to switch database';
 
-    this.riskIndicatorItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 98);
-    this.riskIndicatorItem.command = 'postgres-explorer.showConnectionSafety';
-    this.riskIndicatorItem.tooltip = 'Click to view connection safety details';
+    this.userItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 98);
+    this.userItem.tooltip = 'Connected database user';
 
-    this.profileItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 97);
+    this.environmentItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 97);
+    this.environmentItem.command = 'postgres-explorer.showConnectionSafety';
+    this.environmentItem.tooltip = 'Click to view connection safety details';
+
+    this.profileItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 96);
     this.profileItem.command = 'postgres-explorer.switchConnectionProfile';
     this.profileItem.tooltip = 'Click to switch connection profile';
 
-    this.transactionItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 96);
+    this.transactionItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 95);
     this.transactionItem.tooltip = 'Transaction is open — click to view transaction details';
-
-    this.workspaceDefaultItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 95);
-    this.workspaceDefaultItem.command = 'postgres-explorer.switchWorkspaceDefaultConnection';
 
     this.tierItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 94);
     this.tierItem.command = 'postgres-explorer.license.manage';
@@ -60,20 +65,32 @@ export class NotebookStatusBar implements vscode.Disposable {
     this.disposables.push(
       this.connectionItem,
       this.databaseItem,
-      this.riskIndicatorItem,
+      this.userItem,
+      this.environmentItem,
       this.profileItem,
       this.transactionItem,
-      this.workspaceDefaultItem,
       this.tierItem,
       vscode.window.onDidChangeActiveNotebookEditor(() => this.update()),
+      vscode.window.onDidChangeActiveTextEditor(() => this.update()),
       vscode.workspace.onDidChangeNotebookDocument((e) => {
         if (vscode.window.activeNotebookEditor?.notebook === e.notebook) {
           this.update();
         }
-      })
+      }),
     );
 
     this.update();
+  }
+
+  /** Called by SentinelContextService after gate resolution. */
+  applySentinel(context: SentinelContext | null, settings: SentinelSettings): void {
+    this.sentinelActive = !!context;
+    this.sentinelSettings = settings;
+    if (context) {
+      this.currentEnvironment = context.environment;
+      this.currentReadOnlyMode = context.readOnlyMode;
+    }
+    this.renderTierItem();
   }
 
   /** Updates the status bar based on the active notebook editor */
@@ -82,11 +99,8 @@ export class NotebookStatusBar implements vscode.Disposable {
 
     if (!this.isPostgresNotebook(editor)) {
       this.hideNotebookItems();
-      this.updateWorkspaceDefaultItem();
       return;
     }
-
-    this.workspaceDefaultItem.hide();
 
     const effectiveMetadata = ConnectionUtils.getEffectiveMetadata(editor!.notebook.metadata) as PostgresMetadata;
     const connection = ConnectionUtils.findConnectionWithFallback(effectiveMetadata?.connectionId, editor!.notebook.metadata);
@@ -106,57 +120,19 @@ export class NotebookStatusBar implements vscode.Disposable {
     );
   }
 
-  private getConnection(connectionId: string | undefined): any {
-    if (!connectionId) return null;
-    const connections = vscode.workspace.getConfiguration().get<any[]>('postgresExplorer.connections') || [];
-    return connections.find(c => c.id === connectionId);
-  }
-
   private hideNotebookItems(): void {
     this.connectionItem.hide();
     this.databaseItem.hide();
-    this.riskIndicatorItem.hide();
+    this.userItem.hide();
+    this.environmentItem.hide();
     this.profileItem.hide();
     this.transactionItem.hide();
 
-    this.currentEnvironment = undefined;
-    this.currentReadOnlyMode = false;
+    if (!this.sentinelActive) {
+      this.currentEnvironment = undefined;
+      this.currentReadOnlyMode = false;
+    }
     this.renderTierItem();
-  }
-
-  private hide(): void {
-    this.hideNotebookItems();
-    this.workspaceDefaultItem.hide();
-  }
-
-  private updateWorkspaceDefaultItem(): void {
-    if (!vscode.workspace.workspaceFolders?.length) {
-      this.workspaceDefaultItem.hide();
-      return;
-    }
-
-    const defaults = WorkspaceStateService.getInstance().getDefaults();
-    const conn = defaults.lastConnectionId
-      ? ConnectionUtils.findConnection(defaults.lastConnectionId)
-      : undefined;
-    const connLabel = conn?.name || conn?.host;
-    const dbLabel = defaults.lastDatabaseName || conn?.database;
-
-    if (!connLabel && !dbLabel) {
-      this.workspaceDefaultItem.text = '$(folder) NexQL: set workspace DB';
-      this.workspaceDefaultItem.tooltip =
-        'Choose a default PostgreSQL connection for this workspace (used when no .pgsql notebook is focused).';
-      this.workspaceDefaultItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
-      this.workspaceDefaultItem.show();
-      return;
-    }
-
-    const hostPart = conn ? `${conn.name || conn.host}` : 'Unknown connection';
-    const dbPart = dbLabel || '—';
-    this.workspaceDefaultItem.text = `$(root-folder) ${hostPart} · $(database) ${dbPart}`;
-    this.workspaceDefaultItem.tooltip = 'Workspace default connection. Click to change.';
-    this.workspaceDefaultItem.backgroundColor = new vscode.ThemeColor('statusBarItem.prominentBackground');
-    this.workspaceDefaultItem.show();
   }
 
   private showNoConnection(): void {
@@ -164,39 +140,139 @@ export class NotebookStatusBar implements vscode.Disposable {
     this.connectionItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
     this.connectionItem.show();
     this.databaseItem.hide();
-    this.riskIndicatorItem.hide();
+    this.userItem.hide();
+    this.environmentItem.hide();
     this.profileItem.hide();
     this.transactionItem.hide();
 
     this.currentEnvironment = undefined;
     this.currentReadOnlyMode = false;
+    this.sentinelActive = false;
     this.renderTierItem();
   }
 
   private showConnection(connection: any, metadata: PostgresMetadata): void {
     const connName = connection?.name || connection?.host || 'Unknown';
     const dbName = metadata.databaseName || connection?.database || 'default';
+    const username = connection?.username || metadata.username || '';
+    const host = connection?.host || metadata.host || '';
+    const port = connection?.port || metadata.port || 5432;
+    const environment = connection?.environment;
+    const accentEnabled = this.sentinelSettings?.statusBarAccent !== false;
+    const showEnvItem = this.sentinelActive && accentEnabled && environment;
+    const itemStyle = showEnvItem ? this.envItemStyle(environment) : this.defaultItemStyle();
 
-    this.connectionItem.text = `$(server) ${connName}`;
-    this.connectionItem.backgroundColor = new vscode.ThemeColor('statusBarItem.prominentBackground');
+    const platformCached = PlatformConnectionService.getInstance().getCached(
+      metadata.connectionId,
+      metadata.databaseName,
+    );
+    const pgMajor = platformCached?.profile.serverMajor;
+    const platformLabel = platformCached
+      ? profileDisplayLabel(platformCached.profile)
+      : undefined;
+    const connTextParts = [`$(server) ${connName}`];
+    if (pgMajor) {
+      connTextParts.push(`PG ${pgMajor}`);
+    }
+    this.connectionItem.text = connTextParts.join(' · ');
+    let tooltip = this.buildConnectionTooltip(connName, host, port, username, environment);
+    if (platformLabel) {
+      tooltip += `\nPlatform: ${platformLabel}`;
+    }
+    if (pgMajor) {
+      tooltip += `\nPostgreSQL ${pgMajor}`;
+    }
+    this.connectionItem.tooltip = tooltip;
+    this.applyItemStyle(this.connectionItem, itemStyle);
     this.connectionItem.show();
 
     this.databaseItem.text = `$(database) ${dbName}`;
-    this.databaseItem.backgroundColor = new vscode.ThemeColor('statusBarItem.prominentBackground');
+    this.databaseItem.tooltip = `Database: ${dbName}\nClick to switch database`;
+    this.applyItemStyle(this.databaseItem, itemStyle);
     this.databaseItem.show();
 
-    // Show risk indicator based on environment
-    this.updateRiskIndicator(connection);
+    if (username) {
+      this.userItem.text = `$(account) ${username}`;
+      this.userItem.tooltip = `User: ${username}`;
+      this.applyItemStyle(this.userItem, itemStyle);
+      this.userItem.show();
+    } else {
+      this.userItem.hide();
+    }
 
-    // Show active profile if one is set
-    this.updateProfileIndicator();
+    if (showEnvItem) {
+      const label = environmentLabel(environment);
+      const roSuffix = connection.readOnlyMode ? ' RO' : '';
+      this.environmentItem.text = `$(shield) ${label}${roSuffix}`;
+      this.environmentItem.tooltip = `Environment: ${label}${roSuffix ? ' (read-only)' : ''}\nClick for safety details`;
+      this.applyItemStyle(this.environmentItem, itemStyle);
+      this.environmentItem.show();
+    } else {
+      this.environmentItem.hide();
+    }
 
-    // Update context for when clauses
+    if (!this.sentinelActive) {
+      this.currentEnvironment = connection.environment;
+      this.currentReadOnlyMode = !!connection.readOnlyMode;
+    }
+
+    this.updateProfileIndicator(itemStyle);
+    this.renderTierItem();
+
     vscode.commands.executeCommand('setContext', 'pgstudio.connectionName', connName);
     vscode.commands.executeCommand('setContext', 'pgstudio.databaseName', dbName);
   }
 
-  private updateProfileIndicator(): void {
+  private buildConnectionTooltip(
+    name: string,
+    host: string,
+    port: number | string,
+    username: string,
+    environment?: string,
+  ): string {
+    const lines = [
+      `Connection: ${name}`,
+      `Host: ${host}:${port}`,
+    ];
+    if (username) {
+      lines.push(`User: ${username}`);
+    }
+    if (environment) {
+      lines.push(`Environment: ${environmentLabel(environment as any) || environment}`);
+    }
+    lines.push('Click to switch connection');
+    return lines.join('\n');
+  }
+
+  private defaultItemStyle(): { background?: vscode.ThemeColor; color?: vscode.ThemeColor } {
+    return { background: new vscode.ThemeColor('statusBarItem.prominentBackground') };
+  }
+
+  private envItemStyle(environment: SentinelEnvironment): { background?: vscode.ThemeColor; color?: vscode.ThemeColor } {
+    switch (environment) {
+      case 'production':
+        return { background: new vscode.ThemeColor('statusBarItem.errorBackground') };
+      case 'staging':
+        return { background: new vscode.ThemeColor('statusBarItem.warningBackground') };
+      case 'development':
+        return {
+          background: new vscode.ThemeColor('statusBarItem.prominentBackground'),
+          color: new vscode.ThemeColor('charts.blue'),
+        };
+    }
+  }
+
+  private applyItemStyle(
+    item: vscode.StatusBarItem,
+    style: { background?: vscode.ThemeColor; color?: vscode.ThemeColor },
+  ): void {
+    item.backgroundColor = style.background;
+    item.color = style.color;
+  }
+
+  private updateProfileIndicator(
+    style: { background?: vscode.ThemeColor; color?: vscode.ThemeColor },
+  ): void {
     const editor = vscode.window.activeNotebookEditor;
     if (!editor) {
       this.profileItem.hide();
@@ -211,32 +287,21 @@ export class NotebookStatusBar implements vscode.Disposable {
       return;
     }
 
-    // Get the profile name from ProfileManager
     const profileManager = ProfileManager.getInstance();
-    const profile = profileManager.getProfiles().find(p => p.id === activeProfileContext.profileId);
+    const profile = profileManager.getProfiles().find((p) => p.id === activeProfileContext.profileId);
     const profileName = profile?.profileName || 'Unknown Profile';
 
-    // Build status text with icons for active constraints
     const constraints: string[] = [];
     if (activeProfileContext.readOnlyMode) constraints.push('🔒 RO');
-    if (activeProfileContext.autoLimitSelectResults > 0) constraints.push(`📊 Limit: ${activeProfileContext.autoLimitSelectResults}`);
-    
-    const constraintText = constraints.length > 0 ? ` [${constraints.join(' | ')}]` : '';
-    
-    this.profileItem.text = `$(person) Profile: ${profileName}${constraintText}`;
-    this.profileItem.backgroundColor = new vscode.ThemeColor('statusBarItem.prominentBackground');
-    this.profileItem.show();
-  }
-
-  private updateRiskIndicator(connection: any): void {
-    if (!connection) {
-      this.currentEnvironment = undefined;
-      this.currentReadOnlyMode = false;
-    } else {
-      this.currentEnvironment = connection.environment;
-      this.currentReadOnlyMode = !!connection.readOnlyMode;
+    if (activeProfileContext.autoLimitSelectResults > 0) {
+      constraints.push(`📊 Limit: ${activeProfileContext.autoLimitSelectResults}`);
     }
-    this.renderTierItem();
+
+    const constraintText = constraints.length > 0 ? ` [${constraints.join(' | ')}]` : '';
+
+    this.profileItem.text = `$(person) Profile: ${profileName}${constraintText}`;
+    this.applyItemStyle(this.profileItem, style);
+    this.profileItem.show();
   }
 
   /**
@@ -255,7 +320,26 @@ export class NotebookStatusBar implements vscode.Disposable {
     const txManager = getTransactionManager();
     const txInfo = txManager.getTransactionInfo(id);
 
-    if (txInfo?.isActive) {
+    const editorMeta = editor
+      ? (ConnectionUtils.getEffectiveMetadata(editor.notebook.metadata) as PostgresMetadata)
+      : undefined;
+    const txProfile = editorMeta?.connectionId
+      ? PlatformConnectionService.getInstance().getProfile(
+          editorMeta.connectionId,
+          editorMeta.databaseName,
+        )
+      : undefined;
+    const sessionUnreliable = txProfile && !txProfile.capabilities.sessionStateReliable;
+
+    if (sessionUnreliable) {
+      this.transactionItem.text = '$(warning) Txn unavailable (pooled)';
+      this.transactionItem.backgroundColor = new vscode.ThemeColor(
+        'statusBarItem.warningBackground',
+      );
+      this.transactionItem.tooltip =
+        'Transactions are unreliable on transaction-mode poolers. Use a direct or session pooler endpoint.';
+      this.transactionItem.show();
+    } else if (txInfo?.isActive) {
       this.transactionItem.text = '$(sync~spin) Transaction open';
       this.transactionItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
       this.transactionItem.tooltip = 'A PostgreSQL transaction is open — commit or rollback to close it';
@@ -276,6 +360,7 @@ export class NotebookStatusBar implements vscode.Disposable {
     const offline = this.currentOffline;
     const env = this.currentEnvironment;
     const ro = this.currentReadOnlyMode;
+    const demoteEnvSuffix = this.sentinelActive;
 
     let tierLabel = 'Free';
     let baseIcon = '$(unlock)';
@@ -294,36 +379,39 @@ export class NotebookStatusBar implements vscode.Disposable {
       tierColor = new vscode.ThemeColor('charts.purple');
     }
 
-    // Determine suffix for environment and color overrides
     let suffix = '';
     let envTooltip = '';
     let finalColor: vscode.ThemeColor | undefined = tierColor;
 
-    if (env === 'production') {
-      suffix = ro ? ' [PROD-RO]' : ' [PROD]';
-      envTooltip = ro 
-        ? '\nEnvironment: Production (Read-only mode & safety checks active)'
-        : '\n⚠️ Warning: Connected to PRODUCTION database (Safety checks active)';
-      finalColor = new vscode.ThemeColor('charts.red');
-    } else if (env === 'staging') {
-      suffix = ro ? ' [STAGING-RO]' : ' [STAGING]';
-      envTooltip = ro
-        ? '\nEnvironment: Staging (Read-only mode & safety checks active)'
-        : '\nEnvironment: Staging (Safety checks active)';
-      finalColor = new vscode.ThemeColor('charts.orange');
-    } else if (env === 'development') {
-      suffix = ro ? ' [DEV-RO]' : ' [DEV]';
-      envTooltip = ro
-        ? '\nEnvironment: Development (Read-only mode & safety checks active)'
-        : '\nEnvironment: Development (Safety checks active)';
-      finalColor = new vscode.ThemeColor('charts.blue');
+    if (!demoteEnvSuffix) {
+      if (env === 'production') {
+        suffix = ro ? ' [PROD-RO]' : ' [PROD]';
+        envTooltip = ro
+          ? '\nEnvironment: Production (Read-only mode & safety checks active)'
+          : '\n⚠️ Warning: Connected to PRODUCTION database (Safety checks active)';
+        finalColor = new vscode.ThemeColor('charts.red');
+      } else if (env === 'staging') {
+        suffix = ro ? ' [STAGING-RO]' : ' [STAGING]';
+        envTooltip = ro
+          ? '\nEnvironment: Staging (Read-only mode & safety checks active)'
+          : '\nEnvironment: Staging (Safety checks active)';
+        finalColor = new vscode.ThemeColor('charts.orange');
+      } else if (env === 'development') {
+        suffix = ro ? ' [DEV-RO]' : ' [DEV]';
+        envTooltip = ro
+          ? '\nEnvironment: Development (Read-only mode & safety checks active)'
+          : '\nEnvironment: Development (Safety checks active)';
+        finalColor = new vscode.ThemeColor('charts.blue');
+      } else if (ro) {
+        suffix = ' [RO]';
+        envTooltip = '\nRead-only mode active';
+        finalColor = new vscode.ThemeColor('charts.blue');
+      }
     } else if (ro) {
       suffix = ' [RO]';
       envTooltip = '\nRead-only mode active';
-      finalColor = new vscode.ThemeColor('charts.blue');
     }
 
-    // Compose text
     if (offline && tier !== 'free') {
       this.tierItem.text = `$(warning) ${tierLabel}${suffix} (offline)`;
       this.tierItem.tooltip = `${tierLabel} — running on cached license (offline grace). Click to manage.${envTooltip}`;
@@ -335,13 +423,13 @@ export class NotebookStatusBar implements vscode.Disposable {
       this.tierItem.tooltip = this.buildFreeUsageTooltip(envTooltip);
       this.tierItem.command = 'postgres-explorer.license.showUsage';
       this.tierItem.backgroundColor = undefined;
-      this.tierItem.color = finalColor;
+      this.tierItem.color = demoteEnvSuffix ? undefined : finalColor;
     } else {
       this.tierItem.text = `${baseIcon} ${tierLabel}${suffix}`;
       this.tierItem.tooltip = `${tierLabel} — license active. Click to manage.${envTooltip}`;
       this.tierItem.command = 'postgres-explorer.license.manage';
       this.tierItem.backgroundColor = undefined;
-      this.tierItem.color = finalColor;
+      this.tierItem.color = demoteEnvSuffix ? undefined : finalColor;
     }
   }
 
@@ -369,11 +457,13 @@ export class NotebookStatusBar implements vscode.Disposable {
   }
 }
 
-/** Sync status indicator — click opens sync QuickPick menu. */
+/** Sync status indicator — click opens sync menu; conflicts jump to resolver. */
 export class SyncStatusBar implements vscode.Disposable {
   private readonly item: vscode.StatusBarItem;
   private status: string = 'not_configured';
   private conflictCount = 0;
+  private lastSyncAt: number | undefined;
+  private pendingCount = 0;
 
   constructor() {
     this.item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 93);
@@ -382,7 +472,17 @@ export class SyncStatusBar implements vscode.Disposable {
     this.item.show();
   }
 
-  updateSyncStatus(status: string, conflicts = 0, configured = false): void {
+  updateSyncStatus(status: string, conflicts = 0, configured = false, extras?: {
+    lastSyncAt?: number;
+    pendingCount?: number;
+  }): void {
+    this.lastSyncAt = extras?.lastSyncAt;
+    this.pendingCount = extras?.pendingCount ?? 0;
+    if (status === 'conflict' && conflicts > 0) {
+      this.item.command = 'postgres-explorer.sync.conflicts';
+    } else {
+      this.item.command = 'postgres-explorer.sync.statusMenu';
+    }
     this.update(status, conflicts, configured);
   }
 
@@ -400,12 +500,12 @@ export class SyncStatusBar implements vscode.Disposable {
     switch (status) {
       case 'synced':
         this.item.text = '$(cloud) Synced';
-        this.item.tooltip = 'PgStudio sync is up to date. Click for options.';
+        this.item.tooltip = this.buildTooltip('PgStudio sync is up to date.');
         this.item.backgroundColor = undefined;
         break;
       case 'idle':
         this.item.text = '$(cloud) Sync ready';
-        this.item.tooltip = 'Sync is configured. Click for options.';
+        this.item.tooltip = this.buildTooltip('Sync is configured.');
         this.item.backgroundColor = undefined;
         break;
       case 'syncing':
@@ -419,7 +519,7 @@ export class SyncStatusBar implements vscode.Disposable {
         break;
       case 'conflict':
         this.item.text = `$(warning) Sync conflict (${conflicts})`;
-        this.item.tooltip = `${conflicts} conflict(s) — review copies saved locally.`;
+        this.item.tooltip = this.buildTooltip(`${conflicts} conflict(s) — click to resolve.`);
         this.item.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
         break;
       case 'error':
@@ -441,6 +541,17 @@ export class SyncStatusBar implements vscode.Disposable {
         this.item.tooltip = 'Sync is configured. Click for options.';
         this.item.backgroundColor = undefined;
     }
+  }
+
+  private buildTooltip(base: string): string {
+    const parts = [base];
+    if (this.lastSyncAt) {
+      parts.push(`Last sync: ${new Date(this.lastSyncAt).toLocaleString()}`);
+    }
+    if (this.pendingCount > 0) {
+      parts.push(`Pending: ${this.pendingCount}`);
+    }
+    return parts.join('\n');
   }
 
   dispose(): void {
