@@ -1642,7 +1642,6 @@ $('syncSetupBtn').addEventListener('click', () => {
 });
 $('syncPullBtn')?.addEventListener('click', () => vscode.postMessage({ command: 'sync/pull' }));
 $('syncPushBtn')?.addEventListener('click', () => vscode.postMessage({ command: 'sync/push' }));
-$('syncPreviewBtn')?.addEventListener('click', () => vscode.postMessage({ command: 'sync/preview' }));
 $('syncPreviewRefreshBtn')?.addEventListener('click', () => vscode.postMessage({ command: 'sync/preview' }));
 $('syncApplyPreviewBtn')?.addEventListener('click', () => vscode.postMessage({ command: 'sync/applyPreview' }));
 $('syncReplaceLocalBtn')?.addEventListener('click', () => vscode.postMessage({ command: 'sync/replaceLocal' }));
@@ -1651,9 +1650,12 @@ $('syncRebuildIndexBtn')?.addEventListener('click', () => vscode.postMessage({ c
 $('syncDiagnosticsBtn')?.addEventListener('click', () => vscode.postMessage({ command: 'sync/diagnostics' }));
 $('syncAdvancedSetupBtn')?.addEventListener('click', () => vscode.postMessage({ command: 'sync/setup', mode: 'advanced' }));
 $('syncWizardCloseBtn')?.addEventListener('click', () => { $('syncWizardBackdrop').hidden = true; });
-document.querySelectorAll('.sync-tab').forEach((btn) => {
+document.querySelectorAll('.subnav-tab').forEach((btn) => {
   btn.addEventListener('click', () => showSyncTab(btn.getAttribute('data-sync-tab')));
 });
+$('syncConflictsLink')?.addEventListener('click', () => showSyncTab('conflicts'));
+$('syncQuickPending')?.addEventListener('click', () => showSyncTab('items'));
+$('syncQuickConflicts')?.addEventListener('click', () => showSyncTab('conflicts'));
 
 const syncWizardState = {
   step: 0,
@@ -1670,6 +1672,41 @@ const syncWizardState = {
 
 const SYNC_WIZARD_STEP_TITLES = ['Connect', 'Protect', 'Done'];
 
+function isVaultStepSubmittable() {
+  const mode = document.querySelector('input[name="vaultMode"]:checked')?.value || syncWizardState.vaultMode || 'create';
+  if (mode === 'unlock') {
+    return !!($('syncWizardSecret')?.value || '').trim();
+  }
+  if ($('syncWizardCustomPass')?.checked) {
+    return !!($('syncWizardPassphrase')?.value || '').trim();
+  }
+  return true;
+}
+
+function attachVaultStepListeners() {
+  const refresh = () => updateSyncWizardNextBtn();
+  document.querySelectorAll('input[name="vaultMode"]').forEach((el) => {
+    el.addEventListener('change', () => {
+      const unlock = document.querySelector('input[name="vaultMode"]:checked')?.value === 'unlock';
+      syncWizardState.vaultMode = unlock ? 'unlock' : 'create';
+      $('syncWizardCreateBlock').hidden = unlock;
+      $('syncWizardUnlockBlock').hidden = !unlock;
+      $('syncWizardLegacyEmailWrap').hidden = !unlock;
+      refresh();
+    });
+  });
+  $('syncWizardCustomPass')?.addEventListener('change', (e) => {
+    const on = e.target.checked;
+    syncWizardState.customPassphrase = on;
+    $('syncWizardPassphraseWrap').hidden = !on;
+    refresh();
+  });
+  ['syncWizardPassphrase', 'syncWizardSecret', 'syncWizardLegacyEmail'].forEach((id) => {
+    $(id)?.addEventListener('input', refresh);
+  });
+  refresh();
+}
+
 function updateSyncWizardNextBtn() {
   const s = syncWizardState.step;
   const btn = $('syncWizardNextBtn');
@@ -1678,8 +1715,14 @@ function updateSyncWizardNextBtn() {
     btn.textContent = 'Next';
     btn.disabled = syncWizardState.providerId === 'cloud' && !syncWizardState.signedIn;
   } else if (s === 1) {
-    btn.textContent = 'Next';
-    btn.disabled = !syncWizardState.vaultReady;
+    if (syncWizardState.vaultReady) {
+      btn.textContent = 'Next';
+      btn.disabled = false;
+    } else {
+      const unlock = (document.querySelector('input[name="vaultMode"]:checked')?.value || 'create') === 'unlock';
+      btn.textContent = unlock ? 'Unlock vault' : 'Create vault';
+      btn.disabled = !isVaultStepSubmittable();
+    }
   } else if (s === 2) {
     btn.textContent = 'Finish';
     btn.disabled = false;
@@ -1737,42 +1780,70 @@ function renderSyncWizardStep() {
     }
   } else if (s === 1) {
     body.innerHTML = [
-      '<p>Your sync vault encrypts connections and queries. Save the secret key — it is shown only once.</p>',
-      '<label><input type="radio" name="vaultMode" value="create" checked> Create new vault</label>',
-      '<label><input type="radio" name="vaultMode" value="unlock"> Unlock existing vault</label>',
-      '<div id="syncWizardCreateBlock">',
-      '  <label><input type="checkbox" id="syncWizardCustomPass"> Use custom passphrase</label>',
-      '  <input type="password" id="syncWizardPassphrase" placeholder="Custom passphrase (optional)" class="mono" hidden>',
-      '</div>',
-      '<div id="syncWizardUnlockBlock" hidden>',
-      '  <input type="password" id="syncWizardSecret" placeholder="Secret key" class="mono">',
-      '  <label id="syncWizardLegacyEmailLabel" hidden>Account email (legacy vault)<input type="email" id="syncWizardLegacyEmail" class="mono"></label>',
-      '</div>',
-      '<p id="syncWizardVaultStatus" class="status-line"></p>',
-      '<div id="syncWizardSecretReveal" class="sync-secret-reveal" hidden>',
-      '  <p class="label-hint">Save this secret key — you will need it on other devices.</p>',
-      '  <code id="syncWizardSecretValue" class="mono"></code>',
-      '  <button type="button" id="syncWizardCopySecret" class="btn-secondary btn-sm">Copy</button>',
+      '<div class="sync-wizard-protect">',
+      '  <p class="sync-wizard-lead">Your sync vault encrypts connections and queries. Save the secret key — it is shown only once.</p>',
+      '  <div class="sync-wizard-choices" role="radiogroup" aria-label="Vault mode">',
+      '    <label class="sync-wizard-choice">',
+      '      <input type="radio" name="vaultMode" value="create" checked>',
+      '      <span class="sync-wizard-choice-card">',
+      '        <span class="sync-wizard-choice-title">Create new vault</span>',
+      '        <span class="sync-wizard-choice-hint">Auto-generate a secret key</span>',
+      '      </span>',
+      '    </label>',
+      '    <label class="sync-wizard-choice">',
+      '      <input type="radio" name="vaultMode" value="unlock">',
+      '      <span class="sync-wizard-choice-card">',
+      '        <span class="sync-wizard-choice-title">Unlock existing vault</span>',
+      '        <span class="sync-wizard-choice-hint">Use your recovery kit secret</span>',
+      '      </span>',
+      '    </label>',
+      '  </div>',
+      '  <div id="syncWizardCreateBlock" class="sync-wizard-panel">',
+      '    <label class="sync-wizard-check">',
+      '      <input type="checkbox" id="syncWizardCustomPass">',
+      '      <span>Use custom passphrase</span>',
+      '    </label>',
+      '    <div id="syncWizardPassphraseWrap" class="form-group" hidden>',
+      '      <label for="syncWizardPassphrase">Passphrase</label>',
+      '      <input type="password" id="syncWizardPassphrase" class="hub-input mono" placeholder="Enter a memorable passphrase" autocomplete="new-password">',
+      '    </div>',
+      '  </div>',
+      '  <div id="syncWizardUnlockBlock" class="sync-wizard-panel" hidden>',
+      '    <div class="form-group">',
+      '      <label for="syncWizardSecret">Secret key</label>',
+      '      <input type="password" id="syncWizardSecret" class="hub-input mono" placeholder="Paste secret from recovery kit" autocomplete="off">',
+      '    </div>',
+      '    <div id="syncWizardLegacyEmailWrap" class="form-group" hidden>',
+      '      <label for="syncWizardLegacyEmail">Account email <span class="label-hint">(legacy vaults only)</span></label>',
+      '      <input type="email" id="syncWizardLegacyEmail" class="hub-input mono" placeholder="you@example.com" autocomplete="email">',
+      '    </div>',
+      '  </div>',
+      '  <p id="syncWizardVaultStatus" class="status-line" role="status"></p>',
+      '  <div id="syncWizardSecretReveal" class="sync-secret-reveal" hidden>',
+      '    <p class="sync-secret-reveal-label">Your secret key</p>',
+      '    <div class="sync-secret-reveal-row">',
+      '      <code id="syncWizardSecretValue" class="mono hub-input hub-input-code"></code>',
+      '      <button type="button" id="syncWizardCopySecret" class="btn-secondary btn-sm">Copy</button>',
+      '    </div>',
+      '    <p class="label-hint">Save this — you will need it on other devices.</p>',
+      '  </div>',
       '</div>',
     ].join('');
-    document.querySelectorAll('input[name="vaultMode"]').forEach((el) => {
-      el.addEventListener('change', () => {
-        const unlock = document.querySelector('input[name="vaultMode"]:checked')?.value === 'unlock';
-        $('syncWizardCreateBlock').hidden = unlock;
-        $('syncWizardUnlockBlock').hidden = !unlock;
-        $('syncWizardLegacyEmailLabel').hidden = !unlock;
-      });
-    });
-    $('syncWizardCustomPass')?.addEventListener('change', (e) => {
-      const on = e.target.checked;
-      syncWizardState.customPassphrase = on;
-      $('syncWizardPassphrase').hidden = !on;
-    });
+    attachVaultStepListeners();
     if (syncWizardState.vaultReady && syncWizardState.secretKey) {
       $('syncWizardSecretReveal').hidden = false;
       $('syncWizardSecretValue').textContent = syncWizardState.secretKey;
       $('syncWizardCopySecret')?.addEventListener('click', () => {
         navigator.clipboard?.writeText(syncWizardState.secretKey);
+        const copyBtn = $('syncWizardCopySecret');
+        if (copyBtn) {
+          const prev = copyBtn.textContent;
+          copyBtn.textContent = 'Copied';
+          setTimeout(() => { copyBtn.textContent = prev; }, 1500);
+        }
+      });
+      document.querySelectorAll('input[name="vaultMode"], #syncWizardCustomPass, #syncWizardPassphrase, #syncWizardSecret').forEach((el) => {
+        el.disabled = true;
       });
     }
   } else if (s === 2) {
@@ -1798,11 +1869,18 @@ $('syncWizardNextBtn')?.addEventListener('click', () => {
   if (s === 1 && !syncWizardState.vaultReady) {
     syncWizardState.vaultMode = document.querySelector('input[name="vaultMode"]:checked')?.value || 'create';
     const unlock = syncWizardState.vaultMode === 'unlock';
+    const statusEl = $('syncWizardVaultStatus');
+    if (statusEl) {
+      statusEl.textContent = unlock ? 'Unlocking vault…' : 'Creating vault…';
+      statusEl.className = 'status-line';
+    }
+    const btn = $('syncWizardNextBtn');
+    if (btn) { btn.disabled = true; }
     vscode.postMessage({
       command: 'sync/wizardVault',
       mode: syncWizardState.vaultMode,
       secretKey: unlock ? ($('syncWizardSecret')?.value || '') : undefined,
-      passphrase: !unlock && syncWizardState.customPassphrase ? ($('syncWizardPassphrase')?.value || '') : undefined,
+      passphrase: !unlock && $('syncWizardCustomPass')?.checked ? ($('syncWizardPassphrase')?.value || '') : undefined,
       legacyEmail: unlock ? ($('syncWizardLegacyEmail')?.value || '') : undefined,
     });
     return;
@@ -1836,6 +1914,8 @@ $('syncWizardNextBtn')?.addEventListener('click', () => {
 function showSyncTab(tab) {
   const tabIdMap = {
     overview: 'syncTabOverview',
+    settings: 'syncTabSettings',
+    items: 'syncTabItems',
     preview: 'syncTabPreview',
     conflicts: 'syncTabConflicts',
     history: 'syncTabHistory',
@@ -1843,7 +1923,7 @@ function showSyncTab(tab) {
     devices: 'syncTabDevices',
     advanced: 'syncTabAdvanced',
   };
-  document.querySelectorAll('.sync-tab').forEach((b) => b.classList.toggle('active', b.getAttribute('data-sync-tab') === tab));
+  document.querySelectorAll('.subnav-tab').forEach((b) => b.classList.toggle('active', b.getAttribute('data-sync-tab') === tab));
   Object.entries(tabIdMap).forEach(([key, id]) => {
     const el = $(id);
     if (el) { el.hidden = key !== tab; }
@@ -1853,6 +1933,10 @@ function showSyncTab(tab) {
   if (tab === 'shares') { vscode.postMessage({ command: 'sync/shares' }); }
   if (tab === 'devices') { vscode.postMessage({ command: 'sync/devices' }); }
   if (tab === 'preview') { vscode.postMessage({ command: 'sync/preview' }); }
+  if (tab === 'items') {
+    vscode.postMessage({ command: 'sync/items' });
+    vscode.postMessage({ command: 'sync/pending' });
+  }
 }
 
 $('syncWizardBackBtn')?.addEventListener('click', () => {
@@ -1879,6 +1963,7 @@ function renderPreviewList(el, items) {
 function renderConflicts(conflicts) {
   const el = $('syncConflictsList');
   el.textContent = '';
+  updateSyncConflictBadges(conflicts?.length || 0);
   if (!conflicts?.length) { el.textContent = 'No conflicts.'; return; }
   conflicts.forEach((c) => {
     const row = document.createElement('div');
@@ -1902,7 +1987,9 @@ function formatBytes(n) {
   return Math.round(n / 1024) + ' KB';
 }
 $('syncNowBtn').addEventListener('click', () => {
-  $('syncNowBtn').disabled = true;
+  const btn = $('syncNowBtn');
+  btn.disabled = true;
+  btn.textContent = 'Syncing…';
   $('syncRunMessage').textContent = 'Syncing…';
   $('syncRunMessage').className = 'status-line';
   vscode.postMessage({ command: 'sync/now' });
@@ -2001,13 +2088,72 @@ function formatPendingLabel(activity) {
   return activity.name || activity.itemId;
 }
 
+const SYNC_STATUS_PILL_CLASS = {
+  synced: 'sync-status-synced',
+  idle: 'sync-status-synced',
+  syncing: 'sync-status-syncing',
+  offline: 'sync-status-paused',
+  conflict: 'sync-status-conflict',
+  error: 'sync-status-error',
+  paused: 'sync-status-paused',
+  locked: 'sync-status-paused',
+};
+
+function updateSyncStatusPill(status, label) {
+  const pill = $('syncStatusPill');
+  if (!pill) { return; }
+  pill.textContent = label;
+  pill.className = 'sync-status-pill';
+  const cls = SYNC_STATUS_PILL_CLASS[status];
+  if (cls) { pill.classList.add(cls); }
+}
+
+function updateSyncConflictBadges(count) {
+  const n = Number(count) || 0;
+  const conflictsValue = $('syncConflictsValue');
+  if (conflictsValue) { conflictsValue.textContent = String(n); }
+
+  const tabBadge = $('syncConflictsTabBadge');
+  if (tabBadge) {
+    tabBadge.hidden = n <= 0;
+    tabBadge.textContent = String(n);
+  }
+
+  const quickBtn = $('syncQuickConflicts');
+  const quickCount = $('syncQuickConflictsCount');
+  if (quickBtn && quickCount) {
+    quickBtn.hidden = n <= 0;
+    quickCount.textContent = String(n);
+  }
+}
+
+function updateSyncPendingBadges(count) {
+  const tabBadge = $('syncItemsTabBadge');
+  if (tabBadge) {
+    tabBadge.hidden = count <= 0;
+    tabBadge.textContent = String(count);
+  }
+
+  const quickBtn = $('syncQuickPending');
+  const quickCount = $('syncQuickPendingCount');
+  if (quickBtn && quickCount) {
+    quickBtn.hidden = count <= 0;
+    quickCount.textContent = String(count);
+  }
+}
+
+let syncItemsCache = [];
+let syncPendingItemIds = new Set();
+
 function renderSyncPending(activities) {
   const body = $('syncPendingBody');
   const badge = $('syncPendingBadge');
+  syncPendingItemIds = new Set((activities || []).map((a) => a.itemId));
   while (body.firstChild) { body.removeChild(body.firstChild); }
 
   if (!activities.length) {
     badge.hidden = true;
+    updateSyncPendingBadges(0);
     const tr = document.createElement('tr');
     const td = document.createElement('td');
     td.colSpan = 4;
@@ -2015,11 +2161,15 @@ function renderSyncPending(activities) {
     td.textContent = 'No pending changes.';
     tr.appendChild(td);
     body.appendChild(tr);
+    if (syncItemsCache.length) {
+      renderSyncItems(syncItemsCache);
+    }
     return;
   }
 
   badge.hidden = false;
   badge.textContent = String(activities.length);
+  updateSyncPendingBadges(activities.length);
 
   for (const activity of activities) {
     const tr = document.createElement('tr');
@@ -2045,24 +2195,56 @@ function renderSyncPending(activities) {
 
     body.appendChild(tr);
   }
+  if (syncItemsCache.length) {
+    renderSyncItems(syncItemsCache);
+  }
+}
+
+const SYNC_ITEM_STATUS_LABELS = {
+  excluded: 'Excluded',
+  pending: 'Pending',
+  synced: 'Synced',
+  local: 'Local only',
+};
+
+function formatSyncItemStatus(item) {
+  if (item.excluded || item.itemStatus === 'excluded') {
+    return 'Excluded';
+  }
+  if (syncPendingItemIds.has(item.id) || item.itemStatus === 'pending') {
+    return 'Pending';
+  }
+  return SYNC_ITEM_STATUS_LABELS[item.itemStatus] || 'Synced';
+}
+
+function getSyncItemsKindFilter() {
+  return $('syncItemsKindFilter')?.value || 'all';
 }
 
 function renderSyncItems(items) {
+  syncItemsCache = items || [];
+  const filter = getSyncItemsKindFilter();
+  const filtered = filter === 'all'
+    ? syncItemsCache
+    : syncItemsCache.filter((item) => item.kind === filter);
+
   const body = $('syncItemsBody');
   while (body.firstChild) { body.removeChild(body.firstChild); }
 
-  if (!items.length) {
+  if (!filtered.length) {
     const tr = document.createElement('tr');
     const td = document.createElement('td');
     td.colSpan = 5;
     td.className = 'empty-state';
-    td.textContent = 'No items are being synced yet.';
+    td.textContent = syncItemsCache.length
+      ? 'No items match this filter.'
+      : 'No items are being synced yet.';
     tr.appendChild(td);
     body.appendChild(tr);
     return;
   }
 
-  for (const item of items) {
+  for (const item of filtered) {
     const tr = document.createElement('tr');
 
     const nameTd = document.createElement('td');
@@ -2079,8 +2261,14 @@ function renderSyncItems(items) {
     tr.appendChild(updatedTd);
 
     const statusTd = document.createElement('td');
-    statusTd.textContent = item.excluded ? 'Not syncing' : 'Syncing';
-    if (item.excluded) { statusTd.classList.add('label-hint'); }
+    const statusLabel = formatSyncItemStatus(item);
+    statusTd.textContent = statusLabel;
+    if (statusLabel === 'Excluded' || statusLabel === 'Local only') {
+      statusTd.classList.add('label-hint');
+    }
+    if (statusLabel === 'Pending') {
+      statusTd.classList.add('sync-item-status-pending');
+    }
     tr.appendChild(statusTd);
 
     const actionTd = document.createElement('td');
@@ -2105,6 +2293,7 @@ function renderSyncItems(items) {
     body.appendChild(tr);
   }
 }
+$('syncItemsKindFilter')?.addEventListener('change', () => renderSyncItems(syncItemsCache));
 $('syncUpgradeBtn').addEventListener('click', () => {
   vscode.postMessage({ command: 'license/openUpgrade' });
 });
@@ -2146,27 +2335,33 @@ function handleSyncMessage(message) {
       $('syncLocked').hidden = sync.featureEnabled;
       $('syncNotConfigured').hidden = !(sync.featureEnabled && !sync.configured);
       $('syncConfigured').hidden = !(sync.featureEnabled && sync.configured);
+      $('syncSectionActions').hidden = !(sync.featureEnabled && sync.configured);
 
       if (sync.featureEnabled && sync.configured) {
         vscode.postMessage({ command: 'sync/items' });
         vscode.postMessage({ command: 'sync/pending' });
         $('syncHealthHeader').hidden = false;
+        const statusLabel = SYNC_STATUS_LABELS[sync.status] || sync.status;
         $('syncHealthLast').textContent = sync.lastSyncAt
           ? 'Last sync: ' + new Date(sync.lastSyncAt).toLocaleString()
           : 'Last sync: never';
-        $('syncHealthProvider').textContent = sync.providerLabel || '';
         if (sync.lastError) {
           $('syncHealthError').hidden = false;
           $('syncHealthError').textContent = sync.lastError;
         } else {
           $('syncHealthError').hidden = true;
         }
-        $('syncStatusValue').textContent = SYNC_STATUS_LABELS[sync.status] || sync.status;
+        $('syncStatusValue').textContent = statusLabel;
+        updateSyncStatusPill(sync.status, statusLabel);
         $('syncProviderValue').textContent = sync.providerLabel || '—';
         $('syncAccountValue').textContent = sync.accountEmail || '—';
-        $('syncConflictsValue').textContent = String(sync.conflicts);
+        updateSyncConflictBadges(sync.conflicts);
         $('syncPauseBtn').textContent = sync.paused ? 'Resume' : 'Pause';
-        $('syncNowBtn').disabled = sync.paused;
+        const syncNowBtn = $('syncNowBtn');
+        syncNowBtn.disabled = sync.paused || sync.status === 'syncing';
+        if (sync.status !== 'syncing' && syncNowBtn.textContent === 'Syncing…') {
+          syncNowBtn.textContent = 'Sync Now';
+        }
         $('syncSharingRow').hidden = !sync.sharingAvailable;
 
         syncFlagsDirtyGuard = true;
@@ -2192,10 +2387,17 @@ function handleSyncMessage(message) {
       renderSyncPending(message.pending || []);
       break;
     case 'sync/running':
+      $('syncNowBtn').disabled = true;
+      $('syncNowBtn').textContent = 'Syncing…';
+      if ($('syncRunMessage')) {
+        $('syncRunMessage').className = 'status-line';
+        $('syncRunMessage').textContent = 'Syncing…';
+      }
       break;
     case 'sync/runComplete': {
       const el = $('syncRunMessage');
-      $('syncNowBtn').disabled = false;
+      const btn = $('syncNowBtn');
+      btn.textContent = 'Sync Now';
       if (message.result) {
         el.className = 'status-line success';
         el.textContent = formatSyncRunMessage(message.result);
@@ -2274,10 +2476,10 @@ function handleSyncMessage(message) {
     case 'sync/quota': {
       const q = message.quota;
       const el = $('syncHealthQuota');
-      if (q) {
+      if (q && el) {
         el.hidden = false;
-        el.textContent = `Cloud storage: ${formatBytes(q.bytesUsed)} / ${formatBytes(q.bytesLimit)} (${q.itemCount} items)`;
-      } else {
+        el.textContent = `${formatBytes(q.bytesUsed)} / ${formatBytes(q.bytesLimit)} (${q.itemCount} items)`;
+      } else if (el) {
         el.hidden = true;
       }
       break;
@@ -2330,8 +2532,10 @@ function handleSyncMessage(message) {
             secretKey: message.secretKey,
             customPassphrase: syncWizardState.customPassphrase,
           });
-          renderSyncWizardStep();
         }
+        renderSyncWizardStep();
+        updateSyncWizardNextBtn();
+      } else {
         updateSyncWizardNextBtn();
       }
       break;
@@ -2632,7 +2836,7 @@ window.addEventListener('message', (event) => {
       openSyncWizard(message.wizard);
     }
     if (message.tab && message.section === 'sync') {
-      showSyncTab(message.tab === 'preview' ? 'preview' : message.tab);
+      showSyncTab(message.tab);
     }
     return;
   }

@@ -140,7 +140,7 @@ Sharing requires the NexQL Cloud backend (the only backend with a broker for pub
 
 Activate a license with **`NexQL: Activate License`** (`postgres-explorer.license.activate`). Manage status with **`NexQL: Manage License`**.
 
-If your plan does not include the configured backend (e.g. after a downgrade), sync stops with an upgrade prompt — remote data stays intact. Choose **View Plans** to open [pricing](https://nexql.astrx.dev/#pricing).
+If your plan does not include the configured backend (e.g. after a downgrade), sync stops with an upgrade prompt. NexQL Cloud data is kept for **30 days** while inactive, then deleted. Choose **View Plans** to open [pricing](https://nexql.astrx.dev/#pricing).
 
 ---
 
@@ -152,7 +152,7 @@ If your plan does not include the configured backend (e.g. after a downgrade), s
 | **Email change** | The vault KEK is derived from your email + secret key. Changing email requires unlocking with the original email or re-creating the vault. |
 | **GitHub Gist size** | Each gist file is limited to **1 MB**. Very large notebooks may be skipped with a warning. |
 | **Google Drive** | Production use may require [Google OAuth app verification](https://developers.google.com/identity/protocols/oauth2/production-readiness). |
-| **Downgraded license** | If your subscription lapses, backends above your tier stop syncing; existing remote data remains but cannot be updated until you renew. |
+| **Downgraded license** | If your subscription lapses, backends above your tier stop syncing. NexQL Cloud data is kept for **30 days** while inactive, then deleted. Renew or switch to a free Postgres backup. |
 | **Free single-device** | Free-tier backups are device-bound; claiming a backup on a new device is limited to once per week. |
 
 ---

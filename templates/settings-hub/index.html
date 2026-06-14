@@ -584,6 +584,10 @@
             <h1>Cloud Sync</h1>
             <p class="section-sub">Encrypted sync of connections, saved queries and notebooks</p>
           </div>
+          <div id="syncSectionActions" class="section-actions" hidden>
+            <button type="button" id="syncNowBtn" class="btn-primary">Sync Now</button>
+            <button type="button" id="syncPauseBtn" class="btn-secondary">Pause</button>
+          </div>
         </header>
 
         <div id="syncState" class="state-line" role="status">Loading sync status…</div>
@@ -606,91 +610,129 @@
         </div>
 
         <div id="syncConfigured" hidden>
-          <dl class="status-grid">
-            <div><dt>Status</dt><dd id="syncStatusValue">—</dd></div>
-            <div><dt>Provider</dt><dd id="syncProviderValue">—</dd></div>
-            <div><dt>Account</dt><dd id="syncAccountValue">—</dd></div>
-            <div><dt>Conflicts</dt><dd id="syncConflictsValue">—</dd></div>
-          </dl>
-
-          <div class="inline-row sync-actions">
-            <button type="button" id="syncNowBtn" class="btn-primary">Sync Now</button>
-            <button type="button" id="syncPauseBtn" class="btn-secondary">Pause</button>
-            <button type="button" id="syncSignOutBtn" class="btn-secondary btn-danger-text">Sign Out</button>
+          <div id="syncHealthHeader" class="sync-status-strip" hidden>
+            <span id="syncStatusPill" class="sync-status-pill">—</span>
+            <span class="sync-status-sep" aria-hidden="true">·</span>
+            <span id="syncProviderValue">—</span>
+            <span class="sync-status-sep" aria-hidden="true">·</span>
+            <span id="syncAccountValue" class="sync-status-account">—</span>
+            <span class="sync-status-sep" aria-hidden="true">·</span>
+            <button type="button" id="syncConflictsLink" class="sync-status-link">
+              <span id="syncConflictsValue">0</span> conflicts
+            </button>
+            <span id="syncHealthQuota" class="sync-status-quota label-hint" hidden></span>
           </div>
+          <span id="syncStatusValue" hidden aria-hidden="true">—</span>
 
-          <div id="syncSharingRow" class="inline-row sync-actions" hidden>
-            <button type="button" id="syncShareBtn" class="btn-secondary">Share Items…</button>
-            <button type="button" id="syncImportSharesBtn" class="btn-secondary">Import Shared Items…</button>
-          </div>
-          <div id="syncRunMessage" class="status-line" role="status"></div>
-
-          <div id="syncHealthHeader" class="sync-health-bar" hidden>
-            <span id="syncHealthLast">Last sync: —</span>
-            <span id="syncHealthProvider">—</span>
-            <span id="syncHealthQuota" class="label-hint" hidden></span>
-            <span id="syncHealthError" class="status-line error" hidden></span>
-          </div>
-
-          <div class="sync-subnav inline-row">
-            <button type="button" class="btn-secondary btn-sm sync-tab active" data-sync-tab="overview">Overview</button>
-            <button type="button" class="btn-secondary btn-sm sync-tab" data-sync-tab="preview">Preview</button>
-            <button type="button" class="btn-secondary btn-sm sync-tab" data-sync-tab="conflicts">Conflicts</button>
-            <button type="button" class="btn-secondary btn-sm sync-tab" data-sync-tab="history">History</button>
-            <button type="button" class="btn-secondary btn-sm sync-tab" data-sync-tab="shares">Shares</button>
-            <button type="button" class="btn-secondary btn-sm sync-tab" data-sync-tab="devices">Devices</button>
-            <button type="button" class="btn-secondary btn-sm sync-tab" data-sync-tab="advanced">Advanced</button>
-          </div>
+          <nav class="hub-subnav" aria-label="Cloud Sync sections">
+            <div class="hub-subnav-group" aria-label="Main">
+              <button type="button" class="subnav-tab active" data-sync-tab="overview">Overview</button>
+              <button type="button" class="subnav-tab" data-sync-tab="settings">Settings</button>
+              <button type="button" class="subnav-tab" data-sync-tab="items">
+                Items <span id="syncItemsTabBadge" class="subnav-badge" hidden></span>
+              </button>
+            </div>
+            <div class="hub-subnav-group" aria-label="Activity">
+              <button type="button" class="subnav-tab" data-sync-tab="preview">Preview</button>
+              <button type="button" class="subnav-tab" data-sync-tab="conflicts">
+                Conflicts <span id="syncConflictsTabBadge" class="subnav-badge" hidden></span>
+              </button>
+              <button type="button" class="subnav-tab" data-sync-tab="history">History</button>
+            </div>
+            <div class="hub-subnav-group" aria-label="Account">
+              <button type="button" class="subnav-tab" data-sync-tab="shares">Sharing</button>
+              <button type="button" class="subnav-tab" data-sync-tab="devices">Devices</button>
+              <button type="button" class="subnav-tab" data-sync-tab="advanced">Advanced</button>
+            </div>
+          </nav>
 
           <div id="syncTabOverview" class="sync-tab-panel">
-          <div class="inline-row sync-actions">
-            <button type="button" id="syncPullBtn" class="btn-secondary">Pull Only</button>
-            <button type="button" id="syncPushBtn" class="btn-secondary">Push Only</button>
-            <button type="button" id="syncPreviewBtn" class="btn-secondary">Preview</button>
-          </div>
+            <div id="syncRunMessage" class="status-line" role="status"></div>
+            <p id="syncHealthLast" class="sync-section-desc label-hint">Last sync: —</p>
+            <span id="syncHealthError" class="status-line error sync-section-desc" hidden></span>
 
-          <h2 class="pref-group-title">What to sync</h2>
-          <div class="pref-list">
-            <label class="pref-row"><input type="checkbox" id="syncFlagConnections"><span class="pref-row-text"><span class="pref-row-label">Connections</span></span></label>
-            <label class="pref-row"><input type="checkbox" id="syncFlagQueries"><span class="pref-row-text"><span class="pref-row-label">Saved queries</span></span></label>
-            <label class="pref-row"><input type="checkbox" id="syncFlagNotebooks"><span class="pref-row-text"><span class="pref-row-label">Notebooks</span></span></label>
-            <label class="pref-row"><input type="checkbox" id="syncFlagPasswords"><span class="pref-row-text"><span class="pref-row-label">Passwords</span><span class="label-hint">Opt-in — encrypted with your vault key before upload</span></span></label>
-          </div>
+            <div class="sync-quick-links">
+              <button type="button" id="syncQuickPending" class="sync-quick-link" hidden>
+                <span id="syncQuickPendingCount" class="sync-quick-link-count">0</span>
+                <span class="sync-quick-link-label">pending changes</span>
+              </button>
+              <button type="button" id="syncQuickConflicts" class="sync-quick-link" hidden>
+                <span id="syncQuickConflictsCount" class="sync-quick-link-count">0</span>
+                <span class="sync-quick-link-label">conflicts to resolve</span>
+              </button>
+            </div>
 
-          <h2 class="pref-group-title">Automatic sync</h2>
-          <div class="pref-list">
-            <label class="pref-row"><input type="checkbox" id="syncAutoEnabled"><span class="pref-row-text"><span class="pref-row-label">Sync automatically</span><span class="label-hint" id="syncAutoHint">Push on changes; pull on the interval below</span></span></label>
-            <div class="pref-row pref-row-inline">
-              <label for="syncPullInterval" class="pref-row-label">Pull interval (minutes)</label>
-              <input type="number" id="syncPullInterval" min="1" max="1440" class="num-input">
+            <div class="inline-row sync-actions">
+              <button type="button" id="syncSignOutBtn" class="btn-secondary btn-danger-text">Sign Out</button>
             </div>
           </div>
 
-          <h2 class="pref-group-title">Pending changes <span id="syncPendingBadge" class="sync-pending-badge" hidden></span></h2>
-          <p class="label-hint">Local changes queued for the next sync. Cleared automatically once synced.</p>
-          <div class="conn-table-wrap">
-            <table class="conn-table sync-items-table">
-              <thead>
-                <tr><th>Action</th><th>Item</th><th>Type</th><th>Queued</th></tr>
-              </thead>
-              <tbody id="syncPendingBody">
-                <tr><td colspan="4" class="empty-state">No pending changes.</td></tr>
-              </tbody>
-            </table>
+          <div id="syncTabSettings" class="sync-tab-panel" hidden>
+            <p class="sync-section-desc label-hint">Choose what gets encrypted and uploaded to your sync backend.</p>
+            <h2 class="pref-group-title">What to sync</h2>
+            <div class="pref-list">
+              <label class="pref-row"><input type="checkbox" id="syncFlagConnections"><span class="pref-row-text"><span class="pref-row-label">Connections</span></span></label>
+              <label class="pref-row"><input type="checkbox" id="syncFlagQueries"><span class="pref-row-text"><span class="pref-row-label">Saved queries</span></span></label>
+              <label class="pref-row"><input type="checkbox" id="syncFlagNotebooks"><span class="pref-row-text"><span class="pref-row-label">Notebooks</span></span></label>
+              <label class="pref-row"><input type="checkbox" id="syncFlagPasswords"><span class="pref-row-text"><span class="pref-row-label">Passwords</span><span class="label-hint">Opt-in — encrypted with your vault key before upload</span></span></label>
+            </div>
+
+            <p class="sync-section-desc label-hint">Control when changes are pushed and how often to pull from the cloud.</p>
+            <h2 class="pref-group-title">Automatic sync</h2>
+            <div class="pref-list">
+              <label class="pref-row"><input type="checkbox" id="syncAutoEnabled"><span class="pref-row-text"><span class="pref-row-label">Sync automatically</span><span class="label-hint" id="syncAutoHint">Push on changes; pull on the interval below</span></span></label>
+              <div class="pref-row pref-row-inline">
+                <label for="syncPullInterval" class="pref-row-label">Pull interval (minutes)</label>
+                <input type="number" id="syncPullInterval" min="1" max="1440" class="num-input">
+              </div>
+            </div>
+
+            <p class="sync-section-desc label-hint">Force a one-way sync without applying the full merge.</p>
+            <h2 class="pref-group-title">Manual sync</h2>
+            <div class="pg-panel sync-manual-panel">
+              <div class="inline-row sync-actions">
+                <button type="button" id="syncPullBtn" class="btn-secondary">Pull Only</button>
+                <button type="button" id="syncPushBtn" class="btn-secondary">Push Only</button>
+              </div>
+            </div>
           </div>
 
-          <h2 class="pref-group-title">Synced items</h2>
-          <p class="label-hint">Items tracked by sync on this device. Stop syncing an item to keep the cloud copy or remove it everywhere.</p>
-          <div class="conn-table-wrap">
-            <table class="conn-table sync-items-table">
-              <thead>
-                <tr><th>Item</th><th>Type</th><th>Updated</th><th>Status</th><th></th></tr>
-              </thead>
-              <tbody id="syncItemsBody">
-                <tr><td colspan="5" class="empty-state">Loading…</td></tr>
-              </tbody>
-            </table>
-          </div>
+          <div id="syncTabItems" class="sync-tab-panel" hidden>
+            <h2 class="pref-group-title">Pending changes <span id="syncPendingBadge" class="sync-pending-badge" hidden></span></h2>
+            <p class="sync-section-desc label-hint">Local changes queued for the next sync. Cleared automatically once synced.</p>
+            <div class="conn-table-wrap">
+              <table class="conn-table sync-items-table">
+                <thead>
+                  <tr><th>Action</th><th>Item</th><th>Type</th><th>Queued</th></tr>
+                </thead>
+                <tbody id="syncPendingBody">
+                  <tr><td colspan="4" class="empty-state">No pending changes.</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <h2 class="pref-group-title">Synced items</h2>
+            <p class="sync-section-desc label-hint">Items tracked by sync on this device. Stop syncing an item to keep the cloud copy or remove it everywhere.</p>
+            <div class="inline-row sync-items-toolbar">
+              <label for="syncItemsKindFilter" class="pref-row-label">Filter by type</label>
+              <select id="syncItemsKindFilter" class="sync-kind-filter" aria-label="Filter synced items by type">
+                <option value="all">All types</option>
+                <option value="connection">Connections</option>
+                <option value="query">Saved queries</option>
+                <option value="notebook">Notebooks</option>
+                <option value="secrets">Passwords</option>
+              </select>
+            </div>
+            <div class="conn-table-wrap">
+              <table class="conn-table sync-items-table">
+                <thead>
+                  <tr><th>Item</th><th>Type</th><th>Updated</th><th>Status</th><th></th></tr>
+                </thead>
+                <tbody id="syncItemsBody">
+                  <tr><td colspan="5" class="empty-state">Loading…</td></tr>
+                </tbody>
+              </table>
+            </div>
           </div>
 
           <div id="syncTabPreview" class="sync-tab-panel" hidden>
@@ -721,6 +763,10 @@
           </div>
 
           <div id="syncTabShares" class="sync-tab-panel" hidden>
+            <div id="syncSharingRow" class="inline-row sync-actions" hidden>
+              <button type="button" id="syncShareBtn" class="btn-secondary">Share Items…</button>
+              <button type="button" id="syncImportSharesBtn" class="btn-secondary">Import Shared Items…</button>
+            </div>
             <h3 class="pref-group-title">Outgoing shares</h3>
             <div id="syncOutgoingShares"></div>
             <h3 class="pref-group-title">Incoming shares</h3>

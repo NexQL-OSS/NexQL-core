@@ -23,6 +23,8 @@ export const DEFAULT_NOTEBOOK_FOLDER = 'PgStudioNotebooks';
 export const DEFAULT_SYNC_API_ENDPOINT = 'https://nexql.astrx.dev/api';
 
 export const TOMBSTONE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+/** NexQL Cloud deletes remote blobs after this many days without paid sync access. */
+export const CLOUD_INACTIVE_RETENTION_DAYS = 30;
 export const MIN_COMPRESSION_BYTES = 256;
 export const SCRYPT_N = 32768;
 export const SCRYPT_R = 8;

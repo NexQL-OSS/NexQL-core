@@ -85,7 +85,7 @@ export const CONNECTION_PLATFORM_PRESETS: readonly ConnectionPresetDefinition[] 
   {
     id: 'aurora',
     label: 'AWS Aurora PostgreSQL',
-    icon: 'aws',
+    icon: 'aurora',
     hint: 'Cluster writer endpoint recommended. SSL Mode require.',
     defaults: { port: 5432, sslmode: 'require', applicationName: 'PgStudio' },
     hostPlaceholder: 'mycluster.cluster-xxx.region.rds.amazonaws.com',

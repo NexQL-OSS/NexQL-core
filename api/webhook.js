@@ -150,6 +150,15 @@ module.exports = async (req, res) => {
         razorpayEvent: razorpayEventId,
       });
 
+      if (licenseKey) {
+        try {
+          const { markAccountActive } = require('./_lib/sync-db');
+          await markAccountActive(licenseKey);
+        } catch (err) {
+          console.error('webhook: markAccountActive failed', err);
+        }
+      }
+
       if (isNew && email) {
         await sendLicenseEmail(email, licenseKey, tier);
       }
@@ -164,6 +173,14 @@ module.exports = async (req, res) => {
           source: 'webhook',
           razorpayEvent: razorpayEventId,
         });
+        if (existing.licenseKey && ['cancelled', 'halted', 'paused'].includes(existing.status)) {
+          try {
+            const { markAccountInactive } = require('./_lib/sync-db');
+            await markAccountInactive(existing.licenseKey);
+          } catch (err) {
+            console.error('webhook: markAccountInactive failed', err);
+          }
+        }
       }
       return res.status(200).json({ ok: true, event, status: STATUS_EVENTS[event] });
     }

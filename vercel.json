@@ -37,12 +37,20 @@
     "api/cron/license-expiry.js": {
       "memory": 128,
       "maxDuration": 30
+    },
+    "api/cron/sync-purge-inactive.js": {
+      "memory": 128,
+      "maxDuration": 30
     }
   },
   "crons": [
     {
       "path": "/api/cron/license-expiry",
       "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/sync-purge-inactive",
+      "schedule": "0 4 * * *"
     }
   ],
   "rewrites": [

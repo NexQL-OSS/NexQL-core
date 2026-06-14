@@ -28,6 +28,7 @@ import {
   SYNC_LAST_ERROR_KEY,
   SYNC_LAST_SYNC_AT_KEY,
   SYNC_PERIODIC_MS,
+  CLOUD_INACTIVE_RETENTION_DAYS,
   SYNC_PREVIEW_CACHE_KEY,
 } from './constants';
 import type {
@@ -66,6 +67,9 @@ export class SyncController implements vscode.Disposable {
   private backoffMs = SYNC_BACKOFF_INITIAL_MS;
   private status: SyncStatus = 'not_configured';
   private conflictCount = 0;
+  private syncInFlight = false;
+  /** Serializes sync runs so manual Sync Now waits instead of no-oping. */
+  private syncTail: Promise<unknown> = Promise.resolve();
   private statusBar: SyncStatusBar | undefined;
   private readonly disposables: vscode.Disposable[] = [];
 
@@ -279,15 +283,13 @@ export class SyncController implements vscode.Disposable {
       return undefined;
     }
 
-    const direction = options.direction ?? 'both';
-    const dryRun = !!options.dryRun;
-
     if (!isSyncProviderAllowed(config.providerId)) {
       this.status = 'error';
       this.updateStatusBar();
       const tier = syncProviderMinTier(config.providerId);
       void vscode.window.showWarningMessage(
-        `Your current plan does not include the "${config.providerId}" sync backend (requires NexQL ${TIER_DISPLAY[tier]}). Your remote data is intact.`,
+        `Your current plan does not include the "${config.providerId}" sync backend (requires NexQL ${TIER_DISPLAY[tier]}). `
+        + `NexQL Cloud data is kept for ${CLOUD_INACTIVE_RETENTION_DAYS} days while inactive, then deleted. Renew or switch to a free Postgres backup.`,
         'View Plans',
       ).then((c) => {
         if (c === 'View Plans') {
@@ -307,11 +309,28 @@ export class SyncController implements vscode.Disposable {
       }
     }
 
+    const run = () => this.runSyncLocked(options);
+    const outcome = this.syncTail.then(run, run);
+    this.syncTail = outcome.then(() => undefined, () => undefined);
+    return outcome as Promise<SyncRunResult | SyncPreviewResult | undefined>;
+  }
+
+  private async runSyncLocked(options: SyncRunOptions = {}): Promise<SyncRunResult | SyncPreviewResult | undefined> {
+    const config = this.getConfig();
+    const providerId = config.providerId;
+    if (!providerId) {
+      return undefined;
+    }
+    const direction = options.direction ?? 'both';
+    const dryRun = !!options.dryRun;
+    const vault = VaultService.getInstance();
+
+    this.syncInFlight = true;
     this.status = 'syncing';
     this.updateStatusBar();
     const start = Date.now();
     const deviceId = getOrCreateDeviceId(this.context);
-    const provider = this.createProvider(config.providerId);
+    const provider = this.createProvider(providerId);
     const index = new SyncIndex(this.context);
 
     try {
@@ -375,14 +394,14 @@ export class SyncController implements vscode.Disposable {
           conflicts: merge.conflicts.length,
           skipped: merge.skipped.length,
           durationMs: Date.now() - start,
-          provider: config.providerId,
+          provider: providerId,
           summary,
           outgoing: previewLists.outgoing,
           incoming: previewLists.incoming,
           conflictItems: previewLists.conflictItems,
         };
         await this.context.globalState.update(SYNC_PREVIEW_CACHE_KEY, preview);
-        this.status = merge.conflicts.length > 0 ? 'conflict' : this.status;
+        this.status = this.resolveIdleStatus(merge.conflicts.length);
         this.updateStatusBar();
         return preview;
       }
@@ -437,7 +456,9 @@ export class SyncController implements vscode.Disposable {
       this.purgeStaleNotebookIndex(index, updatedBase);
       await index.flush();
 
-      SyncActivityLog.getInstance(this.context).acknowledge(syncedKeys);
+      const conflictIds = new Set(merge.conflicts.map((c) => c.id));
+      const ackKeys = this.buildAcknowledgeKeys(syncedKeys, localItems, newBaseManifest, conflictIds);
+      SyncActivityLog.getInstance(this.context).acknowledge(ackKeys);
 
       await this.context.globalState.update(SYNC_LAST_CONFLICTS_KEY, merge.conflicts);
       this.conflictCount = merge.conflicts.length + this.countConflictCopies();
@@ -470,7 +491,7 @@ export class SyncController implements vscode.Disposable {
         conflicts: merge.conflicts.length,
         skipped,
         durationMs: Date.now() - start,
-        provider: config.providerId,
+        provider: providerId,
         summary,
       };
 
@@ -503,12 +524,14 @@ export class SyncController implements vscode.Disposable {
 
       TelemetryService.getInstance().trackEvent('sync_failure', {
         failureClass: isNetwork ? 'network' : 'other',
-        provider: config.providerId,
+        provider: providerId,
       });
 
       this.outputChannel.appendLine(`sync: failed ${e instanceof Error ? e.message : String(e)}`);
       setTimeout(() => void this.runSync(), this.backoffMs);
       return undefined;
+    } finally {
+      this.syncInFlight = false;
     }
   }
 
@@ -925,6 +948,44 @@ export class SyncController implements vscode.Disposable {
     });
   }
 
+  /** Restore a non-in-progress status after preview or when sync cannot start. */
+  private resolveIdleStatus(newConflictsInRun: number): SyncStatus {
+    const config = this.getConfig();
+    if (config.paused) {
+      return 'paused';
+    }
+    if (newConflictsInRun > 0 || this.conflictCount > 0) {
+      return 'conflict';
+    }
+    return this.getLastSyncAt() ? 'synced' : 'idle';
+  }
+
+  /**
+   * Clear pending activities for items reconciled this run — including those
+   * already up-to-date (no push/pull transfer needed).
+   */
+  private buildAcknowledgeKeys(
+    transferredKeys: Set<string>,
+    localItems: Array<{ meta: SyncItemMeta }>,
+    newBaseManifest: SyncItemMeta[],
+    conflictIds: ReadonlySet<string>,
+  ): Set<string> {
+    const keys = new Set(transferredKeys);
+    const activeBase = new Set(
+      newBaseManifest.filter((m) => !m.deleted).map((m) => metaKey(m)),
+    );
+    for (const { meta } of localItems) {
+      if (meta.deleted || conflictIds.has(meta.id)) {
+        continue;
+      }
+      const key = metaKey(meta);
+      if (activeBase.has(key)) {
+        keys.add(key);
+      }
+    }
+    return keys;
+  }
+
   /**
    * Items known to sync on this device: base manifest (synced) plus local
    * index (not yet pushed). Names come from local sources only — the remote
@@ -1087,10 +1148,25 @@ export class SyncController implements vscode.Disposable {
     const indexEntries = index.getAll();
     const baseManifest = this.getBaseManifest();
     const baseActiveIds = new Set(baseManifest.filter((m) => !m.deleted).map((m) => m.id));
+    const pendingIds = new Set(this.listPendingActivities().map((p) => p.itemId));
     const nbSvc = new NotebookSyncService(this.context, index);
     const byId = new Map<string, SyncedItemView>();
 
+    const resolveItemStatus = (id: string, isExcluded: boolean): SyncedItemView['itemStatus'] => {
+      if (isExcluded) {
+        return 'excluded';
+      }
+      if (pendingIds.has(id)) {
+        return 'pending';
+      }
+      if (baseActiveIds.has(id)) {
+        return 'synced';
+      }
+      return 'local';
+    };
+
     for (const meta of baseManifest) {
+      const isExcluded = excluded.has(meta.id);
       byId.set(meta.id, {
         id: meta.id,
         kind: meta.kind,
@@ -1098,20 +1174,23 @@ export class SyncController implements vscode.Disposable {
         updatedAt: meta.updatedAt,
         deviceId: meta.deviceId,
         revision: meta.revision,
-        excluded: excluded.has(meta.id),
+        excluded: isExcluded,
         deleted: meta.deleted,
+        itemStatus: resolveItemStatus(meta.id, isExcluded),
       });
     }
     for (const [id, entry] of Object.entries(indexEntries)) {
       if (!byId.has(id)) {
+        const isExcluded = excluded.has(id);
         byId.set(id, {
           id,
           kind: entry.kind,
           name: entry.name,
           updatedAt: entry.modifiedAt ?? entry.syncedAt,
           revision: entry.syncedRevision || undefined,
-          excluded: excluded.has(id),
+          excluded: isExcluded,
           deleted: false,
+          itemStatus: resolveItemStatus(id, isExcluded),
         });
       }
     }

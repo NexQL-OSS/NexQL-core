@@ -192,8 +192,12 @@ async function createSessionFromLicense(licenseKey, instanceId, deviceId, device
   const access = await storeToken(accountId, 'access', ACCESS_TTL_SEC);
   const refresh = await storeToken(accountId, 'refresh', REFRESH_TTL_SEC);
 
-  const { upsertDevice, setAccountTier } = require('./sync-db');
+  const { upsertDevice, setAccountTier, markAccountActive, purgeInactiveCloudData } = require('./sync-db');
   await setAccountTier(accountId, license.entitlement.tier || 'sponsor');
+  await markAccountActive(accountId);
+  void purgeInactiveCloudData().catch((err) => {
+    console.error('sync-auth: purgeInactiveCloudData failed', err);
+  });
   if (deviceId) {
     await upsertDevice(accountId, String(deviceId), deviceName ? String(deviceName) : undefined);
   }
@@ -285,8 +289,13 @@ async function refreshAccessToken(refreshToken) {
 
   const license = await validateLicenseKey(record.account_id);
   if (!license.ok) {
+    const { markAccountInactive } = require('./sync-db');
+    await markAccountInactive(record.account_id);
     return { error: 'invalid_grant', error_description: license.error };
   }
+
+  const { markAccountActive } = require('./sync-db');
+  await markAccountActive(record.account_id);
 
   await kvDel(TOKEN_PREFIX + sha256(refreshToken));
   const access = await storeToken(record.account_id, 'access', ACCESS_TTL_SEC);
@@ -313,11 +322,17 @@ async function authenticateBearer(req) {
 
   const license = await validateLicenseKey(record.account_id);
   if (!license.ok) {
+    const { markAccountInactive } = require('./sync-db');
+    await markAccountInactive(record.account_id);
     return null;
   }
 
-  const { upsertDevice, setAccountTier } = require('./sync-db');
+  const { upsertDevice, setAccountTier, markAccountActive, purgeInactiveCloudData } = require('./sync-db');
   await setAccountTier(record.account_id, license.entitlement.tier || 'sponsor');
+  await markAccountActive(record.account_id);
+  void purgeInactiveCloudData().catch((err) => {
+    console.error('sync-auth: purgeInactiveCloudData failed', err);
+  });
 
   const deviceId = req.headers['x-device-id'] || req.headers['X-Device-Id'];
   const deviceName = req.headers['x-device-name'] || req.headers['X-Device-Name'];

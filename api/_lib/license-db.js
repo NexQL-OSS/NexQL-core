@@ -475,7 +475,7 @@ async function expirePastDueLicenses() {
       expired_at: isoToMs(row.expires_at),
     }, 'cron');
   }
-  return rows.length;
+  return rows.map((row) => row.license_key);
 }
 
 module.exports = {

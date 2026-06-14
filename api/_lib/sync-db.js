@@ -77,12 +77,17 @@ async function ensureSchema() {
       `;
       await db`
         CREATE TABLE IF NOT EXISTS pgstudio_sync.sync_accounts (
-          account_id   TEXT        PRIMARY KEY,
-          tier         TEXT        NOT NULL DEFAULT 'sponsor',
-          bytes_used   BIGINT      NOT NULL DEFAULT 0,
-          item_count   INT         NOT NULL DEFAULT 0,
-          updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+          account_id     TEXT        PRIMARY KEY,
+          tier           TEXT        NOT NULL DEFAULT 'sponsor',
+          bytes_used     BIGINT      NOT NULL DEFAULT 0,
+          item_count     INT         NOT NULL DEFAULT 0,
+          inactive_since TIMESTAMPTZ,
+          updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
         )
+      `;
+      await db`
+        ALTER TABLE pgstudio_sync.sync_accounts
+        ADD COLUMN IF NOT EXISTS inactive_since TIMESTAMPTZ
       `;
       await db`
         CREATE TABLE IF NOT EXISTS pgstudio_sync.sync_devices (
@@ -360,6 +365,80 @@ async function revokeDevice(accountId, deviceId) {
   return rows.length > 0;
 }
 
+const { CLOUD_INACTIVE_RETENTION_DAYS } = require('./sync-retention');
+
+/** Mark cloud storage inactive (license lapsed). Retains prior inactive_since if already set. */
+async function markAccountInactive(accountId) {
+  if (!accountId) {
+    return;
+  }
+  await ensureSchema();
+  const db = getSql();
+  await db`
+    INSERT INTO pgstudio_sync.sync_accounts (account_id, inactive_since, updated_at)
+    VALUES (${accountId}, now(), now())
+    ON CONFLICT (account_id) DO UPDATE SET
+      inactive_since = COALESCE(pgstudio_sync.sync_accounts.inactive_since, now()),
+      updated_at = now()
+  `;
+}
+
+/** Clear inactive flag when paid sync access is restored. */
+async function markAccountActive(accountId) {
+  if (!accountId) {
+    return;
+  }
+  await ensureSchema();
+  const db = getSql();
+  await db`
+    UPDATE pgstudio_sync.sync_accounts
+    SET inactive_since = NULL, updated_at = now()
+    WHERE account_id = ${accountId}
+  `;
+}
+
+async function deleteAccountCloudData(accountId, ownerEmail) {
+  await ensureSchema();
+  const db = getSql();
+  await db`DELETE FROM pgstudio_sync.sync_items WHERE account_id = ${accountId}`;
+  await db`DELETE FROM pgstudio_sync.sync_devices WHERE account_id = ${accountId}`;
+  if (ownerEmail) {
+    const email = String(ownerEmail).trim().toLowerCase();
+    await db`DELETE FROM pgstudio_sync.sync_shares WHERE owner_email = ${email}`;
+  }
+  await db`DELETE FROM pgstudio_sync.sync_accounts WHERE account_id = ${accountId}`;
+}
+
+/** Remove cloud blobs for accounts inactive longer than {@link CLOUD_INACTIVE_RETENTION_DAYS}. */
+async function purgeInactiveCloudData() {
+  await ensureSchema();
+  const db = getSql();
+  const rows = await db`
+    SELECT account_id
+    FROM pgstudio_sync.sync_accounts
+    WHERE inactive_since IS NOT NULL
+      AND inactive_since < now() - (${CLOUD_INACTIVE_RETENTION_DAYS} * interval '1 day')
+  `;
+  if (!rows.length) {
+    return 0;
+  }
+
+  const store = require('./store');
+  let purged = 0;
+  for (const row of rows) {
+    let ownerEmail = null;
+    try {
+      const ent = await store.getEntitlement(row.account_id);
+      ownerEmail = ent?.email ?? null;
+    } catch (err) {
+      console.error('purgeInactiveCloudData: entitlement lookup failed', row.account_id, err);
+    }
+    await deleteAccountCloudData(row.account_id, ownerEmail);
+    purged += 1;
+  }
+  return purged;
+}
+
 module.exports = {
   ensureSchema,
   listManifest,
@@ -378,4 +457,7 @@ module.exports = {
   upsertDevice,
   listDevices,
   revokeDevice,
+  markAccountInactive,
+  markAccountActive,
+  purgeInactiveCloudData,
 };

@@ -123,6 +123,7 @@ export class SyncSectionHandler implements SettingsSectionHandler {
         break;
       case 'diagnostics':
         await SyncController.getInstance().runDiagnostics();
+        this.sendState();
         break;
       case 'stopSyncingItem':
         await this.stopSyncingItem(String(message.itemId ?? ''), String(message.itemName ?? ''));
@@ -446,7 +447,6 @@ export class SyncSectionHandler implements SettingsSectionHandler {
     if (!(await requirePro(ProFeature.CloudBackup))) {
       return;
     }
-    this.host.post({ type: 'sync/running' });
     const preview = await SyncController.getInstance().previewSync(transientExcludedIds);
     this.host.post({ type: 'sync/preview', preview: preview ?? null });
     this.sendState();

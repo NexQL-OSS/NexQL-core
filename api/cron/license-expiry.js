@@ -21,8 +21,20 @@ module.exports = async (req, res) => {
   }
 
   try {
-    const expired = await licenseDb.expirePastDueLicenses();
-    return res.status(200).json({ ok: true, expired });
+    const expiredKeys = await licenseDb.expirePastDueLicenses();
+    let markedInactive = 0;
+    if (expiredKeys.length > 0) {
+      try {
+        const { markAccountInactive } = require('../_lib/sync-db');
+        for (const licenseKey of expiredKeys) {
+          await markAccountInactive(licenseKey);
+          markedInactive += 1;
+        }
+      } catch (err) {
+        console.error('license-expiry: markAccountInactive failed', err);
+      }
+    }
+    return res.status(200).json({ ok: true, expired: expiredKeys.length, markedInactive });
   } catch (err) {
     console.error('license-expiry cron failed', err);
     return res.status(500).json({ error: 'Cron failed' });

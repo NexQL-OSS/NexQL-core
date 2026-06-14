@@ -159,6 +159,8 @@ export interface SyncedItemView {
   revision?: number;
   excluded: boolean;
   deleted: boolean;
+  /** Per-item inclusion state for the settings table (not global sync-in-progress). */
+  itemStatus: 'excluded' | 'pending' | 'synced' | 'local';
 }
 
 export type SyncActivityAction = 'create' | 'update' | 'rename' | 'delete';
