@@ -12,6 +12,9 @@ import {
   TIER_DISPLAY,
 } from '../../../services/featureGates';
 import type { SettingsHubHostContext, SettingsHubMessage, SettingsSectionHandler } from '../types';
+import { ConnectionUtils } from '../../../utils/connectionUtils';
+import { DatabaseTreeItem } from '../../../providers/DatabaseTreeProvider';
+import { cmdNewNotebook } from '../../../commands/notebook';
 
 const PROVIDER_LABELS: Record<string, string> = {
   gist: 'GitHub Gist',
@@ -75,6 +78,12 @@ export class SyncSectionHandler implements SettingsSectionHandler {
         break;
       case 'wizardComplete':
         await this.wizardComplete(message);
+        break;
+      case 'savePostgresConnection':
+        await this.savePostgresConnection(String(message.postgresConnectionId ?? ''));
+        break;
+      case 'openNotebook':
+        await this.openNotebook(String(message.postgresConnectionId ?? ''));
         break;
       case 'wizardRecoveryKit':
         await this.wizardRecoveryKit(message);
@@ -187,6 +196,7 @@ export class SyncSectionHandler implements SettingsSectionHandler {
         syncPasswords: !!flags.syncPasswords,
       },
       message.vaultMode === 'unlock' ? 'unlock' : 'create',
+      message.postgresConnectionId ? String(message.postgresConnectionId) : undefined,
     );
     this.host.post({ type: 'sync/wizardCompleteResult', ...result });
     this.sendState();
@@ -420,8 +430,19 @@ export class SyncSectionHandler implements SettingsSectionHandler {
         },
         auto: wsConfig.get<boolean>(AUTO_SYNC_KEY, true),
         pullIntervalMinutes: pullInterval,
+        postgresConnectionId: wsConfig.get<string>('postgresExplorer.sync.postgresConnectionId') ?? null,
       },
     });
+  }
+
+  private async savePostgresConnection(postgresConnectionId: string): Promise<void> {
+    if (!postgresConnectionId) {
+      return;
+    }
+    await vscode.workspace
+      .getConfiguration()
+      .update('postgresExplorer.sync.postgresConnectionId', postgresConnectionId, vscode.ConfigurationTarget.Global);
+    this.sendState();
   }
 
   private async syncNow(direction: 'both' | 'pull' | 'push'): Promise<void> {
@@ -516,5 +537,25 @@ export class SyncSectionHandler implements SettingsSectionHandler {
       await wsConfig.update(PULL_INTERVAL_KEY, clamped, vscode.ConfigurationTarget.Global);
     }
     this.sendState();
+  }
+
+  private async openNotebook(postgresConnectionId: string): Promise<void> {
+    if (!postgresConnectionId) {
+      void vscode.window.showErrorMessage('No database connection selected.');
+      return;
+    }
+    const connection = ConnectionUtils.findConnection(postgresConnectionId);
+    if (!connection) {
+      void vscode.window.showErrorMessage('Database connection not found.');
+      return;
+    }
+    const treeItem = new DatabaseTreeItem(
+      connection.database || 'postgres',
+      vscode.TreeItemCollapsibleState.None,
+      'database',
+      connection.id,
+      connection.database || 'postgres'
+    );
+    await cmdNewNotebook(treeItem, this.host.extensionContext);
   }
 }

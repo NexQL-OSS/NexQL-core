@@ -7,6 +7,18 @@
   <meta http-equiv="Content-Security-Policy" content="{{CSP}}">
   <title>PgStudio Settings</title>
   <style>{{INLINE_STYLES}}</style>
+  <style>
+    .sql-keyword { color: #569CD6; font-weight: bold; }
+    .sql-type { color: #4EC9B0; }
+    .sql-ident { color: #9CDCFE; }
+    .sql-func { color: #DCDCAA; }
+    .sql-comment { color: #6A9955; font-style: italic; }
+    pre code {
+      background: none !important;
+      padding: 0 !important;
+      border-radius: 0 !important;
+    }
+  </style>
 </head>
 
 <body>
@@ -651,6 +663,40 @@
             <p id="syncHealthLast" class="sync-section-desc label-hint">Last sync: —</p>
             <span id="syncHealthError" class="status-line error sync-section-desc" hidden></span>
 
+            <div id="syncPostgresErrorSetupBox" class="sync-postgres-setup-box" style="margin: 12px 0; padding: 12px; border: 1px solid var(--vscode-dropdown-border); border-radius: 4px; background: rgba(255, 255, 255, 0.03);" hidden>
+              <p style="color: var(--vscode-inputValidation-warningForeground); font-weight: bold; margin-bottom: 8px; font-size: 12px;">
+                ⚠️ WARNING: Do not run this script on critical or production databases.
+              </p>
+              <p class="label-hint" style="margin-bottom: 8px; font-size: 12px;">
+                Note: This sync backend requires to be run on postgres DB. Other databases are not supported.
+              </p>
+              <p class="label-hint" style="margin-bottom: 8px; font-size: 12px;">
+                To fix this, execute the following SQL script on your sync database to create the required schema and tables:
+              </p>
+              <pre class="mono" style="margin: 8px 0; padding: 8px; background: rgba(0, 0, 0, 0.25); border-radius: 4px; overflow-x: auto; font-size: 11px; max-height: 120px; text-align: left;"><code id="syncPostgresErrorSqlCode"><span class="sql-keyword">CREATE SCHEMA IF NOT EXISTS</span> pgstudio_sync;
+
+<span class="sql-keyword">CREATE TABLE IF NOT EXISTS</span> pgstudio_sync.sync_items (
+    account_id   <span class="sql-type">TEXT</span> <span class="sql-keyword">NOT NULL</span>,
+    item_id      <span class="sql-type">TEXT</span> <span class="sql-keyword">NOT NULL</span>,
+    kind         <span class="sql-type">TEXT</span> <span class="sql-keyword">NOT NULL</span>,
+    blob         <span class="sql-type">BYTEA</span> <span class="sql-keyword">NOT NULL</span>,
+    content_hash <span class="sql-type">TEXT</span> <span class="sql-keyword">NOT NULL</span>,
+    revision     <span class="sql-type">INTEGER</span> <span class="sql-keyword">NOT NULL</span>,
+    device_id    <span class="sql-type">TEXT</span> <span class="sql-keyword">NOT NULL</span>,
+    deleted      <span class="sql-type">BOOLEAN</span> <span class="sql-keyword">NOT NULL</span>,
+    updated_at   <span class="sql-type">TIMESTAMPTZ</span> <span class="sql-keyword">NOT NULL DEFAULT</span> <span class="sql-func">now</span>(),
+    <span class="sql-keyword">PRIMARY KEY</span> (account_id, item_id)
+);
+
+<span class="sql-keyword">CREATE TABLE IF NOT EXISTS</span> pgstudio_sync.sync_meta (
+    account_id      <span class="sql-type">TEXT</span> <span class="sql-keyword">PRIMARY KEY</span>,
+    bound_device_id <span class="sql-type">TEXT</span>,
+    updated_at      <span class="sql-type">TIMESTAMPTZ</span> <span class="sql-keyword">NOT NULL DEFAULT</span> <span class="sql-func">now</span>()
+);</code></pre>
+              <button type="button" id="syncCopyPostgresErrorSqlBtn" class="btn-secondary btn-sm" style="margin-top: 4px;">Copy SQL Script</button>
+              <button type="button" id="syncOpenNotebookPostgresErrorBtn" class="btn-secondary btn-sm" style="margin-top: 4px; margin-left: 6px;">Open in Notebook</button>
+            </div>
+
             <div class="sync-quick-links">
               <button type="button" id="syncQuickPending" class="sync-quick-link" hidden>
                 <span id="syncQuickPendingCount" class="sync-quick-link-count">0</span>
@@ -675,6 +721,53 @@
               <label class="pref-row"><input type="checkbox" id="syncFlagQueries"><span class="pref-row-text"><span class="pref-row-label">Saved queries</span></span></label>
               <label class="pref-row"><input type="checkbox" id="syncFlagNotebooks"><span class="pref-row-text"><span class="pref-row-label">Notebooks</span></span></label>
               <label class="pref-row"><input type="checkbox" id="syncFlagPasswords"><span class="pref-row-text"><span class="pref-row-label">Passwords</span><span class="label-hint">Opt-in — encrypted with your vault key before upload</span></span></label>
+            </div>
+
+            <div id="syncPostgresSettingsBlock" hidden>
+              <p class="sync-section-desc label-hint">Connection used for Postgres sync data storage.</p>
+              <h2 class="pref-group-title">Shared Postgres Connection</h2>
+              <div class="pref-list">
+                <div class="pref-row pref-row-inline">
+                  <label for="syncPostgresConnectionSelect" class="pref-row-label">Sync connection</label>
+                  <select id="syncPostgresConnectionSelect" style="width: 250px;"></select>
+                </div>
+              </div>
+              <details class="sync-advanced-accordion" style="margin-top: 8px;">
+                <summary>Database Setup Instructions & SQL Script</summary>
+                <div style="margin-top: 8px; padding: 12px; border: 1px solid var(--vscode-dropdown-border); border-radius: 4px; background: rgba(255, 255, 255, 0.03);">
+                  <p style="color: var(--vscode-inputValidation-warningForeground); font-weight: bold; margin-bottom: 8px; font-size: 12px;">
+                    ⚠️ WARNING: Do not run this script on critical or production databases.
+                  </p>
+                  <p class="label-hint" style="margin-bottom: 8px; font-size: 12px;">
+                    Note: This sync backend requires to be run on postgres DB. Other databases are not supported.
+                  </p>
+                  <p class="label-hint" style="margin-bottom: 8px; font-size: 12px;">
+                    Run this SQL script on the selected database using your query tool to set up the sync schema:
+                  </p>
+                  <pre class="mono" style="margin: 8px 0; padding: 8px; background: rgba(0, 0, 0, 0.25); border-radius: 4px; overflow-x: auto; font-size: 11px; max-height: 120px; text-align: left;"><code id="syncSettingsPostgresSqlCode"><span class="sql-keyword">CREATE SCHEMA IF NOT EXISTS</span> pgstudio_sync;
+
+<span class="sql-keyword">CREATE TABLE IF NOT EXISTS</span> pgstudio_sync.sync_items (
+    account_id   <span class="sql-type">TEXT</span> <span class="sql-keyword">NOT NULL</span>,
+    item_id      <span class="sql-type">TEXT</span> <span class="sql-keyword">NOT NULL</span>,
+    kind         <span class="sql-type">TEXT</span> <span class="sql-keyword">NOT NULL</span>,
+    blob         <span class="sql-type">BYTEA</span> <span class="sql-keyword">NOT NULL</span>,
+    content_hash <span class="sql-type">TEXT</span> <span class="sql-keyword">NOT NULL</span>,
+    revision     <span class="sql-type">INTEGER</span> <span class="sql-keyword">NOT NULL</span>,
+    device_id    <span class="sql-type">TEXT</span> <span class="sql-keyword">NOT NULL</span>,
+    deleted      <span class="sql-type">BOOLEAN</span> <span class="sql-keyword">NOT NULL</span>,
+    updated_at   <span class="sql-type">TIMESTAMPTZ</span> <span class="sql-keyword">NOT NULL DEFAULT</span> <span class="sql-func">now</span>(),
+    <span class="sql-keyword">PRIMARY KEY</span> (account_id, item_id)
+);
+
+<span class="sql-keyword">CREATE TABLE IF NOT EXISTS</span> pgstudio_sync.sync_meta (
+    account_id      <span class="sql-type">TEXT</span> <span class="sql-keyword">PRIMARY KEY</span>,
+    bound_device_id <span class="sql-type">TEXT</span>,
+    updated_at      <span class="sql-type">TIMESTAMPTZ</span> <span class="sql-keyword">NOT NULL DEFAULT</span> <span class="sql-func">now</span>()
+);</code></pre>
+                  <button type="button" id="syncSettingsCopyPostgresSqlBtn" class="btn-secondary btn-sm" style="margin-top: 4px;">Copy SQL Script</button>
+                  <button type="button" id="syncSettingsOpenNotebookPostgresBtn" class="btn-secondary btn-sm" style="margin-top: 4px; margin-left: 6px;">Open in Notebook</button>
+                </div>
+              </details>
             </div>
 
             <p class="sync-section-desc label-hint">Control when changes are pushed and how often to pull from the cloud.</p>

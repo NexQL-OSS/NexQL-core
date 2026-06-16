@@ -96,10 +96,17 @@ export class SyncSetupWizard {
     providerId: SyncProviderId,
     flags: { syncConnections: boolean; syncQueries: boolean; syncNotebooks: boolean; syncPasswords: boolean },
     vaultMode: 'create' | 'unlock',
+    postgresConnectionId?: string,
   ): Promise<WizardCompleteResult> {
     if (!allowedSyncProviders().includes(providerId)) {
       const tier = syncProviderMinTier(providerId);
       return { ok: false, error: `Requires NexQL ${TIER_DISPLAY[tier]}.` };
+    }
+
+    if (providerId === 'postgres' && postgresConnectionId) {
+      await vscode.workspace
+        .getConfiguration()
+        .update('postgresExplorer.sync.postgresConnectionId', postgresConnectionId, vscode.ConfigurationTarget.Global);
     }
 
     await ensureDeviceName(this.context);

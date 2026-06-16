@@ -93,6 +93,9 @@ body {
   flex-direction: column;
   gap: 8px;
 }
+.hub-nav::-webkit-scrollbar {
+  display: none !important;
+}
 
 .hub-brand {
   display: flex;

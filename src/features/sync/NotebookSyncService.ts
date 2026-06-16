@@ -141,7 +141,7 @@ export class NotebookSyncService {
         plaintext,
       });
       seenIds.add(syncId);
-      seenPaths.add(filePath);
+      seenPaths.add(path.resolve(filePath));
     };
 
     const walk = (dir: string): void => {
@@ -153,7 +153,8 @@ export class NotebookSyncService {
         if (entry.isDirectory()) {
           walk(full);
         } else if (entry.name.endsWith('.pgsql')) {
-          if (seenPaths.has(full)) {
+          const resolvedFull = path.resolve(full);
+          if (seenPaths.has(resolvedFull)) {
             continue;
           }
           try {
@@ -164,7 +165,7 @@ export class NotebookSyncService {
               // Stale duplicate (e.g. cloud pulled the old name after a rename).
               // Keep the canonical file; drop the extra copy.
               const indexedPath = this.index.get(syncId)?.filePath;
-              if (indexedPath && indexedPath !== full && fs.existsSync(indexedPath)) {
+              if (indexedPath && path.resolve(indexedPath) !== resolvedFull && fs.existsSync(indexedPath)) {
                 try {
                   fs.unlinkSync(full);
                 } catch {
@@ -198,19 +199,28 @@ export class NotebookSyncService {
       }
     };
 
-    for (const root of this.notebookRoots()) {
-      walk(root);
-    }
-
     for (const doc of vscode.workspace.notebookDocuments) {
       if (doc.notebookType !== 'postgres-notebook' && doc.notebookType !== 'postgres-query') {
         continue;
       }
-      if (doc.isUntitled || doc.uri.scheme !== 'file' || seenPaths.has(doc.uri.fsPath)) {
+      const resolvedFsPath = path.resolve(doc.uri.fsPath);
+      if (doc.isUntitled || doc.uri.scheme !== 'file' || seenPaths.has(resolvedFsPath)) {
         continue;
       }
       const metadata = doc.metadata as Record<string, unknown>;
       let syncId = typeof metadata.syncId === 'string' ? metadata.syncId : undefined;
+      
+      // If missing in memory, check if file on disk has it to prevent generating duplicate ID
+      if (!syncId && fs.existsSync(doc.uri.fsPath)) {
+        try {
+          const raw = fs.readFileSync(doc.uri.fsPath);
+          const parsed = JSON.parse(raw.toString());
+          syncId = readNotebookSyncId(parsed);
+        } catch {
+          /* ignore */
+        }
+      }
+
       if (!syncId || seenIds.has(syncId)) {
         syncId = crypto.randomUUID();
         const persisted = await this.writeSyncIdToDocument(doc, syncId);
@@ -232,6 +242,10 @@ export class NotebookSyncService {
         cells,
         undefined,
       );
+    }
+
+    for (const root of this.notebookRoots()) {
+      walk(root);
     }
 
     return items;

@@ -450,15 +450,15 @@ export class SyncController implements vscode.Disposable {
         }
       }
 
+      const conflictIds = new Set(merge.conflicts.map((c) => c.id));
+      const ackKeys = this.buildAcknowledgeKeys(syncedKeys, localItems, newBaseManifest, conflictIds);
+      SyncActivityLog.getInstance(this.context).acknowledge(ackKeys);
+
       const updatedBase = mergeBaseManifestPartial(baseManifest, newBaseManifest, syncedKeys);
       await this.setBaseManifest(updatedBase);
       index.markSynced(updatedBase);
       this.purgeStaleNotebookIndex(index, updatedBase);
       await index.flush();
-
-      const conflictIds = new Set(merge.conflicts.map((c) => c.id));
-      const ackKeys = this.buildAcknowledgeKeys(syncedKeys, localItems, newBaseManifest, conflictIds);
-      SyncActivityLog.getInstance(this.context).acknowledge(ackKeys);
 
       await this.context.globalState.update(SYNC_LAST_CONFLICTS_KEY, merge.conflicts);
       this.conflictCount = merge.conflicts.length + this.countConflictCopies();
@@ -971,6 +971,20 @@ export class SyncController implements vscode.Disposable {
     conflictIds: ReadonlySet<string>,
   ): Set<string> {
     const keys = new Set(transferredKeys);
+    const index = new SyncIndex(this.context);
+
+    for (const key of transferredKeys) {
+      const parts = key.split(':');
+      if (parts.length >= 2) {
+        const kind = parts[0];
+        const id = parts.slice(1).join(':');
+        const entry = index.get(id);
+        if (entry?.filePath) {
+          keys.add(`${kind}:${entry.filePath}`);
+        }
+      }
+    }
+
     const activeBase = new Set(
       newBaseManifest.filter((m) => !m.deleted).map((m) => metaKey(m)),
     );
@@ -981,6 +995,10 @@ export class SyncController implements vscode.Disposable {
       const key = metaKey(meta);
       if (activeBase.has(key)) {
         keys.add(key);
+        const entry = index.get(meta.id);
+        if (entry?.filePath) {
+          keys.add(`${meta.kind}:${entry.filePath}`);
+        }
       }
     }
     return keys;

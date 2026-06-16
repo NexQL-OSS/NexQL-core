@@ -52,6 +52,9 @@
 ::-webkit-scrollbar-thumb:hover {
   background: var(--vscode-scrollbarSlider-hoverBackground);
 }
+select::-webkit-scrollbar {
+  display: none !important;
+}
 
 /* ── Typography utilities ── */
 .pg-text-meta {

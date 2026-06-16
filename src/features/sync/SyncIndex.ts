@@ -1,3 +1,4 @@
+import * as path from 'path';
 import type * as vscode from 'vscode';
 import { SYNC_ITEM_INDEX_KEY } from './constants';
 import type { SyncItemMeta, SyncKind } from './types';
@@ -66,8 +67,9 @@ export class SyncIndex {
   }
 
   findByPath(filePath: string): { id: string; entry: SyncIndexEntry } | undefined {
+    const target = path.resolve(filePath);
     for (const [id, entry] of Object.entries(this.entries)) {
-      if (entry.filePath === filePath) {
+      if (entry.filePath && path.resolve(entry.filePath) === target) {
         return { id, entry };
       }
     }
