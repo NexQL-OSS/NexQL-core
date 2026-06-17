@@ -119,6 +119,11 @@ export class SyncActivityLog {
     void this.context.globalState.update(SYNC_INBOUND_LOG_KEY, []);
   }
 
+  /** Flush the outbound queue only (keeps inbound history). */
+  clearPending(): void {
+    this.save([]);
+  }
+
   recordInbound(entry: Omit<InboundEntry, 'appliedAt'> & { appliedAt?: number }): void {
     const log = this.loadInbound();
     log.push({

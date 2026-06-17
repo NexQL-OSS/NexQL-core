@@ -94,6 +94,18 @@ async function rawSet(key, value, ttlSec) {
   writeDevStore(store);
 }
 
+async function rawDel(key) {
+  if (useKv) {
+    await kv().del(key);
+    return;
+  }
+  const store = readDevStore();
+  if (key in store) {
+    delete store[key];
+    writeDevStore(store);
+  }
+}
+
 async function writeKvPointers(entitlement) {
   if (!entitlement.subscriptionId && !entitlement.email) return;
   if (entitlement.subscriptionId) {
@@ -296,5 +308,6 @@ module.exports = {
   usingNeon: useNeon,
   rawGet,
   rawSet,
+  rawDel,
   licenseDb,
 };

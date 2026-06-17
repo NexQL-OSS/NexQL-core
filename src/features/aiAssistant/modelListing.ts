@@ -187,6 +187,74 @@ export async function listCustomModels(endpoint: string, apiKey: string): Promis
   });
 }
 
+/** Shared helper: fetch GET /v1/models from any OpenAI-compatible host with Bearer auth. */
+function listOpenAiCompatibleModels(
+  hostname: string,
+  apiKey: string,
+  filter?: (id: string) => boolean,
+): Promise<string[]> {
+  return new Promise((resolve, reject) => {
+    const options = {
+      hostname,
+      path: '/v1/models',
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+    };
+
+    const req = https.request(options, (res) => {
+      let body = '';
+      res.on('data', (chunk) => (body += chunk));
+      res.on('end', () => {
+        if (res.statusCode === 200) {
+          try {
+            const data = JSON.parse(body);
+            let models: string[] = (data.data ?? [])
+              .map((m: { id: string }) => m.id)
+              .filter(Boolean);
+            if (filter) {
+              models = models.filter(filter);
+            }
+            resolve(models.sort());
+          } catch {
+            reject(new Error('Failed to parse models response'));
+          }
+        } else {
+          reject(new Error(`Failed to list models: ${res.statusCode} - ${body}`));
+        }
+      });
+    });
+
+    req.on('error', (err) => reject(err));
+    req.end();
+  });
+}
+
+/** List DeepSeek chat models (platform.deepseek.com — OpenAI-compatible). */
+export function listDeepSeekModels(apiKey: string): Promise<string[]> {
+  return listOpenAiCompatibleModels('api.deepseek.com', apiKey, (id) =>
+    id.startsWith('deepseek-'),
+  );
+}
+
+/** List Moonshot / Kimi models (platform.moonshot.cn — OpenAI-compatible). */
+export function listMoonshotModels(apiKey: string): Promise<string[]> {
+  return listOpenAiCompatibleModels('api.moonshot.cn', apiKey, (id) =>
+    id.startsWith('moonshot-'),
+  );
+}
+
+/** List Mistral AI models (api.mistral.ai — OpenAI-compatible). */
+export function listMistralModels(apiKey: string): Promise<string[]> {
+  // Mistral returns chat-capable models; exclude embedding-only ones
+  return listOpenAiCompatibleModels('api.mistral.ai', apiKey, (id) =>
+    !id.includes('embed'),
+  );
+}
+
+
 export interface VsCodeLanguageModelEntry {
   id: string;
   displayName: string;

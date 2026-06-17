@@ -1,10 +1,20 @@
 /** Providers that use a per-provider API key in secret storage. */
-export type DirectApiKeyProvider = 'openai' | 'anthropic' | 'gemini' | 'custom';
+export type DirectApiKeyProvider =
+  | 'openai'
+  | 'anthropic'
+  | 'gemini'
+  | 'deepseek'
+  | 'moonshot'
+  | 'mistral'
+  | 'custom';
 
 export const DIRECT_API_KEY_PROVIDERS: readonly DirectApiKeyProvider[] = [
   'openai',
   'anthropic',
   'gemini',
+  'deepseek',
+  'moonshot',
+  'mistral',
   'custom',
 ] as const;
 

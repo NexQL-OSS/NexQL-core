@@ -106,6 +106,19 @@ Pick connections, saved queries, notebooks, and optionally passwords. A first sy
 | Pause / resume | **`NexQL Sync: Pause Sync`** |
 | Sign out | **`NexQL Sync: Sign Out of Sync`** — local data kept; clears local vault session |
 
+### Deleting synced items
+
+Deleting a connection, saved query, or notebook on one device removes it everywhere — the same delete (tombstone) protocol is used by **every** backend, including NexQL Cloud and self-hosted Shared Postgres:
+
+1. The item is removed locally and a **delete** is queued in the pending changes list.
+2. The next sync pushes a **tombstone** to the backend using the item's last-synced version as a compare-and-swap base, so a concurrent edit from another device can't be silently clobbered.
+3. Once the backend acknowledges the tombstone, the item is dropped from the local sync index and the pending entry clears.
+4. Other devices receive the tombstone on their next pull and remove their local copy. Tombstones are permanent — a deleted item is never resurrected by a later sync.
+
+**Open editors are handled safely.** Deleting a notebook whose tab is still open no longer re-uploads or "resurrects" it: a document whose backing file is gone is skipped during collection, so the delete propagates cleanly even with the tab open. Items that were never pushed to the backend are simply dropped from the queue (there is nothing remote to delete).
+
+> If you deleted notebooks in an older build and the cloud copy lingered, re-deleting them now pushes a proper tombstone. Alternatively, **Replace Cloud with Local** (from the Sync menu) force-pushes this device's state as the source of truth.
+
 ### Settings
 
 Configure in **Settings → PostgreSQL Explorer → Sync**:

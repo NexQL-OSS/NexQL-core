@@ -262,6 +262,7 @@ export class SyncSectionHandler implements SettingsSectionHandler {
     void vscode.window.showInformationMessage(ok ? 'Local data replaced from cloud.' : 'Replace failed.');
     this.sendState();
     this.sendItems();
+    this.sendPending();
   }
 
   private async replaceRemote(): Promise<void> {
@@ -276,6 +277,8 @@ export class SyncSectionHandler implements SettingsSectionHandler {
     const ok = await SyncController.getInstance().replaceCloudWithLocal();
     void vscode.window.showInformationMessage(ok ? 'Cloud replaced from local.' : 'Replace failed.');
     this.sendState();
+    this.sendItems();
+    this.sendPending();
   }
 
   private async rebuildIndex(): Promise<void> {

@@ -15,8 +15,11 @@ import {
   listAnthropicModels,
   listCursorModels,
   listCustomModels,
+  listDeepSeekModels,
   listGeminiModels,
   listGitHubModels,
+  listMistralModels,
+  listMoonshotModels,
   listOpenAIModels,
   listVsCodeLanguageModels,
   resolveVsCodeLanguageModel,
@@ -26,7 +29,12 @@ import type { SettingsHubHostContext, SettingsHubMessage, SettingsSectionHandler
 
 export interface AiSettings {
   configScope?: AiConfigScope;
-  provider: string;
+  provider?: string;
+  scope?: string;
+  defaultNotebookProvider?: string;
+  defaultNotebookModel?: string;
+  defaultChatProvider?: string;
+  defaultChatModel?: string;
   apiKey?: string;
   apiKeys?: Partial<Record<DirectApiKeyProvider, string>>;
   cursorApiKey?: string;
@@ -104,13 +112,20 @@ export class AiSectionHandler implements SettingsSectionHandler {
     const apiKeys = await credentials.getAllApiKeys();
     const cursorApiKey = (await credentials.getCursorApiKey()) || '';
     const githubSession = await getGitHubSession();
-    const scoped = readAiScopeSettings(config, this.configScope);
+    
+    const notebookScope = readAiScopeSettings(config, 'notebook');
+    const chatScope = readAiScopeSettings(config, 'chat');
+    const lastModels = this.host.extensionContext.globalState.get<Record<string, string>>('postgresExplorer.ai.lastModelsByProvider') || {};
 
     this.host.post({
       type: 'ai/settings',
       settings: {
         configScope: this.configScope,
-        provider: scoped.provider,
+        notebookProvider: notebookScope.provider,
+        notebookModel: notebookScope.model,
+        chatProvider: chatScope.provider,
+        chatModel: chatScope.model,
+        lastModels,
         apiKeys,
         cursorApiKey,
         opencodeCliPath: config.get('opencodeCliPath', ''),
@@ -120,7 +135,6 @@ export class AiSectionHandler implements SettingsSectionHandler {
         opencodeSkipPermissions: config.get('opencodeSkipPermissions', true),
         opencodeAutoApprovePermissions: config.get('opencodeAutoApprovePermissions', true),
         opencodeServePort: config.get('opencodeServePort', 0),
-        model: scoped.model,
         endpoint: config.get('aiEndpoint', ''),
         githubAuth: {
           connected: !!githubSession,
@@ -132,16 +146,6 @@ export class AiSectionHandler implements SettingsSectionHandler {
 
   private async save(settings: AiSettings): Promise<void> {
     try {
-      const scope: AiConfigScope = settings.configScope === 'chat' ? 'chat' : 'notebook';
-      this.configScope = scope;
-
-      await this.setScopedProvider(
-        scope,
-        settings.provider,
-        settings.model || '',
-        settings.endpoint || '',
-      );
-
       const credentials = AiCredentialsService.getInstance(this.host.extensionContext);
       if (settings.apiKeys) {
         await credentials.saveAllApiKeys(settings.apiKeys);
@@ -187,11 +191,41 @@ export class AiSectionHandler implements SettingsSectionHandler {
         vscode.ConfigurationTarget.Global,
       );
 
-      if (settings.model) {
+      // Save custom endpoint
+      await config.update(
+        'aiEndpoint',
+        settings.endpoint || '',
+        vscode.ConfigurationTarget.Global,
+      );
+
+      // Save notebook scope defaults
+      if (settings.defaultNotebookProvider) {
+        await writeAiScopeSettings('notebook', {
+          provider: settings.defaultNotebookProvider as AiProviderId,
+          model: settings.defaultNotebookModel || '',
+        });
+        // Also update legacy/fallback config keys
+        await config.update('aiProvider', settings.defaultNotebookProvider, vscode.ConfigurationTarget.Global);
+        await config.update('aiModel', settings.defaultNotebookModel || '', vscode.ConfigurationTarget.Global);
+        
         await rememberLastModelForProvider(
           this.host.extensionContext,
-          settings.provider as AiProviderId,
-          settings.model,
+          settings.defaultNotebookProvider as AiProviderId,
+          settings.defaultNotebookModel || '',
+        );
+      }
+
+      // Save chat scope defaults
+      if (settings.defaultChatProvider) {
+        await writeAiScopeSettings('chat', {
+          provider: settings.defaultChatProvider as AiProviderId,
+          model: settings.defaultChatModel || '',
+        });
+        
+        await rememberLastModelForProvider(
+          this.host.extensionContext,
+          settings.defaultChatProvider as AiProviderId,
+          settings.defaultChatModel || '',
         );
       }
 
@@ -258,6 +292,39 @@ export class AiSectionHandler implements SettingsSectionHandler {
           throw new Error('API Key is required for Gemini');
         }
         testResult = await testGemini(geminiKey, settings.model || 'gemini-2.5-flash');
+      } else if (settings.provider === 'deepseek') {
+        const deepseekKey = directApiKeyFromSettings(settings, 'deepseek');
+        if (!deepseekKey) {
+          throw new Error('API Key is required for DeepSeek');
+        }
+        testResult = await testOpenAiCompatible(
+          'api.deepseek.com',
+          deepseekKey,
+          settings.model || 'deepseek-chat',
+          'DeepSeek',
+        );
+      } else if (settings.provider === 'moonshot') {
+        const moonshotKey = directApiKeyFromSettings(settings, 'moonshot');
+        if (!moonshotKey) {
+          throw new Error('API Key is required for Moonshot / Kimi');
+        }
+        testResult = await testOpenAiCompatible(
+          'api.moonshot.cn',
+          moonshotKey,
+          settings.model || 'moonshot-v1-8k',
+          'Moonshot / Kimi',
+        );
+      } else if (settings.provider === 'mistral') {
+        const mistralKey = directApiKeyFromSettings(settings, 'mistral');
+        if (!mistralKey) {
+          throw new Error('API Key is required for Mistral AI');
+        }
+        testResult = await testOpenAiCompatible(
+          'api.mistral.ai',
+          mistralKey,
+          settings.model || 'mistral-large-latest',
+          'Mistral AI',
+        );
       } else if (settings.provider === 'custom') {
         if (!settings.endpoint) {
           throw new Error('Endpoint is required for custom provider');
@@ -312,6 +379,24 @@ export class AiSectionHandler implements SettingsSectionHandler {
           throw new Error('API Key is required to list models');
         }
         models = await listGeminiModels(geminiKey);
+      } else if (settings.provider === 'deepseek') {
+        const deepseekKey = directApiKeyFromSettings(settings, 'deepseek');
+        if (!deepseekKey) {
+          throw new Error('API Key is required to list DeepSeek models');
+        }
+        models = await listDeepSeekModels(deepseekKey);
+      } else if (settings.provider === 'moonshot') {
+        const moonshotKey = directApiKeyFromSettings(settings, 'moonshot');
+        if (!moonshotKey) {
+          throw new Error('API Key is required to list Moonshot models');
+        }
+        models = await listMoonshotModels(moonshotKey);
+      } else if (settings.provider === 'mistral') {
+        const mistralKey = directApiKeyFromSettings(settings, 'mistral');
+        if (!mistralKey) {
+          throw new Error('API Key is required to list Mistral models');
+        }
+        models = await listMistralModels(mistralKey);
       } else if (settings.provider === 'custom') {
         const customKey = directApiKeyFromSettings(settings, 'custom');
         if (settings.endpoint && customKey) {
@@ -325,10 +410,17 @@ export class AiSectionHandler implements SettingsSectionHandler {
         models = await listCustomModels(settings.endpoint || DEFAULT_LMSTUDIO_ENDPOINT, '');
       }
 
-      this.host.post({ type: 'ai/modelsListed', models });
+      this.host.post({
+        type: 'ai/modelsListed',
+        provider: settings.provider,
+        scope: settings.scope,
+        models,
+      });
     } catch (err: unknown) {
       this.host.post({
         type: 'ai/modelsListError',
+        provider: settings.provider,
+        scope: settings.scope,
         error: err instanceof Error ? err.message : String(err),
       });
     }
@@ -477,6 +569,52 @@ async function testCursor(apiKey: string, model: string): Promise<string> {
   }
 
   return `Cursor connection successful${user.userEmail ? ` for ${user.userEmail}` : ''}${model && model !== 'auto' ? `! Model: ${model}` : '!'}`;
+}
+
+/**
+ * Generic test for any OpenAI-compatible provider (DeepSeek, Moonshot, Mistral, etc.).
+ * Sends a minimal chat completion request and reports success or failure.
+ */
+function testOpenAiCompatible(
+  hostname: string,
+  apiKey: string,
+  model: string,
+  providerLabel: string,
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const data = JSON.stringify({
+      model,
+      messages: [{ role: 'user', content: 'Hello' }],
+      max_tokens: 10,
+    });
+
+    const options = {
+      hostname,
+      path: '/v1/chat/completions',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Length': Buffer.byteLength(data),
+      },
+    };
+
+    const req = https.request(options, (res) => {
+      let body = '';
+      res.on('data', (chunk) => (body += chunk));
+      res.on('end', () => {
+        if (res.statusCode === 200) {
+          resolve(`${providerLabel} connection successful! Model: ${model}`);
+        } else {
+          reject(new Error(`${providerLabel} API error: ${res.statusCode} - ${body}`));
+        }
+      });
+    });
+
+    req.on('error', (err) => reject(err));
+    req.write(data);
+    req.end();
+  });
 }
 
 function testOpenAI(apiKey: string, model: string): Promise<string> {

@@ -66,11 +66,14 @@ function positionPgSelectPanel(trigger, panel) {
 function closePgSelect(wrap) {
   if (!wrap) { return; }
   wrap.classList.remove('is-open');
-  const panel = wrap.querySelector('.pg-select-panel');
+  const panel = wrap.pgSelectPanel || wrap.querySelector('.pg-select-panel');
   const trigger = wrap.querySelector('.pg-select-trigger');
   if (panel) {
     panel.hidden = true;
     resetPgSelectPanelPosition(panel);
+    if (panel.parentNode === document.body) {
+      wrap.appendChild(panel);
+    }
   }
   if (trigger) { trigger.setAttribute('aria-expanded', 'false'); }
 }
@@ -85,7 +88,7 @@ function bindPgSelectOutsideClick() {
   if (pgSelectOutsideListenerBound) { return; }
   pgSelectOutsideListenerBound = true;
   document.addEventListener('click', (event) => {
-    if (!event.target.closest('.pg-select')) {
+    if (!event.target.closest('.pg-select') && !event.target.closest('.pg-select-panel')) {
       closeAllPgSelects();
     }
   });
@@ -121,6 +124,9 @@ function enhanceSelect(selectEl) {
 
   const wrap = document.createElement('div');
   syncPgSelectWrapClasses(selectEl, wrap);
+  if (selectEl.classList.contains('hidden') || selectEl.hasAttribute('hidden')) {
+    wrap.classList.add('hidden');
+  }
 
   const trigger = document.createElement('button');
   trigger.type = 'button';
@@ -158,6 +164,8 @@ function enhanceSelect(selectEl) {
   wrap.appendChild(trigger);
   wrap.appendChild(panel);
 
+  wrap.pgSelectPanel = panel;
+
   function appendPgSelectOptionLabel(parent, opt) {
     const iconUri = opt.dataset.iconUri || '';
     if (iconUri) {
@@ -175,7 +183,31 @@ function enhanceSelect(selectEl) {
 
   function rebuildOptions() {
     panel.textContent = '';
-    Array.from(selectEl.options).forEach((opt) => {
+    
+    const hasGroups = Array.from(selectEl.children).some(child => child.tagName === 'OPTGROUP');
+    
+    if (hasGroups) {
+      Array.from(selectEl.children).forEach(child => {
+        if (child.tagName === 'OPTGROUP') {
+          const groupHeader = document.createElement('div');
+          groupHeader.className = 'pg-select-group-header';
+          groupHeader.textContent = child.label;
+          panel.appendChild(groupHeader);
+          
+          Array.from(child.children).forEach(opt => {
+            addOptionButton(opt);
+          });
+        } else if (child.tagName === 'OPTION') {
+          addOptionButton(child);
+        }
+      });
+    } else {
+      Array.from(selectEl.options).forEach((opt) => {
+        addOptionButton(opt);
+      });
+    }
+    
+    function addOptionButton(opt) {
       const optionBtn = document.createElement('button');
       optionBtn.type = 'button';
       optionBtn.className = 'pg-select-option';
@@ -183,6 +215,11 @@ function enhanceSelect(selectEl) {
       optionBtn.dataset.value = opt.value;
       appendPgSelectOptionLabel(optionBtn, opt);
       optionBtn.disabled = !!opt.disabled;
+      
+      if (opt.parentNode && opt.parentNode.tagName === 'OPTGROUP' && opt.parentNode.dataset.unconfigured === 'true') {
+        optionBtn.classList.add('pg-select-option--unconfigured');
+      }
+      
       if (opt.value === selectEl.value) {
         optionBtn.classList.add('is-selected');
         optionBtn.setAttribute('aria-selected', 'true');
@@ -195,7 +232,7 @@ function enhanceSelect(selectEl) {
         selectEl.dispatchEvent(new Event('change', { bubbles: true }));
       });
       panel.appendChild(optionBtn);
-    });
+    }
     syncDisplay();
   }
 
@@ -225,6 +262,7 @@ function enhanceSelect(selectEl) {
     }
     closeAllPgSelects(wrap);
     wrap.classList.add('is-open');
+    document.body.appendChild(panel);
     panel.hidden = false;
     positionPgSelectPanel(trigger, panel);
     trigger.setAttribute('aria-expanded', 'true');
@@ -454,6 +492,16 @@ function setSaveLabel() {
   connSaveBtn.textContent = connState.editingId ? 'Save Changes' : 'Add Connection';
 }
 
+// Single primary action: Test Connection until tested, then Save.
+function updateActionButtons() {
+  const tested = !!connState.isTested;
+  connTestBtn.hidden = tested;
+  // Test is the sole action until the connection passes — style it as primary.
+  connTestBtn.className = 'btn-primary';
+  connSaveBtn.hidden = !tested;
+  connSaveBtn.disabled = !tested;
+}
+
 function resetConnForm() {
   connForm.reset();
   $('port').value = '5432';
@@ -524,7 +572,7 @@ function openConnEditor(connection) {
 
   connEditorTitle.textContent = connState.editingId ? 'Edit Connection' : 'New Connection';
   setSaveLabel();
-  connSaveBtn.disabled = !connState.isTested;
+  updateActionButtons();
   updateProductionWarning();
   syncConnFormSelects();
   connModalBackdrop.hidden = false;
@@ -634,7 +682,7 @@ connForm.querySelectorAll('input, select').forEach((input) => {
   input.addEventListener('input', () => {
     if (connState.isTested && !connState.editingId) {
       connState.isTested = false;
-      connSaveBtn.disabled = true;
+      updateActionButtons();
       connHideFormMessage();
     }
   });
@@ -982,13 +1030,12 @@ function handleConnectionsMessage(message) {
           successText += '\n\n' + message.poolerWarning;
         }
         const envNudge = message.suggestEnvironmentTag
-          ? '\n\nTag an environment so Sentinel can highlight this server.'
+          ? '\n\nOptional: tag this server’s environment before saving.'
           : '';
         const envActions = message.suggestEnvironmentTag ? [
           { label: 'Production', onClick: () => { $('environment').value = 'production'; updateProductionWarning(); syncConnFormSelects(); } },
           { label: 'Staging', onClick: () => { $('environment').value = 'staging'; updateProductionWarning(); syncConnFormSelects(); } },
           { label: 'Development', onClick: () => { $('environment').value = 'development'; updateProductionWarning(); syncConnFormSelects(); } },
-          { label: 'Configure Sentinel', onClick: () => showSection('sentinel') },
         ] : undefined;
         connShowFormMessage(
           successText + envNudge,
@@ -996,10 +1043,10 @@ function handleConnectionsMessage(message) {
           envActions,
         );
         connState.isTested = true;
-        connSaveBtn.disabled = false;
+        updateActionButtons();
       } else {
         connState.isTested = false;
-        if (!connState.editingId) { connSaveBtn.disabled = true; }
+        updateActionButtons();
         if (isSslDowngradeError(message.error)) {
           connShowFormMessage(message.error || 'Connection failed', 'error', [{
             label: 'Set SSL Mode to Disable',
@@ -1008,7 +1055,7 @@ function handleConnectionsMessage(message) {
               $('advancedDetails').open = true;
               updateSSLCertFields();
               connState.isTested = false;
-              if (!connState.editingId) { connSaveBtn.disabled = true; }
+              updateActionButtons();
               connShowFormMessage('SSL mode set to Disable — No SSL. Retest the connection before saving.', 'warning');
               $('sslmode').focus();
             },
@@ -1032,8 +1079,8 @@ function handleConnectionsMessage(message) {
       break;
 
     case 'connections/saveError':
-      connSaveBtn.disabled = false;
       setSaveLabel();
+      updateActionButtons();
       connShowFormMessage('Failed to save: ' + (message.error || 'Unknown error'), 'error');
       break;
 
@@ -1060,7 +1107,6 @@ function handleConnectionsMessage(message) {
     case 'connections/envCandidates':
       renderEnvCandidates(message.candidates || []);
       break;
-
     case 'connections/envParsed':
       envPicker.hidden = true;
       $('connEnvPasteInput').value = '';
@@ -1093,65 +1139,318 @@ function handleConnectionsMessage(message) {
 // AI section (ported from the standalone AI Settings panel)
 // ─────────────────────────────────────────────────────────────────────────────
 
-const aiForm = $('settingsForm');
-const configScopeSelect = $('configScope');
-const providerSelect = $('provider');
-const aiTestBtn = $('aiTestBtn');
 const aiSaveBtn = $('aiSaveBtn');
-const aiMessageDiv = $('aiMessage');
+const aiSaveStatus = $('aiSaveStatus');
 const githubBanner = $('githubAuthBanner');
 const githubStatusText = $('githubAuthStatusText');
 const githubConnectBtn = $('githubConnectBtn');
 const githubDisconnectBtn = $('githubDisconnectBtn');
 let githubAuthState = { connected: false, accountLabel: '' };
+let activeTestProvider = null;
+let activeTestScope = null;
 
 const DEFAULT_OLLAMA_ENDPOINT = 'http://localhost:11434/v1/chat/completions';
 const DEFAULT_LMSTUDIO_ENDPOINT = 'http://localhost:1234/v1/chat/completions';
 
+const ALL_PROVIDERS = [
+  { id: 'vscode-lm', name: 'VS Code Language Model' },
+  { id: 'github', name: 'GitHub Models' },
+  { id: 'cursor', name: 'Cursor SDK' },
+  { id: 'opencode', name: 'OpenCode' },
+  { id: 'openai', name: 'OpenAI' },
+  { id: 'anthropic', name: 'Anthropic (Claude)' },
+  { id: 'gemini', name: 'Google Gemini' },
+  { id: 'deepseek', name: 'DeepSeek' },
+  { id: 'moonshot', name: 'Moonshot / Kimi' },
+  { id: 'mistral', name: 'Mistral AI' },
+  { id: 'ollama', name: 'Ollama' },
+  { id: 'lmstudio', name: 'LM Studio' },
+  { id: 'custom', name: 'Custom Endpoint' }
+];
+
+function populateDefaultProviders() {
+  const notebookSelect = $('defaultNotebookProvider');
+  const chatSelect = $('defaultChatProvider');
+  if (!notebookSelect || !chatSelect) return;
+  
+  const currentNotebookVal = notebookSelect.value;
+  const currentChatVal = chatSelect.value;
+  
+  notebookSelect.textContent = '';
+  chatSelect.textContent = '';
+  
+  const keys = {
+    openai: $('apiKey-openai')?.value.trim() || '',
+    anthropic: $('apiKey-anthropic')?.value.trim() || '',
+    gemini: $('apiKey-gemini')?.value.trim() || '',
+    deepseek: $('apiKey-deepseek')?.value.trim() || '',
+    moonshot: $('apiKey-moonshot')?.value.trim() || '',
+    mistral: $('apiKey-mistral')?.value.trim() || '',
+    custom: $('apiKey-custom')?.value.trim() || '',
+  };
+  const cursorKey = $('apiKey-cursor')?.value.trim() || '';
+  
+  const isConfigured = (provId) => {
+    if (['vscode-lm', 'opencode', 'ollama', 'lmstudio', 'cursor'].includes(provId)) {
+      return true;
+    }
+    if (provId === 'github') {
+      return !!githubAuthState.connected;
+    }
+    return !!keys[provId];
+  };
+  
+  const configuredNotebookGroup = document.createElement('optgroup');
+  configuredNotebookGroup.label = 'Ready to Use';
+  
+  const unconfiguredNotebookGroup = document.createElement('optgroup');
+  unconfiguredNotebookGroup.label = 'Requires Configuration';
+  unconfiguredNotebookGroup.dataset.unconfigured = 'true';
+  
+  const configuredChatGroup = document.createElement('optgroup');
+  configuredChatGroup.label = 'Ready to Use';
+  
+  const unconfiguredChatGroup = document.createElement('optgroup');
+  unconfiguredChatGroup.label = 'Requires Configuration';
+  unconfiguredChatGroup.dataset.unconfigured = 'true';
+  
+  ALL_PROVIDERS.forEach(p => {
+    const ready = isConfigured(p.id);
+    
+    const opt1 = document.createElement('option');
+    opt1.value = p.id;
+    opt1.textContent = p.name;
+    if (ready) {
+      configuredNotebookGroup.appendChild(opt1);
+    } else {
+      unconfiguredNotebookGroup.appendChild(opt1);
+    }
+    
+    const opt2 = document.createElement('option');
+    opt2.value = p.id;
+    opt2.textContent = p.name;
+    if (ready) {
+      configuredChatGroup.appendChild(opt2);
+    } else {
+      unconfiguredChatGroup.appendChild(opt2);
+    }
+  });
+  
+  if (configuredNotebookGroup.children.length > 0) {
+    notebookSelect.appendChild(configuredNotebookGroup);
+  }
+  if (unconfiguredNotebookGroup.children.length > 0) {
+    notebookSelect.appendChild(unconfiguredNotebookGroup);
+  }
+  
+  if (configuredChatGroup.children.length > 0) {
+    chatSelect.appendChild(configuredChatGroup);
+  }
+  if (unconfiguredChatGroup.children.length > 0) {
+    chatSelect.appendChild(unconfiguredChatGroup);
+  }
+  
+  if (currentNotebookVal) {
+    notebookSelect.value = currentNotebookVal;
+  }
+  if (currentChatVal) {
+    chatSelect.value = currentChatVal;
+  }
+  
+  const stateNotebook = pgSelectRegistry.get(notebookSelect);
+  if (stateNotebook) {
+    stateNotebook.rebuildOptions();
+  }
+  const stateChat = pgSelectRegistry.get(chatSelect);
+  if (stateChat) {
+    stateChat.rebuildOptions();
+  }
+}
+
+// Call it immediately
+populateDefaultProviders();
+
+// Add collapsed class to all provider cards and bind collapsible header events
+document.querySelectorAll('.ai-provider-card').forEach(card => {
+  card.classList.add('collapsed');
+});
+
+document.querySelectorAll('.ai-provider-card-header').forEach(header => {
+  header.addEventListener('click', function(e) {
+    if (e.target.closest('a') || e.target.closest('button') || e.target.closest('input') || e.target.closest('select')) {
+      return;
+    }
+    const card = this.closest('.ai-provider-card');
+    if (card) {
+      card.classList.toggle('collapsed');
+    }
+  });
+});
+
+// Global switch tab helper
+window.switchAiTab = function(tabName, cardId) {
+  const btn = document.querySelector(`.ai-tab-strip .ai-tab-btn[data-ai-tab="${tabName}"]`);
+  if (btn) {
+    btn.click();
+  }
+  const card = $(cardId);
+  if (card) {
+    card.classList.remove('collapsed'); // Expand card when navigated to!
+    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    card.classList.add('highlight-pulse');
+    setTimeout(() => {
+      card.classList.remove('highlight-pulse');
+    }, 2000);
+  }
+};
+
+// Tab switching logic
+document.querySelectorAll('.ai-tab-strip .ai-tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const tabName = btn.getAttribute('data-ai-tab');
+    
+    document.querySelectorAll('.ai-tab-strip .ai-tab-btn').forEach(b => {
+      b.classList.remove('active');
+      b.setAttribute('aria-selected', 'false');
+    });
+    document.querySelectorAll('.ai-tab-panel').forEach(p => {
+      p.classList.remove('active');
+    });
+    
+    btn.classList.add('active');
+    btn.setAttribute('aria-selected', 'true');
+    const panel = $('ai-tab-' + tabName);
+    if (panel) {
+      panel.classList.add('active');
+    }
+  });
+});
+
 function aiShowMessage(text, isError) {
-  aiMessageDiv.className = 'status-line ' + (isError ? 'error' : 'success');
-  aiMessageDiv.textContent = text;
+  const target = aiSaveStatus;
+  if (!target) return;
+  target.className = isError ? 'ai-save-status error' : 'ai-save-status success';
+  target.textContent = text;
 }
 
 function aiHideMessage() {
-  aiMessageDiv.textContent = '';
-  aiMessageDiv.className = 'status-line';
+  const target = aiSaveStatus;
+  if (!target) return;
+  target.textContent = '';
+  target.className = 'ai-save-status';
 }
 
-providerSelect.addEventListener('change', () => {
-  const provider = providerSelect.value;
-  document.querySelectorAll('.provider-details').forEach((el) => el.classList.remove('active'));
-  const detailsEl = $('provider-' + provider);
-  if (detailsEl) { detailsEl.classList.add('active'); }
-  aiHideMessage();
-  const formData = getAiFormData();
-  autoLoadModels(provider, formData.apiKey, formData.endpoint, { allowPrompt: githubAuthState.connected });
-});
+function updateKeyStatusIcon(provider, hasKey) {
+  const icon = $('status-icon-' + provider);
+  const card = $('card-' + provider);
+  if (icon) {
+    if (hasKey) {
+      icon.className = 'ai-key-status ok';
+      icon.textContent = '✓';
+      icon.title = (provider === 'github') ? 'Connected' : 'API key saved';
+    } else {
+      icon.className = 'ai-key-status empty';
+      icon.textContent = '○';
+      icon.title = (provider === 'github') ? 'Not connected' : 'No API key saved';
+    }
+  }
+  if (card) {
+    if (hasKey) {
+      card.classList.add('has-key');
+    } else {
+      card.classList.remove('has-key');
+    }
+  }
+}
+
+function updateDefaultTabStatus() {
+  populateDefaultProviders();
+  
+  const notebookProvider = $('defaultNotebookProvider')?.value;
+  const chatProvider = $('defaultChatProvider')?.value;
+  
+  updateScopeStatus('Notebook', notebookProvider);
+  updateScopeStatus('Chat', chatProvider);
+}
+
+function updateScopeStatus(scope, provider) {
+  const keys = {
+    openai: $('apiKey-openai')?.value.trim() || '',
+    anthropic: $('apiKey-anthropic')?.value.trim() || '',
+    gemini: $('apiKey-gemini')?.value.trim() || '',
+    deepseek: $('apiKey-deepseek')?.value.trim() || '',
+    moonshot: $('apiKey-moonshot')?.value.trim() || '',
+    mistral: $('apiKey-mistral')?.value.trim() || '',
+    custom: $('apiKey-custom')?.value.trim() || '',
+  };
+  const cursorKey = $('apiKey-cursor')?.value.trim() || '';
+  const statusDiv = $('default' + scope + 'KeyStatus');
+  if (!statusDiv) return;
+  
+  statusDiv.textContent = '';
+  statusDiv.className = 'scope-key-status';
+  
+  const needsKey = ['openai', 'anthropic', 'gemini', 'deepseek', 'moonshot', 'mistral', 'custom'].includes(provider);
+  if (needsKey) {
+    let hasKey = false;
+    let tabName = 'cloud';
+    if (provider === 'custom') {
+      hasKey = !!keys.custom;
+      tabName = 'local';
+    } else {
+      hasKey = !!keys[provider];
+      tabName = 'cloud';
+    }
+    
+    if (hasKey) {
+      statusDiv.className = 'scope-key-status success';
+      statusDiv.innerHTML = '✓ API key is saved.';
+    } else {
+      statusDiv.className = 'scope-key-status warning';
+      statusDiv.innerHTML = `⚠️ API key is required. <a href="#" onclick="switchAiTab('${tabName}', 'card-${provider}')">Configure key →</a>`;
+    }
+  } else if (provider === 'github') {
+    if (githubAuthState.connected) {
+      statusDiv.className = 'scope-key-status success';
+      statusDiv.innerHTML = `✓ Connected as ${githubAuthState.accountLabel || 'GitHub user'}.`;
+    } else {
+      statusDiv.className = 'scope-key-status warning';
+      statusDiv.innerHTML = `⚠️ GitHub account is not connected. <a href="#" onclick="switchAiTab('platform', 'card-github')">Connect account →</a>`;
+    }
+  } else {
+    statusDiv.className = 'scope-key-status success';
+    statusDiv.innerHTML = '✓ No API key required.';
+  }
+}
 
 function autoLoadModels(provider, apiKey, endpoint, options = {}) {
   const allowPrompt = options.allowPrompt !== false;
+  const scope = options.scope || '';
+  
+  const settings = { provider, apiKey: apiKey || '', endpoint: endpoint || '', scope };
+  
   if (provider === 'vscode-lm') {
-    vscode.postMessage({ command: 'ai/listModels', settings: { provider: 'vscode-lm', apiKey: '', endpoint: '' } });
+    vscode.postMessage({ command: 'ai/listModels', settings });
   } else if (provider === 'github') {
-    if (allowPrompt) {
-      vscode.postMessage({ command: 'ai/listModels', settings: { provider: 'github', apiKey: '', endpoint: '' } });
+    if (allowPrompt || options.force) {
+      vscode.postMessage({ command: 'ai/listModels', settings });
     }
   } else if (provider === 'cursor') {
-    vscode.postMessage({ command: 'ai/listModels', settings: { provider: 'cursor', apiKey: apiKey || '', endpoint: endpoint || '' } });
+    vscode.postMessage({ command: 'ai/listModels', settings });
   } else if (provider === 'opencode') {
-    vscode.postMessage({ command: 'ai/listModels', settings: { provider: 'opencode', apiKey: '', endpoint: '' } });
+    vscode.postMessage({ command: 'ai/listModels', settings });
   } else if (provider === 'anthropic') {
-    if (apiKey && apiKey.length > 0) {
-      vscode.postMessage({ command: 'ai/listModels', settings: { provider: 'anthropic', apiKey, endpoint } });
+    if (apiKey) {
+      vscode.postMessage({ command: 'ai/listModels', settings });
     }
-  } else if ((provider === 'openai' || provider === 'gemini') && apiKey) {
-    vscode.postMessage({ command: 'ai/listModels', settings: { provider, apiKey, endpoint } });
+  } else if (['openai', 'gemini', 'deepseek', 'moonshot', 'mistral'].includes(provider) && apiKey) {
+    vscode.postMessage({ command: 'ai/listModels', settings });
   } else if (provider === 'custom' && endpoint) {
-    vscode.postMessage({ command: 'ai/listModels', settings: { provider: 'custom', apiKey, endpoint } });
+    vscode.postMessage({ command: 'ai/listModels', settings });
   } else if (provider === 'ollama') {
-    vscode.postMessage({ command: 'ai/listModels', settings: { provider: 'ollama', apiKey: '', endpoint: endpoint || DEFAULT_OLLAMA_ENDPOINT } });
+    vscode.postMessage({ command: 'ai/listModels', settings: { ...settings, endpoint: endpoint || DEFAULT_OLLAMA_ENDPOINT } });
   } else if (provider === 'lmstudio') {
-    vscode.postMessage({ command: 'ai/listModels', settings: { provider: 'lmstudio', apiKey: '', endpoint: endpoint || DEFAULT_LMSTUDIO_ENDPOINT } });
+    vscode.postMessage({ command: 'ai/listModels', settings: { ...settings, endpoint: endpoint || DEFAULT_LMSTUDIO_ENDPOINT } });
   }
 }
 
@@ -1165,162 +1464,338 @@ function modelValueFor(provider) {
 }
 
 function getAiFormData() {
-  const configScope = configScopeSelect ? configScopeSelect.value : 'notebook';
-  const provider = providerSelect.value;
-  let apiKey = '';
   const apiKeys = {
-    openai: $('apiKey-openai')?.value || '',
-    anthropic: $('apiKey-anthropic')?.value || '',
-    gemini: $('apiKey-gemini')?.value || '',
-    custom: $('apiKey-custom')?.value || '',
+    openai: $('apiKey-openai')?.value.trim() || '',
+    anthropic: $('apiKey-anthropic')?.value.trim() || '',
+    gemini: $('apiKey-gemini')?.value.trim() || '',
+    deepseek: $('apiKey-deepseek')?.value.trim() || '',
+    moonshot: $('apiKey-moonshot')?.value.trim() || '',
+    mistral: $('apiKey-mistral')?.value.trim() || '',
+    custom: $('apiKey-custom')?.value.trim() || '',
   };
-  let model = '';
+  const cursorApiKey = $('apiKey-cursor')?.value.trim() || '';
+  
+  const defaultNotebookProvider = $('defaultNotebookProvider')?.value || 'vscode-lm';
+  const defaultChatProvider = $('defaultChatProvider')?.value || 'vscode-lm';
+  
   let endpoint = '';
-
-  if (provider === 'vscode-lm' || provider === 'github') {
-    model = modelValueFor(provider);
-  } else if (provider === 'openai' || provider === 'anthropic' || provider === 'gemini') {
-    apiKey = $('apiKey-' + provider).value;
-    model = modelValueFor(provider);
-  } else if (provider === 'cursor') {
-    apiKey = $('apiKey-cursor').value;
-    model = modelValueFor('cursor');
-  } else if (provider === 'opencode') {
-    model = modelValueFor('opencode');
-  } else if (provider === 'custom') {
-    apiKey = $('apiKey-custom').value;
-    model = $('model-custom').value;
-    endpoint = $('endpoint-custom').value;
-  } else if (provider === 'ollama') {
-    model = modelValueFor('ollama');
-    endpoint = $('endpoint-ollama').value || DEFAULT_OLLAMA_ENDPOINT;
-  } else if (provider === 'lmstudio') {
-    model = modelValueFor('lmstudio');
-    endpoint = $('endpoint-lmstudio').value || DEFAULT_LMSTUDIO_ENDPOINT;
+  if (defaultNotebookProvider === 'ollama') {
+    endpoint = $('endpoint-ollama')?.value.trim() || '';
+  } else if (defaultNotebookProvider === 'lmstudio') {
+    endpoint = $('endpoint-lmstudio')?.value.trim() || '';
+  } else if (defaultNotebookProvider === 'custom') {
+    endpoint = $('endpoint-custom')?.value.trim() || '';
+  } else if (defaultChatProvider === 'ollama') {
+    endpoint = $('endpoint-ollama')?.value.trim() || '';
+  } else if (defaultChatProvider === 'lmstudio') {
+    endpoint = $('endpoint-lmstudio')?.value.trim() || '';
+  } else if (defaultChatProvider === 'custom') {
+    endpoint = $('endpoint-custom')?.value.trim() || '';
   }
 
-  const opencodeCliPath = $('opencodeCliPath')?.value || '';
-  const opencodeServeUrl = $('opencodeServeUrl')?.value || '';
-  const opencodeAutoServe = $('opencodeAutoServe')?.checked !== false;
-  const opencodeShowLog = $('opencodeShowLog')?.checked !== false;
-  const opencodeSkipPermissions = $('opencodeSkipPermissions')?.checked !== false;
-  const opencodeAutoApprovePermissions = $('opencodeAutoApprovePermissions')?.checked !== false;
-  const opencodeServePort = parseInt($('opencodeServePort')?.value || '0', 10) || 0;
-
   return {
-    configScope,
-    provider,
-    apiKey,
     apiKeys,
-    model,
+    cursorApiKey,
+    defaultNotebookProvider,
+    defaultNotebookModel: modelValueForScope('Notebook'),
+    defaultChatProvider,
+    defaultChatModel: modelValueForScope('Chat'),
     endpoint,
-    opencodeCliPath,
-    opencodeServeUrl,
-    opencodeAutoServe,
-    opencodeShowLog,
-    opencodeSkipPermissions,
-    opencodeAutoApprovePermissions,
-    opencodeServePort,
+    opencodeCliPath: $('opencodeCliPath')?.value.trim() || '',
+    opencodeServeUrl: $('opencodeServeUrl')?.value.trim() || '',
+    opencodeAutoServe: $('opencodeAutoServe')?.checked !== false,
+    opencodeShowLog: $('opencodeShowLog')?.checked !== false,
+    opencodeSkipPermissions: $('opencodeSkipPermissions')?.checked !== false,
+    opencodeAutoApprovePermissions: $('opencodeAutoApprovePermissions')?.checked !== false,
+    opencodeServePort: parseInt($('opencodeServePort')?.value || '0', 10) || 0,
   };
 }
 
 function setAiFormData(settings) {
-  if (configScopeSelect && settings.configScope) {
-    setSelectValue(configScopeSelect, settings.configScope);
-  }
-
   const keys = settings.apiKeys || {};
   const setVal = (id, value) => { const el = $(id); if (el) { el.value = value; } };
-  setVal('apiKey-openai', keys.openai || (settings.provider === 'openai' ? settings.apiKey : '') || '');
-  setVal('apiKey-anthropic', keys.anthropic || (settings.provider === 'anthropic' ? settings.apiKey : '') || '');
-  setVal('apiKey-gemini', keys.gemini || (settings.provider === 'gemini' ? settings.apiKey : '') || '');
-  setVal('apiKey-custom', keys.custom || (settings.provider === 'custom' ? settings.apiKey : '') || '');
-
-  setSelectValue(providerSelect, settings.provider || 'vscode-lm');
-  document.querySelectorAll('.provider-details').forEach((el) => el.classList.remove('active'));
-  const detailsEl = $('provider-' + providerSelect.value);
-  if (detailsEl) { detailsEl.classList.add('active'); }
-
-  const p = settings.provider;
-  if (p === 'cursor') {
-    setVal('apiKey-cursor', settings.cursorApiKey || '');
-    setVal('model-cursor', settings.model || '');
-  } else if (p === 'opencode') {
-    setVal('opencodeCliPath', settings.opencodeCliPath || '');
-    setVal('opencodeServeUrl', settings.opencodeServeUrl || '');
-    const autoServeEl = $('opencodeAutoServe');
-    if (autoServeEl) { autoServeEl.checked = settings.opencodeAutoServe !== false; }
-    const showLogEl = $('opencodeShowLog');
-    if (showLogEl) { showLogEl.checked = settings.opencodeShowLog !== false; }
-    const skipPermEl = $('opencodeSkipPermissions');
-    if (skipPermEl) { skipPermEl.checked = settings.opencodeSkipPermissions !== false; }
-    const autoApproveEl = $('opencodeAutoApprovePermissions');
-    if (autoApproveEl) { autoApproveEl.checked = settings.opencodeAutoApprovePermissions !== false; }
-    setVal('opencodeServePort', String(settings.opencodeServePort || 0));
-    setVal('model-opencode', settings.model || '');
-  } else if (p === 'custom') {
-    setVal('model-custom', settings.model || '');
-    setVal('endpoint-custom', settings.endpoint || '');
-  } else if (p === 'ollama') {
-    setVal('model-ollama', settings.model || '');
-    setVal('endpoint-ollama', settings.endpoint || DEFAULT_OLLAMA_ENDPOINT);
-  } else if (p === 'lmstudio') {
-    setVal('model-lmstudio', settings.model || '');
-    setVal('endpoint-lmstudio', settings.endpoint || DEFAULT_LMSTUDIO_ENDPOINT);
-  } else if (p) {
-    setVal('model-' + p, settings.model || '');
+  
+  setVal('apiKey-openai', keys.openai || '');
+  setVal('apiKey-anthropic', keys.anthropic || '');
+  setVal('apiKey-gemini', keys.gemini || '');
+  setVal('apiKey-deepseek', keys.deepseek || '');
+  setVal('apiKey-moonshot', keys.moonshot || '');
+  setVal('apiKey-mistral', keys.mistral || '');
+  setVal('apiKey-cursor', settings.cursorApiKey || '');
+  setVal('apiKey-custom', keys.custom || '');
+  
+  updateKeyStatusIcon('openai', !!keys.openai);
+  updateKeyStatusIcon('anthropic', !!keys.anthropic);
+  updateKeyStatusIcon('gemini', !!keys.gemini);
+  updateKeyStatusIcon('deepseek', !!keys.deepseek);
+  updateKeyStatusIcon('moonshot', !!keys.moonshot);
+  updateKeyStatusIcon('mistral', !!keys.mistral);
+  updateKeyStatusIcon('cursor', !!settings.cursorApiKey);
+  updateKeyStatusIcon('custom', !!keys.custom);
+  
+  setVal('opencodeCliPath', settings.opencodeCliPath || '');
+  setVal('opencodeServeUrl', settings.opencodeServeUrl || '');
+  const autoServeEl = $('opencodeAutoServe');
+  if (autoServeEl) { autoServeEl.checked = settings.opencodeAutoServe !== false; }
+  const showLogEl = $('opencodeShowLog');
+  if (showLogEl) { showLogEl.checked = settings.opencodeShowLog !== false; }
+  const skipPermEl = $('opencodeSkipPermissions');
+  if (skipPermEl) { skipPermEl.checked = settings.opencodeSkipPermissions !== false; }
+  const autoApproveEl = $('opencodeAutoApprovePermissions');
+  if (autoApproveEl) { autoApproveEl.checked = settings.opencodeAutoApprovePermissions !== false; }
+  setVal('opencodeServePort', String(settings.opencodeServePort || 0));
+  
+  if (settings.endpoint) {
+    if (settings.notebookProvider === 'ollama' || settings.chatProvider === 'ollama') {
+      setVal('endpoint-ollama', settings.endpoint);
+    } else if (settings.notebookProvider === 'lmstudio' || settings.chatProvider === 'lmstudio') {
+      setVal('endpoint-lmstudio', settings.endpoint);
+    } else {
+      setVal('endpoint-custom', settings.endpoint);
+    }
   }
+  
+  const lastModels = settings.lastModels || {};
+  const providerModels = {
+    'openai': settings.notebookProvider === 'openai' ? settings.notebookModel : (settings.chatProvider === 'openai' ? settings.chatModel : (lastModels.openai || '')),
+    'anthropic': settings.notebookProvider === 'anthropic' ? settings.notebookModel : (settings.chatProvider === 'anthropic' ? settings.chatModel : (lastModels.anthropic || '')),
+    'gemini': settings.notebookProvider === 'gemini' ? settings.notebookModel : (settings.chatProvider === 'gemini' ? settings.chatModel : (lastModels.gemini || '')),
+    'deepseek': settings.notebookProvider === 'deepseek' ? settings.notebookModel : (settings.chatProvider === 'deepseek' ? settings.chatModel : (lastModels.deepseek || '')),
+    'moonshot': settings.notebookProvider === 'moonshot' ? settings.notebookModel : (settings.chatProvider === 'moonshot' ? settings.chatModel : (lastModels.moonshot || '')),
+    'mistral': settings.notebookProvider === 'mistral' ? settings.notebookModel : (settings.chatProvider === 'mistral' ? settings.chatModel : (lastModels.mistral || '')),
+    'vscode-lm': settings.notebookProvider === 'vscode-lm' ? settings.notebookModel : (settings.chatProvider === 'vscode-lm' ? settings.chatModel : (lastModels['vscode-lm'] || '')),
+    'github': settings.notebookProvider === 'github' ? settings.notebookModel : (settings.chatProvider === 'github' ? settings.chatModel : (lastModels.github || '')),
+    'cursor': settings.notebookProvider === 'cursor' ? settings.notebookModel : (settings.chatProvider === 'cursor' ? settings.chatModel : (lastModels.cursor || '')),
+    'opencode': settings.notebookProvider === 'opencode' ? settings.notebookModel : (settings.chatProvider === 'opencode' ? settings.chatModel : (lastModels.opencode || '')),
+    'ollama': settings.notebookProvider === 'ollama' ? settings.notebookModel : (settings.chatProvider === 'ollama' ? settings.chatModel : (lastModels.ollama || '')),
+    'lmstudio': settings.notebookProvider === 'lmstudio' ? settings.notebookModel : (settings.chatProvider === 'lmstudio' ? settings.chatModel : (lastModels.lmstudio || '')),
+    'custom': settings.notebookProvider === 'custom' ? settings.notebookModel : (settings.chatProvider === 'custom' ? settings.chatModel : (lastModels.custom || ''))
+  };
+  
+  Object.keys(providerModels).forEach(prov => {
+    setVal('model-' + prov, providerModels[prov]);
+  });
+  
+  if (settings.notebookProvider) {
+    setSelectValue($('defaultNotebookProvider'), settings.notebookProvider);
+  }
+  if (settings.chatProvider) {
+    setSelectValue($('defaultChatProvider'), settings.chatProvider);
+  }
+
+  // Set default model inputs/selects
+  setVal('defaultNotebookModel', settings.notebookModel || '');
+  setVal('defaultChatModel', settings.chatModel || '');
+
+  // Synchronize status alerts for default tab
+  updateDefaultTabStatus();
 }
 
-if (configScopeSelect) {
-  configScopeSelect.addEventListener('change', () => {
+if (aiSaveBtn) {
+  aiSaveBtn.addEventListener('click', () => {
     aiHideMessage();
-    vscode.postMessage({ command: 'ai/load', configScope: configScopeSelect.value });
+    aiSaveBtn.disabled = true;
+    aiSaveBtn.textContent = 'Saving…';
+    vscode.postMessage({ command: 'ai/save', settings: getAiFormData() });
   });
 }
 
-aiTestBtn.addEventListener('click', () => {
-  aiHideMessage();
-  aiTestBtn.disabled = true;
-  aiTestBtn.textContent = 'Testing…';
-  vscode.postMessage({ command: 'ai/test', settings: getAiFormData() });
-});
-
-aiForm.addEventListener('submit', (e) => {
-  e.preventDefault();
-  aiHideMessage();
-  aiSaveBtn.disabled = true;
-  aiSaveBtn.textContent = 'Saving…';
-  vscode.postMessage({ command: 'ai/save', settings: getAiFormData() });
-});
-
-document.querySelectorAll('.list-models-btn').forEach((btn) => {
-  btn.addEventListener('click', function () {
+document.querySelectorAll('.ai-test-btn').forEach(btn => {
+  btn.addEventListener('click', function() {
     const provider = this.getAttribute('data-provider');
-    const settings = getAiFormData();
-
-    if ((provider === 'openai' || provider === 'gemini' || provider === 'anthropic') && !settings.apiKey) {
-      aiShowMessage('Please enter an API key first', true);
-      return;
+    const statusSpan = $('card-status-' + provider);
+    if (statusSpan) {
+      statusSpan.textContent = 'Testing…';
+      statusSpan.className = 'ai-card-status loading';
     }
-    if (provider === 'custom' && !settings.endpoint) {
-      aiShowMessage('Please enter an endpoint first', true);
-      return;
-    }
-
-    let endpoint = settings.endpoint;
-    if (provider === 'ollama' && !endpoint) { endpoint = DEFAULT_OLLAMA_ENDPOINT; }
-    if (provider === 'lmstudio' && !endpoint) { endpoint = DEFAULT_LMSTUDIO_ENDPOINT; }
-
     this.disabled = true;
-    this.textContent = 'Loading models...';
-
-    const apiKey = (provider === 'github') ? '' : settings.apiKey;
-    vscode.postMessage({ command: 'ai/listModels', settings: { provider, apiKey, endpoint: provider === 'github' || provider === 'cursor' || provider === 'opencode' ? '' : endpoint } });
+    
+    let apiKey = '';
+    let endpoint = '';
+    const model = modelValueFor(provider);
+    
+    if (provider === 'cursor') {
+      apiKey = $('apiKey-cursor')?.value.trim() || '';
+    } else if (['openai', 'anthropic', 'gemini', 'deepseek', 'moonshot', 'mistral', 'custom'].includes(provider)) {
+      apiKey = $('apiKey-' + provider)?.value.trim() || '';
+    }
+    
+    if (provider === 'custom') {
+      endpoint = $('endpoint-custom')?.value.trim() || '';
+    } else if (provider === 'ollama') {
+      endpoint = $('endpoint-ollama')?.value.trim() || DEFAULT_OLLAMA_ENDPOINT;
+    } else if (provider === 'lmstudio') {
+      endpoint = $('endpoint-lmstudio')?.value.trim() || DEFAULT_LMSTUDIO_ENDPOINT;
+    }
+    
+    const settings = {
+      provider,
+      apiKey,
+      endpoint,
+      model,
+      opencodeCliPath: $('opencodeCliPath')?.value.trim() || '',
+      opencodeServeUrl: $('opencodeServeUrl')?.value.trim() || '',
+      opencodeAutoServe: $('opencodeAutoServe')?.checked !== false,
+      opencodeShowLog: $('opencodeShowLog')?.checked !== false,
+      opencodeSkipPermissions: $('opencodeSkipPermissions')?.checked !== false,
+      opencodeAutoApprovePermissions: $('opencodeAutoApprovePermissions')?.checked !== false,
+      opencodeServePort: parseInt($('opencodeServePort')?.value || '0', 10) || 0,
+    };
+    
+    activeTestProvider = provider;
+    vscode.postMessage({ command: 'ai/test', settings });
   });
 });
 
-['vscode-lm', 'github', 'cursor', 'opencode', 'openai', 'anthropic', 'gemini', 'ollama', 'lmstudio'].forEach((provider) => {
+document.querySelectorAll('.list-models-btn').forEach(btn => {
+  btn.addEventListener('click', function() {
+    const provider = this.getAttribute('data-provider');
+    const statusSpan = $('card-status-' + provider);
+    
+    let apiKey = '';
+    let endpoint = '';
+    
+    if (provider === 'cursor') {
+      apiKey = $('apiKey-cursor')?.value.trim() || '';
+    } else if (['openai', 'anthropic', 'gemini', 'deepseek', 'moonshot', 'mistral', 'custom'].includes(provider)) {
+      apiKey = $('apiKey-' + provider)?.value.trim() || '';
+      if (!apiKey && provider !== 'custom') {
+        if (statusSpan) {
+          statusSpan.textContent = 'Please enter API key';
+          statusSpan.className = 'ai-card-status error';
+        }
+        return;
+      }
+    }
+    
+    if (provider === 'custom') {
+      endpoint = $('endpoint-custom')?.value.trim() || '';
+      if (!endpoint) {
+        if (statusSpan) {
+          statusSpan.textContent = 'Please enter endpoint';
+          statusSpan.className = 'ai-card-status error';
+        }
+        return;
+      }
+    } else if (provider === 'ollama') {
+      endpoint = $('endpoint-ollama')?.value.trim() || DEFAULT_OLLAMA_ENDPOINT;
+    } else if (provider === 'lmstudio') {
+      endpoint = $('endpoint-lmstudio')?.value.trim() || DEFAULT_LMSTUDIO_ENDPOINT;
+    }
+    this.disabled = true;
+    this.textContent = 'Loading...';
+    if (statusSpan) {
+      statusSpan.textContent = 'Loading models…';
+      statusSpan.className = 'ai-card-status loading';
+    }
+    
+    autoLoadModels(provider, apiKey, endpoint, { force: true });
+  });
+});
+
+// Default Models list-models buttons
+document.querySelectorAll('.list-default-models-btn').forEach(btn => {
+  btn.addEventListener('click', function() {
+    const scope = this.getAttribute('data-scope');
+    const providerSelect = $('default' + scope + 'Provider');
+    if (!providerSelect) return;
+    const provider = providerSelect.value;
+    const statusSpan = $('default' + scope + 'Status');
+    
+    let apiKey = '';
+    let endpoint = '';
+    
+    if (provider === 'cursor') {
+      apiKey = $('apiKey-cursor')?.value.trim() || '';
+    } else if (['openai', 'anthropic', 'gemini', 'deepseek', 'moonshot', 'mistral', 'custom'].includes(provider)) {
+      apiKey = $('apiKey-' + provider)?.value.trim() || '';
+      if (!apiKey && provider !== 'custom') {
+        if (statusSpan) {
+          statusSpan.textContent = 'Please enter API key in config tab';
+          statusSpan.className = 'ai-card-status error';
+        }
+        return;
+      }
+    }
+    
+    if (provider === 'custom') {
+      endpoint = $('endpoint-custom')?.value.trim() || '';
+      if (!endpoint) {
+        if (statusSpan) {
+          statusSpan.textContent = 'Please enter endpoint in config tab';
+          statusSpan.className = 'ai-card-status error';
+        }
+        return;
+      }
+    } else if (provider === 'ollama') {
+      endpoint = $('endpoint-ollama')?.value.trim() || DEFAULT_OLLAMA_ENDPOINT;
+    } else if (provider === 'lmstudio') {
+      endpoint = $('endpoint-lmstudio')?.value.trim() || DEFAULT_LMSTUDIO_ENDPOINT;
+    }
+    
+    this.disabled = true;
+    this.textContent = 'Loading...';
+    if (statusSpan) {
+      statusSpan.textContent = 'Loading models…';
+      statusSpan.className = 'ai-card-status loading';
+    }
+    
+    autoLoadModels(provider, apiKey, endpoint, { scope, force: true });
+  });
+});
+
+// Default Models test buttons
+document.querySelectorAll('.test-default-btn').forEach(btn => {
+  btn.addEventListener('click', function() {
+    const scope = this.getAttribute('data-scope');
+    const providerSelect = $('default' + scope + 'Provider');
+    if (!providerSelect) return;
+    const provider = providerSelect.value;
+    const statusSpan = $('default' + scope + 'Status');
+    if (statusSpan) {
+      statusSpan.textContent = 'Testing…';
+      statusSpan.className = 'ai-card-status loading';
+    }
+    this.disabled = true;
+    
+    let apiKey = '';
+    let endpoint = '';
+    const model = modelValueForScope(scope);
+    
+    if (provider === 'cursor') {
+      apiKey = $('apiKey-cursor')?.value.trim() || '';
+    } else if (['openai', 'anthropic', 'gemini', 'deepseek', 'moonshot', 'mistral', 'custom'].includes(provider)) {
+      apiKey = $('apiKey-' + provider)?.value.trim() || '';
+    }
+    
+    if (provider === 'custom') {
+      endpoint = $('endpoint-custom')?.value.trim() || '';
+    } else if (provider === 'ollama') {
+      endpoint = $('endpoint-ollama')?.value.trim() || DEFAULT_OLLAMA_ENDPOINT;
+    } else if (provider === 'lmstudio') {
+      endpoint = $('endpoint-lmstudio')?.value.trim() || DEFAULT_LMSTUDIO_ENDPOINT;
+    }
+    
+    const settings = {
+      provider,
+      apiKey,
+      endpoint,
+      model,
+      opencodeCliPath: $('opencodeCliPath')?.value.trim() || '',
+      opencodeServeUrl: $('opencodeServeUrl')?.value.trim() || '',
+      opencodeAutoServe: $('opencodeAutoServe')?.checked !== false,
+      opencodeShowLog: $('opencodeShowLog')?.checked !== false,
+      opencodeSkipPermissions: $('opencodeSkipPermissions')?.checked !== false,
+      opencodeAutoApprovePermissions: $('opencodeAutoApprovePermissions')?.checked !== false,
+      opencodeServePort: parseInt($('opencodeServePort')?.value || '0', 10) || 0,
+    };
+    
+    activeTestScope = scope;
+    vscode.postMessage({ command: 'ai/test', settings });
+  });
+});
+
+['vscode-lm', 'github', 'cursor', 'opencode', 'openai', 'anthropic', 'gemini', 'deepseek', 'moonshot', 'mistral', 'ollama', 'lmstudio'].forEach((provider) => {
   const selectEl = $('model-' + provider + '-select');
   const inputEl = $('model-' + provider);
   if (selectEl && inputEl) {
@@ -1330,7 +1805,17 @@ document.querySelectorAll('.list-models-btn').forEach((btn) => {
   }
 });
 
-['openai', 'gemini', 'cursor'].forEach((provider) => {
+['Notebook', 'Chat'].forEach((scope) => {
+  const selectEl = $('default' + scope + 'Model-select');
+  const inputEl = $('default' + scope + 'Model');
+  if (selectEl && inputEl) {
+    selectEl.addEventListener('change', function () {
+      if (this.value) { inputEl.value = this.value; }
+    });
+  }
+});
+
+['openai', 'anthropic', 'gemini', 'deepseek', 'moonshot', 'mistral', 'cursor'].forEach((provider) => {
   const apiKeyInput = $('apiKey-' + provider);
   if (apiKeyInput) {
     apiKeyInput.addEventListener('blur', function () {
@@ -1350,84 +1835,330 @@ if (customEndpoint) {
   });
 }
 
-function handleModelsListed(models) {
-  const provider = providerSelect.value;
+function modelValueForScope(scope) {
+  const selectEl = $('default' + scope + 'Model-select');
+  const inputEl = $('default' + scope + 'Model');
+  if (!inputEl) { return ''; }
+  
+  const isSelectHidden = selectEl && (
+    selectEl.classList.contains('hidden') ||
+    (pgSelectRegistry.get(selectEl)?.wrap.classList.contains('hidden'))
+  );
+  
+  return (selectEl && !isSelectHidden && selectEl.value)
+    ? selectEl.value
+    : inputEl.value;
+}
+
+function modelValueFor(provider) {
   const selectEl = $('model-' + provider + '-select');
   const inputEl = $('model-' + provider);
+  if (!inputEl) { return ''; }
+  
+  const isSelectHidden = selectEl && (
+    selectEl.classList.contains('hidden') ||
+    (pgSelectRegistry.get(selectEl)?.wrap.classList.contains('hidden'))
+  );
+  
+  return (selectEl && !isSelectHidden && selectEl.value)
+    ? selectEl.value
+    : inputEl.value;
+}
 
-  if (selectEl && models.length > 0) {
-    selectEl.textContent = '';
-    const placeholder = document.createElement('option');
-    placeholder.value = '';
-    placeholder.textContent = 'Select a model...';
-    selectEl.appendChild(placeholder);
-    models.forEach((model) => {
-      const option = document.createElement('option');
-      if (model && typeof model === 'object') {
-        option.value = model.id || model.displayName || '';
-        option.textContent = model.displayName || model.id || '';
-      } else {
-        option.value = model;
-        option.textContent = model;
-      }
-      selectEl.appendChild(option);
-    });
-    selectEl.classList.remove('hidden');
+function populateModelDropdown(selectEl, inputEl, models) {
+  if (!selectEl) return;
+  selectEl.textContent = '';
+  const placeholder = document.createElement('option');
+  placeholder.value = '';
+  placeholder.textContent = 'Select a model...';
+  selectEl.appendChild(placeholder);
+  models.forEach((model) => {
+    const option = document.createElement('option');
+    if (model && typeof model === 'object') {
+      option.value = model.id || model.displayName || '';
+      option.textContent = model.displayName || model.id || '';
+    } else {
+      option.value = model;
+      option.textContent = model;
+    }
+    selectEl.appendChild(option);
+  });
+  
+  selectEl.classList.remove('hidden');
+  if (inputEl) {
     inputEl.classList.add('hidden');
-    if (inputEl.value) { setSelectValue(selectEl, inputEl.value); }
-    const pgState = pgSelectRegistry.get(selectEl);
-    if (pgState) { pgState.rebuildOptions(); }
+    if (inputEl.value) {
+      setSelectValue(selectEl, inputEl.value);
+    }
   }
+  const pgState = pgSelectRegistry.get(selectEl);
+  if (pgState) {
+    pgState.wrap.classList.remove('hidden');
+    pgState.rebuildOptions();
+  }
+}
+
+function handleModelsListed(provider, scope, models) {
+  if (scope) {
+    const selectEl = $('default' + scope + 'Model-select');
+    const inputEl = $('default' + scope + 'Model');
+    populateModelDropdown(selectEl, inputEl, models);
+    
+    const statusSpan = $('default' + scope + 'Status');
+    if (statusSpan) {
+      statusSpan.textContent = '✓ Models loaded';
+      statusSpan.className = 'ai-card-status success';
+    }
+  } else if (provider) {
+    const selectEl = $('model-' + provider + '-select');
+    const inputEl = $('model-' + provider);
+    populateModelDropdown(selectEl, inputEl, models);
+    
+    const statusSpan = $('card-status-' + provider);
+    if (statusSpan) {
+      statusSpan.textContent = '✓ Models loaded';
+      statusSpan.className = 'ai-card-status success';
+    }
+  }
+  
+  if (provider) {
+    const notebookSelect = $('defaultNotebookProvider');
+    const chatSelect = $('defaultChatProvider');
+    if (notebookSelect && notebookSelect.value === provider) {
+      populateModelDropdown($('defaultNotebookModel-select'), $('defaultNotebookModel'), models);
+      const statusSpan = $('defaultNotebookStatus');
+      if (statusSpan) {
+        statusSpan.textContent = '✓ Models loaded';
+        statusSpan.className = 'ai-card-status success';
+      }
+    }
+    if (chatSelect && chatSelect.value === provider) {
+      populateModelDropdown($('defaultChatModel-select'), $('defaultChatModel'), models);
+      const statusSpan = $('defaultChatStatus');
+      if (statusSpan) {
+        statusSpan.textContent = '✓ Models loaded';
+        statusSpan.className = 'ai-card-status success';
+      }
+    }
+    populateModelDropdown($('model-' + provider + '-select'), $('model-' + provider), models);
+  }
+}
+
+function handleModelsListError(provider, scope, error) {
+  if (scope) {
+    const statusSpan = $('default' + scope + 'Status');
+    if (statusSpan) {
+      statusSpan.textContent = 'Failed to load models';
+      statusSpan.className = 'ai-card-status error';
+    }
+  } else if (provider) {
+    const statusSpan = $('card-status-' + provider);
+    if (statusSpan) {
+      statusSpan.textContent = 'Failed to load models';
+      statusSpan.className = 'ai-card-status error';
+    }
+  }
+  aiShowMessage('✗ Failed to list models: ' + error, true);
 }
 
 function updateGitHubAuthStatus(auth) {
   if (!githubBanner || !githubStatusText) { return; }
   githubAuthState = auth || { connected: false, accountLabel: '' };
 
-  if (providerSelect.value !== 'github' && !githubAuthState.connected) {
-    githubBanner.classList.add('hidden');
-    return;
-  }
-  githubBanner.classList.remove('hidden');
-  if (auth && auth.connected) {
-    githubStatusText.textContent = 'Connected as ' + (auth.accountLabel || 'GitHub user');
+  updateKeyStatusIcon('github', githubAuthState.connected);
+
+  if (githubAuthState.connected) {
+    githubStatusText.textContent = 'Connected as ' + (githubAuthState.accountLabel || 'GitHub user');
     githubBanner.classList.remove('warning');
     githubBanner.classList.add('info');
+    githubBanner.classList.remove('hidden');
   } else {
     githubStatusText.textContent = 'Not connected';
     githubBanner.classList.remove('info');
     githubBanner.classList.add('warning');
+    githubBanner.classList.add('hidden');
   }
 }
 
-githubConnectBtn.addEventListener('click', () => {
-  aiHideMessage();
-  githubConnectBtn.disabled = true;
-  githubConnectBtn.textContent = 'Connecting...';
-  vscode.postMessage({ command: 'ai/connectGitHub' });
-});
-
-githubDisconnectBtn.addEventListener('click', () => {
-  aiHideMessage();
-  githubDisconnectBtn.disabled = true;
-  githubDisconnectBtn.textContent = 'Disconnecting...';
-  vscode.postMessage({ command: 'ai/disconnectGitHub' });
-});
-
-function resetAiButtons() {
-  aiTestBtn.disabled = false;
-  aiTestBtn.textContent = 'Test';
-  aiSaveBtn.disabled = false;
-  aiSaveBtn.textContent = 'Save';
-  githubConnectBtn.disabled = false;
-  githubConnectBtn.textContent = 'Connect GitHub';
-  githubDisconnectBtn.disabled = false;
-  githubDisconnectBtn.textContent = 'Disconnect';
-  document.querySelectorAll('.list-models-btn').forEach((btn) => {
-    btn.disabled = false;
-    btn.textContent = 'List available models';
+if (githubConnectBtn) {
+  githubConnectBtn.addEventListener('click', () => {
+    aiHideMessage();
+    githubConnectBtn.disabled = true;
+    githubConnectBtn.textContent = 'Connecting...';
+    vscode.postMessage({ command: 'ai/connectGitHub' });
   });
 }
+
+if (githubDisconnectBtn) {
+  githubDisconnectBtn.addEventListener('click', () => {
+    aiHideMessage();
+    githubDisconnectBtn.disabled = true;
+    githubDisconnectBtn.textContent = 'Disconnecting...';
+    vscode.postMessage({ command: 'ai/disconnectGitHub' });
+  });
+}
+
+function resetAiButtons() {
+  if (aiSaveBtn) {
+    aiSaveBtn.disabled = false;
+    aiSaveBtn.textContent = 'Save All Settings';
+  }
+  if (githubConnectBtn) {
+    githubConnectBtn.disabled = false;
+    githubConnectBtn.textContent = 'Connect GitHub';
+  }
+  if (githubDisconnectBtn) {
+    githubDisconnectBtn.disabled = false;
+    githubDisconnectBtn.textContent = 'Disconnect';
+  }
+  document.querySelectorAll('.list-models-btn').forEach((btn) => {
+    btn.disabled = false;
+    btn.textContent = 'List models';
+  });
+  document.querySelectorAll('.list-default-models-btn').forEach((btn) => {
+    btn.disabled = false;
+    btn.textContent = 'List models';
+  });
+  document.querySelectorAll('.ai-test-btn').forEach((btn) => {
+    btn.disabled = false;
+  });
+  document.querySelectorAll('.test-default-btn').forEach((btn) => {
+    btn.disabled = false;
+  });
+}
+
+// Listen to default provider dropdown changes
+$('defaultNotebookProvider')?.addEventListener('change', function() {
+  const selectEl = $('defaultNotebookModel-select');
+  const inputEl = $('defaultNotebookModel');
+  
+  const prov = this.value;
+  const keys = {
+    openai: $('apiKey-openai')?.value.trim() || '',
+    anthropic: $('apiKey-anthropic')?.value.trim() || '',
+    gemini: $('apiKey-gemini')?.value.trim() || '',
+    deepseek: $('apiKey-deepseek')?.value.trim() || '',
+    moonshot: $('apiKey-moonshot')?.value.trim() || '',
+    mistral: $('apiKey-mistral')?.value.trim() || '',
+    custom: $('apiKey-custom')?.value.trim() || '',
+  };
+  const cursorKey = $('apiKey-cursor')?.value.trim() || '';
+  const key = (prov === 'cursor') ? cursorKey : (prov === 'custom' ? keys.custom : keys[prov]);
+  const endpoint = (prov === 'custom') ? ($('endpoint-custom')?.value.trim() || '') : '';
+  
+  const canAutoload = key || !['openai', 'anthropic', 'gemini', 'deepseek', 'moonshot', 'mistral', 'custom'].includes(prov);
+  
+  if (canAutoload) {
+    if (selectEl) {
+      selectEl.textContent = '';
+      const opt = document.createElement('option');
+      opt.value = '';
+      opt.textContent = 'Loading models...';
+      selectEl.appendChild(opt);
+      selectEl.classList.remove('hidden');
+      const pgState = pgSelectRegistry.get(selectEl);
+      if (pgState) {
+        pgState.wrap.classList.remove('hidden');
+        pgState.rebuildOptions();
+      }
+    }
+    if (inputEl) {
+      inputEl.classList.add('hidden');
+    }
+    
+    const statusSpan = $('defaultNotebookStatus');
+    if (statusSpan) {
+      statusSpan.textContent = 'Loading models…';
+      statusSpan.className = 'ai-card-status loading';
+    }
+    
+    autoLoadModels(prov, key || '', endpoint, { scope: 'Notebook' });
+  } else {
+    if (selectEl) {
+      selectEl.classList.add('hidden');
+      const pgState = pgSelectRegistry.get(selectEl);
+      if (pgState) {
+        pgState.wrap.classList.add('hidden');
+      }
+    }
+    if (inputEl) {
+      inputEl.classList.remove('hidden');
+    }
+    const statusSpan = $('defaultNotebookStatus');
+    if (statusSpan) {
+      statusSpan.textContent = '';
+      statusSpan.className = 'ai-card-status';
+    }
+  }
+  
+  updateDefaultTabStatus();
+});
+
+$('defaultChatProvider')?.addEventListener('change', function() {
+  const selectEl = $('defaultChatModel-select');
+  const inputEl = $('defaultChatModel');
+  
+  const prov = this.value;
+  const keys = {
+    openai: $('apiKey-openai')?.value.trim() || '',
+    anthropic: $('apiKey-anthropic')?.value.trim() || '',
+    gemini: $('apiKey-gemini')?.value.trim() || '',
+    deepseek: $('apiKey-deepseek')?.value.trim() || '',
+    moonshot: $('apiKey-moonshot')?.value.trim() || '',
+    mistral: $('apiKey-mistral')?.value.trim() || '',
+    custom: $('apiKey-custom')?.value.trim() || '',
+  };
+  const cursorKey = $('apiKey-cursor')?.value.trim() || '';
+  const key = (prov === 'cursor') ? cursorKey : (prov === 'custom' ? keys.custom : keys[prov]);
+  const endpoint = (prov === 'custom') ? ($('endpoint-custom')?.value.trim() || '') : '';
+  
+  const canAutoload = key || !['openai', 'anthropic', 'gemini', 'deepseek', 'moonshot', 'mistral', 'custom'].includes(prov);
+  
+  if (canAutoload) {
+    if (selectEl) {
+      selectEl.textContent = '';
+      const opt = document.createElement('option');
+      opt.value = '';
+      opt.textContent = 'Loading models...';
+      selectEl.appendChild(opt);
+      selectEl.classList.remove('hidden');
+      const pgState = pgSelectRegistry.get(selectEl);
+      if (pgState) {
+        pgState.wrap.classList.remove('hidden');
+        pgState.rebuildOptions();
+      }
+    }
+    if (inputEl) {
+      inputEl.classList.add('hidden');
+    }
+    
+    const statusSpan = $('defaultChatStatus');
+    if (statusSpan) {
+      statusSpan.textContent = 'Loading models…';
+      statusSpan.className = 'ai-card-status loading';
+    }
+    
+    autoLoadModels(prov, key || '', endpoint, { scope: 'Chat' });
+  } else {
+    if (selectEl) {
+      selectEl.classList.add('hidden');
+      const pgState = pgSelectRegistry.get(selectEl);
+      if (pgState) {
+        pgState.wrap.classList.add('hidden');
+      }
+    }
+    if (inputEl) {
+      inputEl.classList.remove('hidden');
+    }
+    const statusSpan = $('defaultChatStatus');
+    if (statusSpan) {
+      statusSpan.textContent = '';
+      statusSpan.className = 'ai-card-status';
+    }
+  }
+  
+  updateDefaultTabStatus();
+});
 
 function handleAiMessage(message) {
   resetAiButtons();
@@ -1436,20 +2167,131 @@ function handleAiMessage(message) {
     case 'ai/settings': {
       setAiFormData(message.settings);
       updateGitHubAuthStatus(message.settings.githubAuth);
+      
       const settings = message.settings;
-      if (settings && settings.provider) {
-        autoLoadModels(settings.provider, settings.cursorApiKey || settings.apiKey || '', settings.endpoint || '', {
-          allowPrompt: !!(settings.githubAuth && settings.githubAuth.connected),
-        });
+      if (settings) {
+        const keys = settings.apiKeys || {};
+        if (settings.notebookProvider) {
+          const prov = settings.notebookProvider;
+          const key = prov === 'cursor' ? settings.cursorApiKey : keys[prov];
+          const endpoint = settings.endpoint || '';
+          const canAutoload = key || !['openai', 'anthropic', 'gemini', 'deepseek', 'moonshot', 'mistral', 'custom'].includes(prov);
+          
+          if (canAutoload) {
+            const statusSpan = $('defaultNotebookStatus');
+            if (statusSpan) {
+              statusSpan.textContent = 'Loading models…';
+              statusSpan.className = 'ai-card-status loading';
+            }
+            const selectEl = $('defaultNotebookModel-select');
+            if (selectEl) {
+              selectEl.textContent = '';
+              const opt = document.createElement('option');
+              opt.value = '';
+              opt.textContent = 'Loading models...';
+              selectEl.appendChild(opt);
+              selectEl.classList.remove('hidden');
+              const pgState = pgSelectRegistry.get(selectEl);
+              if (pgState) {
+                pgState.wrap.classList.remove('hidden');
+                pgState.rebuildOptions();
+              }
+            }
+            const inputEl = $('defaultNotebookModel');
+            if (inputEl) {
+              inputEl.classList.add('hidden');
+            }
+            
+            autoLoadModels(prov, key || '', endpoint, {
+              scope: 'Notebook',
+              allowPrompt: !!(settings.githubAuth && settings.githubAuth.connected),
+            });
+          }
+        }
+        if (settings.chatProvider) {
+          const prov = settings.chatProvider;
+          const key = prov === 'cursor' ? settings.cursorApiKey : keys[prov];
+          const endpoint = settings.endpoint || '';
+          const canAutoload = key || !['openai', 'anthropic', 'gemini', 'deepseek', 'moonshot', 'mistral', 'custom'].includes(prov);
+          
+          if (canAutoload) {
+            const statusSpan = $('defaultChatStatus');
+            if (statusSpan) {
+              statusSpan.textContent = 'Loading models…';
+              statusSpan.className = 'ai-card-status loading';
+            }
+            const selectEl = $('defaultChatModel-select');
+            if (selectEl) {
+              selectEl.textContent = '';
+              const opt = document.createElement('option');
+              opt.value = '';
+              opt.textContent = 'Loading models...';
+              selectEl.appendChild(opt);
+              selectEl.classList.remove('hidden');
+              const pgState = pgSelectRegistry.get(selectEl);
+              if (pgState) {
+                pgState.wrap.classList.remove('hidden');
+                pgState.rebuildOptions();
+              }
+            }
+            const inputEl = $('defaultChatModel');
+            if (inputEl) {
+              inputEl.classList.add('hidden');
+            }
+            
+            if (settings.chatProvider !== settings.notebookProvider) {
+              autoLoadModels(prov, key || '', endpoint, {
+                scope: 'Chat',
+                allowPrompt: !!(settings.githubAuth && settings.githubAuth.connected),
+              });
+            }
+          }
+        }
       }
       break;
     }
-    case 'ai/testSuccess':
+    case 'ai/testSuccess': {
+      if (activeTestScope) {
+        const scope = activeTestScope;
+        const statusSpan = $('default' + scope + 'Status');
+        if (statusSpan) {
+          statusSpan.textContent = '✓ Connection successful!';
+          statusSpan.className = 'ai-card-status success';
+        }
+        activeTestScope = null;
+      } else if (activeTestProvider) {
+        const provider = activeTestProvider;
+        const statusSpan = $('card-status-' + provider);
+        if (statusSpan) {
+          statusSpan.textContent = '✓ Connection successful!';
+          statusSpan.className = 'ai-card-status success';
+        }
+        activeTestProvider = null;
+      }
       aiShowMessage('✓ ' + message.result);
       break;
-    case 'ai/testError':
+    }
+    case 'ai/testError': {
+      if (activeTestScope) {
+        const scope = activeTestScope;
+        const statusSpan = $('default' + scope + 'Status');
+        if (statusSpan) {
+          statusSpan.textContent = '✗ Connection failed';
+          statusSpan.className = 'ai-card-status error';
+        }
+        activeTestScope = null;
+      } else if (activeTestProvider) {
+        const provider = activeTestProvider;
+        const statusSpan = $('card-status-' + provider);
+        if (statusSpan) {
+          statusSpan.textContent = '✗ Connection failed';
+          statusSpan.className = 'ai-card-status error';
+        }
+        activeTestProvider = null;
+      }
       aiShowMessage('✗ ' + message.error, true);
       break;
+    }
     case 'ai/saveSuccess':
       aiShowMessage('✓ Settings saved successfully!');
       break;
@@ -1457,11 +2299,10 @@ function handleAiMessage(message) {
       aiShowMessage('✗ Failed to save: ' + message.error, true);
       break;
     case 'ai/modelsListed':
-      handleModelsListed(message.models || []);
-      aiShowMessage('✓ Connected — ' + (message.models || []).length + ' model(s) available');
+      handleModelsListed(message.provider, message.scope, message.models || []);
       break;
     case 'ai/modelsListError':
-      aiShowMessage('✗ Failed to list models: ' + message.error, true);
+      handleModelsListError(message.provider, message.scope, message.error);
       break;
     case 'ai/githubConnected':
       updateGitHubAuthStatus({ connected: true, accountLabel: message.accountLabel });
