@@ -147,6 +147,12 @@ export function providerDisplayName(provider: AiProviderId): string {
       return 'Anthropic';
     case 'gemini':
       return 'Gemini';
+    case 'deepseek':
+      return 'DeepSeek';
+    case 'moonshot':
+      return 'Moonshot / Kimi';
+    case 'mistral':
+      return 'Mistral AI';
     case 'custom':
       return 'Custom';
     case 'ollama':

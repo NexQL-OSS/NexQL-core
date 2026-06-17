@@ -195,6 +195,13 @@ export class NotebookSyncService {
       if (doc.isUntitled || doc.uri.scheme !== 'file' || seenPaths.has(resolvedFsPath)) {
         continue;
       }
+      // Skip docs whose backing file was deleted on disk. VS Code keeps the
+      // editor open after a delete, so without this the open document would
+      // re-observe the item every sync — resurrecting the index entry and
+      // blocking the delete tombstone (the item never looks "gone locally").
+      if (!fs.existsSync(doc.uri.fsPath)) {
+        continue;
+      }
       const metadata = doc.metadata as Record<string, unknown>;
       let syncId = typeof metadata.syncId === 'string' ? metadata.syncId : undefined;
       

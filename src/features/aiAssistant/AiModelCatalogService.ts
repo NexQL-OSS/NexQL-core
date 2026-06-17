@@ -12,8 +12,11 @@ import {
   listAnthropicModels,
   listCursorModels,
   listCustomModels,
+  listDeepSeekModels,
   listGeminiModels,
   listGitHubModels,
+  listMistralModels,
+  listMoonshotModels,
   listOpenAIModels,
   listVsCodeLanguageModels,
 } from './modelListing';
@@ -108,7 +111,7 @@ export class AiModelCatalogService {
 
     await this._appendProviderModels(catalog, 'opencode', async () => listOpencodeModels(config));
 
-    for (const provider of ['openai', 'anthropic', 'gemini'] as DirectApiKeyProvider[]) {
+    for (const provider of ['openai', 'anthropic', 'gemini', 'deepseek', 'moonshot', 'mistral'] as DirectApiKeyProvider[]) {
       const apiKey = await this.credentials.getApiKey(provider);
       if (apiKey) {
         await this._appendProviderModels(catalog, provider, () => this._listForDirectProvider(provider, apiKey));
@@ -214,6 +217,12 @@ export class AiModelCatalogService {
         return listAnthropicModels(apiKey);
       case 'gemini':
         return listGeminiModels(apiKey);
+      case 'deepseek':
+        return listDeepSeekModels(apiKey);
+      case 'moonshot':
+        return listMoonshotModels(apiKey);
+      case 'mistral':
+        return listMistralModels(apiKey);
       case 'custom':
         return [];
       default:
@@ -229,6 +238,12 @@ export class AiModelCatalogService {
         return 'claude-sonnet-4-20250514';
       case 'gemini':
         return 'gemini-2.5-flash';
+      case 'deepseek':
+        return 'deepseek-chat';
+      case 'moonshot':
+        return 'moonshot-v1-8k';
+      case 'mistral':
+        return 'mistral-large-latest';
       case 'github':
         return 'openai/gpt-4.1';
       case 'cursor':

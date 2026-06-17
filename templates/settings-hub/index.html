@@ -140,317 +140,580 @@
         <header class="section-bar">
           <div>
             <h1>AI Configuration</h1>
-            <p class="section-sub">Provider for query assistance and chat features</p>
+            <p class="section-sub">Configure API keys for any provider — set your default model at the bottom</p>
           </div>
         </header>
 
-        <form id="settingsForm" class="ai-form">
-          <div class="form-group">
-            <label for="configScope">Configure for</label>
-            <select id="configScope" required>
-              <option value="notebook">Notebook &amp; dashboard AI</option>
-              <option value="chat">SQL Assistant chat</option>
-            </select>
-            <p class="field-hint">API keys are shared; provider and model are saved per scope.</p>
-          </div>
+        <!-- Tab strip -->
+        <div class="ai-tab-strip" role="tablist">
+          <button type="button" class="ai-tab-btn active" data-ai-tab="default" role="tab" aria-selected="true" aria-controls="ai-tab-default">🎯 Default Models</button>
+          <button type="button" class="ai-tab-btn" data-ai-tab="cloud" role="tab" aria-selected="false" aria-controls="ai-tab-cloud">☁️ Cloud AI</button>
+          <button type="button" class="ai-tab-btn" data-ai-tab="platform" role="tab" aria-selected="false" aria-controls="ai-tab-platform">🖥️ IDE &amp; Platform</button>
+          <button type="button" class="ai-tab-btn" data-ai-tab="local" role="tab" aria-selected="false" aria-controls="ai-tab-local">🏠 Local &amp; Custom</button>
+        </div>
 
-          <div id="githubAuthBanner" class="info-box info hidden">
-            <span class="info-box-icon">🔐</span>
-            <div>
-              <strong>GitHub account access</strong>
-              <div id="githubAuthStatusText">Not connected</div>
-            </div>
-          </div>
-
-          <div class="form-group">
-            <label for="provider">AI Provider</label>
-            <select id="provider" required>
-              <option value="vscode-lm">VS Code Language Model (GitHub Copilot)</option>
-              <option value="github">GitHub Models (GitHub account)</option>
-              <option value="cursor">Cursor SDK (local agents)</option>
-              <option value="opencode">OpenCode (CLI / local agent)</option>
-              <option value="openai">OpenAI (GPT-4, GPT-3.5)</option>
-              <option value="anthropic">Anthropic (Claude)</option>
-              <option value="gemini">Google Gemini</option>
-              <option value="ollama">Ollama (local)</option>
-              <option value="lmstudio">LM Studio (local)</option>
-              <option value="custom">Custom Endpoint (OpenAI-compatible)</option>
-            </select>
-          </div>
-
-          <div id="provider-vscode-lm" class="provider-details active">
-            <div class="info-box info">
-              <span class="info-box-icon">ℹ️</span>
-              <div>
-                <strong>VS Code Language Model</strong>
-                Uses GitHub Copilot or other VS Code language model extensions. No API key required.
+        <!-- ── Tab: Default Models ────────────────────────────────── -->
+        <div id="ai-tab-default" class="ai-tab-panel active" role="tabpanel">
+          
+          <div class="ai-hero-container">
+            
+            <!-- Notebook Scope Card -->
+            <div class="ai-hero-card" id="scope-card-Notebook">
+              <div class="ai-hero-card-header">
+                <div class="ai-hero-card-icon-wrap icon-notebook">
+                  <svg viewBox="0 0 16 16" fill="none" class="ai-hero-icon"><path d="M4 2.5h8a1.5 1.5 0 0 1 1.5 1.5v8a1.5 1.5 0 0 1-1.5 1.5H4a1.5 1.5 0 0 1-1.5-1.5v-8A1.5 1.5 0 0 1 4 2.5z" stroke="currentColor" stroke-width="1.2"/><path d="M2.5 5.5h11M5.5 8.5h5M5.5 11h3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+                </div>
+                <div>
+                  <h3 class="ai-hero-card-title">Notebook &amp; Dashboard AI</h3>
+                  <p class="ai-hero-card-desc">SQL assistant cells, explanation outputs, and dashboard helper tools.</p>
+                </div>
+              </div>
+              
+              <div class="ai-hero-card-body">
+                <div class="ai-hero-field-group">
+                  <label for="defaultNotebookProvider">Service Provider</label>
+                  <div class="field-input-wrap">
+                    <select id="defaultNotebookProvider" required></select>
+                  </div>
+                </div>
+                
+                <div class="ai-hero-field-group">
+                  <label for="defaultNotebookModel">Active Model</label>
+                  <div class="field-input-wrap">
+                    <select id="defaultNotebookModel-select" class="hidden"><option value="">Select a model…</option></select>
+                    <input type="text" id="defaultNotebookModel" placeholder="e.g. gpt-4.1">
+                  </div>
+                </div>
+                
+                <div class="ai-hero-card-actions">
+                  <div class="ai-hero-action-buttons">
+                    <button type="button" class="btn-primary list-default-models-btn" data-scope="Notebook">List Models</button>
+                    <button type="button" class="btn-secondary test-default-btn" data-scope="Notebook">Test Connection</button>
+                  </div>
+                  <span class="ai-card-status" id="defaultNotebookStatus"></span>
+                </div>
+                
+                <div id="defaultNotebookKeyStatus" class="scope-key-status"></div>
               </div>
             </div>
-            <div class="form-group">
-              <label for="model-vscode-lm">
-                Model
-                <span class="label-description">
-                  <button type="button" class="btn-link list-models-btn" data-provider="vscode-lm">List available models</button>
-                </span>
-              </label>
-              <select id="model-vscode-lm-select" class="hidden">
-                <option value="">Select a model...</option>
-              </select>
-              <input type="text" id="model-vscode-lm" placeholder="Leave empty for default or select from list">
+            
+            <!-- Chat Scope Card -->
+            <div class="ai-hero-card" id="scope-card-Chat">
+              <div class="ai-hero-card-header">
+                <div class="ai-hero-card-icon-wrap icon-chat">
+                  <svg viewBox="0 0 16 16" fill="none" class="ai-hero-icon"><path d="M2.5 4A1.5 1.5 0 0 1 4 2.5h8A1.5 1.5 0 0 1 13.5 4v6a1.5 1.5 0 0 1-1.5 1.5H6.5L3 14v-2.5H2.5A1.5 1.5 0 0 1 1 10V4h1.5z" stroke="currentColor" stroke-width="1.2"/><path d="M4.5 5.5h7M4.5 8h4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+                </div>
+                <div>
+                  <h3 class="ai-hero-card-title">SQL Assistant Chat</h3>
+                  <p class="ai-hero-card-desc">Interactive chat sidebar, generating code queries, and explanation dialogues.</p>
+                </div>
+              </div>
+              
+              <div class="ai-hero-card-body">
+                <div class="ai-hero-field-group">
+                  <label for="defaultChatProvider">Service Provider</label>
+                  <div class="field-input-wrap">
+                    <select id="defaultChatProvider" required></select>
+                  </div>
+                </div>
+                
+                <div class="ai-hero-field-group">
+                  <label for="defaultChatModel">Active Model</label>
+                  <div class="field-input-wrap">
+                    <select id="defaultChatModel-select" class="hidden"><option value="">Select a model…</option></select>
+                    <input type="text" id="defaultChatModel" placeholder="e.g. claude-sonnet-4">
+                  </div>
+                </div>
+                
+                <div class="ai-hero-card-actions">
+                  <div class="ai-hero-action-buttons">
+                    <button type="button" class="btn-primary list-default-models-btn" data-scope="Chat">List Models</button>
+                    <button type="button" class="btn-secondary test-default-btn" data-scope="Chat">Test Connection</button>
+                  </div>
+                  <span class="ai-card-status" id="defaultChatStatus"></span>
+                </div>
+                
+                <div id="defaultChatKeyStatus" class="scope-key-status"></div>
+              </div>
+            </div>
+            
+          </div>
+          
+        </div><!-- /ai-tab-default -->
+
+        <!-- ── Tab: Cloud AI ─────────────────────────────────────── -->
+        <div id="ai-tab-cloud" class="ai-tab-panel" role="tabpanel">
+
+          <!-- OpenAI -->
+          <div class="ai-provider-card" id="card-openai">
+            <div class="ai-provider-card-header">
+              <div class="ai-provider-card-title">
+                <span class="ai-provider-icon">🟢</span> OpenAI
+                <span class="ai-key-status empty" id="status-icon-openai" title="No API key saved">○</span>
+              </div>
+              <a class="ai-provider-link" href="https://platform.openai.com/api-keys" title="Open platform.openai.com to get your API key">Get API key</a>
+            </div>
+            <div class="ai-provider-card-body">
+              <div class="ai-card-field-row">
+                <label for="apiKey-openai">API Key</label>
+                <div class="field-input-wrap">
+                  <input type="password" id="apiKey-openai" placeholder="sk-…" autocomplete="off">
+                </div>
+              </div>
+              <div class="ai-card-field-row">
+                <label for="model-openai">Model</label>
+                <div class="field-input-wrap">
+                  <select id="model-openai-select" class="hidden"><option value="">Select a model…</option></select>
+                  <input type="text" id="model-openai" placeholder="gpt-4.1">
+                </div>
+              </div>
+              <div class="ai-card-actions">
+                <button type="button" class="btn-secondary list-models-btn" data-provider="openai">List models</button>
+                <button type="button" class="btn-secondary ai-test-btn" data-provider="openai">Test</button>
+                <span class="ai-card-status" id="card-status-openai"></span>
+              </div>
             </div>
           </div>
 
-          <div id="provider-github" class="provider-details">
-            <div class="info-box info">
-              <span class="info-box-icon">🧑‍💻</span>
-              <div>
-                <strong>GitHub Models</strong>
-                Sign in with your GitHub account to use the GitHub Models catalog and chat inference API.
+          <!-- Anthropic -->
+          <div class="ai-provider-card" id="card-anthropic">
+            <div class="ai-provider-card-header">
+              <div class="ai-provider-card-title">
+                <span class="ai-provider-icon">🟤</span> Anthropic (Claude)
+                <span class="ai-key-status empty" id="status-icon-anthropic" title="No API key saved">○</span>
               </div>
+              <a class="ai-provider-link" href="https://console.anthropic.com/settings/keys" title="Open console.anthropic.com to get your API key">Get API key</a>
             </div>
-            <div class="github-auth-actions">
-              <button type="button" id="githubConnectBtn" class="btn-secondary">Connect GitHub</button>
-              <button type="button" id="githubDisconnectBtn" class="btn-secondary">Disconnect</button>
-            </div>
-            <div class="form-group">
-              <label for="model-github">
-                Model
-                <span class="label-description">
-                  <button type="button" class="btn-link list-models-btn" data-provider="github">List available models</button>
-                </span>
-              </label>
-              <select id="model-github-select" class="hidden">
-                <option value="">Select a model...</option>
-              </select>
-              <input type="text" id="model-github" placeholder="openai/gpt-4.1">
+            <div class="ai-provider-card-body">
+              <div class="ai-card-field-row">
+                <label for="apiKey-anthropic">API Key</label>
+                <div class="field-input-wrap">
+                  <input type="password" id="apiKey-anthropic" placeholder="sk-ant-…" autocomplete="off">
+                </div>
+              </div>
+              <div class="ai-card-field-row">
+                <label for="model-anthropic">Model</label>
+                <div class="field-input-wrap">
+                  <select id="model-anthropic-select" class="hidden"><option value="">Select a model…</option></select>
+                  <input type="text" id="model-anthropic" placeholder="claude-sonnet-4-20250514">
+                </div>
+              </div>
+              <div class="ai-card-actions">
+                <button type="button" class="btn-secondary list-models-btn" data-provider="anthropic">List models</button>
+                <button type="button" class="btn-secondary ai-test-btn" data-provider="anthropic">Test</button>
+                <span class="ai-card-status" id="card-status-anthropic"></span>
+              </div>
             </div>
           </div>
 
-          <div id="provider-cursor" class="provider-details">
-            <div class="info-box info">
-              <span class="info-box-icon">⚙️</span>
-              <div>
-                <strong>Cursor SDK</strong>
-                Uses the Cursor TypeScript SDK. Set a Cursor API key or rely on CURSOR_API_KEY.
+          <!-- Google Gemini -->
+          <div class="ai-provider-card" id="card-gemini">
+            <div class="ai-provider-card-header">
+              <div class="ai-provider-card-title">
+                <span class="ai-provider-icon">🔵</span> Google Gemini
+                <span class="ai-key-status empty" id="status-icon-gemini" title="No API key saved">○</span>
               </div>
+              <a class="ai-provider-link" href="https://aistudio.google.com/apikey" title="Open Google AI Studio to get your API key">Get API key</a>
             </div>
-            <div class="form-group">
-              <label for="apiKey-cursor">Cursor API Key <span class="required-indicator">*</span></label>
-              <input type="password" id="apiKey-cursor" placeholder="cursor-… · cursor.com/dashboard/integrations">
-            </div>
-            <div class="form-group">
-              <label for="model-cursor">
-                Model
-                <span class="label-description">
-                  <button type="button" class="btn-link list-models-btn" data-provider="cursor">List available models</button>
-                </span>
-              </label>
-              <select id="model-cursor-select" class="hidden">
-                <option value="">Select a model...</option>
-              </select>
-              <input type="text" id="model-cursor" placeholder="composer-2, auto, or another Cursor model">
+            <div class="ai-provider-card-body">
+              <div class="ai-card-field-row">
+                <label for="apiKey-gemini">API Key</label>
+                <div class="field-input-wrap">
+                  <input type="password" id="apiKey-gemini" placeholder="AIza…" autocomplete="off">
+                </div>
+              </div>
+              <div class="ai-card-field-row">
+                <label for="model-gemini">Model</label>
+                <div class="field-input-wrap">
+                  <select id="model-gemini-select" class="hidden"><option value="">Select a model…</option></select>
+                  <input type="text" id="model-gemini" placeholder="gemini-2.5-flash">
+                </div>
+              </div>
+              <div class="ai-card-actions">
+                <button type="button" class="btn-secondary list-models-btn" data-provider="gemini">List models</button>
+                <button type="button" class="btn-secondary ai-test-btn" data-provider="gemini">Test</button>
+                <span class="ai-card-status" id="card-status-gemini"></span>
+              </div>
             </div>
           </div>
 
-          <div id="provider-opencode" class="provider-details">
-            <div class="info-box info">
-              <span class="info-box-icon">🧠</span>
-              <div>
-                <strong>OpenCode</strong>
-                Uses the OpenCode CLI detected on your machine (<code>opencode</code>). Configure providers with <code>opencode auth login</code> — no API key in PgStudio.
+          <!-- DeepSeek -->
+          <div class="ai-provider-card" id="card-deepseek">
+            <div class="ai-provider-card-header">
+              <div class="ai-provider-card-title">
+                <span class="ai-provider-icon">🐋</span> DeepSeek
+                <span class="ai-key-status empty" id="status-icon-deepseek" title="No API key saved">○</span>
+              </div>
+              <a class="ai-provider-link" href="https://platform.deepseek.com/api_keys" title="Open DeepSeek platform to get your API key">Get API key</a>
+            </div>
+            <div class="ai-provider-card-body">
+              <div class="ai-card-field-row">
+                <label for="apiKey-deepseek">API Key</label>
+                <div class="field-input-wrap">
+                  <input type="password" id="apiKey-deepseek" placeholder="sk-…" autocomplete="off">
+                </div>
+              </div>
+              <div class="ai-card-field-row">
+                <label for="model-deepseek">Model</label>
+                <div class="field-input-wrap">
+                  <select id="model-deepseek-select" class="hidden"><option value="">Select a model…</option></select>
+                  <input type="text" id="model-deepseek" placeholder="deepseek-chat">
+                </div>
+              </div>
+              <div class="ai-card-actions">
+                <button type="button" class="btn-secondary list-models-btn" data-provider="deepseek">List models</button>
+                <button type="button" class="btn-secondary ai-test-btn" data-provider="deepseek">Test</button>
+                <span class="ai-card-status" id="card-status-deepseek"></span>
               </div>
             </div>
-            <div class="form-group">
-              <label for="opencodeCliPath">OpenCode CLI path <span class="label-description">(optional)</span></label>
-              <input type="text" id="opencodeCliPath" placeholder="Leave empty to auto-detect on PATH">
+          </div>
+
+          <!-- Moonshot / Kimi -->
+          <div class="ai-provider-card" id="card-moonshot">
+            <div class="ai-provider-card-header">
+              <div class="ai-provider-card-title">
+                <span class="ai-provider-icon">🌙</span> Moonshot / Kimi
+                <span class="ai-key-status empty" id="status-icon-moonshot" title="No API key saved">○</span>
+              </div>
+              <a class="ai-provider-link" href="https://platform.moonshot.cn/console/api-keys" title="Open Moonshot platform to get your API key">Get API key</a>
             </div>
-            <div class="form-group checkbox-group">
-              <label class="checkbox-label">
+            <div class="ai-provider-card-body">
+              <div class="ai-card-field-row">
+                <label for="apiKey-moonshot">API Key</label>
+                <div class="field-input-wrap">
+                  <input type="password" id="apiKey-moonshot" placeholder="sk-…" autocomplete="off">
+                </div>
+              </div>
+              <div class="ai-card-field-row">
+                <label for="model-moonshot">Model</label>
+                <div class="field-input-wrap">
+                  <select id="model-moonshot-select" class="hidden"><option value="">Select a model…</option></select>
+                  <input type="text" id="model-moonshot" placeholder="moonshot-v1-8k">
+                </div>
+              </div>
+              <div class="ai-card-actions">
+                <button type="button" class="btn-secondary list-models-btn" data-provider="moonshot">List models</button>
+                <button type="button" class="btn-secondary ai-test-btn" data-provider="moonshot">Test</button>
+                <span class="ai-card-status" id="card-status-moonshot"></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Mistral AI -->
+          <div class="ai-provider-card" id="card-mistral">
+            <div class="ai-provider-card-header">
+              <div class="ai-provider-card-title">
+                <span class="ai-provider-icon">🌀</span> Mistral AI
+                <span class="ai-key-status empty" id="status-icon-mistral" title="No API key saved">○</span>
+              </div>
+              <a class="ai-provider-link" href="https://console.mistral.ai/api-keys" title="Open Mistral console to get your API key">Get API key</a>
+            </div>
+            <div class="ai-provider-card-body">
+              <div class="ai-card-field-row">
+                <label for="apiKey-mistral">API Key</label>
+                <div class="field-input-wrap">
+                  <input type="password" id="apiKey-mistral" placeholder="…" autocomplete="off">
+                </div>
+              </div>
+              <div class="ai-card-field-row">
+                <label for="model-mistral">Model</label>
+                <div class="field-input-wrap">
+                  <select id="model-mistral-select" class="hidden"><option value="">Select a model…</option></select>
+                  <input type="text" id="model-mistral" placeholder="mistral-large-latest">
+                </div>
+              </div>
+              <div class="ai-card-actions">
+                <button type="button" class="btn-secondary list-models-btn" data-provider="mistral">List models</button>
+                <button type="button" class="btn-secondary ai-test-btn" data-provider="mistral">Test</button>
+                <span class="ai-card-status" id="card-status-mistral"></span>
+              </div>
+            </div>
+          </div>
+
+        </div><!-- /ai-tab-cloud -->
+
+        <!-- ── Tab: IDE & Platform ─────────────────────────────── -->
+        <div id="ai-tab-platform" class="ai-tab-panel" role="tabpanel">
+
+          <!-- VS Code LM -->
+          <div class="ai-provider-card" id="card-vscode-lm">
+            <div class="ai-provider-card-header">
+              <div class="ai-provider-card-title">
+                <span class="ai-provider-icon">💠</span> VS Code Language Model
+              </div>
+              <a class="ai-provider-link" href="https://marketplace.visualstudio.com/items?itemName=GitHub.copilot" title="Install GitHub Copilot extension">Install Copilot</a>
+            </div>
+            <div class="ai-provider-card-body">
+              <div class="ai-card-info">
+                <span class="ai-card-info-icon">ℹ️</span>
+                <span>Uses GitHub Copilot or other VS Code language model extensions. No API key required.</span>
+              </div>
+              <div class="ai-card-field-row">
+                <label for="model-vscode-lm">Model</label>
+                <div class="field-input-wrap">
+                  <select id="model-vscode-lm-select" class="hidden"><option value="">Select a model…</option></select>
+                  <input type="text" id="model-vscode-lm" placeholder="Leave empty for default">
+                </div>
+              </div>
+              <div class="ai-card-actions">
+                <button type="button" class="btn-secondary list-models-btn" data-provider="vscode-lm">List models</button>
+                <button type="button" class="btn-secondary ai-test-btn" data-provider="vscode-lm">Test</button>
+                <span class="ai-card-status" id="card-status-vscode-lm"></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- GitHub Models -->
+          <div class="ai-provider-card" id="card-github">
+            <div class="ai-provider-card-header">
+              <div class="ai-provider-card-title">
+                <span class="ai-provider-icon">🐙</span> GitHub Models
+                <span class="ai-key-status empty" id="status-icon-github" title="Not connected">○</span>
+              </div>
+              <a class="ai-provider-link" href="https://github.com/marketplace/models" title="Browse GitHub Models catalog">Browse models</a>
+            </div>
+            <div class="ai-provider-card-body">
+              <div id="githubAuthBanner" class="ai-card-info">
+                <span class="ai-card-info-icon">🔐</span>
+                <span id="githubAuthStatusText">Not connected — click Connect to sign in with your GitHub account.</span>
+              </div>
+              <div class="ai-github-actions">
+                <button type="button" id="githubConnectBtn" class="btn-secondary">Connect GitHub</button>
+                <button type="button" id="githubDisconnectBtn" class="btn-secondary">Disconnect</button>
+              </div>
+              <div class="ai-card-field-row">
+                <label for="model-github">Model</label>
+                <div class="field-input-wrap">
+                  <select id="model-github-select" class="hidden"><option value="">Select a model…</option></select>
+                  <input type="text" id="model-github" placeholder="openai/gpt-4.1">
+                </div>
+              </div>
+              <div class="ai-card-actions">
+                <button type="button" class="btn-secondary list-models-btn" data-provider="github">List models</button>
+                <button type="button" class="btn-secondary ai-test-btn" data-provider="github">Test</button>
+                <span class="ai-card-status" id="card-status-github"></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Cursor SDK -->
+          <div class="ai-provider-card" id="card-cursor">
+            <div class="ai-provider-card-header">
+              <div class="ai-provider-card-title">
+                <span class="ai-provider-icon">⚙️</span> Cursor SDK
+                <span class="ai-key-status empty" id="status-icon-cursor" title="No API key saved">○</span>
+              </div>
+              <a class="ai-provider-link" href="https://cursor.com/dashboard/integrations" title="Open Cursor dashboard to get your API key">Get API key</a>
+            </div>
+            <div class="ai-provider-card-body">
+              <div class="ai-card-field-row">
+                <label for="apiKey-cursor">API Key</label>
+                <div class="field-input-wrap">
+                  <input type="password" id="apiKey-cursor" placeholder="cursor-…" autocomplete="off">
+                </div>
+              </div>
+              <div class="ai-card-field-row">
+                <label for="model-cursor">Model</label>
+                <div class="field-input-wrap">
+                  <select id="model-cursor-select" class="hidden"><option value="">Select a model…</option></select>
+                  <input type="text" id="model-cursor" placeholder="composer-2.5 or auto">
+                </div>
+              </div>
+              <div class="ai-card-actions">
+                <button type="button" class="btn-secondary list-models-btn" data-provider="cursor">List models</button>
+                <button type="button" class="btn-secondary ai-test-btn" data-provider="cursor">Test</button>
+                <span class="ai-card-status" id="card-status-cursor"></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- OpenCode -->
+          <div class="ai-provider-card" id="card-opencode">
+            <div class="ai-provider-card-header">
+              <div class="ai-provider-card-title">
+                <span class="ai-provider-icon">🧠</span> OpenCode
+              </div>
+              <a class="ai-provider-link" href="https://opencode.ai" title="OpenCode website">opencode.ai</a>
+            </div>
+            <div class="ai-provider-card-body">
+              <div class="ai-card-info">
+                <span class="ai-card-info-icon">ℹ️</span>
+                <span>Uses the OpenCode CLI on your machine. Configure providers with <code>opencode auth login</code> — no API key needed here.</span>
+              </div>
+              <div class="ai-card-field-row">
+                <label for="opencodeCliPath">CLI path</label>
+                <div class="field-input-wrap">
+                  <input type="text" id="opencodeCliPath" placeholder="Leave empty to auto-detect on PATH">
+                </div>
+              </div>
+              <div class="ai-card-checkbox-row">
                 <input type="checkbox" id="opencodeAutoServe" checked>
-                Auto-start <code>opencode serve</code> (recommended — avoids cold boot per request)
-              </label>
-            </div>
-            <div class="form-group checkbox-group">
-              <label class="checkbox-label">
+                <span>Auto-start <code>opencode serve</code> (recommended)</span>
+              </div>
+              <div class="ai-card-checkbox-row">
                 <input type="checkbox" id="opencodeShowLog" checked>
-                Show OpenCode log output while requests run (View → Output → OpenCode)
-              </label>
-            </div>
-            <div class="form-group checkbox-group">
-              <label class="checkbox-label">
+                <span>Show OpenCode log output (View → Output → OpenCode)</span>
+              </div>
+              <div class="ai-card-checkbox-row">
                 <input type="checkbox" id="opencodeSkipPermissions" checked>
-                Headless mode — auto-allow tool permissions (recommended)
-              </label>
-            </div>
-            <div class="form-group checkbox-group">
-              <label class="checkbox-label">
+                <span>Headless mode — auto-allow tool permissions</span>
+              </div>
+              <div class="ai-card-checkbox-row">
                 <input type="checkbox" id="opencodeAutoApprovePermissions" checked>
-                Auto-approve server permission prompts during requests
-              </label>
-            </div>
-            <div class="form-group">
-              <label for="opencodeServeUrl">Server URL</label>
-              <input type="text" id="opencodeServeUrl" placeholder="Auto-filled when serve starts, or set manually">
-              <p class="field-hint">PgStudio reuses this URL across requests. Clear and reload if a request hangs on “Permission required”. Use models from providers you have authed (<code>opencode auth login</code>) — Microsoft/Copilot models need separate OAuth.</p>
-            </div>
-            <div class="form-group">
-              <label for="opencodeServePort">Serve port <span class="label-description">(0 = free port)</span></label>
-              <input type="number" id="opencodeServePort" min="0" max="65535" placeholder="0">
-            </div>
-            <div class="form-group">
-              <label for="model-opencode">
-                Model
-                <span class="label-description">
-                  <button type="button" class="btn-link list-models-btn" data-provider="opencode">List available models</button>
-                </span>
-              </label>
-              <select id="model-opencode-select" class="hidden">
-                <option value="">Select a model...</option>
-              </select>
-              <input type="text" id="model-opencode" placeholder="provider/model, e.g. opencode/gpt-5, or auto">
-            </div>
-          </div>
-
-          <div id="provider-openai" class="provider-details">
-            <div class="form-group">
-              <label for="apiKey-openai">OpenAI API Key <span class="required-indicator">*</span></label>
-              <input type="password" id="apiKey-openai" placeholder="sk-… · platform.openai.com/api-keys">
-            </div>
-            <div class="form-group">
-              <label for="model-openai">
-                Model
-                <span class="label-description">
-                  <button type="button" class="btn-link list-models-btn" data-provider="openai">List available models</button>
-                </span>
-              </label>
-              <select id="model-openai-select" class="hidden">
-                <option value="">Select a model...</option>
-              </select>
-              <input type="text" id="model-openai" placeholder="gpt-4 (recommended)">
-            </div>
-          </div>
-
-          <div id="provider-anthropic" class="provider-details">
-            <div class="form-group">
-              <label for="apiKey-anthropic">Anthropic API Key <span class="required-indicator">*</span></label>
-              <input type="password" id="apiKey-anthropic" placeholder="sk-ant-… · console.anthropic.com">
-            </div>
-            <div class="form-group">
-              <label for="model-anthropic">
-                Model
-                <span class="label-description">
-                  <button type="button" class="btn-link list-models-btn" data-provider="anthropic">List available models</button>
-                </span>
-              </label>
-              <select id="model-anthropic-select" class="hidden">
-                <option value="">Select a model...</option>
-              </select>
-              <input type="text" id="model-anthropic" placeholder="claude-3-5-sonnet-20241022 (recommended)">
-            </div>
-          </div>
-
-          <div id="provider-gemini" class="provider-details">
-            <div class="form-group">
-              <label for="apiKey-gemini">Google API Key <span class="required-indicator">*</span></label>
-              <input type="password" id="apiKey-gemini" placeholder="AIza… · aistudio.google.com">
-            </div>
-            <div class="form-group">
-              <label for="model-gemini">
-                Model
-                <span class="label-description">
-                  <button type="button" class="btn-link list-models-btn" data-provider="gemini">List available models</button>
-                </span>
-              </label>
-              <select id="model-gemini-select" class="hidden">
-                <option value="">Select a model...</option>
-              </select>
-              <input type="text" id="model-gemini" placeholder="gemini-pro">
-            </div>
-          </div>
-
-          <div id="provider-ollama" class="provider-details">
-            <div class="info-box info">
-              <span class="info-box-icon">🦙</span>
-              <div>
-                <strong>Ollama</strong>
-                Runs models locally. Make sure Ollama is running — default endpoint is pre-filled.
+                <span>Auto-approve server permission prompts</span>
+              </div>
+              <div class="ai-card-field-row">
+                <label for="opencodeServeUrl">Server URL</label>
+                <div class="field-input-wrap">
+                  <input type="text" id="opencodeServeUrl" placeholder="Auto-filled when serve starts">
+                </div>
+              </div>
+              <div class="ai-card-field-row">
+                <label for="opencodeServePort">Port</label>
+                <div class="field-input-wrap">
+                  <input type="number" id="opencodeServePort" min="0" max="65535" placeholder="0 = free port" style="max-width:120px">
+                </div>
+              </div>
+              <div class="ai-card-field-row">
+                <label for="model-opencode">Model</label>
+                <div class="field-input-wrap">
+                  <select id="model-opencode-select" class="hidden"><option value="">Select a model…</option></select>
+                  <input type="text" id="model-opencode" placeholder="provider/model or auto">
+                </div>
+              </div>
+              <div class="ai-card-actions">
+                <button type="button" class="btn-secondary list-models-btn" data-provider="opencode">List models</button>
+                <button type="button" class="btn-secondary ai-test-btn" data-provider="opencode">Test</button>
+                <span class="ai-card-status" id="card-status-opencode"></span>
               </div>
             </div>
-            <div class="form-group">
-              <label for="endpoint-ollama">API Endpoint</label>
-              <input type="text" id="endpoint-ollama" placeholder="http://localhost:11434/v1/chat/completions" value="http://localhost:11434/v1/chat/completions">
-            </div>
-            <div class="form-group">
-              <label for="model-ollama">
-                Model
-                <span class="label-description">
-                  <button type="button" class="btn-link list-models-btn" data-provider="ollama">List available models</button>
-                </span>
-              </label>
-              <select id="model-ollama-select" class="hidden">
-                <option value="">Select a model...</option>
-              </select>
-              <input type="text" id="model-ollama" placeholder="llama3, mistral, codellama…">
-            </div>
           </div>
 
-          <div id="provider-lmstudio" class="provider-details">
-            <div class="info-box info">
-              <span class="info-box-icon">🖥️</span>
-              <div>
-                <strong>LM Studio</strong>
-                Runs models locally via LM Studio's built-in server. Start the server first.
+        </div><!-- /ai-tab-platform -->
+
+        <!-- ── Tab: Local & Custom ─────────────────────────────── -->
+        <div id="ai-tab-local" class="ai-tab-panel" role="tabpanel">
+
+          <!-- Ollama -->
+          <div class="ai-provider-card" id="card-ollama">
+            <div class="ai-provider-card-header">
+              <div class="ai-provider-card-title">
+                <span class="ai-provider-icon">🦙</span> Ollama
+              </div>
+              <a class="ai-provider-link" href="https://ollama.com/download" title="Download Ollama">ollama.com</a>
+            </div>
+            <div class="ai-provider-card-body">
+              <div class="ai-card-info">
+                <span class="ai-card-info-icon">ℹ️</span>
+                <span>Runs models locally. Make sure Ollama is running before testing.</span>
+              </div>
+              <div class="ai-card-field-row">
+                <label for="endpoint-ollama">Endpoint</label>
+                <div class="field-input-wrap">
+                  <input type="text" id="endpoint-ollama" placeholder="http://localhost:11434/v1/chat/completions" value="http://localhost:11434/v1/chat/completions">
+                </div>
+              </div>
+              <div class="ai-card-field-row">
+                <label for="model-ollama">Model</label>
+                <div class="field-input-wrap">
+                  <select id="model-ollama-select" class="hidden"><option value="">Select a model…</option></select>
+                  <input type="text" id="model-ollama" placeholder="llama3, mistral, codellama…">
+                </div>
+              </div>
+              <div class="ai-card-actions">
+                <button type="button" class="btn-secondary list-models-btn" data-provider="ollama">List models</button>
+                <button type="button" class="btn-secondary ai-test-btn" data-provider="ollama">Test</button>
+                <span class="ai-card-status" id="card-status-ollama"></span>
               </div>
             </div>
-            <div class="form-group">
-              <label for="endpoint-lmstudio">API Endpoint</label>
-              <input type="text" id="endpoint-lmstudio" placeholder="http://localhost:1234/v1/chat/completions" value="http://localhost:1234/v1/chat/completions">
-            </div>
-            <div class="form-group">
-              <label for="model-lmstudio">
-                Model
-                <span class="label-description">
-                  <button type="button" class="btn-link list-models-btn" data-provider="lmstudio">List available models</button>
-                </span>
-              </label>
-              <select id="model-lmstudio-select" class="hidden">
-                <option value="">Select a model...</option>
-              </select>
-              <input type="text" id="model-lmstudio" placeholder="Leave empty to use the loaded model">
-            </div>
           </div>
 
-          <div id="provider-custom" class="provider-details">
-            <div class="info-box warning">
-              <span class="info-box-icon">⚠️</span>
-              <div>
-                <strong>Custom Endpoint</strong>
-                For self-hosted or alternative LLM providers with OpenAI-compatible APIs.
+          <!-- LM Studio -->
+          <div class="ai-provider-card" id="card-lmstudio">
+            <div class="ai-provider-card-header">
+              <div class="ai-provider-card-title">
+                <span class="ai-provider-icon">🖥️</span> LM Studio
+              </div>
+              <a class="ai-provider-link" href="https://lmstudio.ai" title="LM Studio website">lmstudio.ai</a>
+            </div>
+            <div class="ai-provider-card-body">
+              <div class="ai-card-info">
+                <span class="ai-card-info-icon">ℹ️</span>
+                <span>Runs models locally via LM Studio's built-in server. Start the server first.</span>
+              </div>
+              <div class="ai-card-field-row">
+                <label for="endpoint-lmstudio">Endpoint</label>
+                <div class="field-input-wrap">
+                  <input type="text" id="endpoint-lmstudio" placeholder="http://localhost:1234/v1/chat/completions" value="http://localhost:1234/v1/chat/completions">
+                </div>
+              </div>
+              <div class="ai-card-field-row">
+                <label for="model-lmstudio">Model</label>
+                <div class="field-input-wrap">
+                  <select id="model-lmstudio-select" class="hidden"><option value="">Select a model…</option></select>
+                  <input type="text" id="model-lmstudio" placeholder="Leave empty to use the loaded model">
+                </div>
+              </div>
+              <div class="ai-card-actions">
+                <button type="button" class="btn-secondary list-models-btn" data-provider="lmstudio">List models</button>
+                <button type="button" class="btn-secondary ai-test-btn" data-provider="lmstudio">Test</button>
+                <span class="ai-card-status" id="card-status-lmstudio"></span>
               </div>
             </div>
-            <div class="form-group">
-              <label for="endpoint-custom">API Endpoint <span class="required-indicator">*</span></label>
-              <input type="text" id="endpoint-custom" placeholder="http://localhost:8080/v1/chat/completions">
+          </div>
+
+          <!-- Custom Endpoint -->
+          <div class="ai-provider-card" id="card-custom">
+            <div class="ai-provider-card-header">
+              <div class="ai-provider-card-title">
+                <span class="ai-provider-icon">🔧</span> Custom Endpoint
+                <span class="ai-key-status empty" id="status-icon-custom" title="Not configured">○</span>
+              </div>
             </div>
-            <div class="form-group">
-              <label for="apiKey-custom">API Key</label>
-              <input type="password" id="apiKey-custom" placeholder="Optional — leave empty if not required">
-            </div>
-            <div class="form-group">
-              <label for="model-custom">Model Name</label>
-              <input type="text" id="model-custom" placeholder="Model identifier for your endpoint">
+            <div class="ai-provider-card-body">
+              <div class="ai-card-info">
+                <span class="ai-card-info-icon">⚠️</span>
+                <span>For self-hosted or alternative providers with OpenAI-compatible APIs.</span>
+              </div>
+              <div class="ai-card-field-row">
+                <label for="endpoint-custom">Endpoint <span style="color:var(--danger)">*</span></label>
+                <div class="field-input-wrap">
+                  <input type="text" id="endpoint-custom" placeholder="http://localhost:8080/v1/chat/completions">
+                </div>
+              </div>
+              <div class="ai-card-field-row">
+                <label for="apiKey-custom">API Key</label>
+                <div class="field-input-wrap">
+                  <input type="password" id="apiKey-custom" placeholder="Optional" autocomplete="off">
+                </div>
+              </div>
+              <div class="ai-card-field-row">
+                <label for="model-custom">Model</label>
+                <div class="field-input-wrap">
+                  <input type="text" id="model-custom" placeholder="Model identifier">
+                </div>
+              </div>
+              <div class="ai-card-actions">
+                <button type="button" class="btn-secondary list-models-btn" data-provider="custom">List models</button>
+                <button type="button" class="btn-secondary ai-test-btn" data-provider="custom">Test</button>
+                <span class="ai-card-status" id="card-status-custom"></span>
+              </div>
             </div>
           </div>
 
-          <div class="actions">
-            <div id="aiMessage" class="status-line" role="status"></div>
-            <div class="actions-buttons">
-              <button type="button" id="aiTestBtn" class="btn-secondary">Test</button>
-              <button type="submit" id="aiSaveBtn" class="btn-primary">Save</button>
-            </div>
-          </div>
-        </form>
+        </div><!-- /ai-tab-local -->
+
+
+
+        <!-- Save bar -->
+        <div class="ai-save-bar">
+          <span class="ai-save-status" id="aiSaveStatus" role="status"></span>
+          <button type="button" id="aiSaveBtn" class="btn-primary">Save All Settings</button>
+        </div>
+
       </section>
+
+
 
       <!-- ════════════════ Preferences ════════════════ -->
       <section id="section-prefs" class="hub-section" role="tabpanel" aria-label="Preferences" hidden>
@@ -1043,6 +1306,7 @@
           </div>
           <div class="form-group">
             <label for="username">Username</label>
+            <span class="label-hint">Leave empty to use your OS username</span>
             <input type="text" id="username" placeholder="postgres">
           </div>
           <div class="form-group">

@@ -91,6 +91,13 @@ async function ensureSchema() {
           updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
         )
       `;
+      // Migrate sync_accounts created by older deploys — CREATE TABLE IF NOT EXISTS
+      // never alters an existing table, so newer columns must be added explicitly.
+      await db`ALTER TABLE pgstudio_sync.sync_accounts ADD COLUMN IF NOT EXISTS tier TEXT NOT NULL DEFAULT 'sponsor'`;
+      await db`ALTER TABLE pgstudio_sync.sync_accounts ADD COLUMN IF NOT EXISTS bytes_used BIGINT NOT NULL DEFAULT 0`;
+      await db`ALTER TABLE pgstudio_sync.sync_accounts ADD COLUMN IF NOT EXISTS item_count INT NOT NULL DEFAULT 0`;
+      await db`ALTER TABLE pgstudio_sync.sync_accounts ADD COLUMN IF NOT EXISTS inactive_since TIMESTAMPTZ`;
+      await db`ALTER TABLE pgstudio_sync.sync_accounts ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now()`;
       await db`
         CREATE TABLE IF NOT EXISTS pgstudio_sync.sync_devices (
           account_id   TEXT        NOT NULL,

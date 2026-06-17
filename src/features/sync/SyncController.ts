@@ -648,9 +648,19 @@ export class SyncController implements vscode.Disposable {
     const acked: string[] = [];
     for (const p of log.listPending()) {
       const entry = index.get(p.itemId);
-      if (p.action === 'delete' && !entry) {
+      if (p.action === 'delete') {
+        // Acked once the tombstone is pushed (entry removed by recordAccepted)
+        // or when the item never reached the cloud (no syncedVersion) — there
+        // is nothing left to delete remotely, so the queue entry is obsolete.
+        if (!entry || entry.syncedVersion == null) {
+          acked.push(`${p.kind}:${p.itemId}`);
+        }
+      } else if (!entry) {
+        // Orphan: the item id is no longer tracked (e.g. its syncId was
+        // regenerated). Nothing left to push — drop the stale pending entry so
+        // it stops showing as a phantom "Update" forever.
         acked.push(`${p.kind}:${p.itemId}`);
-      } else if (entry && entry.syncedHash && entry.syncedHash === entry.lastObservedHash) {
+      } else if (entry.syncedHash && entry.syncedHash === entry.lastObservedHash) {
         acked.push(`${p.kind}:${p.itemId}`);
       }
     }
@@ -677,6 +687,9 @@ export class SyncController implements vscode.Disposable {
       await index.flush();
       await this.setCursor(config, 0);
       await this.runLocked(config, { direction: 'pull' });
+      // Local state was wiped and rebuilt from cloud — any queued outbound
+      // changes referenced the old local items and are now meaningless.
+      SyncActivityLog.getInstance(this.context).clearPending();
       await this.context.globalState.update(SYNC_LAST_SYNC_AT_KEY, Date.now());
       this.setStatus('synced');
       return true;
@@ -707,6 +720,9 @@ export class SyncController implements vscode.Disposable {
       await index.flush();
       await this.setCursor(config, 0);
       await this.runLocked(config, { direction: 'push' });
+      // Local is now the source of truth — everything was force-pushed, so no
+      // outbound change can still be pending. Flush the queue unconditionally.
+      SyncActivityLog.getInstance(this.context).clearPending();
       await this.context.globalState.update(SYNC_LAST_SYNC_AT_KEY, Date.now());
       this.setStatus('synced');
       return true;

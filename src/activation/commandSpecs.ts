@@ -672,11 +672,13 @@ export function getCommandSpecs(
         await vscode.workspace.fs.delete(item.uri, { recursive: false });
         if (syncId) {
           try {
-            const { SyncIndex } = await import('../features/sync/SyncIndex');
             const { recordSyncActivity } = await import('../features/sync/SyncActivityLog');
-            const index = new SyncIndex(context);
-            index.remove(syncId);
-            await index.flush();
+            // Do NOT remove the index entry here. The sync engine emits a cloud
+            // tombstone by walking syncedIds() for items that were synced before
+            // and are now gone locally (buildOps delete branch). Removing it up
+            // front strips the compare-and-swap base, so the delete would never
+            // propagate to the cloud or other devices. recordAccepted() prunes
+            // the index once the tombstone is acknowledged.
             recordSyncActivity({
               kind: 'notebook',
               action: 'delete',
