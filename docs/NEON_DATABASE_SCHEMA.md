@@ -114,7 +114,7 @@ erDiagram
 | Schema / Table | Status | Read / Write Intensity | Primary Purpose | Why it is Used & What relies on it |
 | :--- | :--- | :--- | :--- | :--- |
 | **`pgstudio_license.licenses`** | **Active** | High / Medium | Entitlement State | Tracks subscription tiers, expiration dates, and validation status. Relied upon by client licensing API requests. |
-| **`pgstudio_license.devices`** | **Active** | High / High | Device Validation | Prevents users from exceeding activation limits (e.g. Sponsor limit = 3, Singularity = 25). |
+| **`pgstudio_license.devices`** | **Active** | High / High | Device Validation | Prevents users from exceeding activation limits (4 devices per tier). Excess devices pruned on validate. |
 | **`pgstudio_license.license_events`** | **Active** | Low / Medium | Audit Trail | Log of license changes (issuance, device bindings, subscription status modifications). |
 | **`pgstudio_license.webhook_events`** | **Active** | Medium / Low | Idempotency | Ensures Razorpay webhooks are processed exactly once. |
 | **`pgstudio_sync.sync_accounts`** | **Active** | High / Medium | Quota & Storage Tracking | Stores tenant usage limits (bytes used, item count, tier) and triggers cloud pruning if inactive. |
@@ -171,7 +171,7 @@ Tracks active client machines bound to each license key.
   );
   ```
 * **Why & What**:
-  * Enforces maximum active devices (`3` for `sponsor`, `25` for `singularity`).
+  * Enforces maximum active devices (`4` for both `sponsor` and `singularity`). Excess devices are pruned on validate (oldest `last_seen` first).
   * If a user requests a bind that exceeds their tier's threshold, the backend blocks it or prompts a revocation.
   * `revoked_at` is updated to audit historical bindings rather than physically deleting rows.
 

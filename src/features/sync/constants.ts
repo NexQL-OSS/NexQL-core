@@ -14,6 +14,8 @@ export const SYNC_LAST_ERROR_KEY = 'postgres-explorer.sync.lastError';
 export const SYNC_DEVICE_NAME_KEY = 'postgres-explorer.sync.deviceName';
 export const SYNC_PREVIEW_CACHE_KEY = 'postgres-explorer.sync.previewCache';
 export const SYNC_WORKSPACE_QUERIES_MIGRATED_KEY = 'postgres-explorer.sync.queriesMigratedToGlobal';
+/** Cached team workspace roles/names between sync runs. */
+export const SYNC_WORKSPACE_ROLES_KEY = 'postgres-explorer.sync.workspaceRoles';
 
 /** Soft cloud storage caps (bytes). */
 export const CLOUD_QUOTA_BYTES: Record<'sponsor' | 'singularity', number> = {
@@ -41,6 +43,10 @@ export const SYNC_PERIODIC_MS = 60 * 60 * 1000;
 export const SYNC_OPEN_CHECK_DEBOUNCE_MS = 1500;
 export const SYNC_BACKOFF_INITIAL_MS = 30_000;
 export const SYNC_BACKOFF_MAX_MS = 5 * 60 * 1000;
+/** TTL for cached GET /sync/v2/spaces roster. */
+export const SYNC_SPACES_CACHE_TTL_MS = 5 * 60 * 1000;
+/** Skip pull-on-open peek when a full sync completed within this window. */
+export const SYNC_PEEK_SKIP_AFTER_SYNC_MS = 30_000;
 
 export const ENVELOPE_VERSION = 1;
 export const ENVELOPE_FLAG_NONE = 0;

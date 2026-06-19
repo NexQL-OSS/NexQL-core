@@ -48,8 +48,15 @@ module.exports = async (req, res) => {
   }
 
   const active = ent.status === 'active' && (!ent.expiresAt || ent.expiresAt > Date.now());
+  let devicesPruned = [];
 
   if (active && instanceId) {
+    try {
+      devicesPruned = await licenseDb.pruneExcessDevices(key, deviceLimitFor(ent.tier), instanceId);
+    } catch (err) {
+      console.error('validate: prune excess devices failed', err);
+    }
+
     const known = await store.isDeviceActive(key, instanceId);
     if (!known) {
       const count = await store.countActiveDevices(key);
@@ -101,6 +108,10 @@ module.exports = async (req, res) => {
     status: ent.status,
     expiresAt: ent.expiresAt || null,
   };
+
+  if (active && instanceId && devicesPruned?.length) {
+    payload.devicesPruned = devicesPruned;
+  }
 
   if (active && ent.expiresAt) {
     const remaining = ent.expiresAt - Date.now();

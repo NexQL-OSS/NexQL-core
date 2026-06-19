@@ -4,7 +4,7 @@ import { contentHash } from './envelope';
 import { SyncIndex } from './SyncIndex';
 import { SyncMutex } from './SyncMutex';
 import { PlaintextCodec, type BlobCodec } from './BlobCodec';
-import { decideIncoming } from './SyncEngineV2';
+import { decideIncoming, shouldBackupBeforeDelete } from './SyncEngineV2';
 import { ConnectionSyncService } from './ConnectionSyncService';
 import { NotebookSyncService } from './NotebookSyncService';
 import { CloudSyncProvider } from './providers/CloudSyncProvider';
@@ -12,6 +12,7 @@ import { PostgresSyncProvider } from './providers/PostgresSyncProvider';
 import { WorkspaceSharingService } from './WorkspaceSharingService';
 import { SyncActivityLog, bindSyncActivityLog, recordSyncActivity } from './SyncActivityLog';
 import { readNotebookSyncId } from './notebookSyncId';
+import { parseNotebookFileContent } from './notebookFileParse';
 import { getOrCreateDeviceId } from './deviceId';
 import { SavedQueriesService } from '../savedQueries/SavedQueriesService';
 import {
@@ -25,9 +26,12 @@ import {
   SYNC_CURSOR_KEY,
   SYNC_LAST_SYNC_AT_KEY,
   SYNC_LAST_ERROR_KEY,
+  SYNC_WORKSPACE_ROLES_KEY,
   SYNC_DEBOUNCE_MS,
   SYNC_PERIODIC_MS,
   SYNC_OPEN_CHECK_DEBOUNCE_MS,
+  SYNC_SPACES_CACHE_TTL_MS,
+  SYNC_PEEK_SKIP_AFTER_SYNC_MS,
 } from './constants';
 import type {
   CloudQuotaView,
@@ -51,6 +55,7 @@ import type {
   SyncSpaceContext,
   SyncedItemView,
   WorkspaceRole,
+  WorkspaceView,
 } from './types';
 
 type LocalItem = { meta: SyncItemMeta; plaintext: Buffer };
@@ -103,6 +108,7 @@ export class SyncController implements vscode.Disposable {
   private lastSuccessfulSyncAt = 0;
   private workspaceRoles = new Map<string, WorkspaceRole>();
   private workspaceNames = new Map<string, string>();
+  private spacesCache: { expiresAt: number; spaces: SyncSpaceContext[] } | null = null;
 
   private readonly _onDidCompleteSync = new vscode.EventEmitter<void>();
   readonly onDidCompleteSync = this._onDidCompleteSync.event;
@@ -129,6 +135,11 @@ export class SyncController implements vscode.Disposable {
   initialize(statusBar?: SyncStatusBar): void {
     this.statusBar = statusBar;
     bindSyncActivityLog(this.context);
+    this.loadPersistedWorkspaceRoles();
+    const lastSyncAt = this.context.globalState.get<number>(SYNC_LAST_SYNC_AT_KEY);
+    if (lastSyncAt) {
+      this.lastSuccessfulSyncAt = lastSyncAt;
+    }
     const config = this.getConfig();
     this.status = config.providerId ? (config.paused ? 'paused' : 'idle') : 'not_configured';
     this.updateStatusBar();
@@ -213,39 +224,82 @@ export class SyncController implements vscode.Disposable {
   }
 
   async resolveSyncSpaces(config: SyncConfig): Promise<SyncSpaceContext[]> {
-    const spaces: SyncSpaceContext[] = [{ spaceId: undefined, name: 'Personal', role: 'owner' }];
+    const personalOnly: SyncSpaceContext[] = [{ spaceId: undefined, name: 'Personal', role: 'owner' }];
     if (config.providerId !== 'cloud' || !isProFeatureEnabled(ProFeature.SyncSharing)) {
-      return spaces;
+      return personalOnly;
+    }
+    if (this.spacesCache && Date.now() < this.spacesCache.expiresAt) {
+      return this.spacesCache.spaces;
     }
     try {
       const service = new WorkspaceSharingService(this.context);
       const workspaces = await service.listWorkspaces();
-      this.workspaceRoles.clear();
-      this.workspaceNames.clear();
-      for (const w of workspaces) {
-        this.workspaceRoles.set(w.spaceId, w.role);
-        this.workspaceNames.set(w.spaceId, w.name);
-        spaces.push({ spaceId: w.spaceId, name: w.name, role: w.role });
-      }
+      const spaces = this.applyWorkspaceRoster(workspaces);
+      this.spacesCache = { expiresAt: Date.now() + SYNC_SPACES_CACHE_TTL_MS, spaces };
+      return spaces;
     } catch (e) {
       this.output.appendLine(`[sync] list workspaces failed: ${e instanceof Error ? e.message : String(e)}`);
     }
+    return personalOnly;
+  }
+
+  invalidateSpacesCache(): void {
+    this.spacesCache = null;
+  }
+
+  private loadPersistedWorkspaceRoles(): void {
+    const persisted = this.context.globalState.get<{
+      roles: Record<string, WorkspaceRole>;
+      names: Record<string, string>;
+    }>(SYNC_WORKSPACE_ROLES_KEY);
+    if (!persisted) {
+      return;
+    }
+    for (const [id, role] of Object.entries(persisted.roles)) {
+      this.workspaceRoles.set(id, role);
+    }
+    for (const [id, name] of Object.entries(persisted.names)) {
+      this.workspaceNames.set(id, name);
+    }
+  }
+
+  private async persistWorkspaceRoles(): Promise<void> {
+    const roles: Record<string, WorkspaceRole> = {};
+    const names: Record<string, string> = {};
+    for (const [id, role] of this.workspaceRoles) {
+      roles[id] = role;
+    }
+    for (const [id, name] of this.workspaceNames) {
+      names[id] = name;
+    }
+    await this.context.globalState.update(SYNC_WORKSPACE_ROLES_KEY, { roles, names, savedAt: Date.now() });
+  }
+
+  private applyWorkspaceRoster(workspaces: WorkspaceView[]): SyncSpaceContext[] {
+    const spaces: SyncSpaceContext[] = [{ spaceId: undefined, name: 'Personal', role: 'owner' }];
+    this.workspaceRoles.clear();
+    this.workspaceNames.clear();
+    for (const w of workspaces) {
+      this.workspaceRoles.set(w.spaceId, w.role);
+      this.workspaceNames.set(w.spaceId, w.name);
+      spaces.push({ spaceId: w.spaceId, name: w.name, role: w.role });
+    }
+    void this.persistWorkspaceRoles();
     return spaces;
   }
 
-  getRoleForSpace(spaceId?: string): WorkspaceRole {
+  getRoleForSpace(spaceId?: string): WorkspaceRole | undefined {
     if (!spaceId) {
       return 'owner';
     }
-    return this.workspaceRoles.get(spaceId) ?? 'viewer';
+    return this.workspaceRoles.get(spaceId);
   }
 
   getWorkspaceName(spaceId: string): string | undefined {
     return this.workspaceNames.get(spaceId);
   }
 
-  isItemReadOnly(id: string): boolean {
-    const index = new SyncIndex(this.context);
+  isItemReadOnly(id: string, index: SyncIndex = new SyncIndex(this.context)): boolean {
     const entry = index.get(id);
     if (!entry?.spaceId) {
       return false;
@@ -385,6 +439,12 @@ export class SyncController implements vscode.Disposable {
 
   async peekRemoteChanges(itemId: string): Promise<RemoteChangeHint> {
     if (!this.canRunOpenCheck()) {
+      return 'none';
+    }
+    if (
+      this.lastSuccessfulSyncAt > 0
+      && Date.now() - this.lastSuccessfulSyncAt < SYNC_PEEK_SKIP_AFTER_SYNC_MS
+    ) {
       return 'none';
     }
 
@@ -749,7 +809,7 @@ export class SyncController implements vscode.Disposable {
     const ops: SyncOp[] = [];
 
     for (const { meta, plaintext } of localItems) {
-      if (this.isItemReadOnly(meta.id)) {
+      if (this.isItemReadOnly(meta.id, index)) {
         continue;
       }
       if (index.isDirty(meta.id, meta.contentHash)) {
@@ -773,7 +833,7 @@ export class SyncController implements vscode.Disposable {
       if (!entry || (entry.spaceId ?? undefined) !== space.spaceId) {
         continue;
       }
-      if (excluded.has(id) || presentIds.has(id) || !kindEnabled(entry.kind) || this.isItemReadOnly(id)) {
+      if (excluded.has(id) || presentIds.has(id) || !kindEnabled(entry.kind) || this.isItemReadOnly(id, index)) {
         continue;
       }
       ops.push({ op: 'delete', itemId: id, kind: entry.kind, baseVersion: index.baseVersion(id) });
@@ -823,6 +883,13 @@ export class SyncController implements vscode.Disposable {
         continue;
       }
       const kind = index.get(id)?.kind ?? localById.get(id)?.meta.kind;
+      const local = localById.get(id);
+      if (
+        local
+        && shouldBackupBeforeDelete(true, index.isDirty(id, local.meta.contentHash))
+      ) {
+        this.backupLocal(local, kind ?? local.meta.kind);
+      }
       const metaStub: SyncItemMeta = { id, kind: kind ?? 'query', contentHash: '', revision: 0, updatedAt: 0, deviceId: '', deleted: true };
       try {
         if (kind === 'connection' && config.syncConnections) {
@@ -1280,10 +1347,11 @@ export class SyncController implements vscode.Disposable {
     }
     const entry = new SyncIndex(this.context).get(id);
     if (entry?.kind === 'notebook' && entry.filePath && fs.existsSync(entry.filePath)) {
-      const parsed = JSON.parse(fs.readFileSync(entry.filePath).toString());
+      const parsed = JSON.parse(fs.readFileSync(entry.filePath).toString()) as Record<string, unknown>;
+      const { cells, databaseName } = parseNotebookFileContent(parsed);
       return {
         kind: 'notebook',
-        raw: { name: entry.name ?? id, cells: parsed.cells ?? [], databaseName: parsed.metadata?.databaseName },
+        raw: { name: entry.name ?? id, cells, databaseName },
         name: entry.name ?? id,
       };
     }

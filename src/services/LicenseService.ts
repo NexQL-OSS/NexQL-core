@@ -27,6 +27,7 @@ interface ValidateResponse {
   reason?: string;
   expiringSoon?: boolean;
   graceUntil?: number | null;
+  devicesPruned?: Array<{ instanceId: string; deviceName: string | null }>;
 }
 
 export interface LicenseServerStatus {
@@ -249,6 +250,8 @@ export class LicenseService {
       void this.maybeWarnExpiringSoon(res.expiresAt);
     }
 
+    void this.maybeNotifyDevicesPruned(res.devicesPruned);
+
     if (res.tier === 'sponsor' || res.tier === 'singularity') {
       void import('../features/sync/syncBootstrap').then((m) => m.maybePromptSyncBootstrap(this.context));
     }
@@ -342,6 +345,7 @@ export class LicenseService {
         if (res.expiringSoon) {
           void this.maybeWarnExpiringSoon(res.expiresAt);
         }
+        void this.maybeNotifyDevicesPruned(res.devicesPruned);
       } else {
         this.cache = null;
         await SecretStorageService.getInstance().deleteLicenseCache();
@@ -372,6 +376,22 @@ export class LicenseService {
     if (choice === 'Manage License') {
       void vscode.commands.executeCommand('postgres-explorer.license.manage');
     }
+  }
+
+  private async maybeNotifyDevicesPruned(
+    devicesPruned?: Array<{ instanceId: string; deviceName: string | null }>,
+  ): Promise<void> {
+    if (!devicesPruned?.length) {
+      return;
+    }
+    const n = devicesPruned.length;
+    const names = devicesPruned
+      .map((d) => d.deviceName || d.instanceId.slice(0, 8))
+      .join(', ');
+    await vscode.window.showWarningMessage(
+      `${n} older device${n === 1 ? '' : 's'} (${names}) ${n === 1 ? 'was' : 'were'} removed to stay within the 4-device limit.`,
+      'Manage License',
+    );
   }
 
   private async persist(): Promise<void> {

@@ -22,6 +22,11 @@ export interface IncomingDecision {
   backupLocal: boolean;
 }
 
+/** Whether a remote tombstone should preserve dirty local content as a backup. */
+export function shouldBackupBeforeDelete(hasLocal: boolean, localDirty: boolean): boolean {
+  return hasLocal && localDirty;
+}
+
 /**
  * Decide what to do with one incoming remote upsert.
  *

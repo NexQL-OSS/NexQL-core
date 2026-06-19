@@ -73,7 +73,10 @@ async function pickOrCreateWorkspace(service: WorkspaceSharingService): Promise<
     if (!name?.trim()) {
       return undefined;
     }
-    return service.createWorkspace(name.trim());
+    return service.createWorkspace(name.trim()).then((ws) => {
+      SyncController.getInstance().invalidateSpacesCache();
+      return ws;
+    });
   }
   return owned.find((w) => w.spaceId === pick.id);
 }
@@ -117,6 +120,7 @@ export async function cmdSyncInviteMember(context: vscode.ExtensionContext): Pro
       return;
     }
     await service.addMember(workspace.spaceId, email.trim(), role.id);
+    SyncController.getInstance().invalidateSpacesCache();
     await vscode.window.showInformationMessage(`Invited ${email.trim()} to "${workspace.name}" as ${role.id}.`);
   } catch (e) {
     await vscode.window.showErrorMessage(`Invite failed: ${e instanceof Error ? e.message : String(e)}`);
@@ -233,6 +237,7 @@ export async function cmdSyncShareWithTeam(
     }
 
     await controller.runSync();
+    controller.invalidateSpacesCache();
     await vscode.window.showInformationMessage(`"${item.name}" is now shared in "${workspace.name}".`);
     void vscode.commands.executeCommand('postgres-explorer.notebooks.refresh');
     void vscode.commands.executeCommand('postgresExplorer.savedQueries.refresh');

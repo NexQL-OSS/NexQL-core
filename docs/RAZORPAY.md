@@ -275,7 +275,7 @@ Body: `{ "licenseKey", "email", "action": "list"|"remove", "instanceId"? }`. Aut
 
 Success: `{ "ok": true, "limit", "devices": [{ "instanceId" }] }`.
 
-**Device limits (per tier, enforced in `validate.js`):** Sponsor = 3 devices (personal license), Singularity = 25 devices (flat org license). Existing bindings above a limit are kept; the cap only blocks *new* device binds. Keep `DEVICE_LIMITS` in `validate.js` and `devices.js` in sync.
+**Device limits (per tier, enforced in `license-db.js`):** Sponsor = 4 devices, Singularity = 4 devices. Licenses with more than 4 active devices are pruned to the cap on the next validate (oldest idle devices removed first). Keep `DEVICE_LIMITS` in `license-db.js` in sync with this doc.
 
 ---
 
