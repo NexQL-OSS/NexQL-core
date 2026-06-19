@@ -45,7 +45,7 @@ export class CloudSyncProvider implements SyncProviderV2 {
     try {
       await withAuthRetry(
         this.context,
-        (headers) => httpRequest(`${this.baseUrl()}/sync/v2/pull?since=0${this.spaceQuery()}`, { headers }),
+        (headers) => httpRequest(`${this.baseUrl()}/sync/v2-pull?since=0${this.spaceQuery()}`, { headers }),
         () => undefined,
         'Connection test',
       );
@@ -63,7 +63,7 @@ export class CloudSyncProvider implements SyncProviderV2 {
     return withAuthRetry(
       this.context,
       (headers) => httpRequest(
-        `${this.baseUrl()}/sync/v2/pull?since=${since}${this.spaceQuery()}`,
+        `${this.baseUrl()}/sync/v2-pull?since=${since}${this.spaceQuery()}`,
         { headers },
       ),
       (res) => {
@@ -102,7 +102,7 @@ export class CloudSyncProvider implements SyncProviderV2 {
     });
     return withAuthRetry(
       this.context,
-      (headers) => httpRequest(`${this.baseUrl()}/sync/v2/push`, {
+      (headers) => httpRequest(`${this.baseUrl()}/sync/v2-push`, {
         method: 'POST',
         headers: { ...headers, 'Content-Type': 'application/json' },
         body,
@@ -130,7 +130,7 @@ export class CloudSyncProvider implements SyncProviderV2 {
   async resetSpace(): Promise<void> {
     await withAuthRetry(
       this.context,
-      (headers) => httpRequest(`${this.baseUrl()}/sync/v2/reset`, {
+      (headers) => httpRequest(`${this.baseUrl()}/sync/v2-reset`, {
         method: 'POST',
         headers: { ...headers, 'Content-Type': 'application/json' },
         body: JSON.stringify({ space: this.spaceId }),

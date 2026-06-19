@@ -11,8 +11,23 @@ const devices = require('../_lib/handlers/sync-devices');
 
 module.exports = async (req, res) => {
   const segments = catchAllSegments(req, 'path', 'sync');
-  const [head, sub, id] = segments;
+  const [head, sub] = segments;
 
+  // Single-segment v2 aliases — Vercel catch-all only receives one path segment.
+  if (head === 'v2-pull' && segments.length === 1) {
+    return v2Pull(req, res);
+  }
+  if (head === 'v2-push' && segments.length === 1) {
+    return v2Push(req, res);
+  }
+  if (head === 'v2-reset' && segments.length === 1) {
+    return v2Reset(req, res);
+  }
+  if (head === 'v2-spaces' && segments.length === 1) {
+    return v2Spaces(req, res);
+  }
+
+  // Legacy two-segment v2 paths (local dev / non-Vercel hosts).
   if (head === 'v2') {
     if (sub === 'pull' && segments.length === 2) {
       return v2Pull(req, res);

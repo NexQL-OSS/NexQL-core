@@ -41,7 +41,7 @@ export class WorkspaceSharingService {
   async listWorkspaces(): Promise<WorkspaceView[]> {
     try {
       return await this.request(
-        `${this.baseUrl()}/sync/v2/spaces`,
+        `${this.baseUrl()}/sync/v2-spaces`,
         {},
         (res) => {
           const data = JSON.parse(res.body.toString()) as {
@@ -63,7 +63,7 @@ export class WorkspaceSharingService {
 
   async createWorkspace(name: string): Promise<WorkspaceView> {
     const data = await this.request(
-      `${this.baseUrl()}/sync/v2/spaces`,
+      `${this.baseUrl()}/sync/v2-spaces`,
       { method: 'POST', body: JSON.stringify({ action: 'create', name }) },
       (res) => JSON.parse(res.body.toString()) as { space_id: string; name: string },
       'Failed to create workspace',
@@ -76,7 +76,7 @@ export class WorkspaceSharingService {
   async listMembers(spaceId: string): Promise<WorkspaceMemberView[]> {
     try {
       return await this.request(
-        `${this.baseUrl()}/sync/v2/spaces?space=${encodeURIComponent(spaceId)}`,
+        `${this.baseUrl()}/sync/v2-spaces?space=${encodeURIComponent(spaceId)}`,
         {},
         (res) => {
           const data = JSON.parse(res.body.toString()) as {
@@ -93,7 +93,7 @@ export class WorkspaceSharingService {
 
   async addMember(spaceId: string, email: string, role: 'editor' | 'viewer'): Promise<void> {
     await this.request(
-      `${this.baseUrl()}/sync/v2/spaces`,
+      `${this.baseUrl()}/sync/v2-spaces`,
       { method: 'POST', body: JSON.stringify({ action: 'addMember', space: spaceId, email, role }) },
       () => undefined,
       'Failed to add member',
@@ -102,7 +102,7 @@ export class WorkspaceSharingService {
 
   async removeMember(spaceId: string, email: string): Promise<void> {
     await this.request(
-      `${this.baseUrl()}/sync/v2/spaces`,
+      `${this.baseUrl()}/sync/v2-spaces`,
       { method: 'POST', body: JSON.stringify({ action: 'removeMember', space: spaceId, email }) },
       () => undefined,
       'Failed to remove member',

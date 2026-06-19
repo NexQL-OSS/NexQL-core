@@ -56,6 +56,12 @@ export function familyFromId(id) {
   if (id.startsWith("ember")) return "Ember";
   if (id.startsWith("oled")) return "OLED";
   if (id.startsWith("break-of-dawn")) return "Break of Dawn";
+  if (id.startsWith("contrast")) return "Contrast";
+  if (id.startsWith("first-light") || id.startsWith("high-noon") || id.startsWith("golden-hour") || id.startsWith("midnight-oil")) return "Circadian";
+  if (id.startsWith("focus") || id.startsWith("spectrum") || id.startsWith("zen")) return "Cognitive Load";
+  if (id.startsWith("rustacean") || id.startsWith("pythonic") || id.startsWith("webflow") || id.startsWith("data-pipeline")) return "Language-Optimized";
+  if (id.startsWith("redacted") || id.startsWith("audit-trail")) return "Security";
+  if (id.startsWith("aurora") || id.startsWith("solstice") || id.startsWith("harvest") || id.startsWith("bloom")) return "Seasonal";
   return "NexQL";
 }
 
