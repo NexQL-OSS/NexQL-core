@@ -2,6 +2,15 @@ import * as vscode from 'vscode';
 import { ProfileManager } from '../features/connections/ProfileManager';
 import { SavedQueriesService } from '../features/savedQueries/SavedQueriesService';
 import { extensionContext } from '../extension';
+import { SyncIndex } from '../features/sync/SyncIndex';
+import { SyncController } from '../features/sync/SyncController';
+import {
+  SharedTeamRootTreeItem,
+  WorkspaceFolderTreeItem,
+  groupTeamItemsByWorkspace,
+  isViewerForSpace,
+  workspaceDisplayName,
+} from '../features/sync/SharedTeamTree';
 
 /**
  * Tree view item for connection profiles
@@ -37,7 +46,8 @@ class ProfileTreeItem extends vscode.TreeItem {
  */
 class SavedQueryTreeItem extends vscode.TreeItem {
   constructor(
-    public readonly query: any
+    public readonly query: any,
+    readOnly = false,
   ) {
     super(query.title, vscode.TreeItemCollapsibleState.None);
     
@@ -86,8 +96,12 @@ class SavedQueryTreeItem extends vscode.TreeItem {
     }
     
     this.tooltip = tooltipParts.join('\n');
-    this.contextValue = 'savedQuery';
-    this.iconPath = new vscode.ThemeIcon('save');
+    this.contextValue = readOnly ? 'sharedQuery' : 'savedQuery';
+    if (readOnly) {
+      parts.push('read-only');
+      this.description = parts.join(' • ');
+    }
+    this.iconPath = new vscode.ThemeIcon(readOnly ? 'lock' : 'save');
   }
 }
 
@@ -169,6 +183,18 @@ export class SavedQueriesTreeProvider
 
   constructor() {}
 
+  private _isTeamQuery(queryId: string): boolean {
+    if (!extensionContext) {
+      return false;
+    }
+    const entry = new SyncIndex(extensionContext).get(queryId);
+    return !!entry?.spaceId?.startsWith('ws_');
+  }
+
+  private _personalQueries(queries: any[]): any[] {
+    return queries.filter((q) => !this._isTeamQuery(q.id));
+  }
+
   refresh(): void {
     this._onDidChangeTreeData.fire(undefined);
   }
@@ -179,28 +205,71 @@ export class SavedQueriesTreeProvider
 
   async getChildren(element?: vscode.TreeItem): Promise<vscode.TreeItem[]> {
     const service = SavedQueriesService.getInstance();
-    const queries = service.getQueries();
+    const queries = this._personalQueries(service.getQueries());
 
-    if (queries.length === 0) {
-      const noItemsItem = new vscode.TreeItem('No saved queries yet');
-      noItemsItem.contextValue = 'emptySavedQueries';
-      noItemsItem.iconPath = new vscode.ThemeIcon('info');
-      return [noItemsItem];
+    if (!element) {
+      const items = queries.length ? await this._getRootItems(queries) : [];
+      const sharedRoot = this._getSharedTeamRoot();
+      if (sharedRoot) {
+        return [sharedRoot, ...items];
+      }
+      if (!queries.length) {
+        const noItemsItem = new vscode.TreeItem('No saved queries yet');
+        noItemsItem.contextValue = 'emptySavedQueries';
+        noItemsItem.iconPath = new vscode.ThemeIcon('info');
+        return [noItemsItem];
+      }
+      return items;
     }
 
-    // If no element is provided, show root level with tags + untagged queries
-    if (!element) {
-      return this._getRootItems(queries);
+    if (element instanceof SharedTeamRootTreeItem) {
+      return this._getWorkspaceFolders();
+    }
+    if (element instanceof WorkspaceFolderTreeItem) {
+      return this._getSharedQueries(element.spaceId);
     }
 
     // If a TagTreeItem was clicked, return queries with that tag
     if (element instanceof TagTreeItem) {
       return queries
-        .filter(q => q.tags && q.tags.includes(element.tag))
-        .map(q => new SavedQueryTreeItem(q));
+        .filter((q) => q.tags && q.tags.includes(element.tag))
+        .map((q) => new SavedQueryTreeItem(q));
     }
 
     return [];
+  }
+
+  private _getSharedTeamRoot(): SharedTeamRootTreeItem | undefined {
+    const teamQueries = SyncController.getInstance()
+      .listTeamItems()
+      .filter((i) => i.entry.kind === 'query');
+    if (!teamQueries.length) {
+      return undefined;
+    }
+    return new SharedTeamRootTreeItem(teamQueries.length);
+  }
+
+  private _getWorkspaceFolders(): WorkspaceFolderTreeItem[] {
+    const grouped = groupTeamItemsByWorkspace(SyncController.getInstance().listTeamItems(), 'query');
+    return [...grouped.entries()].map(
+      ([spaceId, items]) => new WorkspaceFolderTreeItem(spaceId, workspaceDisplayName(spaceId), items.length),
+    );
+  }
+
+  private _getSharedQueries(spaceId: string): SavedQueryTreeItem[] {
+    const service = SavedQueriesService.getInstance();
+    const readOnly = isViewerForSpace(spaceId);
+    const items: SavedQueryTreeItem[] = [];
+    for (const { id, entry } of SyncController.getInstance().listTeamItems()) {
+      if (entry.kind !== 'query' || entry.spaceId !== spaceId) {
+        continue;
+      }
+      const query = service.getQuery(id);
+      if (query) {
+        items.push(new SavedQueryTreeItem(query, readOnly));
+      }
+    }
+    return items.sort((a, b) => a.query.title.localeCompare(b.query.title));
   }
 
   private _getRootItems(queries: any[]): vscode.TreeItem[] {

@@ -119,8 +119,18 @@
         "category": "NexQL Sync"
       },
       {
+        "command": "postgres-explorer.sync.inviteMember",
+        "title": "Invite to Workspace…",
+        "category": "NexQL Sync"
+      },
+      {
+        "command": "postgres-explorer.sync.shareWithTeam",
+        "title": "Share with Team…",
+        "category": "NexQL Sync"
+      },
+      {
         "command": "postgres-explorer.sync.share",
-        "title": "Share to Workspace…",
+        "title": "Invite to Workspace…",
         "category": "NexQL Sync"
       },
       {
@@ -166,6 +176,11 @@
       {
         "command": "postgres-explorer.sync.rebuildIndex",
         "title": "Rebuild Sync Index",
+        "category": "NexQL Sync"
+      },
+      {
+        "command": "postgres-explorer.sync.repair",
+        "title": "Repair Sync",
         "category": "NexQL Sync"
       },
       {
@@ -3233,7 +3248,7 @@
           "group": "2_delete@1"
         },
         {
-          "command": "postgres-explorer.sync.share",
+          "command": "postgres-explorer.sync.shareWithTeam",
           "when": "view == postgresExplorer.savedQueries && viewItem == savedQuery",
           "group": "3_sync@1"
         },
@@ -3243,7 +3258,7 @@
           "group": "3_sync@2"
         },
         {
-          "command": "postgres-explorer.sync.share",
+          "command": "postgres-explorer.sync.shareWithTeam",
           "when": "view == postgresExplorer.notebooks && viewItem == notebook-file",
           "group": "3_sync@1"
         },

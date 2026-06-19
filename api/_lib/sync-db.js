@@ -348,6 +348,14 @@ async function memberRole(spaceId, email, accountId) {
   return rows.length ? rows[0].role : null;
 }
 
+/** Non-personal spaces require a singularity (Teams) license at access time. */
+function requireTeamTierIfShared(space, auth) {
+  if (space !== auth.account_id && auth.tier !== 'singularity') {
+    return { status: 402, error: 'Team workspaces require a Teams license' };
+  }
+  return null;
+}
+
 /** True when the caller holds at least `minRole` in the space. */
 async function assertSpaceMember(spaceId, email, accountId, minRole) {
   const role = await memberRole(spaceId, email, accountId);
@@ -518,6 +526,7 @@ module.exports = {
   addMember,
   removeMember,
   memberRole,
+  requireTeamTierIfShared,
   assertSpaceMember,
   refreshAccountQuota,
   getAccountQuota,

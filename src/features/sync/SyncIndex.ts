@@ -5,6 +5,8 @@ import type { SyncKind } from './types';
 
 export interface SyncIndexEntry {
   kind: SyncKind;
+  /** Home cloud space. Undefined = personal (account) space. */
+  spaceId?: string;
   /** Display name (local-only). */
   name?: string;
   /** Absolute path of the backing file (notebooks only). */
@@ -48,6 +50,17 @@ export class SyncIndex {
 
   getAll(): Record<string, SyncIndexEntry> {
     return { ...this.entries };
+  }
+
+  /** True when the item lives in a team workspace (non-personal space). */
+  isTeamItem(id: string): boolean {
+    const spaceId = this.entries[id]?.spaceId;
+    return !!spaceId && spaceId.startsWith('ws_');
+  }
+
+  /** Entries whose home space matches (undefined = personal). */
+  entriesForSpace(spaceId?: string): Array<[string, SyncIndexEntry]> {
+    return Object.entries(this.entries).filter(([, e]) => (e.spaceId ?? undefined) === spaceId);
   }
 
   findByPath(filePath: string): { id: string; entry: SyncIndexEntry } | undefined {
@@ -102,6 +115,7 @@ export class SyncIndex {
 
     const next: SyncIndexEntry = {
       kind,
+      spaceId: existing?.spaceId,
       name: opts.name ?? existing?.name,
       filePath: opts.filePath ?? existing?.filePath,
       syncedHash: existing?.syncedHash,
@@ -131,11 +145,12 @@ export class SyncIndex {
   }
 
   /** Record a successful sync of one item at the given server version. */
-  markSynced(id: string, fields: { kind: SyncKind; contentHash: string; version: number; updatedAt?: number; name?: string; filePath?: string }): void {
+  markSynced(id: string, fields: { kind: SyncKind; contentHash: string; version: number; updatedAt?: number; name?: string; filePath?: string; spaceId?: string }): void {
     const existing: SyncIndexEntry = this.entries[id] ?? { kind: fields.kind };
     this.entries[id] = {
       ...existing,
       kind: fields.kind,
+      spaceId: fields.spaceId ?? existing.spaceId,
       name: fields.name ?? existing.name,
       filePath: fields.filePath ?? existing.filePath,
       syncedHash: fields.contentHash,

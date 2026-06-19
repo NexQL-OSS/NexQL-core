@@ -158,9 +158,14 @@ async function bindLicenseInstance(licenseKey, instanceId) {
   }
 
   const known = await store.isDeviceActive(licenseKey, instanceId);
+  const limit = store.licenseDb.deviceLimitFor(ent.tier);
+  try {
+    await store.licenseDb.pruneExcessDevices(licenseKey, limit, instanceId);
+  } catch (err) {
+    console.error('sync-auth: prune excess devices failed', err);
+  }
   if (!known) {
     const count = await store.countActiveDevices(licenseKey);
-    const limit = store.licenseDb.deviceLimitFor(ent.tier);
     if (count >= limit) {
       return { ok: false, error: 'Device limit reached for this license.' };
     }

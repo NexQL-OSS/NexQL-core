@@ -2,7 +2,7 @@
 // Wipe a space (owner only). Powers "clear cloud & push from local".
 
 const { authenticateBearer } = require('../sync-auth');
-const { resetSpace, assertSpaceMember } = require('../sync-db');
+const { resetSpace, assertSpaceMember, requireTeamTierIfShared } = require('../sync-db');
 
 module.exports = async (req, res) => {
   if (req.method !== 'POST') {
@@ -31,6 +31,10 @@ module.exports = async (req, res) => {
   const space = String(body?.space || auth.account_id);
 
   try {
+    const tierBlock = requireTeamTierIfShared(space, auth);
+    if (tierBlock) {
+      return res.status(tierBlock.status).json({ error: tierBlock.error });
+    }
     if (!(await assertSpaceMember(space, auth.email, auth.account_id, 'owner'))) {
       return res.status(403).json({ error: 'Owner access required to reset this workspace' });
     }

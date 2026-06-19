@@ -97,14 +97,12 @@ export async function cmdViewMatViewProperties(item: DatabaseTreeItem, context: 
 
     try {
       // Gather comprehensive materialized view information
-      const [matviewInfo, columnInfo, indexInfo, dependenciesInfo, referencedInfo, statsInfo] = await Promise.all([
-        client.query(QueryBuilder.matViewInfo(item.schema!, item.label)),
-        client.query(QueryBuilder.tableColumns(item.schema!, item.label)),
-        client.query(QueryBuilder.tableIndexes(item.schema!, item.label)),
-        client.query(QueryBuilder.objectDependencies(item.schema!, item.label)),
-        client.query(QueryBuilder.objectReferences(item.schema!, item.label)),
-        client.query(QueryBuilder.matViewStats(item.schema!, item.label))
-      ]);
+      const matviewInfo = await client.query(QueryBuilder.matViewInfo(item.schema!, item.label));
+      const columnInfo = await client.query(QueryBuilder.tableColumns(item.schema!, item.label));
+      const indexInfo = await client.query(QueryBuilder.tableIndexes(item.schema!, item.label));
+      const dependenciesInfo = await client.query(QueryBuilder.objectDependencies(item.schema!, item.label));
+      const referencedInfo = await client.query(QueryBuilder.objectReferences(item.schema!, item.label));
+      const statsInfo = await client.query(QueryBuilder.matViewStats(item.schema!, item.label));
 
       if (matviewInfo.rows.length === 0) {
         throw new Error('Materialized view not found');

@@ -109,6 +109,8 @@ export interface SyncRunOptions {
   direction?: SyncDirection;
   /** Per-run opt-outs; does not persist to config.excludedIds. */
   transientExcludedIds?: string[];
+  /** True when triggered explicitly by the user (Sync Now / pull / push). */
+  userInitiated?: boolean;
 }
 
 export interface SyncPreviewItem {
@@ -182,6 +184,17 @@ export interface SyncedItemView {
   excluded: boolean;
   /** Per-item inclusion state for the settings table. */
   itemStatus: 'excluded' | 'pending' | 'synced' | 'local';
+  spaceId?: string;
+  workspaceName?: string;
+  role?: WorkspaceRole;
+}
+
+/** One cloud space participating in a sync run. */
+export interface SyncSpaceContext {
+  /** Undefined = personal (account) space. */
+  spaceId?: string;
+  name: string;
+  role: WorkspaceRole;
 }
 
 export type SyncActivityAction = 'create' | 'update' | 'rename' | 'delete';

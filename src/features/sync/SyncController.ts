@@ -4,12 +4,15 @@ import { contentHash } from './envelope';
 import { SyncIndex } from './SyncIndex';
 import { SyncMutex } from './SyncMutex';
 import { PlaintextCodec, type BlobCodec } from './BlobCodec';
-import { decideIncoming } from './SyncEngineV2';
+import { decideIncoming, shouldBackupBeforeDelete } from './SyncEngineV2';
 import { ConnectionSyncService } from './ConnectionSyncService';
 import { NotebookSyncService } from './NotebookSyncService';
 import { CloudSyncProvider } from './providers/CloudSyncProvider';
 import { PostgresSyncProvider } from './providers/PostgresSyncProvider';
+import { WorkspaceSharingService } from './WorkspaceSharingService';
 import { SyncActivityLog, bindSyncActivityLog, recordSyncActivity } from './SyncActivityLog';
+import { readNotebookSyncId } from './notebookSyncId';
+import { parseNotebookFileContent } from './notebookFileParse';
 import { getOrCreateDeviceId } from './deviceId';
 import { SavedQueriesService } from '../savedQueries/SavedQueriesService';
 import {
@@ -23,8 +26,12 @@ import {
   SYNC_CURSOR_KEY,
   SYNC_LAST_SYNC_AT_KEY,
   SYNC_LAST_ERROR_KEY,
+  SYNC_WORKSPACE_ROLES_KEY,
   SYNC_DEBOUNCE_MS,
   SYNC_PERIODIC_MS,
+  SYNC_OPEN_CHECK_DEBOUNCE_MS,
+  SYNC_SPACES_CACHE_TTL_MS,
+  SYNC_PEEK_SKIP_AFTER_SYNC_MS,
 } from './constants';
 import type {
   CloudQuotaView,
@@ -44,10 +51,23 @@ import type {
   SyncRunOptions,
   SyncRunResult,
   SyncStatus,
+  SyncKind,
+  SyncSpaceContext,
   SyncedItemView,
+  WorkspaceRole,
+  WorkspaceView,
 } from './types';
 
 type LocalItem = { meta: SyncItemMeta; plaintext: Buffer };
+
+export type RemoteChangeHint = 'none' | 'newer' | 'deleted';
+
+export interface OpenCheckOpts {
+  kind?: SyncKind;
+  label?: string;
+  reloadUri?: vscode.Uri;
+  onReload?: () => void;
+}
 
 const DEFAULT_CONFIG: SyncConfig = {
   syncConnections: true,
@@ -78,10 +98,20 @@ export class SyncController implements vscode.Disposable {
   private status: SyncStatus = 'not_configured';
   private conflictCount = 0;
   private statusBar?: SyncStatusBar;
-  private provider?: SyncProviderV2;
   private debounceTimer?: NodeJS.Timeout;
   private periodicTimer?: NodeJS.Timeout;
+  private readonly openCheckTimers = new Map<string, NodeJS.Timeout>();
+  private readonly openCheckOpts = new Map<string, OpenCheckOpts>();
+  private readonly dismissedOpenChecks = new Set<string>();
   private disposables: vscode.Disposable[] = [];
+  private lastErrorNotifiedAt = 0;
+  private lastSuccessfulSyncAt = 0;
+  private workspaceRoles = new Map<string, WorkspaceRole>();
+  private workspaceNames = new Map<string, string>();
+  private spacesCache: { expiresAt: number; spaces: SyncSpaceContext[] } | null = null;
+
+  private readonly _onDidCompleteSync = new vscode.EventEmitter<void>();
+  readonly onDidCompleteSync = this._onDidCompleteSync.event;
 
   private constructor(
     private readonly context: vscode.ExtensionContext,
@@ -105,6 +135,11 @@ export class SyncController implements vscode.Disposable {
   initialize(statusBar?: SyncStatusBar): void {
     this.statusBar = statusBar;
     bindSyncActivityLog(this.context);
+    this.loadPersistedWorkspaceRoles();
+    const lastSyncAt = this.context.globalState.get<number>(SYNC_LAST_SYNC_AT_KEY);
+    if (lastSyncAt) {
+      this.lastSuccessfulSyncAt = lastSyncAt;
+    }
     const config = this.getConfig();
     this.status = config.providerId ? (config.paused ? 'paused' : 'idle') : 'not_configured';
     this.updateStatusBar();
@@ -117,6 +152,15 @@ export class SyncController implements vscode.Disposable {
         }
       }),
       vscode.workspace.onDidSaveNotebookDocument(() => this.scheduleInstantSync()),
+      vscode.workspace.onDidOpenNotebookDocument((doc) => {
+        if (doc.notebookType !== 'postgres-notebook' && doc.notebookType !== 'postgres-query') {
+          return;
+        }
+        const itemId = this.resolveNotebookSyncId(doc);
+        if (itemId) {
+          this.scheduleOpenCheck(itemId, { kind: 'notebook', reloadUri: doc.uri });
+        }
+      }),
     );
 
     if (config.providerId && !config.paused && this.isAutoSyncEnabled()) {
@@ -138,7 +182,6 @@ export class SyncController implements vscode.Disposable {
 
   async saveConfig(config: SyncConfig): Promise<void> {
     await this.context.globalState.update(SYNC_CONFIG_KEY, config);
-    this.provider = undefined;
     this.status = config.providerId ? (config.paused ? 'paused' : 'idle') : 'not_configured';
     if (config.providerId && !config.paused && this.isAutoSyncEnabled()) {
       this.startPeriodicPull();
@@ -148,19 +191,127 @@ export class SyncController implements vscode.Disposable {
     this.updateStatusBar();
   }
 
-  private cursorKey(config: SyncConfig): string {
-    return `${config.providerId}:${config.spaceId ?? 'personal'}`;
+  private cursorKey(providerId: SyncProviderId, spaceId?: string): string {
+    return `${providerId}:${spaceId ?? 'personal'}`;
   }
 
-  private getCursor(config: SyncConfig): number {
+  private getCursorForSpace(providerId: SyncProviderId, spaceId?: string): number {
     const all = this.context.globalState.get<Record<string, number>>(SYNC_CURSOR_KEY, {});
-    return all[this.cursorKey(config)] ?? 0;
+    return all[this.cursorKey(providerId, spaceId)] ?? 0;
   }
 
-  private async setCursor(config: SyncConfig, cursor: number): Promise<void> {
+  private async setCursorForSpace(providerId: SyncProviderId, spaceId: string | undefined, cursor: number): Promise<void> {
     const all = { ...this.context.globalState.get<Record<string, number>>(SYNC_CURSOR_KEY, {}) };
-    all[this.cursorKey(config)] = cursor;
+    all[this.cursorKey(providerId, spaceId)] = cursor;
     await this.context.globalState.update(SYNC_CURSOR_KEY, all);
+  }
+
+  /** @deprecated Use getCursorForSpace — kept for diagnostics on personal space. */
+  private getCursor(config: SyncConfig): number {
+    return this.getCursorForSpace(config.providerId!, undefined);
+  }
+
+  /** @deprecated Use setCursorForSpace — resets personal-space cursor only. */
+  private async setCursor(config: SyncConfig, cursor: number): Promise<void> {
+    await this.setCursorForSpace(config.providerId!, undefined, cursor);
+  }
+
+  private async resetAllCursors(config: SyncConfig): Promise<void> {
+    const spaces = await this.resolveSyncSpaces(config);
+    for (const space of spaces) {
+      await this.setCursorForSpace(config.providerId!, space.spaceId, 0);
+    }
+  }
+
+  async resolveSyncSpaces(config: SyncConfig): Promise<SyncSpaceContext[]> {
+    const personalOnly: SyncSpaceContext[] = [{ spaceId: undefined, name: 'Personal', role: 'owner' }];
+    if (config.providerId !== 'cloud' || !isProFeatureEnabled(ProFeature.SyncSharing)) {
+      return personalOnly;
+    }
+    if (this.spacesCache && Date.now() < this.spacesCache.expiresAt) {
+      return this.spacesCache.spaces;
+    }
+    try {
+      const service = new WorkspaceSharingService(this.context);
+      const workspaces = await service.listWorkspaces();
+      const spaces = this.applyWorkspaceRoster(workspaces);
+      this.spacesCache = { expiresAt: Date.now() + SYNC_SPACES_CACHE_TTL_MS, spaces };
+      return spaces;
+    } catch (e) {
+      this.output.appendLine(`[sync] list workspaces failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+    return personalOnly;
+  }
+
+  invalidateSpacesCache(): void {
+    this.spacesCache = null;
+  }
+
+  private loadPersistedWorkspaceRoles(): void {
+    const persisted = this.context.globalState.get<{
+      roles: Record<string, WorkspaceRole>;
+      names: Record<string, string>;
+    }>(SYNC_WORKSPACE_ROLES_KEY);
+    if (!persisted) {
+      return;
+    }
+    for (const [id, role] of Object.entries(persisted.roles)) {
+      this.workspaceRoles.set(id, role);
+    }
+    for (const [id, name] of Object.entries(persisted.names)) {
+      this.workspaceNames.set(id, name);
+    }
+  }
+
+  private async persistWorkspaceRoles(): Promise<void> {
+    const roles: Record<string, WorkspaceRole> = {};
+    const names: Record<string, string> = {};
+    for (const [id, role] of this.workspaceRoles) {
+      roles[id] = role;
+    }
+    for (const [id, name] of this.workspaceNames) {
+      names[id] = name;
+    }
+    await this.context.globalState.update(SYNC_WORKSPACE_ROLES_KEY, { roles, names, savedAt: Date.now() });
+  }
+
+  private applyWorkspaceRoster(workspaces: WorkspaceView[]): SyncSpaceContext[] {
+    const spaces: SyncSpaceContext[] = [{ spaceId: undefined, name: 'Personal', role: 'owner' }];
+    this.workspaceRoles.clear();
+    this.workspaceNames.clear();
+    for (const w of workspaces) {
+      this.workspaceRoles.set(w.spaceId, w.role);
+      this.workspaceNames.set(w.spaceId, w.name);
+      spaces.push({ spaceId: w.spaceId, name: w.name, role: w.role });
+    }
+    void this.persistWorkspaceRoles();
+    return spaces;
+  }
+
+  getRoleForSpace(spaceId?: string): WorkspaceRole | undefined {
+    if (!spaceId) {
+      return 'owner';
+    }
+    return this.workspaceRoles.get(spaceId);
+  }
+
+  getWorkspaceName(spaceId: string): string | undefined {
+    return this.workspaceNames.get(spaceId);
+  }
+
+  isItemReadOnly(id: string, index: SyncIndex = new SyncIndex(this.context)): boolean {
+    const entry = index.get(id);
+    if (!entry?.spaceId) {
+      return false;
+    }
+    return this.getRoleForSpace(entry.spaceId) === 'viewer';
+  }
+
+  listTeamItems(): Array<{ id: string; entry: import('./SyncIndex').SyncIndexEntry }> {
+    const index = new SyncIndex(this.context);
+    return Object.entries(index.getAll())
+      .filter(([, e]) => !!e.spaceId && e.spaceId.startsWith('ws_'))
+      .map(([id, entry]) => ({ id, entry }));
   }
 
   createProvider(providerId: SyncProviderId, spaceId?: string): SyncProviderV2 {
@@ -174,11 +325,8 @@ export class SyncController implements vscode.Disposable {
     }
   }
 
-  private getProvider(config: SyncConfig): SyncProviderV2 {
-    if (!this.provider) {
-      this.provider = this.createProvider(config.providerId!, config.spaceId);
-    }
-    return this.provider;
+  private getProvider(config: SyncConfig, spaceId?: string): SyncProviderV2 {
+    return this.createProvider(config.providerId!, spaceId);
   }
 
   // ── Status ──────────────────────────────────────────────────────────────────
@@ -261,6 +409,168 @@ export class SyncController implements vscode.Disposable {
     }
   }
 
+  // ── Pull-on-open ──────────────────────────────────────────────────────────────
+
+  scheduleOpenCheck(itemId: string, opts: OpenCheckOpts = {}): void {
+    if (!this.canRunOpenCheck()) {
+      return;
+    }
+    if (this.dismissedOpenChecks.has(itemId)) {
+      return;
+    }
+
+    const merged: OpenCheckOpts = { ...this.openCheckOpts.get(itemId), ...opts };
+    this.openCheckOpts.set(itemId, merged);
+
+    const existing = this.openCheckTimers.get(itemId);
+    if (existing) {
+      clearTimeout(existing);
+    }
+
+    this.openCheckTimers.set(
+      itemId,
+      setTimeout(() => {
+        this.openCheckTimers.delete(itemId);
+        const pending = this.openCheckOpts.get(itemId) ?? opts;
+        void this.runOpenCheck(itemId, pending).catch(() => undefined);
+      }, SYNC_OPEN_CHECK_DEBOUNCE_MS),
+    );
+  }
+
+  async peekRemoteChanges(itemId: string): Promise<RemoteChangeHint> {
+    if (!this.canRunOpenCheck()) {
+      return 'none';
+    }
+    if (
+      this.lastSuccessfulSyncAt > 0
+      && Date.now() - this.lastSuccessfulSyncAt < SYNC_PEEK_SKIP_AFTER_SYNC_MS
+    ) {
+      return 'none';
+    }
+
+    const index = new SyncIndex(this.context);
+    const entry = index.get(itemId);
+    if (!entry || entry.syncedVersion == null) {
+      return 'none';
+    }
+    if (
+      entry.syncedHash != null
+      && entry.lastObservedHash != null
+      && entry.syncedHash !== entry.lastObservedHash
+    ) {
+      return 'none';
+    }
+    if (this.status === 'syncing') {
+      return 'none';
+    }
+
+    const release = await this.mutex.acquire();
+    try {
+      const config = this.getConfig();
+      const spaceId = entry.spaceId;
+      const provider = this.getProvider(config, spaceId);
+      const delta = await provider.pullDelta(this.getCursorForSpace(config.providerId!, spaceId));
+
+      if (delta.deletes.includes(itemId)) {
+        return 'deleted';
+      }
+
+      const upsert = delta.upserts.find((u) => u.meta.id === itemId);
+      if (upsert && upsert.meta.version > entry.syncedVersion) {
+        return 'newer';
+      }
+      return 'none';
+    } catch {
+      return 'none';
+    } finally {
+      release();
+    }
+  }
+
+  async confirmPullAndReload(opts: OpenCheckOpts = {}): Promise<void> {
+    const result = await this.pullOnly();
+    if (result === undefined) {
+      void vscode.window.showWarningMessage('Sync pull failed. Try syncing from settings or use Repair sync.');
+      return;
+    }
+    await this.reloadAfterPull(opts);
+  }
+
+  private canRunOpenCheck(): boolean {
+    const config = this.getConfig();
+    if (!config.providerId || config.paused || !this.isAutoSyncEnabled()) {
+      return false;
+    }
+    if (!isProFeatureEnabled(ProFeature.CloudSync)) {
+      return false;
+    }
+    return isSyncProviderAllowed(config.providerId);
+  }
+
+  private resolveNotebookSyncId(doc: vscode.NotebookDocument): string | undefined {
+    const fromMeta = readNotebookSyncId(doc.metadata as Record<string, unknown>);
+    if (fromMeta) {
+      return fromMeta;
+    }
+    if (doc.uri.scheme === 'file') {
+      return new SyncIndex(this.context).findByPath(doc.uri.fsPath)?.id;
+    }
+    return undefined;
+  }
+
+  private async runOpenCheck(itemId: string, opts: OpenCheckOpts): Promise<void> {
+    const change = await this.peekRemoteChanges(itemId);
+    if (change === 'none') {
+      return;
+    }
+
+    const label = opts.label ?? itemId;
+    const message = change === 'deleted'
+      ? `Remote copy of "${label}" was deleted. Pull changes?`
+      : `Remote changes available for "${label}" — pull latest?`;
+
+    const choice = await vscode.window.showInformationMessage(message, 'Pull');
+    if (choice !== 'Pull') {
+      return;
+    }
+
+    await this.confirmPullAndReload(opts);
+  }
+
+  private async reloadAfterPull(opts: OpenCheckOpts): Promise<void> {
+    if (opts.onReload) {
+      opts.onReload();
+      return;
+    }
+
+    const uri = opts.reloadUri;
+    if (!uri || uri.scheme !== 'file') {
+      return;
+    }
+
+    const open = vscode.workspace.notebookDocuments.find((d) => d.uri.toString() === uri.toString());
+    if (!open) {
+      return;
+    }
+
+    if (!open.isDirty) {
+      await vscode.commands.executeCommand('workbench.action.revert');
+      return;
+    }
+
+    const reload = 'Reload';
+    const choice = await vscode.window.showInformationMessage(
+      'Remote changes were pulled. Reload the notebook to see them?',
+      reload,
+    );
+    if (choice !== reload) {
+      return;
+    }
+
+    const doc = await vscode.workspace.openNotebookDocument(uri);
+    await vscode.window.showNotebookDocument(doc, { preserveFocus: true });
+  }
+
   // ── Sync run ──────────────────────────────────────────────────────────────────
 
   async runSync(options: SyncRunOptions = {}): Promise<SyncRunResult | SyncPreviewResult | undefined> {
@@ -284,14 +594,17 @@ export class SyncController implements vscode.Disposable {
       this.conflictCount = result.conflicts;
       await this.context.globalState.update(SYNC_LAST_SYNC_AT_KEY, Date.now());
       await this.context.globalState.update(SYNC_LAST_ERROR_KEY, undefined);
+      this.lastSuccessfulSyncAt = Date.now();
       this.setStatus(result.conflicts > 0 ? 'conflict' : 'synced');
       result.durationMs = Date.now() - started;
+      this._onDidCompleteSync.fire();
       return result;
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       await this.context.globalState.update(SYNC_LAST_ERROR_KEY, message);
       this.output.appendLine(`[sync] run failed: ${message}`);
       this.setStatus('error');
+      void this.notifySyncError(message, options.userInitiated === true);
       return undefined;
     } finally {
       release();
@@ -299,67 +612,33 @@ export class SyncController implements vscode.Disposable {
   }
 
   async pullOnly(): Promise<SyncRunResult | undefined> {
-    return this.runSync({ direction: 'pull' }) as Promise<SyncRunResult | undefined>;
+    return this.runSync({ direction: 'pull', userInitiated: true }) as Promise<SyncRunResult | undefined>;
   }
 
   async pushOnly(): Promise<SyncRunResult | undefined> {
-    return this.runSync({ direction: 'push' }) as Promise<SyncRunResult | undefined>;
+    return this.runSync({ direction: 'push', userInitiated: true }) as Promise<SyncRunResult | undefined>;
   }
 
   async previewSync(transientExcludedIds?: string[]): Promise<SyncPreviewResult | undefined> {
     return this.runSync({ dryRun: true, transientExcludedIds }) as Promise<SyncPreviewResult | undefined>;
   }
 
-  /** The atomic heart: pull → apply → push (with one pull/re-push on conflict). */
+  /** The atomic heart: pull → apply → push per space (with one pull/re-push on conflict). */
   private async runLocked(config: SyncConfig, options: SyncRunOptions): Promise<SyncRunResult> {
-    const provider = this.getProvider(config);
+    const spaces = await this.resolveSyncSpaces(config);
     const index = new SyncIndex(this.context);
     const excluded = new Set([...(config.excludedIds ?? []), ...(options.transientExcludedIds ?? [])]);
-    const direction = options.direction ?? 'both';
-    let cursor = this.getCursor(config);
     let pulled = 0;
     let pushed = 0;
     let conflicts = 0;
 
-    // Phase 1 — pull + apply (atomic per item; cursor only advances after apply).
-    if (direction !== 'push') {
-      const delta = await provider.pullDelta(cursor);
-      pulled = await this.applyDelta(delta, config, index, excluded);
-      cursor = delta.cursor;
-      await this.setCursor(config, cursor);
+    for (const space of spaces) {
+      const partial = await this.runLockedForSpace(config, space, index, excluded, options);
+      pulled += partial.pulled;
+      pushed += partial.pushed;
+      conflicts += partial.conflicts;
     }
 
-    // Phase 2 — push dirty + deletions.
-    if (direction !== 'pull') {
-      const ops = await this.buildOps(config, index, excluded);
-      if (ops.length) {
-        const result = await provider.pushBatch(ops);
-        this.recordAccepted(result.accepted, ops, index);
-        pushed = result.accepted.length;
-        cursor = result.cursor;
-        await this.setCursor(config, cursor);
-
-        if (result.rejected.length) {
-          // Concurrent writer — pull their changes, then re-push once (git-style).
-          const delta2 = await provider.pullDelta(cursor);
-          pulled += await this.applyDelta(delta2, config, index, excluded);
-          cursor = delta2.cursor;
-          await this.setCursor(config, cursor);
-
-          const ops2 = await this.buildOps(config, index, excluded);
-          if (ops2.length) {
-            const retry = await provider.pushBatch(ops2);
-            this.recordAccepted(retry.accepted, ops2, index);
-            pushed += retry.accepted.length;
-            cursor = retry.cursor;
-            await this.setCursor(config, cursor);
-            conflicts = retry.rejected.length;
-          }
-        }
-      }
-    }
-
-    await index.flush();
     this.acknowledgeActivities(index);
 
     return {
@@ -373,35 +652,97 @@ export class SyncController implements vscode.Disposable {
     };
   }
 
+  private async runLockedForSpace(
+    config: SyncConfig,
+    space: SyncSpaceContext,
+    index: SyncIndex,
+    excluded: ReadonlySet<string>,
+    options: SyncRunOptions,
+  ): Promise<Pick<SyncRunResult, 'pulled' | 'pushed' | 'conflicts'>> {
+    const provider = this.getProvider(config, space.spaceId);
+    const direction = options.direction ?? 'both';
+    let cursor = this.getCursorForSpace(config.providerId!, space.spaceId);
+    let pulled = 0;
+    let pushed = 0;
+    let conflicts = 0;
+
+    if (direction !== 'push') {
+      const delta = await provider.pullDelta(cursor);
+      pulled = await this.applyDelta(delta, config, space, index, excluded);
+      cursor = delta.cursor;
+      await this.commitPhase(config.providerId!, space.spaceId, index, cursor);
+    }
+
+    if (direction !== 'pull' && space.role !== 'viewer') {
+      const ops = await this.buildOps(config, space, index, excluded);
+      if (ops.length) {
+        const result = await provider.pushBatch(ops);
+        this.recordAccepted(result.accepted, ops, index, space.spaceId);
+        pushed = result.accepted.length;
+        cursor = result.cursor;
+        await this.commitPhase(config.providerId!, space.spaceId, index, cursor);
+
+        if (result.rejected.length) {
+          const delta2 = await provider.pullDelta(cursor);
+          pulled += await this.applyDelta(delta2, config, space, index, excluded);
+          cursor = delta2.cursor;
+          await this.commitPhase(config.providerId!, space.spaceId, index, cursor);
+
+          const ops2 = await this.buildOps(config, space, index, excluded);
+          if (ops2.length) {
+            const retry = await provider.pushBatch(ops2);
+            this.recordAccepted(retry.accepted, ops2, index, space.spaceId);
+            pushed += retry.accepted.length;
+            cursor = retry.cursor;
+            await this.commitPhase(config.providerId!, space.spaceId, index, cursor);
+            conflicts = retry.rejected.length;
+          }
+        }
+      }
+    }
+
+    return { pulled, pushed, conflicts };
+  }
+
   private async preview(config: SyncConfig, transientExcludedIds?: string[]): Promise<SyncPreviewResult> {
-    const provider = this.getProvider(config);
     const index = new SyncIndex(this.context);
     const excluded = new Set([...(config.excludedIds ?? []), ...(transientExcludedIds ?? [])]);
-    const delta = await provider.pullDelta(this.getCursor(config));
-    const localItems = await this.collectLocalItems(config, excluded, index);
-    const localById = new Map(localItems.map((i) => [i.meta.id, i]));
+    const spaces = await this.resolveSyncSpaces(config);
+    const incoming: SyncPreviewItem[] = [];
+    const outgoing: SyncPreviewItem[] = [];
 
-    const incoming: SyncPreviewItem[] = [
-      ...delta.upserts
-        .filter((u) => !excluded.has(u.meta.id))
-        .map((u) => ({
-          id: u.meta.id,
-          kind: u.meta.kind,
-          changeType: (localById.has(u.meta.id) ? 'update' : 'create') as 'update' | 'create',
-          deviceId: u.meta.deviceId,
-        })),
-      ...delta.deletes
-        .filter((id) => !excluded.has(id))
-        .map((id) => ({ id, kind: (index.get(id)?.kind ?? 'query'), changeType: 'delete' as const })),
-    ];
+    for (const space of spaces) {
+      const provider = this.getProvider(config, space.spaceId);
+      const delta = await provider.pullDelta(this.getCursorForSpace(config.providerId!, space.spaceId));
+      const localItems = await this.collectLocalItems(config, space, excluded, index);
+      const localById = new Map(localItems.map((i) => [i.meta.id, i]));
 
-    const ops = await this.buildOps(config, index, excluded);
-    const outgoing: SyncPreviewItem[] = ops.map((op) => ({
-      id: op.itemId,
-      kind: op.kind,
-      name: index.get(op.itemId)?.name,
-      changeType: op.op === 'delete' ? 'delete' : (index.baseVersion(op.itemId) ? 'update' : 'create'),
-    }));
+      incoming.push(
+        ...delta.upserts
+          .filter((u) => !excluded.has(u.meta.id))
+          .map((u) => ({
+            id: u.meta.id,
+            kind: u.meta.kind,
+            changeType: (localById.has(u.meta.id) ? 'update' : 'create') as 'update' | 'create',
+            deviceId: u.meta.deviceId,
+          })),
+        ...delta.deletes
+          .filter((id) => !excluded.has(id))
+          .map((id) => ({ id, kind: (index.get(id)?.kind ?? 'query'), changeType: 'delete' as const })),
+      );
+
+      if (space.role !== 'viewer') {
+        const ops = await this.buildOps(config, space, index, excluded);
+        outgoing.push(
+          ...ops.map((op) => ({
+            id: op.itemId,
+            kind: op.kind,
+            name: index.get(op.itemId)?.name,
+            changeType: (op.op === 'delete' ? 'delete' : (index.baseVersion(op.itemId) ? 'update' : 'create')) as 'delete' | 'update' | 'create',
+          })),
+        );
+      }
+    }
 
     return {
       pushed: 0,
@@ -419,19 +760,27 @@ export class SyncController implements vscode.Disposable {
 
   // ── Collect / build ops ────────────────────────────────────────────────────────
 
+  private belongsToSpace(index: SyncIndex, id: string, spaceId?: string): boolean {
+    return (index.get(id)?.spaceId ?? undefined) === spaceId;
+  }
+
   private async collectLocalItems(
     config: SyncConfig,
+    space: SyncSpaceContext,
     excluded: ReadonlySet<string>,
     index: SyncIndex,
   ): Promise<LocalItem[]> {
     const deviceId = getOrCreateDeviceId(this.context);
     const items: LocalItem[] = [];
 
-    if (config.syncConnections) {
+    if (config.syncConnections && space.spaceId === undefined) {
       items.push(...new ConnectionSyncService(this.context, index).collectLocalConnections(deviceId));
     }
     if (config.syncQueries) {
       for (const q of SavedQueriesService.getInstance().getQueries()) {
+        if (!this.belongsToSpace(index, q.id, space.spaceId)) {
+          continue;
+        }
         const plaintext = Buffer.from(JSON.stringify(q));
         const hash = contentHash(plaintext);
         const { updatedAt } = index.observe(q.id, 'query', hash, { name: q.title });
@@ -442,18 +791,27 @@ export class SyncController implements vscode.Disposable {
       }
     }
     if (config.syncNotebooks) {
-      items.push(...(await new NotebookSyncService(this.context, index).collectLocalNotebooks(deviceId)));
+      const notebooks = await new NotebookSyncService(this.context, index).collectLocalNotebooks(deviceId);
+      items.push(...notebooks.filter((i) => this.belongsToSpace(index, i.meta.id, space.spaceId)));
     }
     return items.filter((i) => !excluded.has(i.meta.id));
   }
 
   /** Upserts for dirty local items + deletes for items removed since last sync. */
-  private async buildOps(config: SyncConfig, index: SyncIndex, excluded: ReadonlySet<string>): Promise<SyncOp[]> {
-    const localItems = await this.collectLocalItems(config, excluded, index);
+  private async buildOps(
+    config: SyncConfig,
+    space: SyncSpaceContext,
+    index: SyncIndex,
+    excluded: ReadonlySet<string>,
+  ): Promise<SyncOp[]> {
+    const localItems = await this.collectLocalItems(config, space, excluded, index);
     const presentIds = new Set(localItems.map((i) => i.meta.id));
     const ops: SyncOp[] = [];
 
     for (const { meta, plaintext } of localItems) {
+      if (this.isItemReadOnly(meta.id, index)) {
+        continue;
+      }
       if (index.isDirty(meta.id, meta.contentHash)) {
         ops.push({
           op: 'upsert',
@@ -466,14 +824,16 @@ export class SyncController implements vscode.Disposable {
       }
     }
 
-    // Deletions: synced before, gone locally now.
     const kindEnabled = (k: string) =>
       (k === 'connection' && config.syncConnections) ||
       (k === 'query' && config.syncQueries) ||
       (k === 'notebook' && config.syncNotebooks);
     for (const id of index.syncedIds()) {
       const entry = index.get(id);
-      if (!entry || excluded.has(id) || presentIds.has(id) || !kindEnabled(entry.kind)) {
+      if (!entry || (entry.spaceId ?? undefined) !== space.spaceId) {
+        continue;
+      }
+      if (excluded.has(id) || presentIds.has(id) || !kindEnabled(entry.kind) || this.isItemReadOnly(id, index)) {
         continue;
       }
       ops.push({ op: 'delete', itemId: id, kind: entry.kind, baseVersion: index.baseVersion(id) });
@@ -485,6 +845,7 @@ export class SyncController implements vscode.Disposable {
     accepted: Array<{ itemId: string; version: number }>,
     ops: SyncOp[],
     index: SyncIndex,
+    spaceId?: string,
   ): void {
     const opById = new Map(ops.map((o) => [o.itemId, o]));
     for (const { itemId, version } of accepted) {
@@ -495,7 +856,7 @@ export class SyncController implements vscode.Disposable {
       if (op.op === 'delete') {
         index.remove(itemId);
       } else {
-        index.markSynced(itemId, { kind: op.kind, contentHash: op.contentHash!, version });
+        index.markSynced(itemId, { kind: op.kind, contentHash: op.contentHash!, version, spaceId });
       }
     }
   }
@@ -505,13 +866,14 @@ export class SyncController implements vscode.Disposable {
   private async applyDelta(
     delta: SyncDelta,
     config: SyncConfig,
+    space: SyncSpaceContext,
     index: SyncIndex,
     excluded: ReadonlySet<string>,
   ): Promise<number> {
     const connSvc = new ConnectionSyncService(this.context, index);
     const nbSvc = new NotebookSyncService(this.context, index);
     const sqSvc = SavedQueriesService.getInstance();
-    const localItems = await this.collectLocalItems(config, excluded, index);
+    const localItems = await this.collectLocalItems(config, space, excluded, index);
     const localById = new Map(localItems.map((i) => [i.meta.id, i]));
     let applied = 0;
 
@@ -521,6 +883,13 @@ export class SyncController implements vscode.Disposable {
         continue;
       }
       const kind = index.get(id)?.kind ?? localById.get(id)?.meta.kind;
+      const local = localById.get(id);
+      if (
+        local
+        && shouldBackupBeforeDelete(true, index.isDirty(id, local.meta.contentHash))
+      ) {
+        this.backupLocal(local, kind ?? local.meta.kind);
+      }
       const metaStub: SyncItemMeta = { id, kind: kind ?? 'query', contentHash: '', revision: 0, updatedAt: 0, deviceId: '', deleted: true };
       try {
         if (kind === 'connection' && config.syncConnections) {
@@ -569,6 +938,7 @@ export class SyncController implements vscode.Disposable {
         contentHash: meta.contentHash,
         version: meta.version,
         updatedAt: meta.updatedAt,
+        spaceId: space.spaceId,
       });
     }
 
@@ -616,6 +986,49 @@ export class SyncController implements vscode.Disposable {
       kind: meta.kind,
       deviceId: meta.deviceId,
     });
+  }
+
+  /** Persist index changes before advancing the server cursor. */
+  private async commitPhase(
+    providerId: SyncProviderId,
+    spaceId: string | undefined,
+    index: SyncIndex,
+    cursor: number,
+  ): Promise<void> {
+    await index.flush();
+    await this.setCursorForSpace(providerId, spaceId, cursor);
+  }
+
+  private notifySyncError(message: string, userInitiated: boolean): void {
+    const now = Date.now();
+    const firstSinceSuccess = this.lastSuccessfulSyncAt === 0 || now - this.lastSuccessfulSyncAt > 60_000;
+    if (!userInitiated && !firstSinceSuccess) {
+      return;
+    }
+    if (now - this.lastErrorNotifiedAt < 60_000) {
+      return;
+    }
+    this.lastErrorNotifiedAt = now;
+    void vscode.window
+      .showErrorMessage(`Sync failed: ${message}`, 'Repair Sync')
+      .then((action) => {
+        if (action === 'Repair Sync') {
+          void vscode.commands.executeCommand('postgres-explorer.sync.repair');
+        }
+      });
+  }
+
+  private purgeOrphanPending(index: SyncIndex): void {
+    const log = SyncActivityLog.getInstance(this.context);
+    const acked: string[] = [];
+    for (const p of log.listPending()) {
+      if (!index.get(p.itemId)) {
+        acked.push(`${p.kind}:${p.itemId}`);
+      }
+    }
+    if (acked.length) {
+      log.acknowledge(acked);
+    }
   }
 
   /** Preserve a local copy that lost a conflict so nothing is silently dropped. */
@@ -685,7 +1098,7 @@ export class SyncController implements vscode.Disposable {
         index.remove(id);
       }
       await index.flush();
-      await this.setCursor(config, 0);
+      await this.resetAllCursors(config);
       await this.runLocked(config, { direction: 'pull' });
       // Local state was wiped and rebuilt from cloud — any queued outbound
       // changes referenced the old local items and are now meaningless.
@@ -711,14 +1124,17 @@ export class SyncController implements vscode.Disposable {
     const release = await this.mutex.acquire();
     try {
       this.setStatus('syncing');
-      const provider = this.getProvider(config);
-      await provider.resetSpace();
+      const spaces = await this.resolveSyncSpaces(config);
+      for (const space of spaces) {
+        const provider = this.getProvider(config, space.spaceId);
+        await provider.resetSpace();
+      }
       const index = new SyncIndex(this.context);
       for (const id of Object.keys(index.getAll())) {
         index.update(id, { kind: index.get(id)!.kind, syncedHash: undefined, syncedVersion: undefined });
       }
       await index.flush();
-      await this.setCursor(config, 0);
+      await this.resetAllCursors(config);
       await this.runLocked(config, { direction: 'push' });
       // Local is now the source of truth — everything was force-pushed, so no
       // outbound change can still be pending. Flush the queue unconditionally.
@@ -767,6 +1183,7 @@ export class SyncController implements vscode.Disposable {
     for (const [id, entry] of Object.entries(entries)) {
       const synced = entry.syncedVersion != null;
       const dirty = entry.lastObservedHash != null && entry.lastObservedHash !== entry.syncedHash;
+      const spaceId = entry.spaceId;
       views.push({
         id,
         kind: entry.kind,
@@ -774,6 +1191,9 @@ export class SyncController implements vscode.Disposable {
         updatedAt: entry.modifiedAt ?? entry.syncedAt,
         excluded: excluded.has(id),
         itemStatus: excluded.has(id) ? 'excluded' : dirty ? 'pending' : synced ? 'synced' : 'local',
+        spaceId,
+        workspaceName: spaceId ? this.getWorkspaceName(spaceId) : undefined,
+        role: spaceId ? this.getRoleForSpace(spaceId) : 'owner',
       });
     }
     return views;
@@ -803,14 +1223,14 @@ export class SyncController implements vscode.Disposable {
       if (!entry) {
         return false;
       }
-      const provider = this.getProvider(config);
+      const provider = this.getProvider(config, entry.spaceId);
       const result = await provider.pushBatch([
         { op: 'delete', itemId: id, kind: entry.kind, baseVersion: index.baseVersion(id) },
       ]);
       if (result.accepted.length) {
         index.remove(id);
         await index.flush();
-        await this.setCursor(config, result.cursor);
+        await this.setCursorForSpace(config.providerId!, entry.spaceId, result.cursor);
         await this.setItemExcluded(id, true);
         return true;
       }
@@ -830,9 +1250,47 @@ export class SyncController implements vscode.Disposable {
     }
     await index.flush();
     const config = this.getConfig();
-    await this.setCursor(config, 0);
-    const items = await this.collectLocalItems(config, new Set(config.excludedIds ?? []), index);
+    await this.resetAllCursors(config);
+    const personal: SyncSpaceContext = { spaceId: undefined, name: 'Personal', role: 'owner' };
+    const items = await this.collectLocalItems(config, personal, new Set(config.excludedIds ?? []), index);
     return items.length;
+  }
+
+  /**
+   * Rebuild local sync metadata from disk, purge orphan queue entries, and
+   * force a clean delta re-pull — without wiping local files or cloud data.
+   */
+  async repair(): Promise<boolean> {
+    const config = this.getConfig();
+    if (!config.providerId) {
+      return false;
+    }
+    const release = await this.mutex.acquire();
+    try {
+      this.setStatus('syncing');
+      const index = new SyncIndex(this.context);
+      for (const id of Object.keys(index.getAll())) {
+        index.remove(id);
+      }
+      await index.flush();
+      await this.resetAllCursors(config);
+      const personal: SyncSpaceContext = { spaceId: undefined, name: 'Personal', role: 'owner' };
+      await this.collectLocalItems(config, personal, new Set(config.excludedIds ?? []), index);
+      await index.flush();
+      this.purgeOrphanPending(index);
+      await this.runLocked(config, { direction: 'pull' });
+      await this.context.globalState.update(SYNC_LAST_SYNC_AT_KEY, Date.now());
+      await this.context.globalState.update(SYNC_LAST_ERROR_KEY, undefined);
+      this.lastSuccessfulSyncAt = Date.now();
+      this.setStatus('synced');
+      return true;
+    } catch (e) {
+      this.output.appendLine(`[sync] repair failed: ${e instanceof Error ? e.message : String(e)}`);
+      this.setStatus('error');
+      return false;
+    } finally {
+      release();
+    }
   }
 
   async runDiagnostics(): Promise<void> {
@@ -889,10 +1347,11 @@ export class SyncController implements vscode.Disposable {
     }
     const entry = new SyncIndex(this.context).get(id);
     if (entry?.kind === 'notebook' && entry.filePath && fs.existsSync(entry.filePath)) {
-      const parsed = JSON.parse(fs.readFileSync(entry.filePath).toString());
+      const parsed = JSON.parse(fs.readFileSync(entry.filePath).toString()) as Record<string, unknown>;
+      const { cells, databaseName } = parseNotebookFileContent(parsed);
       return {
         kind: 'notebook',
-        raw: { name: entry.name ?? id, cells: parsed.cells ?? [], databaseName: parsed.metadata?.databaseName },
+        raw: { name: entry.name ?? id, cells, databaseName },
         name: entry.name ?? id,
       };
     }
@@ -902,6 +1361,55 @@ export class SyncController implements vscode.Disposable {
   async getItemPlaintext(id: string): Promise<string | undefined> {
     const item = await this.getShareableItem(id);
     return item ? JSON.stringify(item.raw, null, 2) : undefined;
+  }
+
+  /** Push a scrubbed item into a team workspace space (used by share-with-team). */
+  async pushItemToTeamSpace(
+    itemId: string,
+    targetSpaceId: string,
+    kind: SyncKind,
+    plaintext: Buffer,
+    opts: { removeFromPersonal?: boolean } = {},
+  ): Promise<boolean> {
+    const config = this.getConfig();
+    if (config.providerId !== 'cloud') {
+      return false;
+    }
+    const index = new SyncIndex(this.context);
+    const entry = index.get(itemId);
+    const hash = contentHash(plaintext);
+
+    if (opts.removeFromPersonal && entry && !entry.spaceId && entry.syncedVersion != null) {
+      const personal = this.getProvider(config, undefined);
+      const del = await personal.pushBatch([
+        { op: 'delete', itemId, kind: entry.kind, baseVersion: index.baseVersion(itemId) },
+      ]);
+      if (del.accepted.length) {
+        await this.setCursorForSpace(config.providerId!, undefined, del.cursor);
+      }
+    }
+
+    const team = this.getProvider(config, targetSpaceId);
+    const baseVersion = entry?.spaceId === targetSpaceId ? index.baseVersion(itemId) : 0;
+    const result = await team.pushBatch([
+      {
+        op: 'upsert',
+        itemId,
+        kind,
+        baseVersion,
+        contentHash: hash,
+        blob: this.codec.encode(plaintext),
+      },
+    ]);
+    if (!result.accepted.length) {
+      return false;
+    }
+    const version = result.accepted.find((a) => a.itemId === itemId)?.version ?? result.accepted[0].version;
+    index.update(itemId, { kind, spaceId: targetSpaceId });
+    index.markSynced(itemId, { kind, contentHash: hash, version, spaceId: targetSpaceId });
+    await index.flush();
+    await this.setCursorForSpace(config.providerId!, targetSpaceId, result.cursor);
+    return true;
   }
 
   async signOut(): Promise<void> {
@@ -919,6 +1427,12 @@ export class SyncController implements vscode.Disposable {
       clearTimeout(this.debounceTimer);
     }
     this.stopPeriodicPull();
+    for (const timer of this.openCheckTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.openCheckTimers.clear();
+    this.openCheckOpts.clear();
+    this._onDidCompleteSync.dispose();
     for (const d of this.disposables) {
       d.dispose();
     }

@@ -2,7 +2,7 @@
 // Delta pull: everything in the space past the client cursor (upserts + deletes).
 
 const { authenticateBearer } = require('../sync-auth');
-const { pullDelta, assertSpaceMember } = require('../sync-db');
+const { pullDelta, assertSpaceMember, requireTeamTierIfShared } = require('../sync-db');
 
 module.exports = async (req, res) => {
   if (req.method !== 'GET') {
@@ -24,6 +24,10 @@ module.exports = async (req, res) => {
   const since = req.query?.since ? Number(req.query.since) : 0;
 
   try {
+    const tierBlock = requireTeamTierIfShared(space, auth);
+    if (tierBlock) {
+      return res.status(tierBlock.status).json({ error: tierBlock.error });
+    }
     if (!(await assertSpaceMember(space, auth.email, auth.account_id, 'viewer'))) {
       return res.status(403).json({ error: 'Not a member of this workspace' });
     }

@@ -134,8 +134,9 @@ export async function cmdShowFunctionProperties(item: DatabaseTreeItem, context:
     const metadataWarnings: string[] = [];
 
     // Gather comprehensive function information
-    const [functionInfoResult, dependenciesInfoResult] = await Promise.allSettled([
-      client.query(`
+    let functionInfo;
+    try {
+      functionInfo = await client.query(`
                     SELECT 
                         p.proname as function_name,
                         n.nspname as schema_name,
@@ -163,9 +164,14 @@ export async function cmdShowFunctionProperties(item: DatabaseTreeItem, context:
                     JOIN pg_namespace n ON n.oid = p.pronamespace
                     LEFT JOIN pg_language l ON l.oid = p.prolang
                     WHERE n.nspname = $1 AND p.proname = $2
-                `, [item.schema, item.label]),
+                `, [item.schema, item.label]);
+    } catch (err) {
+      throw err;
+    }
 
-      client.query(`
+    let dependenciesInfo = { rows: [] as any[] };
+    try {
+      dependenciesInfo = await client.query(`
                     SELECT DISTINCT
                         dependent_ns.nspname as schema,
                         dependent_view.relname as name,
@@ -180,18 +186,8 @@ export async function cmdShowFunctionProperties(item: DatabaseTreeItem, context:
                         WHERE n.nspname = $1 AND p.proname = $2
                     )
                     ORDER BY schema, name
-                `, [item.schema, item.label])
-    ]);
-
-    if (functionInfoResult.status !== 'fulfilled') {
-      throw functionInfoResult.reason;
-    }
-
-    const functionInfo = functionInfoResult.value;
-    const dependenciesInfo = dependenciesInfoResult.status === 'fulfilled'
-      ? dependenciesInfoResult.value
-      : { rows: [] as any[] };
-    if (dependenciesInfoResult.status !== 'fulfilled') {
+                `, [item.schema, item.label]);
+    } catch (err) {
       metadataWarnings.push('Dependent objects could not be loaded.');
     }
 

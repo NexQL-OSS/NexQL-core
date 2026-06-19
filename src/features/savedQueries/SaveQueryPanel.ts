@@ -71,6 +71,7 @@ export class SaveQueryPanel {
         SaveQueryPanel.currentPanel._connectionMetadata = connectionMetadata;
       }
       SaveQueryPanel.currentPanel._updateForEdit(query);
+      void SaveQueryPanel.scheduleRemoteCheck(query);
       return;
     }
 
@@ -88,6 +89,33 @@ export class SaveQueryPanel {
     );
 
     SaveQueryPanel.currentPanel = new SaveQueryPanel(panel, extensionUri, query.query, connectionMetadata, true, query);
+    void SaveQueryPanel.scheduleRemoteCheck(query);
+  }
+
+  /** Refresh the edit panel after a sync pull applied new query content. */
+  public refreshForEdit(query: SavedQuery): void {
+    this._editMode = true;
+    this._editingQuery = query;
+    this._updateForEdit(query);
+  }
+
+  private static scheduleRemoteCheck(query: SavedQuery): void {
+    void import('../sync/SyncController').then(({ SyncController }) => {
+      try {
+        SyncController.getInstance().scheduleOpenCheck(query.id, {
+          kind: 'query',
+          label: query.title,
+          onReload: () => {
+            const fresh = SavedQueriesService.getInstance().getQuery(query.id);
+            if (fresh && SaveQueryPanel.currentPanel) {
+              SaveQueryPanel.currentPanel.refreshForEdit(fresh);
+            }
+          },
+        });
+      } catch {
+        /* sync not initialized */
+      }
+    });
   }
 
   private constructor(
@@ -269,6 +297,15 @@ export class SaveQueryPanel {
     const service = SavedQueriesService.getInstance();
 
     if (this._editMode && this._editingQuery) {
+      try {
+        const { SyncController } = await import('../sync/SyncController');
+        if (SyncController.getInstance().isItemReadOnly(this._editingQuery.id)) {
+          void vscode.window.showWarningMessage('This query is read-only (team viewer access).');
+          return;
+        }
+      } catch {
+        /* sync not initialized */
+      }
       // Edit mode: update existing query
       const updatedQuery: SavedQuery = {
         ...this._editingQuery,

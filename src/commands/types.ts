@@ -86,21 +86,15 @@ export async function cmdShowTypeProperties(item: DatabaseTreeItem, context: vsc
     const { client, metadata } = dbConn;
 
     // Gather comprehensive type information
-    const [typeInfoResult, enumValuesResult, dependenciesResult] = await Promise.all([
-      // Basic type info with fields
-      client.query(QueryBuilder.typeInfo(item.schema!, item.label)),
-
-      // Enum values if it's an enum type
-      client.query(`
+    const typeInfoResult = await client.query(QueryBuilder.typeInfo(item.schema!, item.label));
+    const enumValuesResult = await client.query(`
                 SELECT enumlabel, enumsortorder
                 FROM pg_enum
                 WHERE enumtypid = (SELECT oid FROM pg_type WHERE typname = $1 
                                   AND typnamespace = (SELECT oid FROM pg_namespace WHERE nspname = $2))
                 ORDER BY enumsortorder
-            `, [item.label, item.schema]),
-
-      // Objects using this type
-      client.query(`
+            `, [item.label, item.schema]);
+    const dependenciesResult = await client.query(`
                 SELECT DISTINCT
                     n.nspname as schema,
                     c.relname as table_name,
@@ -115,8 +109,7 @@ export async function cmdShowTypeProperties(item: DatabaseTreeItem, context: vsc
                 AND a.attnum > 0
                 AND NOT a.attisdropped
                 ORDER BY n.nspname, c.relname, a.attname
-            `, [item.label, item.schema])
-    ]);
+            `, [item.label, item.schema]);
 
     if (typeInfoResult.rows.length === 0) {
       throw new Error('Type not found');

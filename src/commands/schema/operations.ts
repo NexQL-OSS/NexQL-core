@@ -122,14 +122,12 @@ export async function cmdShowSchemaProperties(item: DatabaseTreeItem, context: v
 
     const serverVersionNum = await queryServerVersionNum(client);
     // Gather comprehensive schema information
-    const [schemaInfo, objectsInfo, sizeInfo, privilegesInfo, dependenciesInfo, extensionsInfo] = await Promise.all([
-      client.query(QueryBuilder.schemaDetails(item.schema!)),
-      client.query(QueryBuilder.schemaObjectCounts(item.schema!, serverVersionNum)),
-      client.query(QueryBuilder.schemaSize(item.schema!)),
-      client.query(QueryBuilder.schemaPrivileges(item.schema!)),
-      client.query(QueryBuilder.schemaDependencies(item.schema!)),
-      client.query(QueryBuilder.schemaExtensions(item.schema!))
-    ]);
+    const schemaInfo = await client.query(QueryBuilder.schemaDetails(item.schema!));
+    const objectsInfo = await client.query(QueryBuilder.schemaObjectCounts(item.schema!, serverVersionNum));
+    const sizeInfo = await client.query(QueryBuilder.schemaSize(item.schema!));
+    const privilegesInfo = await client.query(QueryBuilder.schemaPrivileges(item.schema!));
+    const dependenciesInfo = await client.query(QueryBuilder.schemaDependencies(item.schema!));
+    const extensionsInfo = await client.query(QueryBuilder.schemaExtensions(item.schema!));
 
     const schema = schemaInfo.rows[0];
     const objects = objectsInfo.rows[0] || {};

@@ -4,8 +4,8 @@
 const { neon } = require('@neondatabase/serverless');
 const { resolveDatabaseUrl, isDatabaseConfigured } = require('./db-url');
 
-const DEVICE_LIMITS = { sponsor: 3, singularity: 25 };
-const DEFAULT_DEVICE_LIMIT = 3;
+const DEVICE_LIMITS = { sponsor: 4, singularity: 4 };
+const DEFAULT_DEVICE_LIMIT = 4;
 const VALIDATED_OK_SAMPLE_MS = 12 * 60 * 60 * 1000;
 
 let sql = null;
@@ -439,6 +439,48 @@ async function removeDevice(licenseKey, instanceId, meta = {}) {
   return false;
 }
 
+async function listActiveDevicesOldestFirst(licenseKey) {
+  await ensureSchema();
+  const db = getSql();
+  const rows = await db`
+    SELECT instance_id, device_name, first_seen, last_seen
+    FROM pgstudio_license.devices
+    WHERE license_key = ${normalizeKey(licenseKey)}
+      AND revoked_at IS NULL
+    ORDER BY last_seen ASC NULLS FIRST, first_seen ASC
+  `;
+  return rows.map((r) => ({
+    instanceId: r.instance_id,
+    deviceName: r.device_name || null,
+    firstSeen: isoToMs(r.first_seen),
+    lastSeen: isoToMs(r.last_seen),
+  }));
+}
+
+/** Revoke oldest idle devices until count <= limit. Never revokes keepInstanceId. */
+async function pruneExcessDevices(licenseKey, limit, keepInstanceId) {
+  const key = normalizeKey(licenseKey);
+  if (!key || !limit || limit < 1) {
+    return [];
+  }
+
+  const pruned = [];
+  while ((await countActiveDevices(key)) > limit) {
+    const devices = await listActiveDevicesOldestFirst(key);
+    const victim = devices.find((d) => d.instanceId !== keepInstanceId);
+    if (!victim) {
+      break;
+    }
+    const removed = await removeDevice(key, victim.instanceId, { source: 'device_limit_prune' });
+    if (!removed) {
+      break;
+    }
+    await appendEvent(key, 'device_pruned', { instance_id: victim.instanceId }, 'validate');
+    pruned.push({ instanceId: victim.instanceId, deviceName: victim.deviceName });
+  }
+  return pruned;
+}
+
 async function listActiveDevices(licenseKey) {
   await ensureSchema();
   const db = getSql();
@@ -488,6 +530,8 @@ module.exports = {
   bindDevice,
   removeDevice,
   listActiveDevices,
+  listActiveDevicesOldestFirst,
+  pruneExcessDevices,
   countActiveDevices,
   isDeviceActive,
   deviceLimitFor,

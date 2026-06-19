@@ -72,6 +72,7 @@ export class EventEmitter<T = any> {
   private listeners: ((e: T) => any)[] = [];
   event = (listener: (e: T) => any) => { this.listeners.push(listener); return { dispose: () => { } }; };
   fire = (e?: T) => { this.listeners.forEach(l => l(e as T)); };
+  dispose() { this.listeners = []; }
 }
 
 export class Disposable { dispose() { } }

@@ -556,8 +556,14 @@ export async function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(syncStatusBar);
   syncController.initialize(syncStatusBar);
   context.subscriptions.push(syncController);
+  context.subscriptions.push(
+    syncController.onDidCompleteSync(() => {
+      notebooksTreeProvider?.refresh();
+      savedQueriesTreeProvider?.refresh();
+    }),
+  );
 
-  // License tier indicator + deep-link activation (vscode://ric-v.postgres-explorer/activate?key=...)
+  // License tier indicator
   const license = LicenseService.getInstance();
   const reflectTier = () => {
     const s = license.getStatus();
@@ -566,6 +572,12 @@ export async function activate(context: vscode.ExtensionContext) {
   reflectTier();
   context.subscriptions.push(
     license.onDidChangeLicense(() => reflectTier()),
+    vscode.window.onDidChangeWindowState((e) => {
+      if (e.focused) {
+        license.onWindowFocused();
+      }
+    }),
+    { dispose: () => license.dispose() },
     vscode.window.registerUriHandler({
       handleUri: async (uri: vscode.Uri) => {
         if (uri.path === '/activate') {

@@ -12,6 +12,7 @@ const {
   addMember,
   removeMember,
   assertSpaceMember,
+  requireTeamTierIfShared,
 } = require('../sync-db');
 
 function isoize(rows, field) {
@@ -40,6 +41,10 @@ module.exports = async (req, res) => {
     try {
       const space = req.query?.space ? String(req.query.space) : null;
       if (space) {
+        const tierBlock = requireTeamTierIfShared(space, auth);
+        if (tierBlock) {
+          return res.status(tierBlock.status).json({ error: tierBlock.error });
+        }
         if (!(await assertSpaceMember(space, auth.email, auth.account_id, 'viewer'))) {
           return res.status(403).json({ error: 'Not a member of this workspace' });
         }

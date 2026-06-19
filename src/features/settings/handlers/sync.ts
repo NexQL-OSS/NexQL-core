@@ -120,6 +120,9 @@ export class SyncSectionHandler implements SettingsSectionHandler {
       case 'rebuildIndex':
         await this.rebuildIndex();
         break;
+      case 'repair':
+        await this.repair();
+        break;
       case 'diagnostics':
         await SyncController.getInstance().runDiagnostics();
         this.sendState();
@@ -132,7 +135,7 @@ export class SyncSectionHandler implements SettingsSectionHandler {
         this.sendItems();
         break;
       case 'share':
-        await vscode.commands.executeCommand('postgres-explorer.sync.share');
+        await vscode.commands.executeCommand('postgres-explorer.sync.inviteMember');
         break;
       case 'importShares':
         await vscode.commands.executeCommand('postgres-explorer.sync.importShares');
@@ -215,8 +218,19 @@ export class SyncSectionHandler implements SettingsSectionHandler {
 
   private async sendShares(): Promise<void> {
     try {
+      const controller = SyncController.getInstance();
       const workspaces = await new WorkspaceSharingService(this.host.extensionContext).listWorkspaces();
-      this.host.post({ type: 'sync/shares', incoming: [], outgoing: [], workspaces });
+      const incoming = controller
+        .listSyncedItems()
+        .filter((i) => i.spaceId?.startsWith('ws_'))
+        .map((i) => ({
+          id: i.id,
+          name: i.name ?? i.id,
+          kind: i.kind,
+          workspaceName: i.workspaceName,
+          role: i.role,
+        }));
+      this.host.post({ type: 'sync/shares', incoming, outgoing: [], workspaces });
     } catch (e) {
       this.host.post({
         type: 'sync/shares',
@@ -293,6 +307,21 @@ export class SyncSectionHandler implements SettingsSectionHandler {
     const count = await SyncController.getInstance().rebuildSyncIndex();
     void vscode.window.showInformationMessage(`Rebuilt index for ${count} item(s).`);
     this.sendItems();
+  }
+
+  private async repair(): Promise<void> {
+    const confirm = await vscode.window.showWarningMessage(
+      'Repair sync state and pull the latest from the cloud?',
+      'Repair Sync',
+    );
+    if (confirm !== 'Repair Sync') {
+      return;
+    }
+    const ok = await SyncController.getInstance().repair();
+    void vscode.window.showInformationMessage(ok ? 'Sync repaired successfully.' : 'Sync repair failed.');
+    this.sendState();
+    this.sendItems();
+    this.sendPending();
   }
 
   private async stopSyncingItem(itemId: string, itemName: string): Promise<void> {
@@ -401,7 +430,7 @@ export class SyncSectionHandler implements SettingsSectionHandler {
       ? await controller.pullOnly()
       : direction === 'push'
         ? await controller.pushOnly()
-        : await controller.runSync();
+        : await controller.runSync({ userInitiated: true });
     this.host.post({ type: 'sync/runComplete', result: result ?? null });
     this.sendState();
     this.sendPending();

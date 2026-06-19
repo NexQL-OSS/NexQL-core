@@ -100,12 +100,37 @@ export class AiModelCatalogService {
       );
     }
 
-    const cursorKey =
-      (await this.credentials.getCursorApiKey()) || process.env.CURSOR_API_KEY || '';
-    if (cursorKey) {
-      await this._appendProviderModels(catalog, 'cursor', async () => {
-        const rows = await listCursorModels(cursorKey);
-        return rows.map((r) => r.displayName || r.id);
+    try {
+      const cursorKey =
+        (await this.credentials.getCursorApiKey()) || process.env.CURSOR_API_KEY || '';
+      const cursorModels = await listCursorModels(cursorKey);
+      const groupLabel = providerDisplayName('cursor');
+      if (cursorModels.length === 0) {
+        catalog.push({
+          selectionId: buildSelectionId('cursor', this._defaultModelForProvider('cursor')),
+          provider: 'cursor',
+          modelId: this._defaultModelForProvider('cursor'),
+          label: `${groupLabel} (no models listed)`,
+          groupLabel,
+        });
+      } else {
+        for (const entry of cursorModels) {
+          catalog.push({
+            selectionId: buildSelectionId('cursor', entry.id),
+            provider: 'cursor',
+            modelId: entry.id,
+            label: entry.displayName || entry.id,
+            groupLabel,
+          });
+        }
+      }
+    } catch {
+      catalog.push({
+        selectionId: buildSelectionId('cursor', this._defaultModelForProvider('cursor')),
+        provider: 'cursor',
+        modelId: this._defaultModelForProvider('cursor'),
+        label: `${providerDisplayName('cursor')} (unavailable)`,
+        groupLabel: providerDisplayName('cursor'),
       });
     }
 

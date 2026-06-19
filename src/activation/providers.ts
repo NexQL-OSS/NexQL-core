@@ -150,7 +150,7 @@ export function registerProviders(context: vscode.ExtensionContext, outputChanne
   );
 
   // Notebooks panel — browse all notebooks in globalStorage
-  const notebooksTreeProvider = new NotebooksTreeProvider(context.globalStorageUri);
+  const notebooksTreeProvider = new NotebooksTreeProvider(context.globalStorageUri, context);
   const notebooksTreeView = vscode.window.createTreeView('postgresExplorer.notebooks', {
     treeDataProvider: notebooksTreeProvider,
     showCollapseAll: true

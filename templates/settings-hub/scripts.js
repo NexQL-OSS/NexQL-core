@@ -2493,6 +2493,7 @@ $('syncApplyPreviewBtn')?.addEventListener('click', () => vscode.postMessage({ c
 $('syncReplaceLocalBtn')?.addEventListener('click', () => vscode.postMessage({ command: 'sync/replaceLocal' }));
 $('syncReplaceRemoteBtn')?.addEventListener('click', () => vscode.postMessage({ command: 'sync/replaceRemote' }));
 $('syncRebuildIndexBtn')?.addEventListener('click', () => vscode.postMessage({ command: 'sync/rebuildIndex' }));
+$('syncRepairBtn')?.addEventListener('click', () => vscode.postMessage({ command: 'sync/repair' }));
 $('syncDiagnosticsBtn')?.addEventListener('click', () => vscode.postMessage({ command: 'sync/diagnostics' }));
 $('syncAdvancedSetupBtn')?.addEventListener('click', () => vscode.postMessage({ command: 'sync/setup', mode: 'advanced' }));
 $('syncWizardCloseBtn')?.addEventListener('click', () => { $('syncWizardBackdrop').hidden = true; });

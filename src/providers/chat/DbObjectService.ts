@@ -671,34 +671,31 @@ export class DbObjectService {
    * All SQL stays parameterized.
    */
   private async _fetchTableSchema(client: any, schema: string, table: string): Promise<TableSchema> {
-    const [colsRes, constraintsRes, idxRes, countRes] = await Promise.all([
-      client.query(
-        'SELECT column_name, data_type, is_nullable, column_default, character_maximum_length, numeric_precision, numeric_scale FROM information_schema.columns WHERE table_schema = $1 AND table_name = $2 ORDER BY ordinal_position',
-        [schema, table]
-      ),
-      // Combined PK + FK constraints (one round-trip instead of two).
-      client.query(
-        `SELECT tc.constraint_type, tc.constraint_name, kcu.column_name, kcu.ordinal_position,
-                ccu.table_schema AS ref_schema, ccu.table_name AS ref_table, ccu.column_name AS ref_column
-         FROM information_schema.table_constraints tc
-         JOIN information_schema.key_column_usage kcu
-           ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
-         LEFT JOIN information_schema.constraint_column_usage ccu
-           ON tc.constraint_name = ccu.constraint_name AND tc.constraint_type = 'FOREIGN KEY'
-         WHERE tc.table_schema = $1 AND tc.table_name = $2
-           AND tc.constraint_type IN ('PRIMARY KEY', 'FOREIGN KEY')
-         ORDER BY tc.constraint_type, kcu.ordinal_position`,
-        [schema, table]
-      ),
-      client.query(
-        'SELECT i.relname as index_name, ix.indisunique, ix.indisprimary, array_agg(a.attname ORDER BY array_position(ix.indkey, a.attnum)) as columns FROM pg_index ix JOIN pg_class i ON i.oid = ix.indexrelid JOIN pg_class t ON t.oid = ix.indrelid JOIN pg_namespace n ON n.oid = t.relnamespace JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ANY(ix.indkey) WHERE n.nspname = $1 AND t.relname = $2 GROUP BY i.relname, ix.indisunique, ix.indisprimary',
-        [schema, table]
-      ),
-      client.query(
-        'SELECT reltuples::bigint as estimate FROM pg_class WHERE relname = $1 AND relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = $2)',
-        [table, schema]
-      ),
-    ]);
+    const colsRes = await client.query(
+      'SELECT column_name, data_type, is_nullable, column_default, character_maximum_length, numeric_precision, numeric_scale FROM information_schema.columns WHERE table_schema = $1 AND table_name = $2 ORDER BY ordinal_position',
+      [schema, table]
+    );
+    const constraintsRes = await client.query(
+      `SELECT tc.constraint_type, tc.constraint_name, kcu.column_name, kcu.ordinal_position,
+              ccu.table_schema AS ref_schema, ccu.table_name AS ref_table, ccu.column_name AS ref_column
+       FROM information_schema.table_constraints tc
+       JOIN information_schema.key_column_usage kcu
+         ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
+       LEFT JOIN information_schema.constraint_column_usage ccu
+         ON tc.constraint_name = ccu.constraint_name AND tc.constraint_type = 'FOREIGN KEY'
+       WHERE tc.table_schema = $1 AND tc.table_name = $2
+         AND tc.constraint_type IN ('PRIMARY KEY', 'FOREIGN KEY')
+       ORDER BY tc.constraint_type, kcu.ordinal_position`,
+      [schema, table]
+    );
+    const idxRes = await client.query(
+      'SELECT i.relname as index_name, ix.indisunique, ix.indisprimary, array_agg(a.attname ORDER BY array_position(ix.indkey, a.attnum)) as columns FROM pg_index ix JOIN pg_class i ON i.oid = ix.indexrelid JOIN pg_class t ON t.oid = ix.indrelid JOIN pg_namespace n ON n.oid = t.relnamespace JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ANY(ix.indkey) WHERE n.nspname = $1 AND t.relname = $2 GROUP BY i.relname, ix.indisunique, ix.indisprimary',
+      [schema, table]
+    );
+    const countRes = await client.query(
+      'SELECT reltuples::bigint as estimate FROM pg_class WHERE relname = $1 AND relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = $2)',
+      [table, schema]
+    );
 
     const columns: ColumnInfo[] = colsRes.rows.map((col: any) => {
       let dtype = col.data_type;

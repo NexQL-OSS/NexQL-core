@@ -1,7 +1,22 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
+import { SyncIndex } from '../features/sync/SyncIndex';
+import { SyncController } from '../features/sync/SyncController';
+import {
+  SharedTeamRootTreeItem,
+  WorkspaceFolderTreeItem,
+  groupTeamItemsByWorkspace,
+  isViewerForSpace,
+  workspaceDisplayName,
+} from '../features/sync/SharedTeamTree';
 
-export type NotebookTreeItemType = 'connection-folder' | 'db-folder' | 'notebook-file';
+export type NotebookTreeItemType =
+  | 'connection-folder'
+  | 'db-folder'
+  | 'notebook-file'
+  | 'shared-team-root'
+  | 'workspace-folder'
+  | 'shared-notebook-file';
 
 export class NotebookTreeItem extends vscode.TreeItem {
   constructor(
@@ -10,7 +25,9 @@ export class NotebookTreeItem extends vscode.TreeItem {
     public readonly itemType: NotebookTreeItemType,
     public readonly uri?: vscode.Uri,
     description?: string,
-    tooltip?: string
+    tooltip?: string,
+    public readonly spaceId?: string,
+    public readonly syncItemId?: string,
   ) {
     super(label, collapsibleState);
     this.description = description;
@@ -29,31 +46,58 @@ export class NotebookTreeItem extends vscode.TreeItem {
         this.command = {
           command: 'postgres-explorer.notebooks.open',
           title: 'Open Notebook',
-          arguments: [this]
+          arguments: [this],
+        };
+        break;
+      case 'shared-team-root':
+        this.iconPath = new vscode.ThemeIcon('organization');
+        break;
+      case 'workspace-folder':
+        this.iconPath = new vscode.ThemeIcon('folder-library');
+        break;
+      case 'shared-notebook-file':
+        this.iconPath = new vscode.ThemeIcon('notebook', new vscode.ThemeColor('charts.orange'));
+        this.command = {
+          command: 'postgres-explorer.notebooks.open',
+          title: 'Open Notebook',
+          arguments: [this],
         };
         break;
     }
   }
 }
 
-export class NotebooksTreeProvider implements vscode.TreeDataProvider<NotebookTreeItem> {
-  private _onDidChangeTreeData = new vscode.EventEmitter<NotebookTreeItem | undefined | null | void>();
+export class NotebooksTreeProvider implements vscode.TreeDataProvider<NotebookTreeItem | SharedTeamRootTreeItem | WorkspaceFolderTreeItem> {
+  private _onDidChangeTreeData = new vscode.EventEmitter<NotebookTreeItem | SharedTeamRootTreeItem | WorkspaceFolderTreeItem | undefined | null | void>();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
-  constructor(private readonly globalStorageUri: vscode.Uri) {}
+  constructor(
+    private readonly globalStorageUri: vscode.Uri,
+    private readonly extensionContext?: vscode.ExtensionContext,
+  ) {}
 
   refresh(): void {
     this._onDidChangeTreeData.fire();
   }
 
-  getTreeItem(element: NotebookTreeItem): vscode.TreeItem {
+  getTreeItem(element: NotebookTreeItem | SharedTeamRootTreeItem | WorkspaceFolderTreeItem): vscode.TreeItem {
     return element;
   }
 
-  async getChildren(element?: NotebookTreeItem): Promise<NotebookTreeItem[]> {
+  async getChildren(
+    element?: NotebookTreeItem | SharedTeamRootTreeItem | WorkspaceFolderTreeItem,
+  ): Promise<Array<NotebookTreeItem | SharedTeamRootTreeItem | WorkspaceFolderTreeItem>> {
     try {
       if (!element) {
-        return await this._getConnectionFolders();
+        const folders = await this._getConnectionFolders();
+        const sharedRoot = this._getSharedTeamRoot();
+        return sharedRoot ? [...folders, sharedRoot] : folders;
+      }
+      if (element instanceof SharedTeamRootTreeItem) {
+        return this._getWorkspaceFolders();
+      }
+      if (element instanceof WorkspaceFolderTreeItem) {
+        return this._getSharedNotebookFiles(element.spaceId);
       }
       if (element.itemType === 'connection-folder' && element.uri) {
         return await this._getDbFolders(element.uri);
@@ -65,6 +109,60 @@ export class NotebooksTreeProvider implements vscode.TreeDataProvider<NotebookTr
       // globalStorage may not exist yet
     }
     return [];
+  }
+
+  private _getSharedTeamRoot(): SharedTeamRootTreeItem | undefined {
+    if (!this.extensionContext) {
+      return undefined;
+    }
+    const notebooks = SyncController.getInstance()
+      .listTeamItems()
+      .filter((i) => i.entry.kind === 'notebook');
+    if (!notebooks.length) {
+      return undefined;
+    }
+    return new SharedTeamRootTreeItem(notebooks.length);
+  }
+
+  private _getWorkspaceFolders(): WorkspaceFolderTreeItem[] {
+    const grouped = groupTeamItemsByWorkspace(SyncController.getInstance().listTeamItems(), 'notebook');
+    return [...grouped.entries()].map(
+      ([spaceId, items]) => new WorkspaceFolderTreeItem(spaceId, workspaceDisplayName(spaceId), items.length),
+    );
+  }
+
+  private _getSharedNotebookFiles(spaceId: string): NotebookTreeItem[] {
+    const items: NotebookTreeItem[] = [];
+    for (const { id, entry } of SyncController.getInstance().listTeamItems()) {
+      if (entry.kind !== 'notebook' || entry.spaceId !== spaceId || !entry.filePath) {
+        continue;
+      }
+      const uri = vscode.Uri.file(entry.filePath);
+      const name = entry.name ?? path.basename(entry.filePath, '.pgsql');
+      const readOnly = isViewerForSpace(spaceId);
+      items.push(
+        new NotebookTreeItem(
+          name,
+          vscode.TreeItemCollapsibleState.None,
+          'shared-notebook-file',
+          uri,
+          readOnly ? 'read-only' : 'team',
+          readOnly ? `${name}\nRead-only (viewer)` : name,
+          spaceId,
+          id,
+        ),
+      );
+    }
+    items.sort((a, b) => String(a.label).localeCompare(String(b.label)));
+    return items;
+  }
+
+  private _isTeamNotebookPath(filePath: string): boolean {
+    if (!this.extensionContext) {
+      return false;
+    }
+    const match = new SyncIndex(this.extensionContext).findByPath(filePath);
+    return !!match?.entry.spaceId?.startsWith('ws_');
   }
 
   private async _getConnectionFolders(): Promise<NotebookTreeItem[]> {
@@ -116,6 +214,9 @@ export class NotebooksTreeProvider implements vscode.TreeDataProvider<NotebookTr
     const items: NotebookTreeItem[] = [];
     for (const [name] of files) {
       const uri = vscode.Uri.joinPath(dbUri, name);
+      if (this._isTeamNotebookPath(uri.fsPath)) {
+        continue;
+      }
       const { description, tooltip } = await this._getFileMeta(uri, name);
       items.push(new NotebookTreeItem(
         name.replace(/\.pgsql$/, ''),

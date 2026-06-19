@@ -3,7 +3,7 @@
 // Atomic batch with per-item compare-and-swap. Returns accepted + rejected (with remote state).
 
 const { authenticateBearer } = require('../sync-auth');
-const { pushBatch, assertSpaceMember } = require('../sync-db');
+const { pushBatch, assertSpaceMember, requireTeamTierIfShared } = require('../sync-db');
 
 const MAX_OPS = 500;
 
@@ -43,6 +43,10 @@ module.exports = async (req, res) => {
   const deviceId = req.headers['x-device-id'] || req.headers['X-Device-Id'] || '';
 
   try {
+    const tierBlock = requireTeamTierIfShared(space, auth);
+    if (tierBlock) {
+      return res.status(tierBlock.status).json({ error: tierBlock.error });
+    }
     if (!(await assertSpaceMember(space, auth.email, auth.account_id, 'editor'))) {
       return res.status(403).json({ error: 'Write access required for this workspace' });
     }
