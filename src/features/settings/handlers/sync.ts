@@ -1,5 +1,7 @@
 import * as vscode from 'vscode';
 import { SyncController } from '../../sync/SyncController';
+import { defaultDeviceName, getDeviceName } from '../../sync/deviceId';
+import { saveDeviceDisplayName } from '../../sync/deviceRename';
 import { SyncSetupWizard } from '../../sync/SyncSetupWizard';
 import { WorkspaceSharingService } from '../../sync/WorkspaceSharingService';
 import { LicenseService } from '../../../services/LicenseService';
@@ -85,7 +87,17 @@ export class SyncSectionHandler implements SettingsSectionHandler {
         await this.updateAuto(!!message.auto, Number(message.pullIntervalMinutes));
         break;
       case 'items':
-        this.sendItems();
+      case 'local':
+        await this.sendLocalItems();
+        break;
+      case 'cloud':
+        await this.sendLocalItems();
+        break;
+      case 'importCloudItem':
+        await this.importCloudItem(String(message.itemId ?? ''));
+        break;
+      case 'deleteCloudItem':
+        await this.deleteCloudItem(String(message.itemId ?? ''), String(message.itemName ?? ''));
         break;
       case 'pending':
         this.sendPending();
@@ -111,6 +123,9 @@ export class SyncSectionHandler implements SettingsSectionHandler {
       case 'revokeDevice':
         await this.revokeDevice(String(message.deviceId ?? ''));
         break;
+      case 'renameDevice':
+        await this.renameDevice(String(message.deviceName ?? ''));
+        break;
       case 'replaceLocal':
         await this.replaceLocal();
         break;
@@ -131,8 +146,7 @@ export class SyncSectionHandler implements SettingsSectionHandler {
         await this.stopSyncingItem(String(message.itemId ?? ''), String(message.itemName ?? ''));
         break;
       case 'resumeItem':
-        await SyncController.getInstance().setItemExcluded(String(message.itemId ?? ''), false);
-        this.sendItems();
+        await this.resumeSyncItem(String(message.itemId ?? ''));
         break;
       case 'share':
         await vscode.commands.executeCommand('postgres-explorer.sync.inviteMember');
@@ -182,10 +196,73 @@ export class SyncSectionHandler implements SettingsSectionHandler {
   }
 
   private sendItems(): void {
+    void this.sendLocalItems();
+  }
+
+  private async sendLocalItems(): Promise<void> {
     this.host.post({
-      type: 'sync/items',
-      items: SyncController.getInstance().listSyncedItems(),
+      type: 'sync/local',
+      items: await SyncController.getInstance().listLocalTabItems(),
     });
+  }
+
+  private async deleteCloudItem(itemId: string, itemName: string): Promise<void> {
+    if (!itemId) {
+      return;
+    }
+    const label = itemName || itemId;
+    const confirm = await vscode.window.showWarningMessage(
+      `Delete "${label}" from cloud storage?`,
+      { modal: true, detail: 'This removes the item from cloud and other synced devices. This device will not receive a local copy.' },
+      'Delete from cloud',
+    );
+    if (confirm !== 'Delete from cloud') {
+      return;
+    }
+    const ok = await SyncController.getInstance().removeFromCloud(itemId);
+    if (!ok) {
+      void vscode.window.showWarningMessage('Could not delete item from cloud.');
+    } else {
+      void vscode.window.showInformationMessage('Item removed from cloud.');
+    }
+    await this.sendLocalItems();
+    this.sendState();
+  }
+
+  private async sendCloudItems(): Promise<void> {
+    await this.sendLocalItems();
+  }
+
+  private async resumeSyncItem(itemId: string): Promise<void> {
+    if (!itemId) {
+      return;
+    }
+    const controller = SyncController.getInstance();
+    const onDevice = await controller.isPresentOnDevice(itemId);
+    if (!onDevice) {
+      void vscode.window.showWarningMessage(
+        'This item is not on this device. Use Import to restore it from cloud.',
+      );
+      await this.sendLocalItems();
+      return;
+    }
+    await controller.setItemExcluded(itemId, false);
+    await this.sendLocalItems();
+  }
+
+  private async importCloudItem(itemId: string): Promise<void> {
+    if (!itemId) {
+      return;
+    }
+    const ok = await SyncController.getInstance().importCloudItem(itemId);
+    if (!ok) {
+      void vscode.window.showWarningMessage('Could not import item from cloud.');
+    } else {
+      void vscode.window.showInformationMessage('Item imported from cloud.');
+    }
+    await this.sendLocalItems();
+    this.sendItems();
+    this.sendState();
   }
 
   private sendPending(): void {
@@ -248,8 +325,51 @@ export class SyncSectionHandler implements SettingsSectionHandler {
   }
 
   private async sendDevices(): Promise<void> {
-    const devices = await SyncController.getInstance().listCloudDevices();
-    this.host.post({ type: 'sync/devices', devices });
+    const controller = SyncController.getInstance();
+    const localName = getDeviceName(this.host.extensionContext);
+    const devices = (await controller.listCloudDevices()).map((device) => (
+      device.isThisDevice
+        ? { ...device, deviceName: localName || device.deviceName }
+        : device
+    ));
+    const thisDevice = controller.getThisDeviceInfo();
+    this.host.post({
+      type: 'sync/devices',
+      devices,
+      thisDevice: {
+        ...thisDevice,
+        deviceName: localName || thisDevice.deviceName,
+        suggestedName: localName || thisDevice.deviceName || defaultDeviceName(),
+      },
+    });
+  }
+
+  private async renameDevice(deviceName: string): Promise<void> {
+    const trimmed = deviceName.trim();
+    if (!trimmed) {
+      this.host.post({
+        type: 'sync/deviceRenameResult',
+        ok: false,
+        error: 'Enter a device name.',
+      });
+      return;
+    }
+    try {
+      const { cloudOk } = await saveDeviceDisplayName(this.host.extensionContext, trimmed);
+      this.host.post({
+        type: 'sync/deviceRenameResult',
+        ok: true,
+        deviceName: trimmed,
+        warning: cloudOk ? undefined : 'Saved locally; cloud update failed — will retry on next sync.',
+      });
+      await this.sendDevices();
+    } catch (err: unknown) {
+      this.host.post({
+        type: 'sync/deviceRenameResult',
+        ok: false,
+        error: err instanceof Error ? err.message : 'Could not save device name.',
+      });
+    }
   }
 
   private async revokeDevice(deviceId: string): Promise<void> {
@@ -269,7 +389,7 @@ export class SyncSectionHandler implements SettingsSectionHandler {
       prompt: `Type ${REPAIR_CONFIRM} to overwrite all local sync items with the cloud copy`,
       ignoreFocusOut: true,
     });
-    if (typed !== REPAIR_CONFIRM) {
+    if (typed?.trim() !== REPAIR_CONFIRM) {
       return;
     }
     const ok = await SyncController.getInstance().replaceLocalWithCloud();
@@ -277,6 +397,7 @@ export class SyncSectionHandler implements SettingsSectionHandler {
     this.sendState();
     this.sendItems();
     this.sendPending();
+    await this.sendCloudItems();
   }
 
   private async replaceRemote(): Promise<void> {
@@ -285,7 +406,7 @@ export class SyncSectionHandler implements SettingsSectionHandler {
       prompt: `Type ${REPAIR_CONFIRM} to overwrite cloud with this device's data`,
       ignoreFocusOut: true,
     });
-    if (typed !== REPAIR_CONFIRM) {
+    if (typed?.trim() !== REPAIR_CONFIRM) {
       return;
     }
     const ok = await SyncController.getInstance().replaceCloudWithLocal();
@@ -293,6 +414,7 @@ export class SyncSectionHandler implements SettingsSectionHandler {
     this.sendState();
     this.sendItems();
     this.sendPending();
+    await this.sendCloudItems();
   }
 
   private async rebuildIndex(): Promise<void> {
@@ -301,7 +423,7 @@ export class SyncSectionHandler implements SettingsSectionHandler {
       prompt: `Type ${REPAIR_CONFIRM} to rebuild the local sync index from disk`,
       ignoreFocusOut: true,
     });
-    if (typed !== REPAIR_CONFIRM) {
+    if (typed?.trim() !== REPAIR_CONFIRM) {
       return;
     }
     const count = await SyncController.getInstance().rebuildSyncIndex();

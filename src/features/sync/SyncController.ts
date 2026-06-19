@@ -11,9 +11,11 @@ import { CloudSyncProvider } from './providers/CloudSyncProvider';
 import { PostgresSyncProvider } from './providers/PostgresSyncProvider';
 import { WorkspaceSharingService } from './WorkspaceSharingService';
 import { SyncActivityLog, bindSyncActivityLog, recordSyncActivity } from './SyncActivityLog';
+import { sortUpsertsForApply } from './syncApplyOrder';
+import { displayNameFromSyncBlob, detailFromSyncBlob } from './syncBlobDisplay';
 import { readNotebookSyncId } from './notebookSyncId';
 import { parseNotebookFileContent } from './notebookFileParse';
-import { getOrCreateDeviceId } from './deviceId';
+import { getDeviceName, getOrCreateDeviceId, setDeviceName } from './deviceId';
 import { SavedQueriesService } from '../savedQueries/SavedQueriesService';
 import {
   ProFeature,
@@ -38,6 +40,7 @@ import type {
   InboundEntry,
   SyncChangeSummary,
   SyncConfig,
+  CloudItemView,
   SyncDelta,
   SyncDeviceView,
   SyncDirectionSummary,
@@ -668,7 +671,7 @@ export class SyncController implements vscode.Disposable {
 
     if (direction !== 'push') {
       const delta = await provider.pullDelta(cursor);
-      pulled = await this.applyDelta(delta, config, space, index, excluded);
+      pulled = await this.applyDelta(delta, config, space, index, excluded, options);
       cursor = delta.cursor;
       await this.commitPhase(config.providerId!, space.spaceId, index, cursor);
     }
@@ -869,17 +872,19 @@ export class SyncController implements vscode.Disposable {
     space: SyncSpaceContext,
     index: SyncIndex,
     excluded: ReadonlySet<string>,
+    options: SyncRunOptions = {},
   ): Promise<number> {
     const connSvc = new ConnectionSyncService(this.context, index);
     const nbSvc = new NotebookSyncService(this.context, index);
     const sqSvc = SavedQueriesService.getInstance();
     const localItems = await this.collectLocalItems(config, space, excluded, index);
     const localById = new Map(localItems.map((i) => [i.meta.id, i]));
+    const skipExcluded = options.forceRemote === true;
     let applied = 0;
 
     // Permanent deletes — never resurrected.
     for (const id of delta.deletes) {
-      if (excluded.has(id)) {
+      if (!skipExcluded && excluded.has(id)) {
         continue;
       }
       const kind = index.get(id)?.kind ?? localById.get(id)?.meta.kind;
@@ -897,7 +902,7 @@ export class SyncController implements vscode.Disposable {
         } else if (kind === 'notebook' && config.syncNotebooks) {
           await nbSvc.deleteNotebook(metaStub);
         } else if (kind === 'query' && config.syncQueries) {
-          await sqSvc.deleteQuery(id);
+          await sqSvc.deleteQuery(id, { fromRemote: true });
         }
       } catch (e) {
         this.output.appendLine(`[sync] delete ${id} failed: ${e instanceof Error ? e.message : String(e)}`);
@@ -906,19 +911,21 @@ export class SyncController implements vscode.Disposable {
       applied += 1;
     }
 
-    // Upserts — last-writer-wins, loser backed up locally.
-    for (const { meta, blob } of delta.upserts) {
-      if (excluded.has(meta.id)) {
+    // Upserts — last-writer-wins, loser backed up locally. Connections before notebooks.
+    for (const { meta, blob } of sortUpsertsForApply(delta.upserts)) {
+      if (!skipExcluded && excluded.has(meta.id)) {
         continue;
       }
       const local = localById.get(meta.id);
-      const decision = decideIncoming(
-        !!local,
-        local ? index.isDirty(meta.id, local.meta.contentHash) : false,
-        local ? local.meta.contentHash === meta.contentHash : false,
-        local?.meta.updatedAt ?? 0,
-        meta.updatedAt,
-      );
+      const decision = options.forceRemote
+        ? { applyRemote: true, backupLocal: false }
+        : decideIncoming(
+          !!local,
+          local ? index.isDirty(meta.id, local.meta.contentHash) : false,
+          local ? local.meta.contentHash === meta.contentHash : false,
+          local?.meta.updatedAt ?? 0,
+          meta.updatedAt,
+        );
 
       if (decision.applyRemote) {
         if (decision.backupLocal && local) {
@@ -1082,6 +1089,31 @@ export class SyncController implements vscode.Disposable {
     }
   }
 
+  /** Wipe local copies of sync-enabled item kinds before a cloud-authoritative pull. */
+  private async wipeLocalSyncData(config: SyncConfig): Promise<void> {
+    const index = new SyncIndex(this.context);
+    const nbSvc = new NotebookSyncService(this.context, index);
+
+    if (config.syncNotebooks) {
+      const localNotebooks = await nbSvc.collectLocalNotebooks('wipe');
+      for (const { meta } of localNotebooks) {
+        await nbSvc.deleteNotebook(meta);
+      }
+    }
+
+    if (config.syncQueries) {
+      const sqSvc = SavedQueriesService.getInstance();
+      for (const query of [...sqSvc.getQueries()]) {
+        await sqSvc.deleteQuery(query.id, { fromRemote: true });
+      }
+    }
+
+    if (config.syncConnections) {
+      const wsConfig = vscode.workspace.getConfiguration();
+      await wsConfig.update('postgresExplorer.connections', [], vscode.ConfigurationTarget.Global);
+    }
+  }
+
   // ── Clear & re-sync (git-style hard reset) ────────────────────────────────────
 
   /** Wipe local synced state and pull everything fresh from the cloud. */
@@ -1093,18 +1125,18 @@ export class SyncController implements vscode.Disposable {
     const release = await this.mutex.acquire();
     try {
       this.setStatus('syncing');
+      await this.wipeLocalSyncData(config);
       const index = new SyncIndex(this.context);
       for (const id of Object.keys(index.getAll())) {
         index.remove(id);
       }
       await index.flush();
       await this.resetAllCursors(config);
-      await this.runLocked(config, { direction: 'pull' });
-      // Local state was wiped and rebuilt from cloud — any queued outbound
-      // changes referenced the old local items and are now meaningless.
+      await this.runLocked(config, { direction: 'pull', forceRemote: true });
       SyncActivityLog.getInstance(this.context).clearPending();
       await this.context.globalState.update(SYNC_LAST_SYNC_AT_KEY, Date.now());
       this.setStatus('synced');
+      this._onDidCompleteSync.fire();
       return true;
     } catch (e) {
       this.output.appendLine(`[sync] replaceLocalWithCloud failed: ${e instanceof Error ? e.message : String(e)}`);
@@ -1135,12 +1167,11 @@ export class SyncController implements vscode.Disposable {
       }
       await index.flush();
       await this.resetAllCursors(config);
-      await this.runLocked(config, { direction: 'push' });
-      // Local is now the source of truth — everything was force-pushed, so no
-      // outbound change can still be pending. Flush the queue unconditionally.
+      await this.runLocked(config, { direction: 'push', forceRemote: false });
       SyncActivityLog.getInstance(this.context).clearPending();
       await this.context.globalState.update(SYNC_LAST_SYNC_AT_KEY, Date.now());
       this.setStatus('synced');
+      this._onDidCompleteSync.fire();
       return true;
     } catch (e) {
       this.output.appendLine(`[sync] replaceCloudWithLocal failed: ${e instanceof Error ? e.message : String(e)}`);
@@ -1197,6 +1228,153 @@ export class SyncController implements vscode.Disposable {
       });
     }
     return views;
+  }
+
+  /** Ids of sync items that exist on this device (ignores excluded flag). */
+  async getPresentOnDeviceIds(): Promise<Set<string>> {
+    const config = this.getConfig();
+    const index = new SyncIndex(this.context);
+    const items = await this.collectLocalItems(
+      config,
+      { spaceId: undefined, name: 'Personal', role: 'owner' },
+      new Set(),
+      index,
+    );
+    return new Set(items.map((i) => i.meta.id));
+  }
+
+  async isPresentOnDevice(itemId: string): Promise<boolean> {
+    const present = await this.getPresentOnDeviceIds();
+    return present.has(itemId);
+  }
+
+  /** Local tab: items on this device plus cloud-only entries. */
+  async listLocalTabItems(): Promise<SyncedItemView[]> {
+    const presentIds = await this.getPresentOnDeviceIds();
+    const onDevice = this.listSyncedItems()
+      .filter((item) => presentIds.has(item.id))
+      .map((item) => ({
+        ...item,
+        presence: 'local' as const,
+      }));
+    const onDeviceIds = new Set(onDevice.map((item) => item.id));
+    const cloud = await this.listCloudItems();
+    const cloudOnly: SyncedItemView[] = cloud
+      .filter((item) => !presentIds.has(item.id))
+      .filter((item) => !onDeviceIds.has(item.id))
+      .map((item) => ({
+        id: item.id,
+        kind: item.kind,
+        name: item.name,
+        detail: item.detail,
+        updatedAt: item.updatedAt,
+        excluded: false,
+        itemStatus: 'local' as const,
+        presence: 'cloud-only' as const,
+        spaceId: item.spaceId,
+        workspaceName: item.workspaceName,
+        role: 'owner' as const,
+      }));
+    return [...onDevice, ...cloudOnly].sort(
+      (a, b) => (a.presence === 'cloud-only' ? 1 : 0) - (b.presence === 'cloud-only' ? 1 : 0)
+        || String(a.name ?? a.id).localeCompare(String(b.name ?? b.id)),
+    );
+  }
+
+  /** Snapshot of items stored in the cloud (personal space), with local comparison. */
+  async listCloudItems(): Promise<CloudItemView[]> {
+    const config = this.getConfig();
+    if (!config.providerId) {
+      return [];
+    }
+    const index = new SyncIndex(this.context);
+    const excluded = new Set(config.excludedIds ?? []);
+    const localItems = await this.collectLocalItems(
+      config,
+      { spaceId: undefined, name: 'Personal', role: 'owner' },
+      new Set(),
+      index,
+    );
+    const localById = new Map(localItems.map((i) => [i.meta.id, i]));
+    const views: CloudItemView[] = [];
+
+    try {
+      const provider = this.getProvider(config, undefined);
+      const delta = await provider.pullDelta(0);
+      const deleted = new Set(delta.deletes);
+      for (const { meta, blob } of delta.upserts) {
+        if (deleted.has(meta.id)) {
+          continue;
+        }
+        const plaintext = this.codec.decode(blob);
+        const local = localById.get(meta.id);
+        const onDevice = !!local;
+        let localStatus: CloudItemView['localStatus'];
+        if (!onDevice) {
+          localStatus = 'absent';
+        } else if (excluded.has(meta.id)) {
+          localStatus = 'excluded';
+        } else if (local!.meta.contentHash === meta.contentHash) {
+          localStatus = 'synced';
+        } else {
+          localStatus = 'different';
+        }
+        views.push({
+          id: meta.id,
+          kind: meta.kind,
+          name: displayNameFromSyncBlob(meta.kind, plaintext),
+          detail: detailFromSyncBlob(meta.kind, plaintext),
+          updatedAt: meta.updatedAt,
+          localStatus,
+        });
+      }
+    } catch (e) {
+      this.output.appendLine(`[sync] listCloudItems failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+
+    views.sort((a, b) => a.name.localeCompare(b.name) || a.kind.localeCompare(b.kind));
+    return views;
+  }
+
+  /** Pull and apply a single cloud item onto this device. */
+  async importCloudItem(itemId: string): Promise<boolean> {
+    const config = this.getConfig();
+    if (!config.providerId || !itemId) {
+      return false;
+    }
+    const release = await this.mutex.acquire();
+    try {
+      this.setStatus('syncing');
+      const provider = this.getProvider(config, undefined);
+      const delta = await provider.pullDelta(0);
+      const match = [...delta.upserts].reverse().find((u) => u.meta.id === itemId);
+      if (!match || delta.deletes.includes(itemId)) {
+        return false;
+      }
+      const index = new SyncIndex(this.context);
+      const connSvc = new ConnectionSyncService(this.context, index);
+      const nbSvc = new NotebookSyncService(this.context, index);
+      const sqSvc = SavedQueriesService.getInstance();
+      const plaintext = this.codec.decode(match.blob);
+      await this.applyOne(match.meta, plaintext, config, connSvc, nbSvc, sqSvc);
+      await this.setItemExcluded(itemId, false);
+      index.markSynced(match.meta.id, {
+        kind: match.meta.kind,
+        contentHash: match.meta.contentHash,
+        version: match.meta.version,
+        updatedAt: match.meta.updatedAt,
+      });
+      await index.flush();
+      this._onDidCompleteSync.fire();
+      this.setStatus('synced');
+      return true;
+    } catch (e) {
+      this.output.appendLine(`[sync] importCloudItem ${itemId} failed: ${e instanceof Error ? e.message : String(e)}`);
+      this.setStatus('error');
+      return false;
+    } finally {
+      release();
+    }
   }
 
   async setItemExcluded(id: string, excludedFlag: boolean): Promise<void> {
@@ -1336,6 +1514,41 @@ export class SyncController implements vscode.Disposable {
       return false;
     }
     return (this.getProvider(config) as CloudSyncProvider).revokeDevice(deviceId);
+  }
+
+  getThisDeviceInfo(): { deviceId: string; deviceName: string } {
+    return {
+      deviceId: getOrCreateDeviceId(this.context),
+      deviceName: getDeviceName(this.context) ?? '',
+    };
+  }
+
+  /** Persist a friendly device label locally and on NexQL Cloud when configured. */
+  async renameThisDevice(deviceName: string): Promise<boolean> {
+    const trimmed = deviceName.trim();
+    if (!trimmed) {
+      return false;
+    }
+    await setDeviceName(this.context, trimmed);
+    return this.pushDeviceNameToCloud(trimmed);
+  }
+
+  /** Push the current device label to NexQL Cloud (no-op when sync is not on cloud). */
+  async pushDeviceNameToCloud(deviceName: string): Promise<boolean> {
+    const trimmed = deviceName.trim();
+    if (!trimmed) {
+      return false;
+    }
+    const config = this.getConfig();
+    if (config.providerId !== 'cloud') {
+      return true;
+    }
+    try {
+      const deviceId = getOrCreateDeviceId(this.context);
+      return await (this.getProvider(config) as CloudSyncProvider).updateDeviceName(deviceId, trimmed);
+    } catch {
+      return false;
+    }
   }
 
   // ── Sharing support (read item content for workspace sharing) ────────────────────

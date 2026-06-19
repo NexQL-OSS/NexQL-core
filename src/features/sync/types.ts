@@ -111,6 +111,8 @@ export interface SyncRunOptions {
   transientExcludedIds?: string[];
   /** True when triggered explicitly by the user (Sync Now / pull / push). */
   userInitiated?: boolean;
+  /** Apply all remote upserts regardless of local LWW (replace-local flow). */
+  forceRemote?: boolean;
 }
 
 export interface SyncPreviewItem {
@@ -184,9 +186,25 @@ export interface SyncedItemView {
   excluded: boolean;
   /** Per-item inclusion state for the settings table. */
   itemStatus: 'excluded' | 'pending' | 'synced' | 'local';
+  /** local = on this device; cloud-only = in cloud but not present locally. */
+  presence?: 'local' | 'cloud-only';
+  detail?: string;
   spaceId?: string;
   workspaceName?: string;
   role?: WorkspaceRole;
+}
+
+/** Row for the cloud inventory tab (remote snapshot vs local). */
+export interface CloudItemView {
+  id: string;
+  kind: SyncKind;
+  name: string;
+  detail?: string;
+  updatedAt: number;
+  /** How this cloud item compares to the copy on this device. */
+  localStatus: 'absent' | 'synced' | 'different' | 'excluded';
+  spaceId?: string;
+  workspaceName?: string;
 }
 
 /** One cloud space participating in a sync run. */
@@ -242,6 +260,8 @@ export interface ConnectionSyncPayload {
   sslmode?: string;
   environment?: string;
   readOnlyMode?: boolean;
+  /** Connection tree group label (e.g. "Local"). */
+  group?: string;
   ssh?: {
     enabled: boolean;
     host: string;
@@ -254,11 +274,22 @@ export interface NotebookSyncPayload {
   syncId: string;
   name: string;
   connectionId: string;
+  /** Display name of the linked connection at collect time (for cross-device folder labels). */
+  connectionName?: string;
   databaseName?: string;
   host?: string;
   port?: number;
+  /** Parent directory segments relative to extension globalStorage (authoritative when present). */
+  folderPath?: string[];
   cells: Array<{ value: string; kind?: string; language?: string }>;
 }
+
+/** Apply order for incoming upserts: connections before notebooks that depend on them. */
+export const SYNC_KIND_APPLY_ORDER: Record<SyncKind, number> = {
+  connection: 0,
+  query: 1,
+  notebook: 2,
+};
 
 // ── Team workspaces (server-ACL sharing) ──────────────────────────────────────
 

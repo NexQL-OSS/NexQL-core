@@ -11,8 +11,7 @@ import {
 } from '../features/sync/SharedTeamTree';
 
 export type NotebookTreeItemType =
-  | 'connection-folder'
-  | 'db-folder'
+  | 'folder'
   | 'notebook-file'
   | 'shared-team-root'
   | 'workspace-folder'
@@ -28,6 +27,7 @@ export class NotebookTreeItem extends vscode.TreeItem {
     tooltip?: string,
     public readonly spaceId?: string,
     public readonly syncItemId?: string,
+    folderDepth = 0,
   ) {
     super(label, collapsibleState);
     this.description = description;
@@ -35,11 +35,12 @@ export class NotebookTreeItem extends vscode.TreeItem {
     this.contextValue = itemType;
 
     switch (itemType) {
-      case 'connection-folder':
-        this.iconPath = new vscode.ThemeIcon('server', new vscode.ThemeColor('charts.blue'));
-        break;
-      case 'db-folder':
-        this.iconPath = new vscode.ThemeIcon('database', new vscode.ThemeColor('charts.purple'));
+      case 'folder':
+        this.iconPath = folderDepth === 1
+          ? new vscode.ThemeIcon('server', new vscode.ThemeColor('charts.blue'))
+          : folderDepth === 2
+            ? new vscode.ThemeIcon('database', new vscode.ThemeColor('charts.purple'))
+            : new vscode.ThemeIcon('folder');
         break;
       case 'notebook-file':
         this.iconPath = new vscode.ThemeIcon('notebook', new vscode.ThemeColor('charts.yellow'));
@@ -76,6 +77,14 @@ export class NotebooksTreeProvider implements vscode.TreeDataProvider<NotebookTr
     private readonly extensionContext?: vscode.ExtensionContext,
   ) {}
 
+  private _folderDepth(folderUri: vscode.Uri): number {
+    const rel = path.relative(this.globalStorageUri.fsPath, folderUri.fsPath);
+    if (!rel || rel.startsWith('..')) {
+      return 0;
+    }
+    return rel.split(path.sep).filter(Boolean).length;
+  }
+
   refresh(): void {
     this._onDidChangeTreeData.fire();
   }
@@ -89,7 +98,7 @@ export class NotebooksTreeProvider implements vscode.TreeDataProvider<NotebookTr
   ): Promise<Array<NotebookTreeItem | SharedTeamRootTreeItem | WorkspaceFolderTreeItem>> {
     try {
       if (!element) {
-        const folders = await this._getConnectionFolders();
+        const folders = await this._getRootFolders();
         const sharedRoot = this._getSharedTeamRoot();
         return sharedRoot ? [...folders, sharedRoot] : folders;
       }
@@ -99,11 +108,8 @@ export class NotebooksTreeProvider implements vscode.TreeDataProvider<NotebookTr
       if (element instanceof WorkspaceFolderTreeItem) {
         return this._getSharedNotebookFiles(element.spaceId);
       }
-      if (element.itemType === 'connection-folder' && element.uri) {
-        return await this._getDbFolders(element.uri);
-      }
-      if (element.itemType === 'db-folder' && element.uri) {
-        return await this._getNotebookFiles(element.uri);
+      if (element.itemType === 'folder' && element.uri) {
+        return await this._getFolderChildren(element.uri);
       }
     } catch {
       // globalStorage may not exist yet
@@ -165,55 +171,57 @@ export class NotebooksTreeProvider implements vscode.TreeDataProvider<NotebookTr
     return !!match?.entry.spaceId?.startsWith('ws_');
   }
 
-  private async _getConnectionFolders(): Promise<NotebookTreeItem[]> {
+  private async _getRootFolders(): Promise<NotebookTreeItem[]> {
+    return this._listSubfolders(this.globalStorageUri);
+  }
+
+  private async _getFolderChildren(folderUri: vscode.Uri): Promise<NotebookTreeItem[]> {
+    const folders = await this._listSubfolders(folderUri);
+    const notebooks = await this._listNotebooks(folderUri);
+    return [...folders, ...notebooks];
+  }
+
+  private async _listSubfolders(parentUri: vscode.Uri): Promise<NotebookTreeItem[]> {
     let entries: [string, vscode.FileType][];
     try {
-      entries = await vscode.workspace.fs.readDirectory(this.globalStorageUri);
+      entries = await vscode.workspace.fs.readDirectory(parentUri);
     } catch {
       return [];
     }
     return entries
       .filter(([, type]) => type === vscode.FileType.Directory)
-      .map(([name]) => new NotebookTreeItem(
-        name,
-        vscode.TreeItemCollapsibleState.Collapsed,
-        'connection-folder',
-        vscode.Uri.joinPath(this.globalStorageUri, name)
-      ));
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([name]) => {
+        const uri = vscode.Uri.joinPath(parentUri, name);
+        return new NotebookTreeItem(
+          name,
+          vscode.TreeItemCollapsibleState.Collapsed,
+          'folder',
+          uri,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          this._folderDepth(uri),
+        );
+      });
   }
 
-  private async _getDbFolders(connUri: vscode.Uri): Promise<NotebookTreeItem[]> {
+  private async _listNotebooks(folderUri: vscode.Uri): Promise<NotebookTreeItem[]> {
     let entries: [string, vscode.FileType][];
     try {
-      entries = await vscode.workspace.fs.readDirectory(connUri);
-    } catch {
-      return [];
-    }
-    return entries
-      .filter(([, type]) => type === vscode.FileType.Directory)
-      .map(([name]) => new NotebookTreeItem(
-        name,
-        vscode.TreeItemCollapsibleState.Collapsed,
-        'db-folder',
-        vscode.Uri.joinPath(connUri, name)
-      ));
-  }
-
-  private async _getNotebookFiles(dbUri: vscode.Uri): Promise<NotebookTreeItem[]> {
-    let entries: [string, vscode.FileType][];
-    try {
-      entries = await vscode.workspace.fs.readDirectory(dbUri);
+      entries = await vscode.workspace.fs.readDirectory(folderUri);
     } catch {
       return [];
     }
 
     const files = entries.filter(([name, type]) =>
-      type === vscode.FileType.File && name.endsWith('.pgsql')
+      type === vscode.FileType.File && name.endsWith('.pgsql'),
     );
 
     const items: NotebookTreeItem[] = [];
     for (const [name] of files) {
-      const uri = vscode.Uri.joinPath(dbUri, name);
+      const uri = vscode.Uri.joinPath(folderUri, name);
       if (this._isTeamNotebookPath(uri.fsPath)) {
         continue;
       }
@@ -224,10 +232,9 @@ export class NotebooksTreeProvider implements vscode.TreeDataProvider<NotebookTr
         'notebook-file',
         uri,
         description,
-        tooltip
+        tooltip,
       ));
     }
-    // Sort: scratch file first, then named notebooks alphabetically
     items.sort((a, b) => {
       const aLabel = a.label as string;
       const bLabel = b.label as string;
@@ -243,15 +250,15 @@ export class NotebooksTreeProvider implements vscode.TreeDataProvider<NotebookTr
     try {
       const [stat, raw] = await Promise.all([
         vscode.workspace.fs.stat(uri),
-        vscode.workspace.fs.readFile(uri)
+        vscode.workspace.fs.readFile(uri),
       ]);
       const mtime = new Date(stat.mtime).toLocaleDateString();
       let sectionCount = 0;
       try {
         const data = JSON.parse(Buffer.from(raw).toString());
         if (Array.isArray(data.cells)) {
-          sectionCount = data.cells.filter((c: any) =>
-            c.kind === 'markdown' && /^#{1,3}\s/.test(c.value ?? '')
+          sectionCount = data.cells.filter((c: { kind?: string; value?: string }) =>
+            c.kind === 'markdown' && /^#{1,3}\s/.test(c.value ?? ''),
           ).length;
         }
       } catch { /* malformed file */ }

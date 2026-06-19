@@ -4,6 +4,10 @@ import { PostgresMetadata } from '../common/types';
 import { DatabaseTreeItem, DatabaseTreeProvider } from '../providers/DatabaseTreeProvider';
 import { ConnectionManager } from '../services/ConnectionManager';
 import { SecretStorageService } from '../services/SecretStorageService';
+import {
+  applyLocalDeleteCloudChoice,
+  resolveDeleteCloudChoice,
+} from '../features/sync/localDeletePrompt';
 import { resolvePgPassPassword } from '../utils/pgPassUtils';
 import { ErrorHandlers } from './helper';
 import { debugLog } from '../common/logger';
@@ -145,6 +149,15 @@ export async function cmdDisconnectDatabase(item: DatabaseTreeItem, context: vsc
                 return;
             }
 
+            const cloudChoice = await resolveDeleteCloudChoice(
+                context,
+                String(item.connectionId),
+                connectionToDelete.name || String(item.label),
+            );
+            if (!cloudChoice) {
+                return;
+            }
+
             // Remove the connection info from settings
             const updatedConnections = connections.filter(c => c.id !== item.connectionId);
             await config.update('postgresExplorer.connections', updatedConnections, vscode.ConfigurationTarget.Global);
@@ -170,6 +183,8 @@ export async function cmdDisconnectDatabase(item: DatabaseTreeItem, context: vsc
                 // Connection might not be open, that's okay
                 debugLog(`No active connection to close for ${item.connectionId}`);
             }
+
+            await applyLocalDeleteCloudChoice(String(item.connectionId), cloudChoice);
 
             // Refresh the tree view
             databaseTreeProvider?.refresh();

@@ -3,6 +3,7 @@ import * as https from 'https';
 import * as http from 'http';
 import { URL } from 'url';
 import { SecretStorageService } from './SecretStorageService';
+import { getDeviceName } from '../features/sync/deviceId';
 
 export type LicenseTier = 'free' | 'sponsor' | 'singularity';
 
@@ -410,11 +411,31 @@ export class LicenseService {
     return tier === 'free' ? 'Free' : tier[0].toUpperCase() + tier.slice(1);
   }
 
-  private callValidate(licenseKey: string): Promise<ValidateResponse> {
-    return this.callApi<ValidateResponse>('/license/validate', {
+  public async refreshDeviceName(deviceName?: string): Promise<void> {
+    if (!this.cache?.licenseKey) {
+      return;
+    }
+    const resolved = (deviceName ?? getDeviceName(this.context) ?? '').trim();
+    if (!resolved) {
+      return;
+    }
+    try {
+      await this.callValidate(this.cache.licenseKey, resolved);
+    } catch {
+      // Best-effort — local name is already saved.
+    }
+  }
+
+  private callValidate(licenseKey: string, deviceName?: string): Promise<ValidateResponse> {
+    const payload: Record<string, string> = {
       licenseKey,
       instanceId: vscode.env.machineId,
-    });
+    };
+    const resolvedName = (deviceName ?? getDeviceName(this.context) ?? '').trim();
+    if (resolvedName) {
+      payload.deviceName = resolvedName;
+    }
+    return this.callApi<ValidateResponse>('/license/validate', payload);
   }
 
   private callApi<T>(path: string, payload: Record<string, unknown>): Promise<T> {

@@ -12,8 +12,25 @@ export function getOrCreateDeviceId(context: vscode.ExtensionContext): string {
   return id;
 }
 
+export function defaultDeviceName(): string {
+  const host = vscode.env.appName?.trim();
+  const suffix = vscode.env.machineId.slice(0, 8);
+  if (host && suffix) {
+    return `${host} (${suffix})`;
+  }
+  return host || suffix || 'This device';
+}
+
 export function getDeviceName(context: vscode.ExtensionContext): string | undefined {
   return context.globalState.get<string>(SYNC_DEVICE_NAME_KEY);
+}
+
+export async function setDeviceName(context: vscode.ExtensionContext, name: string): Promise<void> {
+  const trimmed = name.trim();
+  if (!trimmed) {
+    throw new Error('Device name is required');
+  }
+  await context.globalState.update(SYNC_DEVICE_NAME_KEY, trimmed);
 }
 
 export async function ensureDeviceName(context: vscode.ExtensionContext): Promise<string> {
@@ -21,7 +38,7 @@ export async function ensureDeviceName(context: vscode.ExtensionContext): Promis
   if (existing) {
     return existing;
   }
-  const defaultName = vscode.env.machineId.slice(0, 8) || 'This device';
+  const defaultName = defaultDeviceName();
   const name = await vscode.window.showInputBox({
     title: 'Name this device',
     prompt: 'Shown in sync history and device list',

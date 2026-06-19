@@ -317,7 +317,7 @@ export async function cmdSyncPreview(): Promise<void> {
 }
 
 export async function cmdSyncConflicts(): Promise<void> {
-  await vscode.commands.executeCommand('postgres-explorer.settingsHub', { section: 'sync', tab: 'items' });
+  await vscode.commands.executeCommand('postgres-explorer.settingsHub', { section: 'sync', tab: 'local' });
 }
 
 export async function cmdSyncReplaceLocal(): Promise<void> {
@@ -329,7 +329,7 @@ export async function cmdSyncReplaceLocal(): Promise<void> {
     prompt: 'Type REPLACE to wipe local synced state and pull everything fresh from the cloud',
     ignoreFocusOut: true,
   });
-  if (typed !== 'REPLACE') {
+  if (typed?.trim() !== 'REPLACE') {
     return;
   }
   const ok = await SyncController.getInstance().replaceLocalWithCloud();
@@ -345,7 +345,7 @@ export async function cmdSyncReplaceRemote(): Promise<void> {
     prompt: "Type REPLACE to wipe the cloud copy and push this device's data",
     ignoreFocusOut: true,
   });
-  if (typed !== 'REPLACE') {
+  if (typed?.trim() !== 'REPLACE') {
     return;
   }
   const ok = await SyncController.getInstance().replaceCloudWithLocal();
@@ -361,7 +361,7 @@ export async function cmdSyncRebuildIndex(): Promise<void> {
     prompt: 'Type REPLACE to rebuild the local sync index from disk',
     ignoreFocusOut: true,
   });
-  if (typed !== 'REPLACE') {
+  if (typed?.trim() !== 'REPLACE') {
     return;
   }
   const count = await SyncController.getInstance().rebuildSyncIndex();

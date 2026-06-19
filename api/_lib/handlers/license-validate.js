@@ -21,7 +21,7 @@ module.exports = async (req, res) => {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
-  const { licenseKey, instanceId } = req.body || {};
+  const { licenseKey, instanceId, deviceName } = req.body || {};
   if (!licenseKey) {
     return res.status(400).json({ error: 'licenseKey is required' });
   }
@@ -79,13 +79,13 @@ module.exports = async (req, res) => {
         });
       }
       try {
-        await store.bindDevice(key, instanceId, { source: 'validate' });
+        await store.bindDevice(key, instanceId, { source: 'validate', deviceName: deviceName ? String(deviceName).trim() : undefined });
       } catch (err) {
         console.error('validate: failed to bind instance', err);
       }
     } else {
       try {
-        await store.bindDevice(key, instanceId, { source: 'validate' });
+        await store.bindDevice(key, instanceId, { source: 'validate', deviceName: deviceName ? String(deviceName).trim() : undefined });
       } catch (err) {
         console.error('validate: failed to refresh device', err);
       }

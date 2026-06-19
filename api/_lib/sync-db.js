@@ -423,9 +423,24 @@ async function upsertDevice(accountId, deviceId, deviceName) {
     INSERT INTO pgstudio_sync.sync_devices (account_id, device_id, device_name, last_seen)
     VALUES (${accountId}, ${deviceId}, ${deviceName || null}, now())
     ON CONFLICT (account_id, device_id) DO UPDATE SET
-      device_name = COALESCE(EXCLUDED.device_name, pgstudio_sync.sync_devices.device_name),
+      device_name = CASE
+        WHEN EXCLUDED.device_name IS NOT NULL THEN EXCLUDED.device_name
+        ELSE pgstudio_sync.sync_devices.device_name
+      END,
       last_seen = now()
   `;
+}
+
+async function updateDeviceName(accountId, deviceId, deviceName) {
+  if (!deviceId) {
+    return false;
+  }
+  const trimmed = String(deviceName || '').trim();
+  if (!trimmed) {
+    return false;
+  }
+  await upsertDevice(accountId, deviceId, trimmed);
+  return true;
 }
 
 async function listDevices(accountId) {
@@ -532,6 +547,7 @@ module.exports = {
   getAccountQuota,
   setAccountTier,
   upsertDevice,
+  updateDeviceName,
   listDevices,
   revokeDevice,
   markAccountInactive,

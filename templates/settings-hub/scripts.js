@@ -1270,17 +1270,17 @@ function populateDefaultProviders() {
 // Call it immediately
 populateDefaultProviders();
 
-// Add collapsed class to all provider cards and bind collapsible header events
-document.querySelectorAll('.ai-provider-card').forEach(card => {
+// Collapse provider cards in AI section only
+document.querySelectorAll('#section-ai .hub-setting-card').forEach((card) => {
   card.classList.add('collapsed');
 });
 
-document.querySelectorAll('.ai-provider-card-header').forEach(header => {
-  header.addEventListener('click', function(e) {
+document.querySelectorAll('#section-ai .hub-setting-card-header--collapsible').forEach((header) => {
+  header.addEventListener('click', function (e) {
     if (e.target.closest('a') || e.target.closest('button') || e.target.closest('input') || e.target.closest('select')) {
       return;
     }
-    const card = this.closest('.ai-provider-card');
+    const card = this.closest('.hub-setting-card');
     if (card) {
       card.classList.toggle('collapsed');
     }
@@ -1289,7 +1289,7 @@ document.querySelectorAll('.ai-provider-card-header').forEach(header => {
 
 // Global switch tab helper
 window.switchAiTab = function(tabName, cardId) {
-  const btn = document.querySelector(`.ai-tab-strip .ai-tab-btn[data-ai-tab="${tabName}"]`);
+  const btn = document.querySelector(`.hub-tab-strip .hub-tab-btn[data-hub-tab="${tabName}"]`);
   if (btn) {
     btn.click();
   }
@@ -1304,22 +1304,22 @@ window.switchAiTab = function(tabName, cardId) {
   }
 };
 
-// Tab switching logic
-document.querySelectorAll('.ai-tab-strip .ai-tab-btn').forEach(btn => {
+// AI tab switching (scoped to AI section only)
+document.querySelectorAll('#section-ai .hub-tab-strip .hub-tab-btn[data-hub-tab]').forEach((btn) => {
   btn.addEventListener('click', () => {
-    const tabName = btn.getAttribute('data-ai-tab');
-    
-    document.querySelectorAll('.ai-tab-strip .ai-tab-btn').forEach(b => {
+    const tabName = btn.getAttribute('data-hub-tab');
+
+    document.querySelectorAll('#section-ai .hub-tab-strip .hub-tab-btn[data-hub-tab]').forEach((b) => {
       b.classList.remove('active');
       b.setAttribute('aria-selected', 'false');
     });
-    document.querySelectorAll('.ai-tab-panel').forEach(p => {
+    document.querySelectorAll('#section-ai .hub-tab-panel').forEach((p) => {
       p.classList.remove('active');
     });
-    
+
     btn.classList.add('active');
     btn.setAttribute('aria-selected', 'true');
-    const panel = $('ai-tab-' + tabName);
+    const panel = $('hub-tab-' + tabName);
     if (panel) {
       panel.classList.add('active');
     }
@@ -1329,7 +1329,7 @@ document.querySelectorAll('.ai-tab-strip .ai-tab-btn').forEach(btn => {
 function aiShowMessage(text, isError) {
   const target = aiSaveStatus;
   if (!target) return;
-  target.className = isError ? 'ai-save-status error' : 'ai-save-status success';
+  target.className = isError ? 'hub-save-status error' : 'hub-save-status success';
   target.textContent = text;
 }
 
@@ -1337,7 +1337,7 @@ function aiHideMessage() {
   const target = aiSaveStatus;
   if (!target) return;
   target.textContent = '';
-  target.className = 'ai-save-status';
+  target.className = 'hub-save-status';
 }
 
 function updateKeyStatusIcon(provider, hasKey) {
@@ -1345,11 +1345,11 @@ function updateKeyStatusIcon(provider, hasKey) {
   const card = $('card-' + provider);
   if (icon) {
     if (hasKey) {
-      icon.className = 'ai-key-status ok';
+      icon.className = 'hub-card-status-dot ok';
       icon.textContent = '✓';
       icon.title = (provider === 'github') ? 'Connected' : 'API key saved';
     } else {
-      icon.className = 'ai-key-status empty';
+      icon.className = 'hub-card-status-dot empty';
       icon.textContent = '○';
       icon.title = (provider === 'github') ? 'Not connected' : 'No API key saved';
     }
@@ -1606,7 +1606,7 @@ document.querySelectorAll('.ai-test-btn').forEach(btn => {
     const statusSpan = $('card-status-' + provider);
     if (statusSpan) {
       statusSpan.textContent = 'Testing…';
-      statusSpan.className = 'ai-card-status loading';
+      statusSpan.className = 'hub-card-status loading';
     }
     this.disabled = true;
     
@@ -1662,7 +1662,7 @@ document.querySelectorAll('.list-models-btn').forEach(btn => {
       if (!apiKey && provider !== 'custom') {
         if (statusSpan) {
           statusSpan.textContent = 'Please enter API key';
-          statusSpan.className = 'ai-card-status error';
+          statusSpan.className = 'hub-card-status error';
         }
         return;
       }
@@ -1673,7 +1673,7 @@ document.querySelectorAll('.list-models-btn').forEach(btn => {
       if (!endpoint) {
         if (statusSpan) {
           statusSpan.textContent = 'Please enter endpoint';
-          statusSpan.className = 'ai-card-status error';
+          statusSpan.className = 'hub-card-status error';
         }
         return;
       }
@@ -1686,7 +1686,7 @@ document.querySelectorAll('.list-models-btn').forEach(btn => {
     this.textContent = 'Loading...';
     if (statusSpan) {
       statusSpan.textContent = 'Loading models…';
-      statusSpan.className = 'ai-card-status loading';
+      statusSpan.className = 'hub-card-status loading';
     }
     
     autoLoadModels(provider, apiKey, endpoint, { force: true });
@@ -1712,7 +1712,7 @@ document.querySelectorAll('.list-default-models-btn').forEach(btn => {
       if (!apiKey && provider !== 'custom') {
         if (statusSpan) {
           statusSpan.textContent = 'Please enter API key in config tab';
-          statusSpan.className = 'ai-card-status error';
+          statusSpan.className = 'hub-card-status error';
         }
         return;
       }
@@ -1723,7 +1723,7 @@ document.querySelectorAll('.list-default-models-btn').forEach(btn => {
       if (!endpoint) {
         if (statusSpan) {
           statusSpan.textContent = 'Please enter endpoint in config tab';
-          statusSpan.className = 'ai-card-status error';
+          statusSpan.className = 'hub-card-status error';
         }
         return;
       }
@@ -1737,7 +1737,7 @@ document.querySelectorAll('.list-default-models-btn').forEach(btn => {
     this.textContent = 'Loading...';
     if (statusSpan) {
       statusSpan.textContent = 'Loading models…';
-      statusSpan.className = 'ai-card-status loading';
+      statusSpan.className = 'hub-card-status loading';
     }
     
     autoLoadModels(provider, apiKey, endpoint, { scope, force: true });
@@ -1754,7 +1754,7 @@ document.querySelectorAll('.test-default-btn').forEach(btn => {
     const statusSpan = $('default' + scope + 'Status');
     if (statusSpan) {
       statusSpan.textContent = 'Testing…';
-      statusSpan.className = 'ai-card-status loading';
+      statusSpan.className = 'hub-card-status loading';
     }
     this.disabled = true;
     
@@ -1907,7 +1907,7 @@ function handleModelsListed(provider, scope, models) {
     const statusSpan = $('default' + scope + 'Status');
     if (statusSpan) {
       statusSpan.textContent = '✓ Models loaded';
-      statusSpan.className = 'ai-card-status success';
+      statusSpan.className = 'hub-card-status success';
     }
   } else if (provider) {
     const selectEl = $('model-' + provider + '-select');
@@ -1917,7 +1917,7 @@ function handleModelsListed(provider, scope, models) {
     const statusSpan = $('card-status-' + provider);
     if (statusSpan) {
       statusSpan.textContent = '✓ Models loaded';
-      statusSpan.className = 'ai-card-status success';
+      statusSpan.className = 'hub-card-status success';
     }
   }
   
@@ -1929,7 +1929,7 @@ function handleModelsListed(provider, scope, models) {
       const statusSpan = $('defaultNotebookStatus');
       if (statusSpan) {
         statusSpan.textContent = '✓ Models loaded';
-        statusSpan.className = 'ai-card-status success';
+        statusSpan.className = 'hub-card-status success';
       }
     }
     if (chatSelect && chatSelect.value === provider) {
@@ -1937,7 +1937,7 @@ function handleModelsListed(provider, scope, models) {
       const statusSpan = $('defaultChatStatus');
       if (statusSpan) {
         statusSpan.textContent = '✓ Models loaded';
-        statusSpan.className = 'ai-card-status success';
+        statusSpan.className = 'hub-card-status success';
       }
     }
     populateModelDropdown($('model-' + provider + '-select'), $('model-' + provider), models);
@@ -1949,13 +1949,13 @@ function handleModelsListError(provider, scope, error) {
     const statusSpan = $('default' + scope + 'Status');
     if (statusSpan) {
       statusSpan.textContent = 'Failed to load models';
-      statusSpan.className = 'ai-card-status error';
+      statusSpan.className = 'hub-card-status error';
     }
   } else if (provider) {
     const statusSpan = $('card-status-' + provider);
     if (statusSpan) {
       statusSpan.textContent = 'Failed to load models';
-      statusSpan.className = 'ai-card-status error';
+      statusSpan.className = 'hub-card-status error';
     }
   }
   aiShowMessage('✗ Failed to list models: ' + error, true);
@@ -2069,7 +2069,7 @@ $('defaultNotebookProvider')?.addEventListener('change', function() {
     const statusSpan = $('defaultNotebookStatus');
     if (statusSpan) {
       statusSpan.textContent = 'Loading models…';
-      statusSpan.className = 'ai-card-status loading';
+      statusSpan.className = 'hub-card-status loading';
     }
     
     autoLoadModels(prov, key || '', endpoint, { scope: 'Notebook' });
@@ -2087,7 +2087,7 @@ $('defaultNotebookProvider')?.addEventListener('change', function() {
     const statusSpan = $('defaultNotebookStatus');
     if (statusSpan) {
       statusSpan.textContent = '';
-      statusSpan.className = 'ai-card-status';
+      statusSpan.className = 'hub-card-status';
     }
   }
   
@@ -2135,7 +2135,7 @@ $('defaultChatProvider')?.addEventListener('change', function() {
     const statusSpan = $('defaultChatStatus');
     if (statusSpan) {
       statusSpan.textContent = 'Loading models…';
-      statusSpan.className = 'ai-card-status loading';
+      statusSpan.className = 'hub-card-status loading';
     }
     
     autoLoadModels(prov, key || '', endpoint, { scope: 'Chat' });
@@ -2153,7 +2153,7 @@ $('defaultChatProvider')?.addEventListener('change', function() {
     const statusSpan = $('defaultChatStatus');
     if (statusSpan) {
       statusSpan.textContent = '';
-      statusSpan.className = 'ai-card-status';
+      statusSpan.className = 'hub-card-status';
     }
   }
   
@@ -2181,7 +2181,7 @@ function handleAiMessage(message) {
             const statusSpan = $('defaultNotebookStatus');
             if (statusSpan) {
               statusSpan.textContent = 'Loading models…';
-              statusSpan.className = 'ai-card-status loading';
+              statusSpan.className = 'hub-card-status loading';
             }
             const selectEl = $('defaultNotebookModel-select');
             if (selectEl) {
@@ -2218,7 +2218,7 @@ function handleAiMessage(message) {
             const statusSpan = $('defaultChatStatus');
             if (statusSpan) {
               statusSpan.textContent = 'Loading models…';
-              statusSpan.className = 'ai-card-status loading';
+              statusSpan.className = 'hub-card-status loading';
             }
             const selectEl = $('defaultChatModel-select');
             if (selectEl) {
@@ -2256,7 +2256,7 @@ function handleAiMessage(message) {
         const statusSpan = $('default' + scope + 'Status');
         if (statusSpan) {
           statusSpan.textContent = '✓ Connection successful!';
-          statusSpan.className = 'ai-card-status success';
+          statusSpan.className = 'hub-card-status success';
         }
         activeTestScope = null;
       } else if (activeTestProvider) {
@@ -2264,7 +2264,7 @@ function handleAiMessage(message) {
         const statusSpan = $('card-status-' + provider);
         if (statusSpan) {
           statusSpan.textContent = '✓ Connection successful!';
-          statusSpan.className = 'ai-card-status success';
+          statusSpan.className = 'hub-card-status success';
         }
         activeTestProvider = null;
       }
@@ -2277,7 +2277,7 @@ function handleAiMessage(message) {
         const statusSpan = $('default' + scope + 'Status');
         if (statusSpan) {
           statusSpan.textContent = '✗ Connection failed';
-          statusSpan.className = 'ai-card-status error';
+          statusSpan.className = 'hub-card-status error';
         }
         activeTestScope = null;
       } else if (activeTestProvider) {
@@ -2285,7 +2285,7 @@ function handleAiMessage(message) {
         const statusSpan = $('card-status-' + provider);
         if (statusSpan) {
           statusSpan.textContent = '✗ Connection failed';
-          statusSpan.className = 'ai-card-status error';
+          statusSpan.className = 'hub-card-status error';
         }
         activeTestProvider = null;
       }
@@ -2490,18 +2490,27 @@ $('syncPullBtn')?.addEventListener('click', () => vscode.postMessage({ command: 
 $('syncPushBtn')?.addEventListener('click', () => vscode.postMessage({ command: 'sync/push' }));
 $('syncPreviewRefreshBtn')?.addEventListener('click', () => vscode.postMessage({ command: 'sync/preview' }));
 $('syncApplyPreviewBtn')?.addEventListener('click', () => vscode.postMessage({ command: 'sync/applyPreview' }));
+$('syncLocalRefreshBtn')?.addEventListener('click', () => vscode.postMessage({ command: 'sync/local' }));
+$('syncCloudRefreshBtn')?.addEventListener('click', () => vscode.postMessage({ command: 'sync/local' }));
 $('syncReplaceLocalBtn')?.addEventListener('click', () => vscode.postMessage({ command: 'sync/replaceLocal' }));
 $('syncReplaceRemoteBtn')?.addEventListener('click', () => vscode.postMessage({ command: 'sync/replaceRemote' }));
 $('syncRebuildIndexBtn')?.addEventListener('click', () => vscode.postMessage({ command: 'sync/rebuildIndex' }));
 $('syncRepairBtn')?.addEventListener('click', () => vscode.postMessage({ command: 'sync/repair' }));
 $('syncDiagnosticsBtn')?.addEventListener('click', () => vscode.postMessage({ command: 'sync/diagnostics' }));
+$('syncDeviceNameSaveBtn')?.addEventListener('click', () => saveSyncDeviceName());
+$('syncDeviceNameInput')?.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    saveSyncDeviceName();
+  }
+});
 $('syncAdvancedSetupBtn')?.addEventListener('click', () => vscode.postMessage({ command: 'sync/setup', mode: 'advanced' }));
 $('syncWizardCloseBtn')?.addEventListener('click', () => { $('syncWizardBackdrop').hidden = true; });
-document.querySelectorAll('.subnav-tab').forEach((btn) => {
+document.querySelectorAll('#section-sync .hub-tab-btn[data-sync-tab]').forEach((btn) => {
   btn.addEventListener('click', () => showSyncTab(btn.getAttribute('data-sync-tab')));
 });
 $('syncConflictsLink')?.addEventListener('click', () => showSyncTab('conflicts'));
-$('syncQuickPending')?.addEventListener('click', () => showSyncTab('items'));
+$('syncQuickPending')?.addEventListener('click', () => showSyncTab('local'));
 $('syncQuickConflicts')?.addEventListener('click', () => showSyncTab('conflicts'));
 
 const syncWizardState = {
@@ -2771,6 +2780,7 @@ function showSyncTab(tab) {
     overview: 'syncTabOverview',
     settings: 'syncTabSettings',
     items: 'syncTabItems',
+    local: 'syncTabItems',
     preview: 'syncTabPreview',
     conflicts: 'syncTabConflicts',
     history: 'syncTabHistory',
@@ -2778,7 +2788,10 @@ function showSyncTab(tab) {
     devices: 'syncTabDevices',
     advanced: 'syncTabAdvanced',
   };
-  document.querySelectorAll('.subnav-tab').forEach((b) => b.classList.toggle('active', b.getAttribute('data-sync-tab') === tab));
+  document.querySelectorAll('#section-sync .hub-tab-btn[data-sync-tab]').forEach((b) => {
+    b.classList.toggle('active', b.getAttribute('data-sync-tab') === tab);
+    b.setAttribute('aria-selected', b.getAttribute('data-sync-tab') === tab ? 'true' : 'false');
+  });
   Object.entries(tabIdMap).forEach(([key, id]) => {
     const el = $(id);
     if (el) { el.hidden = key !== tab; }
@@ -2789,8 +2802,8 @@ function showSyncTab(tab) {
   if (tab === 'devices') { vscode.postMessage({ command: 'sync/devices' }); }
   if (tab === 'preview') { vscode.postMessage({ command: 'sync/preview' }); }
   if (tab === 'settings') { vscode.postMessage({ command: 'connections/load' }); }
-  if (tab === 'items') {
-    vscode.postMessage({ command: 'sync/items' });
+  if (tab === 'items' || tab === 'local') {
+    vscode.postMessage({ command: 'sync/local' });
     vscode.postMessage({ command: 'sync/pending' });
   }
 }
@@ -2804,11 +2817,24 @@ $('syncWizardBackBtn')?.addEventListener('click', () => {
 
 function renderPreviewList(el, items) {
   el.textContent = '';
-  if (!items?.length) { el.textContent = 'None'; return; }
+  if (!items?.length) {
+    const empty = document.createElement('div');
+    empty.className = 'hub-empty';
+    empty.textContent = 'None';
+    el.appendChild(empty);
+    return;
+  }
   items.forEach((item) => {
     const row = document.createElement('div');
-    row.className = 'sync-preview-row';
-    row.textContent = `[${item.changeType}] ${item.name || item.id} (${item.kind})`;
+    row.className = 'hub-list-row';
+    const main = document.createElement('div');
+    main.className = 'hub-list-row-main';
+    main.textContent = `${item.name || item.id} (${item.kind})`;
+    const meta = document.createElement('span');
+    meta.className = 'hub-list-row-meta';
+    meta.textContent = item.changeType || '';
+    row.appendChild(main);
+    row.appendChild(meta);
     el.appendChild(row);
   });
 }
@@ -2817,19 +2843,31 @@ function renderConflicts(conflicts) {
   const el = $('syncConflictsList');
   el.textContent = '';
   updateSyncConflictBadges(conflicts?.length || 0);
-  if (!conflicts?.length) { el.textContent = 'No conflicts.'; return; }
+  if (!conflicts?.length) {
+    const empty = document.createElement('div');
+    empty.className = 'hub-empty';
+    empty.textContent = 'No conflicts.';
+    el.appendChild(empty);
+    return;
+  }
   conflicts.forEach((c) => {
     const row = document.createElement('div');
-    row.className = 'sync-conflict-row';
-    row.innerHTML = `<strong>${c.name || c.id}</strong> <span class="label-hint">${c.source}</span>`;
+    row.className = 'hub-list-row';
+    const main = document.createElement('div');
+    main.className = 'hub-list-row-main';
+    main.innerHTML = `<strong>${c.name || c.id}</strong> <span class="hub-list-row-meta">${c.source || ''}</span>`;
+    const actions = document.createElement('div');
+    actions.className = 'hub-list-row-actions';
     ['keepMine', 'keepTheirs', 'keepBoth', 'delete', 'diff'].forEach((action) => {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'btn-secondary btn-sm';
       btn.textContent = action;
       btn.addEventListener('click', () => vscode.postMessage({ command: 'sync/resolveConflict', conflictId: c.id, resolveAction: action }));
-      row.appendChild(btn);
+      actions.appendChild(btn);
     });
+    row.appendChild(main);
+    row.appendChild(actions);
     el.appendChild(row);
   });
 }
@@ -2873,6 +2911,80 @@ const SYNC_ACTION_LABELS = {
   rename: 'Rename',
   delete: 'Delete',
 };
+
+function fillSyncThisDeviceCard(thisDevice) {
+  const input = $('syncDeviceNameInput');
+  const hint = $('syncDeviceIdHint');
+  if (!input || !hint || !thisDevice) {
+    return;
+  }
+  input.value = thisDevice.deviceName || thisDevice.suggestedName || '';
+  hint.textContent = `Device ID: ${thisDevice.deviceId}`;
+}
+
+function saveSyncDeviceName() {
+  const input = $('syncDeviceNameInput');
+  const msg = $('syncDeviceRenameMessage');
+  if (!input) {
+    return;
+  }
+  const name = input.value.trim();
+  if (!name) {
+    if (msg) {
+      msg.className = 'status-line error';
+      msg.textContent = 'Enter a device name.';
+    }
+    return;
+  }
+  if (msg) {
+    msg.className = 'status-line';
+    msg.textContent = 'Saving…';
+  }
+  vscode.postMessage({ command: 'sync/renameDevice', deviceName: name });
+}
+
+function renderSyncDeviceRow(d) {
+  const row = document.createElement('div');
+  row.className = 'hub-list-row';
+  const main = document.createElement('div');
+  main.className = 'hub-list-row-main';
+
+  const title = document.createElement('div');
+  const strong = document.createElement('strong');
+  strong.textContent = d.deviceName || 'Unnamed device';
+  title.appendChild(strong);
+  if (d.isThisDevice) {
+    const badge = document.createElement('span');
+    badge.className = 'hub-badge';
+    badge.textContent = ' this device';
+    title.appendChild(badge);
+  }
+  main.appendChild(title);
+
+  const idLine = document.createElement('div');
+  idLine.className = 'label-hint';
+  idLine.textContent = d.deviceId;
+  main.appendChild(idLine);
+
+  const meta = document.createElement('span');
+  meta.className = 'hub-list-row-meta';
+  meta.textContent = d.lastSeen ? new Date(d.lastSeen).toLocaleString() : '—';
+  row.appendChild(main);
+  row.appendChild(meta);
+
+  if (!d.isThisDevice) {
+    const actions = document.createElement('div');
+    actions.className = 'hub-list-row-actions';
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn-secondary btn-sm';
+    btn.textContent = 'Revoke';
+    btn.addEventListener('click', () => vscode.postMessage({ command: 'sync/revokeDevice', deviceId: d.deviceId }));
+    actions.appendChild(btn);
+    row.appendChild(actions);
+  }
+  return row;
+}
 
 function formatSyncTimestamp(ms) {
   if (!ms) { return '—'; }
@@ -3074,6 +3186,10 @@ function getSyncItemsKindFilter() {
   return $('syncItemsKindFilter')?.value || 'all';
 }
 
+function formatSyncItemPresence(item) {
+  return item.presence === 'cloud-only' ? 'Cloud only' : 'This device';
+}
+
 function renderSyncItems(items) {
   syncItemsCache = items || [];
   const filter = getSyncItemsKindFilter();
@@ -3087,11 +3203,11 @@ function renderSyncItems(items) {
   if (!filtered.length) {
     const tr = document.createElement('tr');
     const td = document.createElement('td');
-    td.colSpan = 5;
+    td.colSpan = 7;
     td.className = 'empty-state';
     td.textContent = syncItemsCache.length
       ? 'No items match this filter.'
-      : 'No items are being synced yet.';
+      : 'No sync items on this device or in cloud.';
     tr.appendChild(td);
     body.appendChild(tr);
     return;
@@ -3109,14 +3225,28 @@ function renderSyncItems(items) {
     kindTd.textContent = SYNC_KIND_LABELS[item.kind] || item.kind;
     tr.appendChild(kindTd);
 
+    const detailTd = document.createElement('td');
+    detailTd.textContent = item.detail || '—';
+    if (!item.detail) { detailTd.classList.add('label-hint'); }
+    tr.appendChild(detailTd);
+
     const updatedTd = document.createElement('td');
     updatedTd.textContent = formatSyncTimestamp(item.updatedAt);
     tr.appendChild(updatedTd);
 
+    const presenceTd = document.createElement('td');
+    presenceTd.textContent = formatSyncItemPresence(item);
+    if (item.presence === 'cloud-only') {
+      presenceTd.classList.add('label-hint');
+    }
+    tr.appendChild(presenceTd);
+
     const statusTd = document.createElement('td');
-    const statusLabel = formatSyncItemStatus(item);
+    const statusLabel = item.presence === 'cloud-only'
+      ? 'Not on device'
+      : formatSyncItemStatus(item);
     statusTd.textContent = statusLabel;
-    if (statusLabel === 'Excluded' || statusLabel === 'Local only') {
+    if (statusLabel === 'Excluded' || statusLabel === 'Local only' || statusLabel === 'Not on device') {
       statusTd.classList.add('label-hint');
     }
     if (statusLabel === 'Pending') {
@@ -3125,22 +3255,48 @@ function renderSyncItems(items) {
     tr.appendChild(statusTd);
 
     const actionTd = document.createElement('td');
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'btn-secondary btn-sm';
-    if (item.excluded) {
+    if (item.presence === 'cloud-only') {
+      const importBtn = document.createElement('button');
+      importBtn.type = 'button';
+      importBtn.className = 'btn-secondary btn-sm';
+      importBtn.textContent = 'Import';
+      importBtn.addEventListener('click', () => {
+        vscode.postMessage({ command: 'sync/importCloudItem', itemId: item.id });
+      });
+      actionTd.appendChild(importBtn);
+
+      const deleteBtn = document.createElement('button');
+      deleteBtn.type = 'button';
+      deleteBtn.className = 'btn-secondary btn-sm btn-danger-text';
+      deleteBtn.textContent = 'Delete from cloud';
+      deleteBtn.addEventListener('click', () => {
+        vscode.postMessage({
+          command: 'sync/deleteCloudItem',
+          itemId: item.id,
+          itemName: item.name || item.id,
+        });
+      });
+      actionTd.appendChild(deleteBtn);
+    } else if (item.excluded && item.presence !== 'cloud-only') {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'btn-secondary btn-sm';
       btn.textContent = 'Resume';
       btn.addEventListener('click', () => {
         vscode.postMessage({ command: 'sync/resumeItem', itemId: item.id });
       });
+      actionTd.appendChild(btn);
     } else {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'btn-secondary btn-sm';
       btn.textContent = 'Stop syncing';
       btn.classList.add('btn-danger-text');
       btn.addEventListener('click', () => {
         vscode.postMessage({ command: 'sync/stopSyncingItem', itemId: item.id, itemName: item.name || item.id });
       });
+      actionTd.appendChild(btn);
     }
-    actionTd.appendChild(btn);
     tr.appendChild(actionTd);
 
     body.appendChild(tr);
@@ -3235,7 +3391,7 @@ function handleSyncMessage(message) {
       $('syncSectionActions').hidden = !(sync.featureEnabled && sync.configured);
 
       if (sync.featureEnabled && sync.configured) {
-        vscode.postMessage({ command: 'sync/items' });
+        vscode.postMessage({ command: 'sync/local' });
         vscode.postMessage({ command: 'sync/pending' });
         $('syncHealthHeader').hidden = false;
         const statusLabel = SYNC_STATUS_LABELS[sync.status] || sync.status;
@@ -3303,6 +3459,10 @@ function handleSyncMessage(message) {
       break;
     }
     case 'sync/items':
+    case 'sync/local':
+      renderSyncItems(message.items || []);
+      break;
+    case 'sync/cloud':
       renderSyncItems(message.items || []);
       break;
     case 'sync/pending':
@@ -3357,42 +3517,80 @@ function handleSyncMessage(message) {
       const inEl = $('syncIncomingShares');
       outEl.textContent = '';
       inEl.textContent = '';
-      (message.outgoing || []).forEach((s) => {
+      const outgoing = message.outgoing || [];
+      const incoming = message.incoming || [];
+      if (!outgoing.length) {
+        const empty = document.createElement('div');
+        empty.className = 'hub-empty';
+        empty.textContent = 'No outgoing shares.';
+        outEl.appendChild(empty);
+      }
+      outgoing.forEach((s) => {
         const row = document.createElement('div');
-        row.textContent = `${s.name || s.shareId} → ${s.granteeEmail}${s.revoked ? ' (revoked)' : ''} `;
+        row.className = 'hub-list-row';
+        const main = document.createElement('div');
+        main.className = 'hub-list-row-main';
+        main.textContent = `${s.name || s.shareId} → ${s.granteeEmail}${s.revoked ? ' (revoked)' : ''}`;
+        row.appendChild(main);
         if (!s.revoked) {
+          const actions = document.createElement('div');
+          actions.className = 'hub-list-row-actions';
           const btn = document.createElement('button');
           btn.type = 'button';
           btn.className = 'btn-secondary btn-sm';
           btn.textContent = 'Revoke';
           btn.addEventListener('click', () => vscode.postMessage({ command: 'sync/revokeShare', shareId: s.shareId }));
-          row.appendChild(btn);
+          actions.appendChild(btn);
+          row.appendChild(actions);
         }
         outEl.appendChild(row);
       });
-      (message.incoming || []).forEach((s) => {
+      if (!incoming.length) {
+        const empty = document.createElement('div');
+        empty.className = 'hub-empty';
+        empty.textContent = 'No incoming shares.';
+        inEl.appendChild(empty);
+      }
+      incoming.forEach((s) => {
         const row = document.createElement('div');
-        row.textContent = `${s.name || s.shareId} from ${s.ownerEmail}`;
+        row.className = 'hub-list-row';
+        const main = document.createElement('div');
+        main.className = 'hub-list-row-main';
+        main.textContent = `${s.name || s.shareId} from ${s.ownerEmail}`;
+        row.appendChild(main);
         inEl.appendChild(row);
       });
       break;
     }
     case 'sync/devices': {
+      fillSyncThisDeviceCard(message.thisDevice);
       const el = $('syncDevicesList');
       el.textContent = '';
-      (message.devices || []).forEach((d) => {
-        const row = document.createElement('div');
-        row.textContent = `${d.deviceName || d.deviceId}${d.isThisDevice ? ' (this device)' : ''} — ${d.lastSeen ? new Date(d.lastSeen).toLocaleString() : ''} `;
-        if (!d.isThisDevice) {
-          const btn = document.createElement('button');
-          btn.type = 'button';
-          btn.className = 'btn-secondary btn-sm';
-          btn.textContent = 'Revoke';
-          btn.addEventListener('click', () => vscode.postMessage({ command: 'sync/revokeDevice', deviceId: d.deviceId }));
-          row.appendChild(btn);
-        }
-        el.appendChild(row);
+      const devices = message.devices || [];
+      if (!devices.length) {
+        const empty = document.createElement('div');
+        empty.className = 'hub-empty';
+        empty.textContent = 'No other devices registered yet.';
+        el.appendChild(empty);
+        break;
+      }
+      devices.forEach((d) => {
+        el.appendChild(renderSyncDeviceRow(d));
       });
+      break;
+    }
+    case 'sync/deviceRenameResult': {
+      const msg = $('syncDeviceRenameMessage');
+      if (!msg) {
+        break;
+      }
+      msg.className = 'status-line ' + (message.ok ? 'success' : 'error');
+      msg.textContent = message.ok
+        ? (message.warning || 'Device name saved.')
+        : (message.error || 'Could not save device name.');
+      if (message.ok && message.deviceName && $('syncDeviceNameInput')) {
+        $('syncDeviceNameInput').value = message.deviceName;
+      }
       break;
     }
     case 'sync/quota': {
@@ -3513,15 +3711,79 @@ $('licenseOwnerEmailInput').addEventListener('keydown', (e) => {
   }
 });
 
+function fillLicenseThisDeviceRename(lic) {
+  const box = $('licenseThisDeviceRename');
+  const input = $('licenseDeviceNameInput');
+  const hint = $('licenseDeviceIdHint');
+  if (!box || !input || !hint || !lic) {
+    return;
+  }
+  box.hidden = false;
+  input.value = lic.localDeviceName || '';
+  const hints = [];
+  if (lic.machineId) {
+    hints.push(`License ID: ${lic.machineId}`);
+  }
+  if (lic.syncDeviceId) {
+    hints.push(`Sync ID: ${lic.syncDeviceId}`);
+  }
+  hint.textContent = hints.join(' · ');
+}
+
+function saveLicenseDeviceName() {
+  const input = $('licenseDeviceNameInput');
+  const msg = $('licenseDeviceMessage');
+  if (!input) {
+    return;
+  }
+  const name = input.value.trim();
+  if (!name) {
+    if (msg) {
+      msg.className = 'status-line error';
+      msg.textContent = 'Enter a device name.';
+    }
+    return;
+  }
+  if (msg) {
+    msg.className = 'status-line';
+    msg.textContent = 'Saving…';
+  }
+  vscode.postMessage({ command: 'license/renameDevice', deviceName: name });
+}
+
+$('licenseDeviceNameSaveBtn')?.addEventListener('click', () => saveLicenseDeviceName());
+$('licenseDeviceNameInput')?.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    saveLicenseDeviceName();
+  }
+});
+
 function renderLicenseDevices(devices) {
   const body = $('licenseDevicesBody');
   body.replaceChildren();
   devices.forEach((d) => {
     const tr = document.createElement('tr');
     const machineTd = document.createElement('td');
-    const label = d.isCurrent ? 'this machine' : (d.instanceId || '').slice(0, 8) + '…';
-    machineTd.textContent = label;
-    if (d.isCurrent) machineTd.className = 'device-current';
+    const displayName = d.deviceName || 'Unnamed device';
+    const title = document.createElement('div');
+    const strong = document.createElement('strong');
+    strong.textContent = displayName;
+    title.appendChild(strong);
+    if (d.isCurrent) {
+      const badge = document.createElement('span');
+      badge.className = 'hub-badge';
+      badge.textContent = ' this device';
+      title.appendChild(badge);
+    }
+    machineTd.appendChild(title);
+    const idLine = document.createElement('div');
+    idLine.className = 'label-hint';
+    idLine.textContent = d.instanceId || '—';
+    machineTd.appendChild(idLine);
+    if (d.isCurrent) {
+      machineTd.className = 'device-current';
+    }
 
     const seenTd = document.createElement('td');
     seenTd.textContent = d.lastSeen
@@ -3675,6 +3937,7 @@ function handleLicenseMessage(message) {
         const used = lic.devices.length;
         const limit = lic.deviceLimit || used;
         $('licenseDevicesTitle').textContent = 'Devices (' + used + '/' + limit + ')';
+        fillLicenseThisDeviceRename(lic);
         renderLicenseDevices(lic.devices);
       }
 
@@ -3712,6 +3975,15 @@ function handleLicenseMessage(message) {
       const msg = $('licenseDeviceMessage');
       msg.className = 'status-line ' + (message.ok ? 'success' : 'error');
       msg.textContent = (message.ok ? '✓ ' : '✗ ') + message.message;
+      break;
+    }
+    case 'license/deviceRenameResult': {
+      const msg = $('licenseDeviceMessage');
+      msg.className = 'status-line ' + (message.ok ? 'success' : 'error');
+      msg.textContent = (message.ok ? '✓ ' : '✗ ') + (message.message || 'Device name saved.');
+      if (message.ok && message.deviceName && $('licenseDeviceNameInput')) {
+        $('licenseDeviceNameInput').value = message.deviceName;
+      }
       break;
     }
   }

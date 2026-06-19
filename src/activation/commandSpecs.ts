@@ -30,6 +30,11 @@ import { cmdAddRole, cmdAddUser, cmdDropRole, cmdEditRole, cmdGrantRevokeRole, c
 import { cmdCreateView, cmdDropView, cmdEditView, cmdRefreshView, cmdScriptCreate as cmdViewScriptCreate, cmdScriptSelect as cmdViewScriptSelect, cmdShowViewProperties, cmdViewData, cmdViewOperations } from '../commands/views';
 
 import { SettingsHubPanel, SettingsHubShowOptions } from '../features/settings/SettingsHubPanel';
+import {
+  cmdCreateNotebookFolder,
+  cmdMoveNotebook,
+  cmdRenameNotebookFolder,
+} from '../features/notebook/notebookFolderCommands';
 import { ConnectionUtils } from '../utils/connectionUtils';
 import { sentinelThemeSwapService } from '../extension';
 
@@ -670,11 +675,7 @@ export function getCommandSpecs(
       command: 'postgres-explorer.notebooks.delete',
       callback: async (item: NotebookTreeItem) => {
         if (!item?.uri) { return; }
-        const confirm = await vscode.window.showWarningMessage(
-          `Delete "${item.label as string}.pgsql"? This cannot be undone.`,
-          { modal: true }, 'Delete'
-        );
-        if (confirm !== 'Delete') { return; }
+        const notebookName = item.label as string;
         let syncId: string | undefined;
         try {
           const raw = await vscode.workspace.fs.readFile(item.uri);
@@ -684,28 +685,24 @@ export function getCommandSpecs(
         } catch {
           /* best-effort */
         }
+        const { isItemSyncedToCloud, resolveDeleteCloudChoice, applyLocalDeleteCloudChoice } =
+          await import('../features/sync/localDeletePrompt');
+        const synced = !!(syncId && isItemSyncedToCloud(context, syncId));
+        const cloudChoice = syncId
+          ? await resolveDeleteCloudChoice(context, syncId, notebookName)
+          : 'keep-cloud';
+        if (!cloudChoice) { return; }
+        if (!synced) {
+          const confirm = await vscode.window.showWarningMessage(
+            `Delete "${notebookName}.pgsql"? This cannot be undone.`,
+            { modal: true }, 'Delete'
+          );
+          if (confirm !== 'Delete') { return; }
+        }
         await vscode.workspace.fs.delete(item.uri, { recursive: false });
         if (syncId) {
-          try {
-            const { recordSyncActivity } = await import('../features/sync/SyncActivityLog');
-            // Do NOT remove the index entry here. The sync engine emits a cloud
-            // tombstone by walking syncedIds() for items that were synced before
-            // and are now gone locally (buildOps delete branch). Removing it up
-            // front strips the compare-and-swap base, so the delete would never
-            // propagate to the cloud or other devices. recordAccepted() prunes
-            // the index once the tombstone is acknowledged.
-            recordSyncActivity({
-              kind: 'notebook',
-              action: 'delete',
-              itemId: syncId,
-              name: item.label as string,
-            });
-          } catch {
-            /* best-effort */
-          }
+          await applyLocalDeleteCloudChoice(syncId, cloudChoice);
         }
-        const { triggerInstantSync } = await import('../features/sync/syncTriggers');
-        triggerInstantSync();
         notebooksTreeProvider?.refresh();
       }
     },
@@ -725,6 +722,24 @@ export function getCommandSpecs(
         triggerInstantSync();
         notebooksTreeProvider?.refresh();
       }
+    },
+    {
+      command: 'postgres-explorer.notebooks.createFolder',
+      callback: async (item?: NotebookTreeItem) => {
+        await cmdCreateNotebookFolder(context, item, notebooksTreeProvider, context.globalStorageUri);
+      },
+    },
+    {
+      command: 'postgres-explorer.notebooks.renameFolder',
+      callback: async (item: NotebookTreeItem) => {
+        await cmdRenameNotebookFolder(context, item, notebooksTreeProvider);
+      },
+    },
+    {
+      command: 'postgres-explorer.notebooks.moveNotebook',
+      callback: async (item: NotebookTreeItem) => {
+        await cmdMoveNotebook(context, item, notebooksTreeProvider, context.globalStorageUri);
+      },
     },
     {
       command: 'postgres-explorer.refresh',

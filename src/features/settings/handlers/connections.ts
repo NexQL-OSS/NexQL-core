@@ -22,6 +22,10 @@ import {
 } from '../../../lib/platform/connectionPresets';
 import { isSupportedPostgresVersion } from '../../../lib/platform/pgVersionSupport';
 import { isTransactionPooler } from '../../../lib/platform/detectPlatform';
+import {
+  applyLocalDeleteCloudChoice,
+  resolveDeleteCloudChoice,
+} from '../../sync/localDeletePrompt';
 import type { SettingsHubHostContext, SettingsHubMessage, SettingsSectionHandler } from '../types';
 
 function resolvePlatformPreset(
@@ -349,15 +353,34 @@ export class ConnectionsSectionHandler implements SettingsSectionHandler {
 
   private async delete(id: string): Promise<void> {
     try {
+      const connection = getStoredConnections().find((c) => c.id === id);
+      if (!connection) {
+        this.host.post({ type: 'connections/error', error: `Connection not found: ${id}` });
+        return;
+      }
+
+      const cloudChoice = await resolveDeleteCloudChoice(
+        this.host.extensionContext,
+        id,
+        connection.name || id,
+      );
+      if (!cloudChoice) {
+        return;
+      }
+
       const remaining = getStoredConnections().filter((c) => c.id !== id);
-      await vscode.workspace
-        .getConfiguration()
-        .update('postgresExplorer.connections', remaining, vscode.ConfigurationTarget.Global);
+      await writeConnectionsToWorkspace(this.host.extensionContext, remaining);
       try {
         await SecretStorageService.getInstance().deletePassword(id);
       } catch {
         // No stored password for this connection.
       }
+      try {
+        await ConnectionManager.getInstance().closeAllConnectionsById(id);
+      } catch {
+        // Connection might not be open.
+      }
+      await applyLocalDeleteCloudChoice(id, cloudChoice);
       refreshTree();
       this.host.post({ type: 'connections/deleted', id });
       await this.sendList();

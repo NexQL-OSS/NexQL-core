@@ -3,9 +3,12 @@
 const { authenticateBearer } = require('../sync-auth');
 const { getAccountQuota } = require('../sync-db');
 
+const CLOUD_QUOTA_MB = 100;
+const BYTES_PER_MB = 1024 * 1024;
+
 const QUOTA_BYTES = {
-  sponsor: 500 * 1024 * 1024,
-  singularity: 5 * 1024 * 1024 * 1024,
+  sponsor: CLOUD_QUOTA_MB * BYTES_PER_MB,
+  singularity: CLOUD_QUOTA_MB * BYTES_PER_MB,
 };
 
 module.exports = async (req, res) => {

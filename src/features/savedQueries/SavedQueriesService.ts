@@ -3,6 +3,7 @@ import { TelemetryService } from '../../services/TelemetryService';
 import { isProFeatureEnabled, ProFeature } from '../../services/featureGates';
 import { recordSyncActivity } from '../sync/SyncActivityLog';
 import { triggerInstantSync } from '../sync/syncTriggers';
+import { SyncController } from '../sync/SyncController';
 
 const FREE_SAVED_QUERIES_LIMIT = 5;
 
@@ -213,24 +214,46 @@ export class SavedQueriesService {
   }
 
   /**
-   * Delete a saved query by ID (tombstone for sync).
+   * Delete a saved query by ID.
+   * Local deletes pass cloudChoice from callers; remote tombstones use fromRemote.
    */
-  async deleteQuery(queryId: string): Promise<void> {
+  async deleteQuery(
+    queryId: string,
+    options?: { cloudChoice?: 'keep-cloud' | 'delete-cloud'; fromRemote?: boolean },
+  ): Promise<void> {
     const existing = this.queries.get(queryId);
-    if (existing) {
-      const tombstone = this.bumpRevision({ ...existing, deleted: true });
-      recordSyncActivity({
-        kind: 'query',
-        action: 'delete',
-        itemId: queryId,
-        name: existing.title,
-      });
-      triggerInstantSync();
+    if (!existing && !options?.fromRemote) {
+      return;
+    }
+
+    if (options?.fromRemote) {
       this.queries.delete(queryId);
       this.tombstones = this.tombstones.filter((t) => t.id !== queryId);
-      this.tombstones.push(tombstone);
+      await this.saveQueries();
+      return;
     }
-    await this.saveQueries();
+
+    if (options?.cloudChoice === 'keep-cloud') {
+      await SyncController.getInstance().setItemExcluded(queryId, true);
+      this.queries.delete(queryId);
+      this.tombstones = this.tombstones.filter((t) => t.id !== queryId);
+      await this.saveQueries();
+      return;
+    }
+
+    if (options?.cloudChoice === 'delete-cloud') {
+      this.queries.delete(queryId);
+      this.tombstones = this.tombstones.filter((t) => t.id !== queryId);
+      await this.saveQueries();
+      void SyncController.getInstance().removeFromCloud(queryId);
+      return;
+    }
+
+    if (existing) {
+      this.queries.delete(queryId);
+      this.tombstones = this.tombstones.filter((t) => t.id !== queryId);
+      await this.saveQueries();
+    }
   }
 
   /**

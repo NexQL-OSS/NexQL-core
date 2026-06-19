@@ -1,5 +1,7 @@
 import * as vscode from 'vscode';
 import { LicenseService } from '../../../services/LicenseService';
+import { defaultDeviceName, getDeviceName, getOrCreateDeviceId } from '../../sync/deviceId';
+import { saveDeviceDisplayName } from '../../sync/deviceRename';
 import { QuotaService } from '../../../services/QuotaService';
 import { SecretStorageService } from '../../../services/SecretStorageService';
 import {
@@ -73,6 +75,9 @@ export class LicenseSectionHandler implements SettingsSectionHandler {
         break;
       case 'removeDevice':
         await this.removeDevice(String(message.instanceId ?? ''));
+        break;
+      case 'renameDevice':
+        await this.renameDevice(String(message.deviceName ?? ''));
         break;
       case 'refresh':
         await this.sendState();
@@ -175,13 +180,19 @@ export class LicenseSectionHandler implements SettingsSectionHandler {
         hasSubscription: server?.hasSubscription ?? false,
         ownerEmail,
         needsEmail: Boolean(licenseKey && effectiveTier !== 'free' && !ownerEmail),
-        devices: (server?.devices ?? []).map((d) => ({
-          instanceId: d.instanceId,
-          deviceName: d.deviceName,
-          lastSeen: d.lastSeen,
-          isCurrent: d.instanceId === MACHINE_ID,
-        })),
+        devices: (server?.devices ?? []).map((d) => {
+          const isCurrent = d.instanceId === MACHINE_ID;
+          const localName = getDeviceName(this.host.extensionContext);
+          return {
+            instanceId: d.instanceId,
+            deviceName: isCurrent ? (localName || d.deviceName) : d.deviceName,
+            lastSeen: d.lastSeen,
+            isCurrent,
+          };
+        }),
         deviceLimit: server?.deviceLimit ?? null,
+        localDeviceName: getDeviceName(this.host.extensionContext) || defaultDeviceName(),
+        syncDeviceId: getOrCreateDeviceId(this.host.extensionContext),
         history,
         machineId: MACHINE_ID,
       },
@@ -206,6 +217,36 @@ export class LicenseSectionHandler implements SettingsSectionHandler {
     }
     this.host.post({ type: 'license/emailResult', ok: true, message: 'Email verified.' });
     await this.sendState();
+  }
+
+  private async renameDevice(deviceName: string): Promise<void> {
+    const trimmed = deviceName.trim();
+    if (!trimmed) {
+      this.host.post({
+        type: 'license/deviceRenameResult',
+        ok: false,
+        message: 'Enter a device name.',
+      });
+      return;
+    }
+    try {
+      const { cloudOk } = await saveDeviceDisplayName(this.host.extensionContext, trimmed);
+      this.host.post({
+        type: 'license/deviceRenameResult',
+        ok: true,
+        message: cloudOk
+          ? 'Device name saved.'
+          : 'Device name saved locally. Cloud sync will pick it up on the next sync.',
+        deviceName: trimmed,
+      });
+      await this.sendState();
+    } catch (err: unknown) {
+      this.host.post({
+        type: 'license/deviceRenameResult',
+        ok: false,
+        message: err instanceof Error ? err.message : 'Could not save device name.',
+      });
+    }
   }
 
   private async removeDevice(instanceId: string): Promise<void> {

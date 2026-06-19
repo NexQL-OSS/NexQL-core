@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { ConnectionUtils } from '../../utils/connectionUtils';
+import { deriveFolderPath, resolveNotebookTargetDir } from './notebookSyncPath';
 import { contentHash } from './envelope';
 import { readNotebookSyncId } from './notebookSyncId';
 import type { NotebookSyncPayload, SyncItemMeta } from './types';
@@ -27,16 +27,23 @@ function normalizeCells(cells: RawCell[]): Array<{ value: string; kind: string; 
 function buildPayload(
   syncId: string,
   name: string,
+  filePath: string,
+  globalStorageRoot: string,
   metadata: Record<string, unknown>,
   cells: RawCell[],
+  connections: Array<{ id: string; name?: string }>,
 ): NotebookSyncPayload {
+  const connectionId = String(metadata.connectionId ?? '');
+  const conn = connections.find((c) => String(c.id) === connectionId);
   return {
     syncId,
     name,
-    connectionId: String(metadata.connectionId ?? ''),
+    connectionId,
+    connectionName: conn?.name,
     databaseName: metadata.databaseName as string | undefined,
     host: metadata.host as string | undefined,
     port: metadata.port as number | undefined,
+    folderPath: deriveFolderPath(globalStorageRoot, filePath),
     cells: normalizeCells(cells),
   };
 }
@@ -71,18 +78,17 @@ export class NotebookSyncService {
   }
 
   private notebookTargetDir(payload: NotebookSyncPayload): string {
-    if (payload.connectionId && payload.databaseName) {
-      const connections = vscode.workspace.getConfiguration().get<any[]>('postgresExplorer.connections') || [];
-      const conn = connections.find((c) => String(c.id) === payload.connectionId);
-      const connSegment = ConnectionUtils.toSafeSegment(conn?.name ?? payload.connectionId);
-      const dbSegment = ConnectionUtils.toSafeSegment(payload.databaseName);
-      const dir = path.join(this.context.globalStorageUri.fsPath, connSegment, dbSegment);
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-      return dir;
+    const connections = vscode.workspace.getConfiguration().get<Array<{ id: string; name?: string }>>('postgresExplorer.connections') || [];
+    const dir = resolveNotebookTargetDir(
+      payload,
+      this.context.globalStorageUri.fsPath,
+      this.getNotebookFolder(),
+      connections,
+    );
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
     }
-    return this.getNotebookFolder();
+    return dir;
   }
 
   /** Persist a syncId into a notebook file on disk, preserving other content. */
@@ -111,6 +117,8 @@ export class NotebookSyncService {
     const seenIds = new Set<string>();
     const seenPaths = new Set<string>();
 
+    const connections = vscode.workspace.getConfiguration().get<Array<{ id: string; name?: string }>>('postgresExplorer.connections') || [];
+
     const collect = (
       syncId: string,
       name: string,
@@ -119,7 +127,7 @@ export class NotebookSyncService {
       cells: RawCell[],
       mtimeMs: number | undefined,
     ): void => {
-      const payload = buildPayload(syncId, name, metadata, cells);
+      const payload = buildPayload(syncId, name, filePath, this.context.globalStorageUri.fsPath, metadata, cells, connections);
       const plaintext = Buffer.from(JSON.stringify(payload));
       const hash = contentHash(plaintext);
       const { revision, updatedAt } = this.index.observe(syncId, 'notebook', hash, {

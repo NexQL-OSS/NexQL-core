@@ -306,6 +306,24 @@
         "icon": "$(trash)"
       },
       {
+        "command": "postgres-explorer.notebooks.createFolder",
+        "title": "New Folder",
+        "category": "NexQL",
+        "icon": "$(new-folder)"
+      },
+      {
+        "command": "postgres-explorer.notebooks.renameFolder",
+        "title": "Rename Folder",
+        "category": "NexQL",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "postgres-explorer.notebooks.moveNotebook",
+        "title": "Move to Folder…",
+        "category": "NexQL",
+        "icon": "$(folder-opened)"
+      },
+      {
         "command": "postgres-explorer.notebooks.refresh",
         "title": "Refresh Notebooks",
         "category": "NexQL",
@@ -2456,6 +2474,11 @@
           "group": "navigation"
         },
         {
+          "command": "postgres-explorer.notebooks.createFolder",
+          "when": "view == postgresExplorer.notebooks",
+          "group": "navigation"
+        },
+        {
           "command": "postgres-explorer.addConnection",
           "when": "view == postgresExplorer",
           "group": "navigation"
@@ -2556,8 +2579,23 @@
         },
         {
           "command": "postgres-explorer.notebooks.deleteFolder",
-          "when": "view == postgresExplorer.notebooks && viewItem =~ /^(connection-folder|db-folder)$/",
+          "when": "view == postgresExplorer.notebooks && viewItem == folder",
           "group": "9_destructive"
+        },
+        {
+          "command": "postgres-explorer.notebooks.createFolder",
+          "when": "view == postgresExplorer.notebooks && (viewItem == folder || !viewItem)",
+          "group": "1_actions"
+        },
+        {
+          "command": "postgres-explorer.notebooks.renameFolder",
+          "when": "view == postgresExplorer.notebooks && viewItem == folder",
+          "group": "1_actions"
+        },
+        {
+          "command": "postgres-explorer.notebooks.moveNotebook",
+          "when": "view == postgresExplorer.notebooks && viewItem == notebook-file",
+          "group": "1_actions"
         },
         {
           "command": "postgres-explorer.copyQuery",

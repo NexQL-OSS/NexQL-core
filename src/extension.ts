@@ -558,6 +558,7 @@ export async function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(syncController);
   context.subscriptions.push(
     syncController.onDidCompleteSync(() => {
+      databaseTreeProvider?.refresh();
       notebooksTreeProvider?.refresh();
       savedQueriesTreeProvider?.refresh();
     }),

@@ -34,6 +34,11 @@ export class ConnectionSyncService {
       readOnlyMode: conn.readOnlyMode as boolean | undefined,
     };
 
+    const group = conn.group as string | undefined;
+    if (group?.trim()) {
+      payload.group = group.trim();
+    }
+
     if (conn.ssh && typeof conn.ssh === 'object') {
       const ssh = conn.ssh as Record<string, unknown>;
       payload.ssh = {

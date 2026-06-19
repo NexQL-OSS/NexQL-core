@@ -18,12 +18,14 @@ On the free plan the backup is bound to the first device that syncs. A different
 
 | Item | Included | Notes |
 |------|----------|-------|
-| Connection profiles | Yes (default) | Host, port, user, database, SSL mode, environment tag, SSH host settings |
+| Connection profiles | Yes (default) | Host, port, user, database, SSL mode, environment tag, **connection group**, SSH host settings |
 | Saved queries | Yes (default) | Full query text and metadata |
-| Notebooks (`.pgsql`) | Yes (default) | **Cells only** — SQL and markdown content, not execution outputs |
+| Notebooks (`.pgsql`) | Yes (default) | **Cells only** — SQL and markdown content, not execution outputs; **folder path** and connection display name for cross-device layout |
 | Passwords | Opt-in only | Encrypted secrets bundle; off by default |
 
 Sync uses a merge model: changes from any signed-in device are combined. Conflicts are surfaced in the status bar.
+
+**Notebook folders:** Each synced notebook carries a relative `folderPath` (parent directories under extension storage) plus `connectionName` for fallback layout. On pull, connections are applied before notebooks so group labels and folder names match the source device. You can reorganize notebooks locally (move/rename folders); the next sync propagates the new layout. If two devices move the same notebook differently, last push wins for folder placement.
 
 ---
 

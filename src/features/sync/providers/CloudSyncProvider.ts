@@ -208,4 +208,22 @@ export class CloudSyncProvider implements SyncProviderV2 {
       return false;
     }
   }
+
+  async updateDeviceName(deviceId: string, deviceName: string): Promise<boolean> {
+    try {
+      const res = await withAuthRetry(
+        this.context,
+        (headers) => httpRequest(`${this.baseUrl()}/sync/devices/${encodeURIComponent(deviceId)}`, {
+          method: 'PATCH',
+          headers: { ...headers, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ device_name: deviceName }),
+        }),
+        (r) => r,
+        'Rename device',
+      );
+      return res.statusCode === 200;
+    } catch {
+      return false;
+    }
+  }
 }

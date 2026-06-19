@@ -402,7 +402,10 @@ async function bindDevice(licenseKey, instanceId, meta = {}) {
     ON CONFLICT (license_key, instance_id) DO UPDATE SET
       last_seen = now(),
       revoked_at = NULL,
-      device_name = COALESCE(EXCLUDED.device_name, pgstudio_license.devices.device_name)
+      device_name = CASE
+        WHEN EXCLUDED.device_name IS NOT NULL THEN EXCLUDED.device_name
+        ELSE pgstudio_license.devices.device_name
+      END
   `;
 
   const source = meta.source || 'validate';

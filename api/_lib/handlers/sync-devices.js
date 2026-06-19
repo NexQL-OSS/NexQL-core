@@ -1,8 +1,9 @@
 // GET /api/sync/devices — list devices for the signed-in account.
+// PATCH /api/sync/devices/:deviceId — rename this device (body: { device_name }).
 // DELETE /api/sync/devices/:deviceId — revoke a device roster entry.
 
 const { authenticateBearer } = require('../sync-auth');
-const { listDevices, revokeDevice } = require('../sync-db');
+const { listDevices, revokeDevice, updateDeviceName } = require('../sync-db');
 
 module.exports = async (req, res) => {
   let auth;
@@ -46,6 +47,28 @@ module.exports = async (req, res) => {
     } catch (err) {
       console.error('sync/devices DELETE:', err);
       return res.status(500).json({ error: 'Failed to revoke device' });
+    }
+  }
+
+  if (req.method === 'PATCH') {
+    const deviceId = req.query.deviceId;
+    const deviceName = req.body?.device_name;
+    if (!deviceId) {
+      return res.status(400).json({ error: 'deviceId is required' });
+    }
+    const callerDeviceId = req.headers['x-device-id'] || req.headers['X-Device-Id'];
+    if (!callerDeviceId || String(callerDeviceId) !== String(deviceId)) {
+      return res.status(403).json({ error: 'Can only rename this device' });
+    }
+    try {
+      const ok = await updateDeviceName(auth.account_id, String(deviceId), deviceName);
+      if (!ok) {
+        return res.status(400).json({ error: 'device_name is required' });
+      }
+      return res.status(200).json({ ok: true, device_id: String(deviceId), device_name: String(deviceName).trim() });
+    } catch (err) {
+      console.error('sync/devices PATCH:', err);
+      return res.status(500).json({ error: 'Failed to rename device' });
     }
   }
 

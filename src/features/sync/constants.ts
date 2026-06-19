@@ -17,10 +17,13 @@ export const SYNC_WORKSPACE_QUERIES_MIGRATED_KEY = 'postgres-explorer.sync.queri
 /** Cached team workspace roles/names between sync runs. */
 export const SYNC_WORKSPACE_ROLES_KEY = 'postgres-explorer.sync.workspaceRoles';
 
+const CLOUD_QUOTA_MB = 100;
+const BYTES_PER_MB = 1024 * 1024;
+
 /** Soft cloud storage caps (bytes). */
 export const CLOUD_QUOTA_BYTES: Record<'sponsor' | 'singularity', number> = {
-  sponsor: 500 * 1024 * 1024,
-  singularity: 5 * 1024 * 1024 * 1024,
+  sponsor: CLOUD_QUOTA_MB * BYTES_PER_MB,
+  singularity: CLOUD_QUOTA_MB * BYTES_PER_MB,
 };
 
 export const DEFAULT_NOTEBOOK_FOLDER = 'PgStudioNotebooks';

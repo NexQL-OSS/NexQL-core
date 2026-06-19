@@ -6,6 +6,7 @@ import { QueryAnalyzer } from '../services/QueryAnalyzer';
 import { ErrorService } from '../services/ErrorService';
 import { extensionContext, statusBar } from '../extension';
 import { SaveQueryPanel } from '../features/savedQueries/SaveQueryPanel';
+import { deleteSavedQueryWithCloudPrompt } from '../features/sync/localDeletePrompt';
 import { SavedQueryDetailsPanel } from '../features/savedQueries/SavedQueryDetailsPanel';
 import { ConnectionUtils } from '../utils/connectionUtils';
 import { SecretStorageService } from '../services/SecretStorageService';
@@ -434,19 +435,16 @@ export async function deleteSavedQuery(treeItem: any): Promise<void> {
     vscode.window.showWarningMessage('No query selected.');
     return;
   }
-
-  const confirm = await vscode.window.showWarningMessage(
-    `Delete saved query "${query.title}"?`,
-    { modal: true },
-    'Delete'
-  );
-
-  if (confirm === 'Delete') {
-    const service = SavedQueriesService.getInstance();
-    await service.deleteQuery(query.id);
-    vscode.window.showInformationMessage(`✓ Query deleted: "${query.title}"`);
-    vscode.commands.executeCommand('postgresExplorer.savedQueries.refresh');
+  if (!extensionContext) {
+    vscode.window.showErrorMessage('Extension context not available.');
+    return;
   }
+  const deleted = await deleteSavedQueryWithCloudPrompt(extensionContext, query.id, query.title);
+  if (!deleted) {
+    return;
+  }
+  vscode.window.showInformationMessage(`✓ Query deleted: "${query.title}"`);
+  vscode.commands.executeCommand('postgresExplorer.savedQueries.refresh');
 }
 
 /**
@@ -500,7 +498,18 @@ async function deleteSavedQueryLegacy(): Promise<void> {
     });
 
     if (confirm === 'Yes') {
-      await service.deleteQuery(selected.query.id);
+      if (!extensionContext) {
+        vscode.window.showErrorMessage('Extension context not available.');
+        return;
+      }
+      const deleted = await deleteSavedQueryWithCloudPrompt(
+        extensionContext,
+        selected.query.id,
+        selected.label,
+      );
+      if (!deleted) {
+        return;
+      }
       refreshPhase7TreeViews();
       vscode.window.showInformationMessage(`Query deleted: "${selected.label}"`);
     }

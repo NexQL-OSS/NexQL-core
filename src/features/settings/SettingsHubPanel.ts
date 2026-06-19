@@ -25,7 +25,7 @@ export interface SettingsHubShowOptions {
   /** Prefill the connection editor from a postgres:// URL. */
   prefillConnectionUrl?: string;
   /** Deep-link sync hub sub-tab. */
-  tab?: 'overview' | 'settings' | 'items' | 'preview' | 'conflicts' | 'shares' | 'devices' | 'advanced';
+  tab?: 'overview' | 'settings' | 'items' | 'local' | 'preview' | 'conflicts' | 'shares' | 'devices' | 'advanced';
 }
 
 const DEFAULT_SECTION: SettingsHubSection = 'connections';

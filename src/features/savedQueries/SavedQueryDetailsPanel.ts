@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
-import { SavedQueriesService } from './SavedQueriesService';
+import { extensionContext } from '../../extension';
+import { deleteSavedQueryWithCloudPrompt } from '../sync/localDeletePrompt';
 
 export class SavedQueryDetailsPanel {
   public static currentPanel: SavedQueryDetailsPanel | undefined;
@@ -92,19 +93,21 @@ export class SavedQueryDetailsPanel {
   }
 
   private async _handleDelete() {
-    const confirm = await vscode.window.showWarningMessage(
-      `Delete saved query "${this._query.title}"?`,
-      { modal: true },
-      'Delete'
-    );
-
-    if (confirm === 'Delete') {
-      const service = SavedQueriesService.getInstance();
-      await service.deleteQuery(this._query.id);
-      vscode.window.showInformationMessage(`✓ Query deleted: "${this._query.title}"`);
-      this._panel.dispose();
-      vscode.commands.executeCommand('postgresExplorer.savedQueries.refresh');
+    if (!extensionContext) {
+      vscode.window.showErrorMessage('Extension context not available.');
+      return;
     }
+    const deleted = await deleteSavedQueryWithCloudPrompt(
+      extensionContext,
+      this._query.id,
+      this._query.title,
+    );
+    if (!deleted) {
+      return;
+    }
+    vscode.window.showInformationMessage(`✓ Query deleted: "${this._query.title}"`);
+    this._panel.dispose();
+    vscode.commands.executeCommand('postgresExplorer.savedQueries.refresh');
   }
 
   private _update() {
