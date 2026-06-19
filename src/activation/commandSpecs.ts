@@ -114,6 +114,7 @@ import {
   cmdSyncReplaceLocal,
   cmdSyncReplaceRemote,
   cmdSyncRebuildIndex,
+  cmdSyncRepair,
   cmdSyncDiagnostics,
   cmdSyncExcludeItem,
 } from '../features/sync/syncCommands';
@@ -192,6 +193,10 @@ export function getCommandSpecs(
     {
       command: 'postgres-explorer.sync.rebuildIndex',
       callback: () => cmdSyncRebuildIndex(),
+    },
+    {
+      command: 'postgres-explorer.sync.repair',
+      callback: () => cmdSyncRepair(),
     },
     {
       command: 'postgres-explorer.sync.diagnostics',

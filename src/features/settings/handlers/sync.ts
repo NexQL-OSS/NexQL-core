@@ -120,6 +120,9 @@ export class SyncSectionHandler implements SettingsSectionHandler {
       case 'rebuildIndex':
         await this.rebuildIndex();
         break;
+      case 'repair':
+        await this.repair();
+        break;
       case 'diagnostics':
         await SyncController.getInstance().runDiagnostics();
         this.sendState();
@@ -295,6 +298,21 @@ export class SyncSectionHandler implements SettingsSectionHandler {
     this.sendItems();
   }
 
+  private async repair(): Promise<void> {
+    const confirm = await vscode.window.showWarningMessage(
+      'Repair sync state and pull the latest from the cloud?',
+      'Repair Sync',
+    );
+    if (confirm !== 'Repair Sync') {
+      return;
+    }
+    const ok = await SyncController.getInstance().repair();
+    void vscode.window.showInformationMessage(ok ? 'Sync repaired successfully.' : 'Sync repair failed.');
+    this.sendState();
+    this.sendItems();
+    this.sendPending();
+  }
+
   private async stopSyncingItem(itemId: string, itemName: string): Promise<void> {
     if (!itemId) {
       return;
@@ -401,7 +419,7 @@ export class SyncSectionHandler implements SettingsSectionHandler {
       ? await controller.pullOnly()
       : direction === 'push'
         ? await controller.pushOnly()
-        : await controller.runSync();
+        : await controller.runSync({ userInitiated: true });
     this.host.post({ type: 'sync/runComplete', result: result ?? null });
     this.sendState();
     this.sendPending();

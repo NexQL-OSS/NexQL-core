@@ -169,6 +169,11 @@
         "category": "NexQL Sync"
       },
       {
+        "command": "postgres-explorer.sync.repair",
+        "title": "Repair Sync",
+        "category": "NexQL Sync"
+      },
+      {
         "command": "postgres-explorer.sync.diagnostics",
         "title": "Sync Diagnostics",
         "category": "NexQL Sync"

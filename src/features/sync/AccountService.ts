@@ -164,6 +164,33 @@ export class AccountService {
     }
   }
 
+  /**
+   * Resolve a valid access token: use cached token, refresh, or license re-auth.
+   * On 401 retry paths pass `{ invalidateAccess: true }` to drop a stale access token first.
+   */
+  async ensureSession(options?: { invalidateAccess?: boolean }): Promise<string> {
+    if (options?.invalidateAccess) {
+      await this.context.secrets.delete(ACCESS_TOKEN_KEY);
+    } else {
+      const existing = await this.getAccessToken();
+      if (existing) {
+        return existing;
+      }
+    }
+
+    const refreshed = await this.refreshAccessToken();
+    if (refreshed) {
+      return refreshed;
+    }
+
+    await this.signInWithLicense();
+    const token = await this.getAccessToken();
+    if (!token) {
+      throw new Error('Not signed in to NexQL account');
+    }
+    return token;
+  }
+
   /** Refresh access token using stored refresh token. */
   async refreshAccessToken(): Promise<string | undefined> {
     const refresh = await this.context.secrets.get(REFRESH_TOKEN_KEY);

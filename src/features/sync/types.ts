@@ -109,6 +109,8 @@ export interface SyncRunOptions {
   direction?: SyncDirection;
   /** Per-run opt-outs; does not persist to config.excludedIds. */
   transientExcludedIds?: string[];
+  /** True when triggered explicitly by the user (Sync Now / pull / push). */
+  userInitiated?: boolean;
 }
 
 export interface SyncPreviewItem {

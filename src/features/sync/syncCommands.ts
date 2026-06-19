@@ -169,7 +169,7 @@ export async function cmdSyncNow(): Promise<void> {
   if (!(await requirePro(ProFeature.CloudBackup))) {
     return;
   }
-  await SyncController.getInstance().runSync();
+  await SyncController.getInstance().runSync({ userInitiated: true });
 }
 
 export async function cmdSyncPull(): Promise<void> {
@@ -243,6 +243,21 @@ export async function cmdSyncRebuildIndex(): Promise<void> {
   }
   const count = await SyncController.getInstance().rebuildSyncIndex();
   void vscode.window.showInformationMessage(`Rebuilt index for ${count} item(s).`);
+}
+
+export async function cmdSyncRepair(): Promise<void> {
+  if (!(await requirePro(ProFeature.CloudBackup))) {
+    return;
+  }
+  const confirm = await vscode.window.showWarningMessage(
+    'Repair sync state and pull the latest from the cloud?',
+    'Repair Sync',
+  );
+  if (confirm !== 'Repair Sync') {
+    return;
+  }
+  const ok = await SyncController.getInstance().repair();
+  void vscode.window.showInformationMessage(ok ? 'Sync repaired successfully.' : 'Sync repair failed.');
 }
 
 export async function cmdSyncDiagnostics(): Promise<void> {
@@ -321,6 +336,7 @@ export async function cmdSyncStatusMenu(context?: vscode.ExtensionContext): Prom
         { label: '$(info) Show Status', id: 'status' },
         { label: '$(shield) Privacy & Security', id: 'secret' },
         { label: config.paused ? '$(play) Resume Sync' : '$(debug-pause) Pause Sync', id: 'pause' },
+        { label: '$(wrench) Repair Sync', id: 'repair' },
         { label: '$(sign-out) Sign Out', id: 'signout' },
         { label: '$(settings-gear) Open Settings', id: 'settings' },
       ]
@@ -375,6 +391,9 @@ export async function cmdSyncStatusMenu(context?: vscode.ExtensionContext): Prom
       break;
     case 'pause':
       await cmdSyncPause();
+      break;
+    case 'repair':
+      await cmdSyncRepair();
       break;
     case 'signout':
       await cmdSyncSignOut();

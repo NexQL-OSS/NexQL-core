@@ -82,6 +82,8 @@ export class SyncController implements vscode.Disposable {
   private debounceTimer?: NodeJS.Timeout;
   private periodicTimer?: NodeJS.Timeout;
   private disposables: vscode.Disposable[] = [];
+  private lastErrorNotifiedAt = 0;
+  private lastSuccessfulSyncAt = 0;
 
   private constructor(
     private readonly context: vscode.ExtensionContext,
@@ -284,6 +286,7 @@ export class SyncController implements vscode.Disposable {
       this.conflictCount = result.conflicts;
       await this.context.globalState.update(SYNC_LAST_SYNC_AT_KEY, Date.now());
       await this.context.globalState.update(SYNC_LAST_ERROR_KEY, undefined);
+      this.lastSuccessfulSyncAt = Date.now();
       this.setStatus(result.conflicts > 0 ? 'conflict' : 'synced');
       result.durationMs = Date.now() - started;
       return result;
@@ -292,6 +295,7 @@ export class SyncController implements vscode.Disposable {
       await this.context.globalState.update(SYNC_LAST_ERROR_KEY, message);
       this.output.appendLine(`[sync] run failed: ${message}`);
       this.setStatus('error');
+      void this.notifySyncError(message, options.userInitiated === true);
       return undefined;
     } finally {
       release();
@@ -299,11 +303,11 @@ export class SyncController implements vscode.Disposable {
   }
 
   async pullOnly(): Promise<SyncRunResult | undefined> {
-    return this.runSync({ direction: 'pull' }) as Promise<SyncRunResult | undefined>;
+    return this.runSync({ direction: 'pull', userInitiated: true }) as Promise<SyncRunResult | undefined>;
   }
 
   async pushOnly(): Promise<SyncRunResult | undefined> {
-    return this.runSync({ direction: 'push' }) as Promise<SyncRunResult | undefined>;
+    return this.runSync({ direction: 'push', userInitiated: true }) as Promise<SyncRunResult | undefined>;
   }
 
   async previewSync(transientExcludedIds?: string[]): Promise<SyncPreviewResult | undefined> {
@@ -321,12 +325,12 @@ export class SyncController implements vscode.Disposable {
     let pushed = 0;
     let conflicts = 0;
 
-    // Phase 1 — pull + apply (atomic per item; cursor only advances after apply).
+    // Phase 1 — pull + apply; commit index + cursor together.
     if (direction !== 'push') {
       const delta = await provider.pullDelta(cursor);
       pulled = await this.applyDelta(delta, config, index, excluded);
       cursor = delta.cursor;
-      await this.setCursor(config, cursor);
+      await this.commitPhase(config, index, cursor);
     }
 
     // Phase 2 — push dirty + deletions.
@@ -337,14 +341,14 @@ export class SyncController implements vscode.Disposable {
         this.recordAccepted(result.accepted, ops, index);
         pushed = result.accepted.length;
         cursor = result.cursor;
-        await this.setCursor(config, cursor);
+        await this.commitPhase(config, index, cursor);
 
         if (result.rejected.length) {
           // Concurrent writer — pull their changes, then re-push once (git-style).
           const delta2 = await provider.pullDelta(cursor);
           pulled += await this.applyDelta(delta2, config, index, excluded);
           cursor = delta2.cursor;
-          await this.setCursor(config, cursor);
+          await this.commitPhase(config, index, cursor);
 
           const ops2 = await this.buildOps(config, index, excluded);
           if (ops2.length) {
@@ -352,14 +356,13 @@ export class SyncController implements vscode.Disposable {
             this.recordAccepted(retry.accepted, ops2, index);
             pushed += retry.accepted.length;
             cursor = retry.cursor;
-            await this.setCursor(config, cursor);
+            await this.commitPhase(config, index, cursor);
             conflicts = retry.rejected.length;
           }
         }
       }
     }
 
-    await index.flush();
     this.acknowledgeActivities(index);
 
     return {
@@ -618,6 +621,44 @@ export class SyncController implements vscode.Disposable {
     });
   }
 
+  /** Persist index changes before advancing the server cursor. */
+  private async commitPhase(config: SyncConfig, index: SyncIndex, cursor: number): Promise<void> {
+    await index.flush();
+    await this.setCursor(config, cursor);
+  }
+
+  private notifySyncError(message: string, userInitiated: boolean): void {
+    const now = Date.now();
+    const firstSinceSuccess = this.lastSuccessfulSyncAt === 0 || now - this.lastSuccessfulSyncAt > 60_000;
+    if (!userInitiated && !firstSinceSuccess) {
+      return;
+    }
+    if (now - this.lastErrorNotifiedAt < 60_000) {
+      return;
+    }
+    this.lastErrorNotifiedAt = now;
+    void vscode.window
+      .showErrorMessage(`Sync failed: ${message}`, 'Repair Sync')
+      .then((action) => {
+        if (action === 'Repair Sync') {
+          void vscode.commands.executeCommand('postgres-explorer.sync.repair');
+        }
+      });
+  }
+
+  private purgeOrphanPending(index: SyncIndex): void {
+    const log = SyncActivityLog.getInstance(this.context);
+    const acked: string[] = [];
+    for (const p of log.listPending()) {
+      if (!index.get(p.itemId)) {
+        acked.push(`${p.kind}:${p.itemId}`);
+      }
+    }
+    if (acked.length) {
+      log.acknowledge(acked);
+    }
+  }
+
   /** Preserve a local copy that lost a conflict so nothing is silently dropped. */
   private backupLocal(local: LocalItem, kind: string): void {
     try {
@@ -833,6 +874,42 @@ export class SyncController implements vscode.Disposable {
     await this.setCursor(config, 0);
     const items = await this.collectLocalItems(config, new Set(config.excludedIds ?? []), index);
     return items.length;
+  }
+
+  /**
+   * Rebuild local sync metadata from disk, purge orphan queue entries, and
+   * force a clean delta re-pull — without wiping local files or cloud data.
+   */
+  async repair(): Promise<boolean> {
+    const config = this.getConfig();
+    if (!config.providerId) {
+      return false;
+    }
+    const release = await this.mutex.acquire();
+    try {
+      this.setStatus('syncing');
+      const index = new SyncIndex(this.context);
+      for (const id of Object.keys(index.getAll())) {
+        index.remove(id);
+      }
+      await index.flush();
+      await this.setCursor(config, 0);
+      await this.collectLocalItems(config, new Set(config.excludedIds ?? []), index);
+      await index.flush();
+      this.purgeOrphanPending(index);
+      await this.runLocked(config, { direction: 'pull' });
+      await this.context.globalState.update(SYNC_LAST_SYNC_AT_KEY, Date.now());
+      await this.context.globalState.update(SYNC_LAST_ERROR_KEY, undefined);
+      this.lastSuccessfulSyncAt = Date.now();
+      this.setStatus('synced');
+      return true;
+    } catch (e) {
+      this.output.appendLine(`[sync] repair failed: ${e instanceof Error ? e.message : String(e)}`);
+      this.setStatus('error');
+      return false;
+    } finally {
+      release();
+    }
   }
 
   async runDiagnostics(): Promise<void> {
