@@ -104,46 +104,38 @@ export async function cmdViewOperations(item: DatabaseTreeItem, context: vscode.
 export async function cmdShowViewProperties(item: DatabaseTreeItem, context: vscode.ExtensionContext) {
   await CommandBase.run(context, item, 'view properties', async (conn: any, client: any, metadata: any) => {
     const metadataWarnings: string[] = [];
-
-    const [viewInfoResult, columnInfoResult, dependenciesInfoResult, referencedInfoResult, sizeInfoResult] = await Promise.allSettled([
-      client.query(QueryBuilder.viewInfo(item.schema!, item.label)),
-      client.query(QueryBuilder.tableColumns(item.schema!, item.label)),
-      client.query(QueryBuilder.objectDependencies(item.schema!, item.label)),
-      client.query(QueryBuilder.objectReferences(item.schema!, item.label)),
-      client.query(QueryBuilder.viewSize(item.schema!, item.label))
-    ]);
-
-    if (viewInfoResult.status !== 'fulfilled') {
-      throw viewInfoResult.reason;
+    let viewInfo;
+    try {
+      viewInfo = await client.query(QueryBuilder.viewInfo(item.schema!, item.label));
+    } catch (err) {
+      throw err;
     }
 
-    const viewInfo = viewInfoResult.value;
-
-    const columnInfo = columnInfoResult.status === 'fulfilled'
-      ? columnInfoResult.value
-      : { rows: [] as any[] };
-    if (columnInfoResult.status !== 'fulfilled') {
+    let columnInfo = { rows: [] as any[] };
+    try {
+      columnInfo = await client.query(QueryBuilder.tableColumns(item.schema!, item.label));
+    } catch (err) {
       metadataWarnings.push('Columns could not be loaded.');
     }
 
-    const dependenciesInfo = dependenciesInfoResult.status === 'fulfilled'
-      ? dependenciesInfoResult.value
-      : { rows: [] as any[] };
-    if (dependenciesInfoResult.status !== 'fulfilled') {
+    let dependenciesInfo = { rows: [] as any[] };
+    try {
+      dependenciesInfo = await client.query(QueryBuilder.objectDependencies(item.schema!, item.label));
+    } catch (err) {
       metadataWarnings.push('Dependent objects could not be loaded.');
     }
 
-    const referencedInfo = referencedInfoResult.status === 'fulfilled'
-      ? referencedInfoResult.value
-      : { rows: [] as any[] };
-    if (referencedInfoResult.status !== 'fulfilled') {
+    let referencedInfo = { rows: [] as any[] };
+    try {
+      referencedInfo = await client.query(QueryBuilder.objectReferences(item.schema!, item.label));
+    } catch (err) {
       metadataWarnings.push('Referenced objects could not be loaded.');
     }
 
-    const sizeInfo = sizeInfoResult.status === 'fulfilled'
-      ? sizeInfoResult.value
-      : { rows: [{ view_size: 'N/A' }] as any[] };
-    if (sizeInfoResult.status !== 'fulfilled') {
+    let sizeInfo = { rows: [{ view_size: 'N/A' }] as any[] };
+    try {
+      sizeInfo = await client.query(QueryBuilder.viewSize(item.schema!, item.label));
+    } catch (err) {
       metadataWarnings.push('Size information could not be loaded.');
     }
 

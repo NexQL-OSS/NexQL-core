@@ -189,13 +189,11 @@ export class TablePropertiesPanel {
             AND ref_class.relname != '${name}'
             AND ref_class.relkind IN ('r', 'v', 'm')`;
 
-        const [generalRes, colRes, defRes, depsRes, refsRes] = await Promise.all([
-            client.query(generalQuery, [schema, name]),
-            client.query(colQuery),
-            client.query(defQuery),
-            client.query(depsQuery),
-            client.query(refsQuery)
-        ]);
+        const generalRes = await client.query(generalQuery, [schema, name]);
+        const colRes = await client.query(colQuery);
+        const defRes = await client.query(defQuery);
+        const depsRes = await client.query(depsQuery);
+        const refsRes = await client.query(refsQuery);
 
         const general = generalRes.rows[0] || {};
         const columns = colRes.rows;
@@ -333,11 +331,9 @@ export class TablePropertiesPanel {
         // Get definition (simplified for tables)
         const defQuery = `SELECT 'CREATE TABLE ${schema}.${name} ...' as definition`;
 
-        const [colRes, conRes, defRes] = await Promise.all([
-            client.query(colQuery),
-            client.query(conQuery),
-            client.query(defQuery)
-        ]);
+        const colRes = await client.query(colQuery);
+        const conRes = await client.query(conQuery);
+        const defRes = await client.query(defQuery);
 
         const columns = colRes.rows;
         const constraints = conRes.rows;

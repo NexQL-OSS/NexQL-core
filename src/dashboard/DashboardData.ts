@@ -188,6 +188,21 @@ async function resolveWalReceiverQuerySql(client: Client | PoolClient): Promise<
   }
 }
 
+async function allSettledSequential<T>(
+  thunks: (() => Promise<T>)[]
+): Promise<PromiseSettledResult<T>[]> {
+  const results: PromiseSettledResult<T>[] = [];
+  for (const thunk of thunks) {
+    try {
+      const value = await thunk();
+      results.push({ status: 'fulfilled', value });
+    } catch (reason) {
+      results.push({ status: 'rejected', reason });
+    }
+  }
+  return results;
+}
+
 export async function fetchStats(client: Client | PoolClient, dbName: string): Promise<DashboardStats> {
   // Resolve version-specific stats source for checkpoints.
   let serverVersionNum = 0;
@@ -266,20 +281,7 @@ export async function fetchStats(client: Client | PoolClient, dbName: string): P
 
   const walReceiverSql = await resolveWalReceiverQuerySql(client);
 
-  const pgStatStatementsPromise = hasPgStatStatements
-    ? client.query(
-        `
-              SELECT query, calls, ${pgStatStatementsTimeExpr} AS total_time, ${pgStatStatementsMeanExpr} AS mean_time, rows
-            FROM pg_stat_statements
-            WHERE dbid = (SELECT oid FROM pg_database WHERE datname = $1)
-          ORDER BY ${pgStatStatementsTimeExpr} DESC
-            LIMIT 10
-    `,
-        [dbName],
-      )
-    : Promise.resolve({ rows: [] as unknown[] });
-
-  // Fetch data with error handling for each query to prevent one failure from breaking the entire dashboard
+  // Fetch data sequentially to prevent concurrent query deprecation warnings on the client connection
   const [
     dbInfoRes,
     connRes,
@@ -309,9 +311,9 @@ export async function fetchStats(client: Client | PoolClient, dbName: string): P
     autovacuumProgressRes,
     tablesNeedingVacuumRes,
     connectionsByAppRes,
-  ] = await Promise.allSettled([
+  ] = await allSettledSequential([
     // DB Info
-    client.query(`
+    () => client.query(`
             SELECT pg_catalog.pg_get_userbyid(d.datdba) as owner,
                    pg_size_pretty(pg_database_size(d.datname)) as size
             FROM pg_database d
@@ -319,7 +321,7 @@ export async function fetchStats(client: Client | PoolClient, dbName: string): P
         `, [dbName]),
 
     // Connection States (Active, Idle, Waiting)
-    client.query(`
+    () => client.query(`
             SELECT state, wait_event_type IS NOT NULL as waiting, count(*) as count
             FROM pg_stat_activity
             WHERE datname = $1
@@ -327,7 +329,7 @@ export async function fetchStats(client: Client | PoolClient, dbName: string): P
         `, [dbName]),
 
     // Top Tables
-    client.query(`
+    () => client.query(`
             SELECT schemaname || '.' || tablename as name,
                    pg_size_pretty(pg_total_relation_size(schemaname || '.' || tablename)) as size,
                    pg_total_relation_size(schemaname || '.' || tablename) as raw_size
@@ -338,10 +340,10 @@ export async function fetchStats(client: Client | PoolClient, dbName: string): P
         `),
 
     // Extension Count
-    client.query(`SELECT count(*) as count FROM pg_available_extensions WHERE installed_version IS NOT NULL`),
+    () => client.query(`SELECT count(*) as count FROM pg_available_extensions WHERE installed_version IS NOT NULL`),
 
     // Object Counts
-    client.query(`
+    () => client.query(`
             SELECT
                 (SELECT count(*) FROM pg_namespace WHERE nspname NOT IN ('pg_catalog', 'information_schema')) as schemas,
                 (SELECT count(*) FROM pg_tables WHERE schemaname NOT IN ('pg_catalog', 'information_schema')) as tables,
@@ -351,7 +353,7 @@ export async function fetchStats(client: Client | PoolClient, dbName: string): P
         `),
 
     // Active Queries (including idle)
-    client.query(`
+    () => client.query(`
            SELECT pid, usename, datname, state,
              wait_event_type,
              wait_event,
@@ -367,7 +369,7 @@ export async function fetchStats(client: Client | PoolClient, dbName: string): P
         `, [dbName]),
 
     // Blocking Locks
-    client.query(`
+    () => client.query(`
             SELECT
                 blocked_locks.pid     AS blocked_pid,
                 blocked_activity.usename  AS blocked_user,
@@ -399,7 +401,7 @@ export async function fetchStats(client: Client | PoolClient, dbName: string): P
         `, [dbName]),
 
     // Database metrics scoped to the selected database.
-    client.query(`
+    () => client.query(`
             SELECT
               xact_commit,
               xact_rollback,
@@ -416,15 +418,26 @@ export async function fetchStats(client: Client | PoolClient, dbName: string): P
         `, [dbName]),
 
     // Settings (Max Connections)
-    client.query(`SHOW max_connections`),
+    () => client.query(`SHOW max_connections`),
 
     // Checkpoint counters: PG 17+ uses pg_stat_checkpointer (num_timed/num_requested); older PG uses pg_stat_bgwriter.
-    client.query(checkpointSelectSql),
+    () => client.query(checkpointSelectSql),
 
-    pgStatStatementsPromise,
+    hasPgStatStatements
+      ? () => client.query(
+          `
+                SELECT query, calls, ${pgStatStatementsTimeExpr} AS total_time, ${pgStatStatementsMeanExpr} AS mean_time, rows
+              FROM pg_stat_statements
+              WHERE dbid = (SELECT oid FROM pg_database WHERE datname = $1)
+            ORDER BY ${pgStatStatementsTimeExpr} DESC
+              LIMIT 10
+      `,
+          [dbName],
+        )
+      : () => Promise.resolve({ rows: [] as unknown[] }),
 
     // Wait Events Information
-    client.query(`
+    () => client.query(`
             SELECT wait_event_type, count(*) as count
             FROM pg_stat_activity
             WHERE wait_event_type IS NOT NULL
@@ -435,7 +448,7 @@ export async function fetchStats(client: Client | PoolClient, dbName: string): P
     `, [dbName]),
 
     // Long Running Queries Count (> 5 seconds)
-    client.query(`
+    () => client.query(`
             SELECT count(*) as count
             FROM pg_stat_activity
             WHERE state = 'active'
@@ -446,7 +459,7 @@ export async function fetchStats(client: Client | PoolClient, dbName: string): P
         ,
 
         // Index hit ratio (different from shared buffer cache hit ratio)
-        client.query(`
+        () => client.query(`
           SELECT
             COALESCE(
         100.0 * SUM(idx_blks_hit) / NULLIF(SUM(idx_blks_hit + idx_blks_read), 0),
@@ -456,7 +469,7 @@ export async function fetchStats(client: Client | PoolClient, dbName: string): P
         `),
 
         // Oldest open transaction age (seconds)
-        client.query(`
+        () => client.query(`
           SELECT COALESCE(MAX(EXTRACT(EPOCH FROM (now() - xact_start))), 0)::bigint AS oldest_tx_age_seconds
           FROM pg_stat_activity
           WHERE datname = $1
@@ -465,14 +478,14 @@ export async function fetchStats(client: Client | PoolClient, dbName: string): P
         `, [dbName]),
 
         // Vacuum attention signal: user tables with substantial dead tuples
-        client.query(`
+        () => client.query(`
           SELECT COUNT(*)::int AS tables_needing_attention
           FROM pg_stat_user_tables
           WHERE n_dead_tup > GREATEST((n_live_tup * 0.2)::bigint, 1000)
         `),
 
     // WAL / replication snapshot (safe on primary and standby)
-    client.query(`
+    () => client.query(`
       SELECT
         pg_is_in_recovery() AS in_recovery,
         CASE WHEN NOT pg_is_in_recovery() THEN pg_current_wal_lsn()::text ELSE NULL END AS current_wal_lsn,
@@ -487,7 +500,7 @@ export async function fetchStats(client: Client | PoolClient, dbName: string): P
         END AS replay_lag_bytes
     `),
 
-    client.query(`
+    () => client.query(`
       SELECT
         application_name,
         client_addr::text AS client_addr,
@@ -505,7 +518,7 @@ export async function fetchStats(client: Client | PoolClient, dbName: string): P
       ORDER BY application_name NULLS LAST, pid
     `),
 
-    client.query(`
+    () => client.query(`
       SELECT name, setting, unit
       FROM pg_settings
       WHERE name IN (
@@ -518,9 +531,9 @@ export async function fetchStats(client: Client | PoolClient, dbName: string): P
       )
     `),
 
-    client.query(walReceiverSql),
+    () => client.query(walReceiverSql),
 
-    client.query(`
+    () => client.query(`
       SELECT
         wal_records,
         wal_fpi,
@@ -534,7 +547,7 @@ export async function fetchStats(client: Client | PoolClient, dbName: string): P
       FROM pg_stat_wal
     `),
 
-    client.query(`
+    () => client.query(`
       SELECT
         slot_name,
         plugin::text AS plugin,
@@ -548,7 +561,7 @@ export async function fetchStats(client: Client | PoolClient, dbName: string): P
     `),
 
     // Unused indexes (never scanned), excluding PK/UNIQUE/constraint-backed indexes.
-    client.query(`
+    () => client.query(`
       SELECT s.schemaname || '.' || s.indexrelname AS index_name,
              s.relname AS table_name,
              pg_size_pretty(pg_relation_size(s.indexrelid)) AS index_size,
@@ -568,7 +581,7 @@ export async function fetchStats(client: Client | PoolClient, dbName: string): P
     `),
 
     // Tables with high sequential scan ratio
-    client.query(`
+    () => client.query(`
       SELECT schemaname || '.' || relname AS table_name,
              seq_scan,
              COALESCE(idx_scan, 0) AS idx_scan,
@@ -584,7 +597,7 @@ export async function fetchStats(client: Client | PoolClient, dbName: string): P
     `),
 
     // Dead-tuple pressure proxy (not a physical bloat estimate).
-    client.query(`
+    () => client.query(`
       SELECT schemaname || '.' || relname AS table_name,
              n_live_tup,
              n_dead_tup,
@@ -600,7 +613,7 @@ export async function fetchStats(client: Client | PoolClient, dbName: string): P
     `),
 
     // Currently running autovacuum workers
-    client.query(`
+    () => client.query(`
       SELECT pid,
              datname,
              relid::regclass::text AS table_name,
@@ -612,7 +625,7 @@ export async function fetchStats(client: Client | PoolClient, dbName: string): P
     `, [dbName]),
 
     // Tables needing vacuum based on effective autovacuum thresholds.
-    client.query(`
+    () => client.query(`
       SELECT st.schemaname || '.' || st.relname AS table_name,
              st.n_dead_tup,
              st.n_live_tup,
@@ -648,7 +661,7 @@ export async function fetchStats(client: Client | PoolClient, dbName: string): P
     `),
 
     // Connections grouped by application_name and state
-    client.query(`
+    () => client.query(`
       SELECT COALESCE(NULLIF(application_name, ''), 'unknown') AS application_name,
              COALESCE(state, 'unknown') AS state,
              (wait_event_type IS NOT NULL) AS waiting,

@@ -169,10 +169,8 @@ export async function cmdShowForeignTableProperties(item: DatabaseTreeItem, cont
     dbConn = await getDatabaseConnection(item);
     const { client, metadata } = dbConn;
 
-    const [infoResult, definitionResult] = await Promise.all([
-      client.query(QueryBuilder.foreignTableInfo(item.schema!, item.label)),
-      client.query(QueryBuilder.foreignTableDefinition(item.schema!, item.label))
-    ]);
+    const infoResult = await client.query(QueryBuilder.foreignTableInfo(item.schema!, item.label));
+    const definitionResult = await client.query(QueryBuilder.foreignTableDefinition(item.schema!, item.label));
 
     if (infoResult.rows.length === 0 || definitionResult.rows.length === 0) {
       throw new Error('Foreign table not found');

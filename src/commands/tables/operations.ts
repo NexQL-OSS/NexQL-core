@@ -14,10 +14,8 @@ import { queryServerVersionNum } from '../../lib/postgresServerVersion';
 
 export async function cmdTableOperations(item: DatabaseTreeItem, context: vscode.ExtensionContext) {
   await CommandBase.run(context, item, 'create table operations notebook', async (conn, client, metadata) => {
-    const [columnsResult, constraintsResult] = await Promise.all([
-      client.query(QueryBuilder.tableColumns(item.schema!, item.label)),
-      client.query(QueryBuilder.tableConstraintDefinitions(item.schema!, item.label))
-    ]);
+    const columnsResult = await client.query(QueryBuilder.tableColumns(item.schema!, item.label));
+    const constraintsResult = await client.query(QueryBuilder.tableConstraintDefinitions(item.schema!, item.label));
     const tableDefinition = buildTableDefinition(item.schema!, item.label, columnsResult.rows, constraintsResult.rows);
 
     const notebook = new NotebookBuilder(metadata)
@@ -46,10 +44,8 @@ export async function cmdTableOperations(item: DatabaseTreeItem, context: vscode
 
 export async function cmdEditTable(item: DatabaseTreeItem, context: vscode.ExtensionContext) {
   await CommandBase.run(context, item, 'create table edit notebook', async (conn, client, metadata) => {
-    const [columnsResult, constraintsResult] = await Promise.all([
-      client.query(QueryBuilder.tableColumns(item.schema!, item.label)),
-      client.query(QueryBuilder.tableConstraintDefinitions(item.schema!, item.label))
-    ]);
+    const columnsResult = await client.query(QueryBuilder.tableColumns(item.schema!, item.label));
+    const constraintsResult = await client.query(QueryBuilder.tableConstraintDefinitions(item.schema!, item.label));
     const tableDefinition = buildTableDefinition(item.schema!, item.label, columnsResult.rows, constraintsResult.rows);
 
     await new NotebookBuilder(metadata)
@@ -109,10 +105,8 @@ export async function cmdInsertTable(item: DatabaseTreeItem, context: vscode.Ext
 
 export async function cmdUpdateTable(item: DatabaseTreeItem, context: vscode.ExtensionContext) {
   await CommandBase.run(context, item, 'create update notebook', async (conn, client, metadata) => {
-    const [columnsResult, constraintsResult] = await Promise.all([
-      client.query(QueryBuilder.columns(item.schema!, item.label)),
-      client.query(QueryBuilder.tableConstraints(item.schema!, item.label))
-    ]);
+    const columnsResult = await client.query(QueryBuilder.columns(item.schema!, item.label));
+    const constraintsResult = await client.query(QueryBuilder.tableConstraints(item.schema!, item.label));
 
     const pkConstraint = constraintsResult.rows.find((c: any) => c.constraint_type === 'PRIMARY KEY');
     const pkColumns = pkConstraint ? pkConstraint.columns.split(', ') : [];
@@ -173,14 +167,12 @@ export async function cmdShowTableProperties(item: DatabaseTreeItem, context: vs
   await CommandBase.run(context, item, 'view table properties', async (conn, client, metadata) => {
     const serverVersionNum = await queryServerVersionNum(client);
     // Gather comprehensive table information
-    const [tableInfo, columnInfo, constraintInfo, indexInfo, statsInfo, sizeInfo] = await Promise.all([
-      client.query(QueryBuilder.tableInfo(item.schema!, item.label, serverVersionNum)),
-      client.query(QueryBuilder.tableColumns(item.schema!, item.label)),
-      client.query(QueryBuilder.tableConstraints(item.schema!, item.label)),
-      client.query(QueryBuilder.tableIndexes(item.schema!, item.label)),
-      client.query(QueryBuilder.tableStats(item.schema!, item.label)),
-      client.query(QueryBuilder.tableSize(item.schema!, item.label))
-    ]);
+    const tableInfo = await client.query(QueryBuilder.tableInfo(item.schema!, item.label, serverVersionNum));
+    const columnInfo = await client.query(QueryBuilder.tableColumns(item.schema!, item.label));
+    const constraintInfo = await client.query(QueryBuilder.tableConstraints(item.schema!, item.label));
+    const indexInfo = await client.query(QueryBuilder.tableIndexes(item.schema!, item.label));
+    const statsInfo = await client.query(QueryBuilder.tableStats(item.schema!, item.label));
+    const sizeInfo = await client.query(QueryBuilder.tableSize(item.schema!, item.label));
 
     const table = tableInfo.rows[0];
     const columns = columnInfo.rows;

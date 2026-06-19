@@ -18,13 +18,11 @@ export async function probeConnectionPlatform(
     platformPreset?: ConnectionPlatformPreset;
   },
 ): Promise<ConnectionProbeResult> {
-  const [versionRes, versionNumRes, extRes] = await Promise.all([
-    client.query<{ version: string }>('SELECT version() AS version'),
-    client.query<{ server_version_num: string }>('SHOW server_version_num'),
-    client.query<{ extname: string }>(
-      'SELECT extname FROM pg_extension ORDER BY 1',
-    ),
-  ]);
+  const versionRes = await client.query<{ version: string }>('SELECT version() AS version');
+  const versionNumRes = await client.query<{ server_version_num: string }>('SHOW server_version_num');
+  const extRes = await client.query<{ extname: string }>(
+    'SELECT extname FROM pg_extension ORDER BY 1',
+  );
 
   const versionString = versionRes.rows[0]?.version ?? '';
   const serverVersionNum = Number(versionNumRes.rows[0]?.server_version_num ?? 0);
