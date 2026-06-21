@@ -102,6 +102,21 @@
     ],
     "commands": [
       {
+        "command": "postgres-explorer.dbindex.openPanel",
+        "title": "Database Index: Open Dashboard",
+        "category": "NexQL"
+      },
+      {
+        "command": "postgres-explorer.dbindex.build",
+        "title": "Database Index: Build Index...",
+        "category": "NexQL"
+      },
+      {
+        "command": "postgres-explorer.dbindex.clear",
+        "title": "Database Index: Clear Index...",
+        "category": "NexQL"
+      },
+      {
         "command": "postgres-explorer.license.activate",
         "title": "Activate License",
         "category": "NexQL"
@@ -3172,6 +3187,16 @@
           "submenu": "postgres-explorer.databaseScriptsMenu",
           "when": "view == postgresExplorer && viewItem == database",
           "group": "1_operations@2"
+        },
+        {
+          "command": "postgres-explorer.dbindex.build",
+          "when": "view == postgresExplorer && viewItem == database",
+          "group": "1_operations@9"
+        },
+        {
+          "command": "postgres-explorer.dbindex.openPanel",
+          "when": "view == postgresExplorer && viewItem == database",
+          "group": "1_operations@9.5"
         },
         {
           "command": "postgres-explorer.disconnectDatabase",

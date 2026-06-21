@@ -32,6 +32,11 @@ export enum ProFeature {
   SyncSharing = 'syncSharing',
   /** Re-binding a free-tier backup to a new device (metered on free). */
   SyncDeviceRebind = 'syncDeviceRebind',
+  DbIndexBuild = 'dbIndexBuild',
+  DbIndexAuto = 'dbIndexAuto',
+  DbIndexMulti = 'dbIndexMulti',
+  DbIndexEmbed = 'dbIndexEmbed',
+  AgenticModes = 'agenticModes',
 }
 
 const FEATURE_LABELS: Record<ProFeature, string> = {
@@ -49,6 +54,11 @@ const FEATURE_LABELS: Record<ProFeature, string> = {
   [ProFeature.CloudSync]: 'Cloud Sync',
   [ProFeature.SyncSharing]: 'Team Sync Sharing',
   [ProFeature.SyncDeviceRebind]: 'Backup Device Rebind',
+  [ProFeature.DbIndexBuild]: 'Database Index Build',
+  [ProFeature.DbIndexAuto]: 'Auto Database Indexing',
+  [ProFeature.DbIndexMulti]: 'Multi-Database Indexing',
+  [ProFeature.DbIndexEmbed]: 'Semantic Database Indexing',
+  [ProFeature.AgenticModes]: 'Agentic Mode Loops',
 };
 
 /** Ordering for entitlement comparison: a tier unlocks everything at or below its rank. */
@@ -71,6 +81,9 @@ const FEATURE_MIN_TIER: Partial<Record<ProFeature, LicenseTier>> = {
   [ProFeature.CloudBackup]: 'free',
   [ProFeature.CloudSync]: 'sponsor',
   [ProFeature.SyncSharing]: 'singularity',
+  [ProFeature.DbIndexAuto]: 'sponsor',
+  [ProFeature.DbIndexMulti]: 'sponsor',
+  [ProFeature.DbIndexEmbed]: 'sponsor',
 };
 
 /** User-facing upgrade copy for above-tier features. */
@@ -110,6 +123,8 @@ export const FREE_QUOTAS: Partial<Record<ProFeature, FeatureQuota>> = {
   [ProFeature.DataImport]: { limit: 3, period: 'week' },
   [ProFeature.BackupRestore]: { limit: 3, period: 'week' },
   [ProFeature.SyncDeviceRebind]: { limit: 1, period: 'week' },
+  [ProFeature.DbIndexBuild]: { limit: 2, period: 'week' },
+  [ProFeature.AgenticModes]: { limit: 5, period: 'day' },
 };
 
 /**

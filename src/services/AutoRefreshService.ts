@@ -33,6 +33,7 @@ function getPollIntervalMs(): number {
 }
 
 export class AutoRefreshService implements vscode.Disposable {
+  private static instance: AutoRefreshService | undefined;
   private readonly pollers: Map<string, SchemaPoller> = new Map();
   private readonly debouncer = new Debouncer();
   private readonly disposables: vscode.Disposable[] = [];
@@ -43,7 +44,13 @@ export class AutoRefreshService implements vscode.Disposable {
     private readonly notebooksTreeProvider: NotebooksTreeProvider,
     private readonly globalStorageUri: vscode.Uri,
     private readonly outputChannel: vscode.OutputChannel
-  ) {}
+  ) {
+    AutoRefreshService.instance = this;
+  }
+
+  public static getFingerprint(connectionId: string, database: string): string | undefined {
+    return AutoRefreshService.instance?.pollers.get(connectionId)?.getFingerprint(database);
+  }
 
   /** Called once during extension activation. */
   start(): void {
@@ -195,6 +202,16 @@ export class AutoRefreshService implements vscode.Disposable {
         (connId, database) => {
           getSchemaCache().invalidateDatabase(connId, database);
           this.databaseTreeProvider.refresh();
+
+          // Trigger index rebuild if auto-indexing is unlocked
+          try {
+            const { isProFeatureEnabled, ProFeature } = require('./featureGates');
+            if (isProFeatureEnabled(ProFeature.DbIndexAuto)) {
+              vscode.commands.executeCommand('postgres-explorer.dbindex.updateBackground', connId, database);
+            }
+          } catch (e) {
+            this.outputChannel.appendLine(`[AutoRefreshService] Failed to trigger background index rebuild: ${e}`);
+          }
         },
         this.outputChannel
       );

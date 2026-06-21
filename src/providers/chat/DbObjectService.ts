@@ -3,6 +3,7 @@
  */
 import * as vscode from 'vscode';
 import { debugLog } from '../../common/logger';
+import { extensionContext } from '../../extension';
 import { Client, PoolClient } from 'pg';
 import { ConnectionManager } from '../../services/ConnectionManager';
 import { getSchemaCache, SchemaCache } from '../../lib/schema-cache';
@@ -575,7 +576,7 @@ export class DbObjectService {
   async getObjectSchema(obj: DbObject, ctx?: SchemaRenderContext): Promise<string> {
     const cacheKey = `${obj.connectionId}:${obj.schema}:${obj.name}:${obj.type}`;
 
-    // Check cache first
+    // Check memory cache first
     if (this._objectSchemaCache.has(cacheKey)) {
       debugLog('[ChatView] Cache hit for:', cacheKey);
       const cached = this._objectSchemaCache.get(cacheKey)!;
@@ -585,6 +586,27 @@ export class DbObjectService {
       return typeof cached === 'string'
         ? cached
         : renderTableSchema(cached, { userMessage: ctx?.userMessage });
+    }
+
+    // Check local database index first
+    try {
+      if (extensionContext) {
+        const { IndexStore } = await import('../../features/dbindex/IndexStore');
+        const { IndexQueryService } = await import('../../features/dbindex/IndexQueryService');
+        const { mapObjectEntryToTableSchema } = await import('../../features/dbindex/contextPack');
+        
+        const store = new IndexStore(extensionContext.globalStorageUri);
+        const queryService = new IndexQueryService(store);
+        const entry = await queryService.describe(obj.connectionId, obj.database, `${obj.schema}.${obj.name}`);
+        if (entry) {
+          debugLog('[ChatView] Local index hit for:', obj.schema + '.' + obj.name);
+          const mapped = mapObjectEntryToTableSchema(obj.schema, obj.name, entry);
+          this._objectSchemaCache.set(cacheKey, mapped);
+          return renderTableSchema(mapped, { userMessage: ctx?.userMessage });
+        }
+      }
+    } catch (e) {
+      debugLog('[ChatView] Local index read bypassed or failed:', e);
     }
 
     const connections = vscode.workspace.getConfiguration().get<any[]>('postgresExplorer.connections') || [];

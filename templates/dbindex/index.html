@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Database Index Grounding</title>
+  <meta http-equiv="Content-Security-Policy" content="{{CSP}}">
+  <style>
+    {{INLINE_STYLES}}
+  </style>
+</head>
+<body>
+  <div class="pg-container">
+    <div class="pg-header">
+      <div class="header-main">
+        <h1>🔍 Database Index Grounding</h1>
+        <p class="description">Local, incrementally maintained knowledge catalogs that feed AI prompt grounding and agent tool loops offline.</p>
+      </div>
+      <div class="header-actions">
+        <button id="btn-build-new" class="pg-btn pg-btn--primary">
+          <span>⚡ Index Database</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- General Settings Card -->
+    <div class="pg-section settings-section">
+      <div class="pg-card">
+        <h3>General Configuration</h3>
+        <div class="settings-row">
+          <div class="settings-info">
+            <span class="label">Enable Semantic Search (Embeddings)</span>
+            <span class="hint">Embeds tables and columns into Float32 vectors using your active model key (OpenAI/Gemini/Ollama) for conceptual search matches.</span>
+          </div>
+          <div class="settings-control">
+            <label class="switch">
+              <input type="checkbox" id="chk-enable-embeddings">
+              <span class="slider"></span>
+            </label>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Active Configurations Grid -->
+    <div class="pg-section">
+      <h2>Active Indexes</h2>
+      <div id="index-cards" class="pg-cards-grid">
+        <!-- Loaded dynamically by scripts.js -->
+        <div class="pg-empty-state">
+          <p>Loading database index configurations...</p>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script nonce="{{NONCE}}">{{INLINE_SCRIPTS}}</script>
+</body>
+</html>

@@ -74,6 +74,10 @@ export class SchemaPoller implements vscode.Disposable {
     this.fingerprints.clear();
   }
 
+  public getFingerprint(database: string): string | undefined {
+    return this.fingerprints.get(database);
+  }
+
   // ── Private helpers ──────────────────────────────────────────────────────────
 
   private scheduleNext(intervalMs: number): void {

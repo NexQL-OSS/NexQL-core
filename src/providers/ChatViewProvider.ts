@@ -76,6 +76,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private _isProcessing = false;
 
   // Phase C: Track current connection/database context for session metadata
+  private _currentConnectionId: string | undefined;
   private _currentConnectionName: string | undefined;
   private _currentDatabase: string | undefined;
 
@@ -115,6 +116,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       return;
     }
 
+    this._currentConnectionId = context.connectionId;
     this._currentConnectionName = context.connectionName;
     this._currentDatabase = context.database;
     this._currentEnvironment = context.environment;
@@ -560,6 +562,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       if (mentions[0]) {
         this._currentDatabase = mentions[0].database;
         this._currentConnectionName = mentions[0].breadcrumb?.split('.')[0] || mentions[0].connectionId;
+        this._currentConnectionId = mentions[0].connectionId;
 
         if (mentions[0].connectionId) {
           const connections = vscode.workspace.getConfiguration().get<any[]>('postgresExplorer.connections') || [];
@@ -620,6 +623,27 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       debugLog('[ChatView] ========== FULL AI MESSAGE ==========');
       debugLog(aiMessage);
       debugLog('[ChatView] ========== END FULL AI MESSAGE ==========');
+    } else if (this._currentConnectionId && this._currentDatabase) {
+      try {
+        const { IndexStore } = await import('../features/dbindex/IndexStore');
+        const { IndexQueryService } = await import('../features/dbindex/IndexQueryService');
+        const store = new IndexStore(this._extensionContext.globalStorageUri);
+        const queryService = new IndexQueryService(store);
+        const config = vscode.workspace.getConfiguration();
+        const result = await queryService.retrieve(
+          this._currentConnectionId,
+          this._currentDatabase,
+          message,
+          2500,
+          config
+        );
+        if (result) {
+          aiMessage = result.packMarkdown + '\n\n' + fullMessage;
+          debugLog('[ChatView] Grounded user turn payload with local index context.');
+        }
+      } catch (e) {
+        debugLog('[ChatView] Failed to retrieve local index context:', e);
+      }
     }
 
     return { fullMessage, aiMessage };
@@ -1304,6 +1328,7 @@ Why is this query running slower than its historical baseline? What could have c
     this._chatSystemPromptMode = 'backup_tools';
 
     const conn = params.connection;
+    this._currentConnectionId = conn?.id;
     this._currentConnectionName = conn?.name ?? params.databaseLabel;
     this._currentDatabase = params.databaseName;
     this._currentEnvironment = conn?.environment;

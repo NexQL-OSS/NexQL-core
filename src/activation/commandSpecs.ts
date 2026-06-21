@@ -1771,6 +1771,82 @@ export function getCommandSpecs(
 
     // Phase 2: Schema Search
     { command: 'postgres-explorer.searchSchema', callback: async () => await cmdSearchSchema() },
+
+    // Database Index Grounding Commands
+    {
+      command: 'postgres-explorer.dbindex.openPanel',
+      callback: async () => {
+        const { DbIndexPanel } = await import('../features/dbindex/panel/DbIndexPanel');
+        await DbIndexPanel.show(context.extensionUri, context);
+      }
+    },
+    {
+      command: 'postgres-explorer.dbindex.build',
+      callback: async (item?: DatabaseTreeItem) => {
+        const { IndexBuilder } = await import('../features/dbindex/IndexBuilder');
+        const { IndexStore } = await import('../features/dbindex/IndexStore');
+        const { runGuidedBuildWizard } = await import('../features/dbindex/buildWizard');
+        const store = new IndexStore(context.globalStorageUri);
+        const builder = new IndexBuilder(store);
+        const preselected = item && item.connectionId && item.databaseName ? {
+          connectionId: item.connectionId,
+          databaseName: item.databaseName
+        } : undefined;
+        await runGuidedBuildWizard(context, builder, outputChannel, preselected);
+      }
+    },
+    {
+      command: 'postgres-explorer.dbindex.clear',
+      callback: async () => {
+        const { IndexStore } = await import('../features/dbindex/IndexStore');
+        const store = new IndexStore(context.globalStorageUri);
+        const connection = await ConnectionUtils.showConnectionPicker(undefined, {
+          title: 'Clear Database Index',
+          placeHolder: 'Select a connection',
+        });
+        if (!connection) return;
+        const database = await ConnectionUtils.showDatabasePicker(connection, undefined, {
+          title: 'Clear Database Index',
+          placeHolder: 'Select a database',
+        });
+        if (!database) return;
+        
+        const confirm = await vscode.window.showWarningMessage(
+          `Are you sure you want to delete the local index for "${database}"?`,
+          'Delete'
+        );
+        if (confirm === 'Delete') {
+          await store.clearIndex(connection.id, database);
+          vscode.window.showInformationMessage(`Index cleared for "${database}".`);
+        }
+      }
+    },
+    {
+      command: 'postgres-explorer.dbindex.updateBackground',
+      callback: async (connectionId: string, database: string) => {
+        const { IndexBuilder } = await import('../features/dbindex/IndexBuilder');
+        const { IndexStore } = await import('../features/dbindex/IndexStore');
+        const store = new IndexStore(context.globalStorageUri);
+        const baseDir = store.getBaseDir(connectionId, database);
+        const manifest = await store.readManifest(baseDir);
+        if (!manifest) return; // No index configured
+
+        const builder = new IndexBuilder(store);
+        try {
+          await builder.build(
+            connectionId,
+            database,
+            manifest.scope,
+            manifest.buildDepth,
+            'auto',
+            manifest.environment,
+          );
+          outputChannel.appendLine(`[AutoRefresh] Background index rebuild complete for ${database}.`);
+        } catch (err: any) {
+          outputChannel.appendLine(`[AutoRefresh] Background index rebuild failed: ${err.message || err}`);
+        }
+      }
+    }
   ];
 
   return commands;
