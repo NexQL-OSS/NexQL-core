@@ -75,8 +75,11 @@ export class ConnectionLoader extends BaseLoader {
         const cacheKey = SchemaCache.buildKey(element.connectionId!, dbName, undefined, 'databases');
         const dbResult = await (provider as any)._cache.getOrFetch(cacheKey, async () => {
           return await client.query(`
-            SELECT datname, pg_size_pretty(pg_database_size(datname)) as size 
-            FROM pg_database 
+            SELECT datname,
+                   CASE WHEN has_database_privilege(datname, 'CONNECT')
+                        THEN pg_size_pretty(pg_database_size(datname))
+                   END as size
+            FROM pg_database
             ORDER BY datname
           `);
         });
@@ -128,7 +131,10 @@ export class ConnectionLoader extends BaseLoader {
 
       case 'system-databases-group': {
         const systemDbResult = await client.query(
-          `SELECT datname, pg_size_pretty(pg_database_size(datname)) as size
+          `SELECT datname,
+                  CASE WHEN has_database_privilege(datname, 'CONNECT')
+                       THEN pg_size_pretty(pg_database_size(datname))
+                  END as size
            FROM pg_database
            WHERE datname = ANY($1)
            ORDER BY datname`,
