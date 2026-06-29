@@ -304,7 +304,7 @@ export class SchemaLoader extends BaseLoader {
               const isFav = (provider as any).isFavoriteItem('materialized-view', element.connectionId, element.databaseName, element.schema, row.name);
               return new DatabaseTreeItem(
                 row.name,
-                vscode.TreeItemCollapsibleState.None,
+                vscode.TreeItemCollapsibleState.Collapsed,
                 'materialized-view',
                 element.connectionId,
                 element.databaseName,

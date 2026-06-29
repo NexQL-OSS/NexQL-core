@@ -871,10 +871,31 @@
         </div>
 
         <div id="syncNotConfigured" class="locked-box" hidden>
-          <div class="locked-icon">☁️</div>
-          <h2>Cloud Sync is not set up</h2>
-          <p>Run the guided wizard to pick a storage backend and create or unlock your encrypted vault. Free plan: manual backup to your own Postgres, bound to this device. Sponsor and Teams add automatic multi-device sync.</p>
-          <button type="button" id="syncSetupBtn" class="btn-primary">Set Up Cloud Sync</button>
+          <!-- Free tier: promo view -->
+          <div id="syncNotConfiguredFree" hidden>
+            <div class="locked-icon">☁️</div>
+            <h2>NexQL Cloud Sync</h2>
+            <p style="margin-bottom: 12px;">Encrypted, automatic multi-device sync for your connections, saved queries, and notebooks — included with a NexQL license.</p>
+            <ul class="sync-promo-features">
+              <li>🔒 End-to-end encrypted vault — only you hold the key</li>
+              <li>⚡ Auto-push on save, auto-pull on schedule</li>
+              <li>🖥️ Sync across unlimited devices</li>
+              <li>👥 Team workspaces with shared encrypted vaults</li>
+              <li>☁️ Hosted NexQL Cloud — no infra to manage</li>
+            </ul>
+            <button type="button" id="syncFreePromoUpgradeBtn" class="btn-primary" style="margin-top: 4px;">Get NexQL License</button>
+            <div style="border-top: 1px solid var(--vscode-dropdown-border); padding-top: 12px; margin-top: 16px;">
+              <button type="button" id="syncFreeLocalSyncBtn" class="btn-secondary btn-sm">Set up local Postgres sync →</button>
+              <p class="label-hint" style="margin-top: 6px; margin-bottom: 0;">Single-device manual backup to your own Postgres database</p>
+            </div>
+          </div>
+          <!-- Paid tier: setup view -->
+          <div id="syncNotConfiguredSetup" hidden>
+            <div class="locked-icon">☁️</div>
+            <h2>Cloud Sync is not set up</h2>
+            <p>Run the guided wizard to pick a storage backend and create or unlock your encrypted vault.</p>
+            <button type="button" id="syncSetupBtn" class="btn-primary">Set Up Cloud Sync</button>
+          </div>
         </div>
 
         <div id="syncConfigured" hidden>

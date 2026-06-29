@@ -2487,6 +2487,12 @@ $('syncSetupBtn').addEventListener('click', () => {
   const mode = (latestSyncState && latestSyncState.cloudDefault) ? 'cloud' : 'advanced';
   vscode.postMessage({ command: 'sync/setup', mode });
 });
+$('syncFreePromoUpgradeBtn')?.addEventListener('click', () => {
+  vscode.postMessage({ command: 'license/openUpgrade' });
+});
+$('syncFreeLocalSyncBtn')?.addEventListener('click', () => {
+  vscode.postMessage({ command: 'sync/setup', mode: 'advanced' });
+});
 $('syncPullBtn')?.addEventListener('click', () => vscode.postMessage({ command: 'sync/pull' }));
 $('syncPushBtn')?.addEventListener('click', () => vscode.postMessage({ command: 'sync/push' }));
 $('syncPreviewRefreshBtn')?.addEventListener('click', () => vscode.postMessage({ command: 'sync/preview' }));
@@ -3390,6 +3396,12 @@ function handleSyncMessage(message) {
       $('syncNotConfigured').hidden = !(sync.featureEnabled && !sync.configured);
       $('syncConfigured').hidden = !(sync.featureEnabled && sync.configured);
       $('syncSectionActions').hidden = !(sync.featureEnabled && sync.configured);
+
+      if (sync.featureEnabled && !sync.configured) {
+        const isFree = sync.tier === 'free';
+        $('syncNotConfiguredFree').hidden = !isFree;
+        $('syncNotConfiguredSetup').hidden = isFree;
+      }
 
       if (sync.featureEnabled && sync.configured) {
         vscode.postMessage({ command: 'sync/local' });

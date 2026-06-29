@@ -594,10 +594,11 @@ export class DatabaseTreeProvider implements vscode.TreeDataProvider<DatabaseTre
         return await this.schemaLoader.getChildren(ctx);
       }
 
-      // Table, View, Columns, Constraints, Indexes, RLS Policies, Partitions, FDW Loader
+      // Table, View, Materialized View, Columns, Constraints, Indexes, RLS Policies, Partitions, FDW Loader
       if (
         element.type === 'table' ||
         element.type === 'view' ||
+        element.type === 'materialized-view' ||
         element.type === 'foreign-data-wrapper' ||
         element.type === 'foreign-server' ||
         (element.type === 'category' && element.tableName)

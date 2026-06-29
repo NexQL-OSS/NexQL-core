@@ -51,6 +51,12 @@ export class TableLoader extends BaseLoader {
           new DatabaseTreeItem('Columns', vscode.TreeItemCollapsibleState.Collapsed, 'category', element.connectionId, element.databaseName, element.schema, element.label)
         ];
 
+      case 'materialized-view':
+        return [
+          new DatabaseTreeItem('Columns', vscode.TreeItemCollapsibleState.Collapsed, 'category', element.connectionId, element.databaseName, element.schema, element.label),
+          new DatabaseTreeItem('Indexes', vscode.TreeItemCollapsibleState.Collapsed, 'category', element.connectionId, element.databaseName, element.schema, element.label),
+        ];
+
       case 'foreign-data-wrapper': {
         const serversResult = await client.query(
           `SELECT srv.srvname as name
@@ -94,8 +100,16 @@ export class TableLoader extends BaseLoader {
 
         switch (element.label) {
           case 'Columns': {
+            // pg_attribute covers tables, views, AND materialized views (information_schema.columns excludes mat views)
             const columnResult = await client.query(
-              "SELECT column_name, data_type FROM information_schema.columns WHERE table_schema = $1 AND table_name = $2 ORDER BY ordinal_position",
+              `SELECT a.attname AS column_name,
+                      pg_catalog.format_type(a.atttypid, a.atttypmod) AS data_type
+               FROM pg_catalog.pg_attribute a
+               JOIN pg_catalog.pg_class c ON c.oid = a.attrelid
+               JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+               WHERE n.nspname = $1 AND c.relname = $2
+                 AND a.attnum > 0 AND NOT a.attisdropped
+               ORDER BY a.attnum`,
               [element.schema, element.tableName]
             );
             return columnResult.rows.map(row => new DatabaseTreeItem(

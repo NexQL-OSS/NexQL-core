@@ -2169,6 +2169,19 @@ body {
 .locked-box h2 { font-size: 15px; font-weight: 600; margin: 0 0 6px; color: var(--vscode-foreground); }
 .locked-box p { font-size: 12px; margin: 0 0 14px; }
 .locked-box .inline-row { justify-content: center; }
+.sync-promo-features {
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 0;
+  text-align: left;
+  display: inline-block;
+}
+.sync-promo-features li {
+  font-size: 12px;
+  color: var(--vscode-foreground);
+  padding: 3px 0;
+  opacity: 0.85;
+}
 
 /* ── License ── */
 .license-card.hub-setting-card .hub-setting-card-body {
