@@ -1070,7 +1070,13 @@ export function renderPostgresNotebookResult(
       const transposeBtn = document.createElement('button');
       transposeBtn.type = 'button';
       fillToolbarButtonContent(transposeBtn, 'transpose', 'Transpose');
-      transposeBtn.onclick = () => switchTab('transpose');
+      transposeBtn.onclick = () => {
+        if (currentMode === 'transpose') {
+          switchTab(lastPrimaryMode || 'table');
+        } else {
+          switchTab('transpose');
+        }
+      };
       applyResultViewTabStyle(transposeBtn, false);
       attachResultViewTabHover(transposeBtn);
 
@@ -1645,7 +1651,13 @@ export function renderPostgresNotebookResult(
           menu.appendChild(item);
         };
 
-        addItem('⇄ Transpose', () => switchTab('transpose'));
+        addItem('⇄ Transpose', () => {
+          if (currentMode === 'transpose') {
+            switchTab(lastPrimaryMode || 'table');
+          } else {
+            switchTab('transpose');
+          }
+        });
         if (noticeItems.length > 0) {
           addItem(`Notices (${noticeItems.length})`, () => switchTab('notices'));
         }

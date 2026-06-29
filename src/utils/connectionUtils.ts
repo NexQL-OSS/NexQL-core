@@ -86,7 +86,20 @@ export class ConnectionUtils {
     notebook: vscode.NotebookDocument,
     updates: Partial<Record<string, any>>
   ): Promise<boolean> {
-    const newMetadata = { ...notebook.metadata, ...updates };
+    const fullUpdates = { ...updates };
+    if (fullUpdates.databaseName !== undefined && fullUpdates.database === undefined) {
+      fullUpdates.database = fullUpdates.databaseName;
+    }
+    const newMetadata = { ...notebook.metadata, ...fullUpdates };
+    if (newMetadata.custom?.metadata) {
+      newMetadata.custom = {
+        ...newMetadata.custom,
+        metadata: {
+          ...newMetadata.custom.metadata,
+          ...fullUpdates
+        }
+      };
+    }
     const edit = new vscode.WorkspaceEdit();
     edit.set(notebook.uri, [vscode.NotebookEdit.updateNotebookMetadata(newMetadata)]);
     const applied = await vscode.workspace.applyEdit(edit);

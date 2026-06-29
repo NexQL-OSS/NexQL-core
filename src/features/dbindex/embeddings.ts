@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as https from 'https';
 import * as http from 'http';
 import { AiCredentialsService } from '../aiAssistant/AiCredentialsService';
+import { getEmbeddingsEndpoint } from '../aiAssistant/aiConfig';
 import { EmbeddingMetaEntry } from './types';
 
 /**
@@ -71,7 +72,7 @@ export async function generateEmbedding(
     model = config.get<string>('postgresExplorer.aiModel', 'text-embedding-3-small');
     body = { input: text, model };
   } else if (provider === 'custom') {
-    endpoint = config.get<string>('postgresExplorer.customEndpoint', '').replace(/\/chat\/completions$/, '/embeddings');
+    endpoint = getEmbeddingsEndpoint(config.get<string>('postgresExplorer.aiEndpoint', ''));
     model = config.get<string>('postgresExplorer.aiModel', '');
     if (apiKey) {
       headers['Authorization'] = `Bearer ${apiKey}`;

@@ -163,3 +163,34 @@ export function providerDisplayName(provider: AiProviderId): string {
       return provider;
   }
 }
+
+export function getChatCompletionEndpoint(configuredEndpoint: string): string {
+  if (!configuredEndpoint) {
+    return '';
+  }
+  let endpoint = configuredEndpoint.trim();
+  if (!endpoint.endsWith('/chat/completions')) {
+    endpoint = endpoint.replace(/\/$/, '');
+    if (endpoint.endsWith('/v1')) {
+      endpoint = endpoint + '/chat/completions';
+    } else {
+      endpoint = endpoint + '/v1/chat/completions';
+    }
+  }
+  return endpoint;
+}
+
+export function getEmbeddingsEndpoint(configuredEndpoint: string): string {
+  if (!configuredEndpoint) {
+    return '';
+  }
+  let endpoint = configuredEndpoint.trim();
+  if (endpoint.endsWith('/chat/completions')) {
+    return endpoint.replace(/\/chat\/completions$/, '/embeddings');
+  }
+  endpoint = endpoint.replace(/\/$/, '');
+  if (endpoint.endsWith('/v1')) {
+    return endpoint + '/embeddings';
+  }
+  return endpoint + '/v1/embeddings';
+}

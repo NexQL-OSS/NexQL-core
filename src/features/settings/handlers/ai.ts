@@ -8,6 +8,7 @@ import {
   readAiScopeSettings,
   rememberLastModelForProvider,
   writeAiScopeSettings,
+  getChatCompletionEndpoint,
 } from '../../aiAssistant/aiConfig';
 import { AiConfigScope, DirectApiKeyProvider, AiProviderId } from '../../aiAssistant/types';
 import {
@@ -329,7 +330,12 @@ export class AiSectionHandler implements SettingsSectionHandler {
         if (!settings.endpoint) {
           throw new Error('Endpoint is required for custom provider');
         }
-        testResult = 'Custom endpoint configured. Ensure it supports OpenAI-compatible API.';
+        const customKey = directApiKeyFromSettings(settings, 'custom') || '';
+        testResult = await testCustomEndpoint(
+          settings.endpoint,
+          customKey,
+          settings.model || 'gpt-3.5-turbo',
+        );
       } else if (settings.provider === 'ollama') {
         testResult = await testLocalEndpoint(settings.endpoint || DEFAULT_OLLAMA_ENDPOINT, 'Ollama');
       } else if (settings.provider === 'lmstudio') {
@@ -757,3 +763,53 @@ function testLocalEndpoint(endpoint: string, name: string): Promise<string> {
     }
   });
 }
+
+function testCustomEndpoint(
+  endpoint: string,
+  apiKey: string,
+  model: string,
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    try {
+      const chatEndpoint = getChatCompletionEndpoint(endpoint);
+      const url = new URL(chatEndpoint);
+      const data = JSON.stringify({
+        model,
+        messages: [{ role: 'user', content: 'Hello' }],
+        max_tokens: 10,
+      });
+
+      const options = {
+        hostname: url.hostname,
+        port: url.port || (url.protocol === 'https:' ? 443 : 80),
+        path: url.pathname + url.search,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {}),
+          'Content-Length': Buffer.byteLength(data),
+        },
+      };
+
+      const protocol = url.protocol === 'https:' ? https : http;
+      const req = protocol.request(options, (res) => {
+        let body = '';
+        res.on('data', (chunk) => (body += chunk));
+        res.on('end', () => {
+          if (res.statusCode === 200) {
+            resolve(`Custom endpoint connection successful! Model: ${model}`);
+          } else {
+            reject(new Error(`Custom endpoint API error: ${res.statusCode} - ${body}`));
+          }
+        });
+      });
+
+      req.on('error', (err) => reject(err));
+      req.write(data);
+      req.end();
+    } catch (e: unknown) {
+      reject(new Error(`Invalid endpoint URL: ${e instanceof Error ? e.message : String(e)}`));
+    }
+  });
+}
+

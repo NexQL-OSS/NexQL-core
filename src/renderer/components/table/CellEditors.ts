@@ -281,6 +281,7 @@ function createLongTextEditor(opts: CellEditorOptions): HTMLElement {
     dockAfter: opts.dockAfter,
     editingRowEl: opts.editingRowEl,
     columnName: opts.columnName,
+    columnType: opts.columnType,
   });
 }
 
@@ -406,6 +407,7 @@ function createJsonEditor(opts: CellEditorOptions): HTMLElement {
     dockAfter: opts.dockAfter,
     editingRowEl: opts.editingRowEl,
     columnName: opts.columnName,
+    columnType: opts.columnType,
   });
 }
 
@@ -787,6 +789,7 @@ interface ModalEditorOptions {
   editingRowEl?: HTMLTableRowElement | null;
   /** Shown in the table cell while the docked panel is open. */
   columnName?: string;
+  columnType?: string;
 }
 
 /**
@@ -805,6 +808,593 @@ function findOutputContainer(start: HTMLElement): HTMLElement {
     el = el.parentElement;
   }
   return document.body;
+}
+
+// ─── Format detection & Tree View utilities ────────────────────────
+
+function getFormatType(columnType?: string, content?: string): 'json' | 'xml' | 'html' | null {
+  const type = (columnType || '').toLowerCase().trim();
+  if (type === 'json' || type === 'jsonb') return 'json';
+  if (type === 'xml') return 'xml';
+  if (type === 'html') return 'html';
+
+  if (content) {
+    const trimmed = content.trim();
+    if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+      try { JSON.parse(trimmed); return 'json'; } catch {}
+    }
+    if (trimmed.startsWith('<')) {
+      const lower = trimmed.toLowerCase();
+      if (lower.startsWith('<!doctype html') || lower.includes('<html') || lower.includes('<body')) {
+        return 'html';
+      }
+      try {
+        const doc = new DOMParser().parseFromString(trimmed, 'application/xml');
+        if (!doc.querySelector('parsererror')) return 'xml';
+      } catch {}
+    }
+  }
+  return null;
+}
+
+function prettyFormatXmlOrHtml(xmlStr: string, isHtml: boolean = false): string {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(xmlStr, isHtml ? 'text/html' : 'application/xml');
+  const parserError = doc.querySelector('parsererror');
+  if (parserError) {
+    return xmlStr;
+  }
+
+  const root = isHtml ? (doc.body.children.length > 0 ? doc.body : doc.documentElement) : doc.documentElement;
+  if (!root) return xmlStr;
+
+  function serialize(node: Node, depth: number): string {
+    const indent = '  '.repeat(depth);
+    if (node.nodeType === Node.ELEMENT_NODE) {
+      const element = node as Element;
+      const tagName = element.tagName.toLowerCase();
+
+      let attrs = '';
+      Array.from(element.attributes).forEach(attr => {
+        attrs += ` ${attr.name}="${attr.value}"`;
+      });
+
+      const childNodes = Array.from(element.childNodes);
+      if (childNodes.length === 0) {
+        return `${indent}<${tagName}${attrs} />`;
+      }
+
+      if (childNodes.length === 1 && childNodes[0].nodeType === Node.TEXT_NODE) {
+        const text = childNodes[0].textContent?.trim() || '';
+        return `${indent}<${tagName}${attrs}>${text}</${tagName}>`;
+      }
+
+      let childrenSerialized = '';
+      childNodes.forEach(child => {
+        const str = serialize(child, depth + 1);
+        if (str.trim()) {
+          childrenSerialized += str + '\n';
+        }
+      });
+
+      return `${indent}<${tagName}${attrs}>\n${childrenSerialized}${indent}</${tagName}>`;
+    } else if (node.nodeType === Node.TEXT_NODE) {
+      const text = node.textContent?.trim();
+      return text ? `${indent}${text}` : '';
+    } else if (node.nodeType === Node.COMMENT_NODE) {
+      return `${indent}<!-- ${node.textContent?.trim()} -->`;
+    }
+    return '';
+  }
+
+  if (root === doc.body && isHtml && doc.body.children.length > 0) {
+    return Array.from(doc.body.childNodes)
+      .map(child => serialize(child, 0))
+      .filter(Boolean)
+      .join('\n');
+  }
+
+  return serialize(root, 0);
+}
+
+function renderJsonTree(data: any): HTMLElement {
+  const container = document.createElement('div');
+  container.className = 'json-tree-container';
+  container.style.cssText = `
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--vscode-editor-foreground, #cccccc);
+    background: var(--vscode-editor-background, #1e1e1e);
+    padding: 10px;
+    border: 1px solid var(--vscode-widget-border, #3c3c3c);
+    border-radius: 4px;
+    max-height: 320px;
+    overflow-y: auto;
+    user-select: text;
+  `;
+
+  function createNode(key: string | null, value: any, isLast: boolean): HTMLElement {
+    const node = document.createElement('div');
+    node.style.marginLeft = '16px';
+    node.style.position = 'relative';
+
+    if (key !== null) {
+      const keySpan = document.createElement('span');
+      keySpan.textContent = `"${key}": `;
+      keySpan.style.color = 'var(--vscode-symbolIcon-propertyForeground, #9cdcfe)';
+      node.appendChild(keySpan);
+    }
+
+    if (value === null) {
+      const valSpan = document.createElement('span');
+      valSpan.textContent = 'null';
+      valSpan.style.color = 'var(--vscode-debugConsole-red, #f48771)';
+      valSpan.style.fontWeight = 'bold';
+      node.appendChild(valSpan);
+    } else if (typeof value === 'boolean') {
+      const valSpan = document.createElement('span');
+      valSpan.textContent = String(value);
+      valSpan.style.color = 'var(--vscode-debugConsole-blue, #4fc1ff)';
+      node.appendChild(valSpan);
+    } else if (typeof value === 'number') {
+      const valSpan = document.createElement('span');
+      valSpan.textContent = String(value);
+      valSpan.style.color = 'var(--vscode-debugConsole-green, #b5cea8)';
+      node.appendChild(valSpan);
+    } else if (typeof value === 'string') {
+      const valSpan = document.createElement('span');
+      valSpan.textContent = `"${value}"`;
+      valSpan.style.color = 'var(--vscode-debugConsole-orange, #ce9178)';
+      valSpan.style.wordBreak = 'break-all';
+      node.appendChild(valSpan);
+    } else if (typeof value === 'object') {
+      const isArray = Array.isArray(value);
+      const openBracket = isArray ? '[' : '{';
+      const closeBracket = isArray ? ']' : '}';
+      const keys = Object.keys(value);
+      const size = keys.length;
+
+      const collapsable = document.createElement('span');
+      collapsable.style.cursor = 'pointer';
+
+      const arrow = document.createElement('span');
+      arrow.textContent = '▼ ';
+      arrow.className = 'json-arrow';
+      arrow.style.cssText = `
+        display: inline-block;
+        font-size: 9px;
+        color: var(--vscode-descriptionForeground, #8e8e8e);
+        width: 12px;
+        transition: transform 0.1s ease;
+      `;
+
+      const bracketSpan = document.createElement('span');
+      bracketSpan.textContent = openBracket;
+      bracketSpan.style.color = 'var(--vscode-editor-foreground, #cccccc)';
+
+      collapsable.appendChild(arrow);
+      collapsable.appendChild(bracketSpan);
+      node.appendChild(collapsable);
+
+      const childrenContainer = document.createElement('div');
+      childrenContainer.className = 'json-body';
+      childrenContainer.style.borderLeft = '1px dashed var(--vscode-widget-border, #3c3c3c)';
+      childrenContainer.style.marginLeft = '6px';
+      childrenContainer.style.paddingLeft = '10px';
+
+      if (size === 0) {
+        arrow.style.visibility = 'hidden';
+        const emptySpan = document.createElement('span');
+        emptySpan.textContent = closeBracket;
+        node.appendChild(emptySpan);
+      } else {
+        keys.forEach((k, idx) => {
+          const childNode = createNode(isArray ? null : k, value[k], idx === size - 1);
+          childrenContainer.appendChild(childNode);
+        });
+        node.appendChild(childrenContainer);
+
+        const collapsedPreview = document.createElement('span');
+        collapsedPreview.className = 'json-preview';
+        collapsedPreview.style.cssText = `
+          display: none;
+          color: var(--vscode-descriptionForeground, #8e8e8e);
+          font-style: italic;
+          font-size: 11px;
+          margin-left: 4px;
+        `;
+        collapsedPreview.textContent = isArray ? `... ${size} items ...` : `... ${size} keys ...`;
+        node.appendChild(collapsedPreview);
+
+        const closeBracketSpan = document.createElement('span');
+        closeBracketSpan.textContent = closeBracket;
+        closeBracketSpan.style.color = 'var(--vscode-editor-foreground, #cccccc)';
+        node.appendChild(closeBracketSpan);
+
+        let collapsed = false;
+        const toggle = () => {
+          collapsed = !collapsed;
+          if (collapsed) {
+            arrow.textContent = '▶ ';
+            childrenContainer.style.display = 'none';
+            collapsedPreview.style.display = 'inline';
+          } else {
+            arrow.textContent = '▼ ';
+            childrenContainer.style.display = 'block';
+            collapsedPreview.style.display = 'none';
+          }
+        };
+        collapsable.addEventListener('click', (e) => {
+          e.stopPropagation();
+          toggle();
+        });
+      }
+    }
+
+    if (!isLast) {
+      const comma = document.createElement('span');
+      comma.textContent = ',';
+      node.appendChild(comma);
+    }
+
+    return node;
+  }
+
+  container.appendChild(createNode(null, data, true));
+  return container;
+}
+
+function renderXmlTree(xmlStr: string): HTMLElement {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(xmlStr, 'application/xml');
+
+  const container = document.createElement('div');
+  container.className = 'xml-tree-container';
+  container.style.cssText = `
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--vscode-editor-foreground, #cccccc);
+    background: var(--vscode-editor-background, #1e1e1e);
+    padding: 10px;
+    border: 1px solid var(--vscode-widget-border, #3c3c3c);
+    border-radius: 4px;
+    max-height: 320px;
+    overflow-y: auto;
+    user-select: text;
+  `;
+
+  function createXmlNode(node: Node, isLast: boolean): HTMLElement {
+    const el = document.createElement('div');
+    el.style.marginLeft = '16px';
+    el.style.position = 'relative';
+
+    if (node.nodeType === Node.ELEMENT_NODE) {
+      const element = node as Element;
+      const tagName = element.tagName;
+      
+      const childNodes = Array.from(element.childNodes).filter(child => {
+        if (child.nodeType === Node.TEXT_NODE) {
+          return (child.textContent?.trim() || '').length > 0;
+        }
+        return true;
+      });
+
+      const hasChildren = childNodes.some(n => n.nodeType === Node.ELEMENT_NODE);
+      const hasText = childNodes.length === 1 && childNodes[0].nodeType === Node.TEXT_NODE;
+
+      const header = document.createElement('span');
+
+      let arrow: HTMLElement | null = null;
+      if (hasChildren) {
+        arrow = document.createElement('span');
+        arrow.textContent = '▼ ';
+        arrow.className = 'xml-arrow';
+        arrow.style.cssText = `
+          display: inline-block;
+          font-size: 9px;
+          color: var(--vscode-descriptionForeground, #8e8e8e);
+          width: 12px;
+          cursor: pointer;
+          transition: transform 0.1s ease;
+        `;
+        header.appendChild(arrow);
+      }
+
+      const openTag = document.createElement('span');
+      openTag.textContent = `<${tagName}`;
+      openTag.style.color = 'var(--vscode-symbolIcon-classForeground, #569cd6)';
+      header.appendChild(openTag);
+
+      Array.from(element.attributes).forEach(attr => {
+        const attrSpan = document.createElement('span');
+        attrSpan.textContent = ` ${attr.name}=`;
+        attrSpan.style.color = 'var(--vscode-symbolIcon-propertyForeground, #9cdcfe)';
+
+        const attrValSpan = document.createElement('span');
+        attrValSpan.textContent = `"${attr.value}"`;
+        attrValSpan.style.color = 'var(--vscode-debugConsole-orange, #ce9178)';
+
+        header.appendChild(attrSpan);
+        header.appendChild(attrValSpan);
+      });
+
+      const openTagEnd = document.createElement('span');
+      openTagEnd.textContent = '>';
+      openTagEnd.style.color = 'var(--vscode-symbolIcon-classForeground, #569cd6)';
+      header.appendChild(openTagEnd);
+      el.appendChild(header);
+
+      if (hasChildren) {
+        const childrenContainer = document.createElement('div');
+        childrenContainer.className = 'xml-body';
+        childrenContainer.style.borderLeft = '1px dashed var(--vscode-widget-border, #3c3c3c)';
+        childrenContainer.style.marginLeft = '6px';
+        childrenContainer.style.paddingLeft = '10px';
+
+        childNodes.forEach((child, idx) => {
+          childrenContainer.appendChild(createXmlNode(child, idx === childNodes.length - 1));
+        });
+        el.appendChild(childrenContainer);
+
+        const collapsedPreview = document.createElement('span');
+        collapsedPreview.className = 'xml-preview';
+        collapsedPreview.style.cssText = `
+          display: none;
+          color: var(--vscode-descriptionForeground, #8e8e8e);
+          font-style: italic;
+          font-size: 11px;
+          margin-left: 4px;
+        `;
+        collapsedPreview.textContent = '...';
+        el.appendChild(collapsedPreview);
+
+        const closeTag = document.createElement('span');
+        closeTag.textContent = `</${tagName}>`;
+        closeTag.style.color = 'var(--vscode-symbolIcon-classForeground, #569cd6)';
+        el.appendChild(closeTag);
+
+        let collapsed = false;
+        const toggle = () => {
+          collapsed = !collapsed;
+          if (collapsed) {
+            if (arrow) arrow.textContent = '▶ ';
+            childrenContainer.style.display = 'none';
+            collapsedPreview.style.display = 'inline';
+          } else {
+            if (arrow) arrow.textContent = '▼ ';
+            childrenContainer.style.display = 'block';
+            collapsedPreview.style.display = 'none';
+          }
+        };
+
+        if (arrow) {
+          arrow.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggle();
+          });
+        }
+        openTag.style.cursor = 'pointer';
+        openTag.addEventListener('click', (e) => {
+          e.stopPropagation();
+          toggle();
+        });
+      } else if (hasText) {
+        const textSpan = document.createElement('span');
+        textSpan.textContent = childNodes[0].textContent;
+        textSpan.style.color = 'var(--vscode-editor-foreground, #cccccc)';
+        el.appendChild(textSpan);
+
+        const closeTag = document.createElement('span');
+        closeTag.textContent = `</${tagName}>`;
+        closeTag.style.color = 'var(--vscode-symbolIcon-classForeground, #569cd6)';
+        el.appendChild(closeTag);
+      } else {
+        openTagEnd.textContent = ' />';
+      }
+    } else if (node.nodeType === Node.TEXT_NODE) {
+      const textSpan = document.createElement('span');
+      textSpan.textContent = node.textContent;
+      textSpan.style.color = 'var(--vscode-editor-foreground, #cccccc)';
+      el.appendChild(textSpan);
+    } else if (node.nodeType === Node.COMMENT_NODE) {
+      const commentSpan = document.createElement('span');
+      commentSpan.textContent = `<!--${node.textContent}-->`;
+      commentSpan.style.color = 'var(--vscode-commentForeground, #6a9955)';
+      el.appendChild(commentSpan);
+    }
+
+    return el;
+  }
+
+  if (doc.documentElement) {
+    container.appendChild(createXmlNode(doc.documentElement, true));
+  }
+  return container;
+}
+
+function renderHtmlTree(htmlStr: string): HTMLElement {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(htmlStr, 'text/html');
+
+  const container = document.createElement('div');
+  container.className = 'html-tree-container';
+  container.style.cssText = `
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--vscode-editor-foreground, #cccccc);
+    background: var(--vscode-editor-background, #1e1e1e);
+    padding: 10px;
+    border: 1px solid var(--vscode-widget-border, #3c3c3c);
+    border-radius: 4px;
+    max-height: 320px;
+    overflow-y: auto;
+    user-select: text;
+  `;
+
+  const hasHtmlTag = /<html/i.test(htmlStr);
+  const root = hasHtmlTag ? doc.documentElement : (doc.body.children.length > 0 ? doc.body : doc.documentElement);
+
+  function createHtmlDomNode(node: Node, isLast: boolean): HTMLElement {
+    const el = document.createElement('div');
+    el.style.marginLeft = '16px';
+    el.style.position = 'relative';
+
+    if (node.nodeType === Node.ELEMENT_NODE) {
+      const element = node as Element;
+      const tagName = element.tagName.toLowerCase();
+      
+      const childNodes = Array.from(element.childNodes).filter(child => {
+        if (child.nodeType === Node.TEXT_NODE) {
+          return (child.textContent?.trim() || '').length > 0;
+        }
+        return true;
+      });
+
+      const childElements = childNodes.filter(n => n.nodeType === Node.ELEMENT_NODE);
+      const hasChildren = childElements.length > 0;
+      const hasText = childNodes.length === 1 && childNodes[0].nodeType === Node.TEXT_NODE;
+
+      const header = document.createElement('span');
+
+      let arrow: HTMLElement | null = null;
+      if (hasChildren) {
+        arrow = document.createElement('span');
+        arrow.textContent = '▼ ';
+        arrow.className = 'html-arrow';
+        arrow.style.cssText = `
+          display: inline-block;
+          font-size: 9px;
+          color: var(--vscode-descriptionForeground, #8e8e8e);
+          width: 12px;
+          cursor: pointer;
+          transition: transform 0.1s ease;
+        `;
+        header.appendChild(arrow);
+      }
+
+      const openTag = document.createElement('span');
+      openTag.textContent = `<${tagName}`;
+      openTag.style.color = 'var(--vscode-symbolIcon-classForeground, #569cd6)';
+      header.appendChild(openTag);
+
+      Array.from(element.attributes).forEach(attr => {
+        const attrSpan = document.createElement('span');
+        attrSpan.textContent = ` ${attr.name}=`;
+        attrSpan.style.color = 'var(--vscode-symbolIcon-propertyForeground, #9cdcfe)';
+
+        const attrValSpan = document.createElement('span');
+        attrValSpan.textContent = `"${attr.value}"`;
+        attrValSpan.style.color = 'var(--vscode-debugConsole-orange, #ce9178)';
+
+        header.appendChild(attrSpan);
+        header.appendChild(attrValSpan);
+      });
+
+      const openTagEnd = document.createElement('span');
+      openTagEnd.textContent = '>';
+      openTagEnd.style.color = 'var(--vscode-symbolIcon-classForeground, #569cd6)';
+      header.appendChild(openTagEnd);
+      el.appendChild(header);
+
+      if (hasChildren) {
+        const childrenContainer = document.createElement('div');
+        childrenContainer.className = 'html-body';
+        childrenContainer.style.borderLeft = '1px dashed var(--vscode-widget-border, #3c3c3c)';
+        childrenContainer.style.marginLeft = '6px';
+        childrenContainer.style.paddingLeft = '10px';
+
+        childNodes.forEach((child, idx) => {
+          childrenContainer.appendChild(createHtmlDomNode(child, idx === childNodes.length - 1));
+        });
+        el.appendChild(childrenContainer);
+
+        const collapsedPreview = document.createElement('span');
+        collapsedPreview.className = 'html-preview';
+        collapsedPreview.style.cssText = `
+          display: none;
+          color: var(--vscode-descriptionForeground, #8e8e8e);
+          font-style: italic;
+          font-size: 11px;
+          margin-left: 4px;
+        `;
+        collapsedPreview.textContent = '...';
+        el.appendChild(collapsedPreview);
+
+        const closeTag = document.createElement('span');
+        closeTag.textContent = `</${tagName}>`;
+        closeTag.style.color = 'var(--vscode-symbolIcon-classForeground, #569cd6)';
+        el.appendChild(closeTag);
+
+        let collapsed = false;
+        const toggle = () => {
+          collapsed = !collapsed;
+          if (collapsed) {
+            if (arrow) arrow.textContent = '▶ ';
+            childrenContainer.style.display = 'none';
+            collapsedPreview.style.display = 'inline';
+          } else {
+            if (arrow) arrow.textContent = '▼ ';
+            childrenContainer.style.display = 'block';
+            collapsedPreview.style.display = 'none';
+          }
+        };
+
+        if (arrow) {
+          arrow.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggle();
+          });
+        }
+        openTag.style.cursor = 'pointer';
+        openTag.addEventListener('click', (e) => {
+          e.stopPropagation();
+          toggle();
+        });
+      } else if (hasText) {
+        const textSpan = document.createElement('span');
+        textSpan.textContent = childNodes[0].textContent;
+        textSpan.style.color = 'var(--vscode-editor-foreground, #cccccc)';
+        el.appendChild(textSpan);
+
+        const closeTag = document.createElement('span');
+        closeTag.textContent = `</${tagName}>`;
+        closeTag.style.color = 'var(--vscode-symbolIcon-classForeground, #569cd6)';
+        el.appendChild(closeTag);
+      } else {
+        openTagEnd.textContent = ' />';
+      }
+    } else if (node.nodeType === Node.TEXT_NODE) {
+      const textSpan = document.createElement('span');
+      textSpan.textContent = node.textContent;
+      textSpan.style.color = 'var(--vscode-editor-foreground, #cccccc)';
+      el.appendChild(textSpan);
+    } else if (node.nodeType === Node.COMMENT_NODE) {
+      const commentSpan = document.createElement('span');
+      commentSpan.textContent = `<!--${node.textContent}-->`;
+      commentSpan.style.color = 'var(--vscode-commentForeground, #6a9955)';
+      el.appendChild(commentSpan);
+    }
+
+    return el;
+  }
+
+  if (root === doc.body && !hasHtmlTag) {
+    const childNodes = Array.from(root.childNodes).filter(child => {
+      if (child.nodeType === Node.TEXT_NODE) {
+        return (child.textContent?.trim() || '').length > 0;
+      }
+      return true;
+    });
+    childNodes.forEach((child, idx) => {
+      container.appendChild(createHtmlDomNode(child, idx === childNodes.length - 1));
+    });
+  } else if (root) {
+    container.appendChild(createHtmlDomNode(root, true));
+  }
+  return container;
 }
 
 function createModalEditor(opts: ModalEditorOptions): HTMLElement {
@@ -876,9 +1466,14 @@ function createModalEditor(opts: ModalEditorOptions): HTMLElement {
     const btnRow = document.createElement('div');
     btnRow.style.cssText = 'display:flex;gap:6px;justify-content:flex-end;flex-shrink:0;';
 
-    if (opts.isCode) {
-      const formatBtn = document.createElement('button');
-      formatBtn.textContent = 'Format JSON';
+    // Detect format type
+    const formatType = getFormatType(opts.columnType, opts.initialContent);
+    const activeFormat = formatType || (opts.isCode ? 'json' : null);
+
+    let formatBtn: HTMLButtonElement | null = null;
+    if (activeFormat) {
+      formatBtn = document.createElement('button');
+      formatBtn.textContent = activeFormat === 'json' ? 'Format JSON' : (activeFormat === 'xml' ? 'Format XML' : 'Format HTML');
       formatBtn.style.cssText = `
         background:none;border:1px solid var(--vscode-button-border,#555);
         color:var(--vscode-descriptionForeground);border-radius:2px;
@@ -886,7 +1481,11 @@ function createModalEditor(opts: ModalEditorOptions): HTMLElement {
       `;
       formatBtn.addEventListener('click', () => {
         try {
-          textarea.value = JSON.stringify(JSON.parse(textarea.value), null, 2);
+          if (activeFormat === 'json') {
+            textarea.value = JSON.stringify(JSON.parse(textarea.value), null, 2);
+          } else {
+            textarea.value = prettyFormatXmlOrHtml(textarea.value, activeFormat === 'html');
+          }
           errorDiv.textContent = '';
         } catch (e) {
           errorDiv.textContent = `Cannot format: ${(e as Error).message}`;
@@ -912,6 +1511,172 @@ function createModalEditor(opts: ModalEditorOptions): HTMLElement {
 
     btnRow.appendChild(saveBtn);
     btnRow.appendChild(cancelBtn);
+
+    // ── Tab containers & views ──
+    const tabsContainer = document.createElement('div');
+    const editorTabContainer = document.createElement('div');
+    const viewerTabContainer = document.createElement('div');
+    
+    editorTabContainer.appendChild(textarea);
+    viewerTabContainer.style.cssText = 'width:100%;box-sizing:border-box;display:none;';
+
+    let activeTab: 'edit' | 'view' = 'edit';
+
+    if (activeFormat) {
+      tabsContainer.style.cssText = 'display:flex;gap:4px;border-bottom:1px solid var(--vscode-widget-border);margin-bottom:4px;flex-shrink:0;';
+      
+      const tabEdit = document.createElement('button');
+      tabEdit.textContent = 'Edit Raw';
+      
+      const tabView = document.createElement('button');
+      tabView.textContent = 'Formatted View';
+      
+      const applyTabStyle = (btn: HTMLButtonElement, active: boolean) => {
+        btn.style.cssText = `
+          background: ${active ? 'var(--vscode-tab-activeBackground, #2d2d2d)' : 'transparent'};
+          color: ${active ? 'var(--vscode-tab-activeForeground, #ffffff)' : 'var(--vscode-tab-inactiveForeground, #8e8e8e)'};
+          border: none;
+          border-bottom: ${active ? '2px solid var(--vscode-activityBar-activeBorder, #007acc)' : '2px solid transparent'};
+          padding: 6px 14px;
+          font-size: 12px;
+          font-weight: ${active ? '600' : 'normal'};
+          cursor: pointer;
+          outline: none;
+        `;
+      };
+
+      const switchTab = (tab: 'edit' | 'view') => {
+        activeTab = tab;
+        if (tab === 'edit') {
+          applyTabStyle(tabEdit, true);
+          applyTabStyle(tabView, false);
+          editorTabContainer.style.display = 'block';
+          viewerTabContainer.style.display = 'none';
+          if (formatBtn) formatBtn.style.display = 'inline-block';
+          setTimeout(() => textarea.focus(), 0);
+        } else {
+          applyTabStyle(tabEdit, false);
+          applyTabStyle(tabView, true);
+          editorTabContainer.style.display = 'none';
+          viewerTabContainer.style.display = 'block';
+          if (formatBtn) formatBtn.style.display = 'none';
+
+          viewerTabContainer.innerHTML = '';
+          const currentVal = textarea.value;
+          if (!currentVal.trim()) {
+            viewerTabContainer.innerHTML = '<div style="padding: 10px; color: var(--vscode-descriptionForeground); font-style: italic;">No content to display</div>';
+            return;
+          }
+
+          if (activeFormat === 'json') {
+            try {
+              const parsed = JSON.parse(currentVal);
+              const toolbar = document.createElement('div');
+              toolbar.style.cssText = 'display:flex;gap:6px;margin-bottom:6px;justify-content:flex-end;';
+              
+              const expandBtn = document.createElement('button');
+              expandBtn.textContent = 'Expand All';
+              expandBtn.style.cssText = 'background:none;border:1px solid var(--vscode-button-border,#555);color:var(--vscode-descriptionForeground);border-radius:2px;padding:2px 6px;cursor:pointer;font-size:11px;';
+              
+              const collapseBtn = document.createElement('button');
+              collapseBtn.textContent = 'Collapse All';
+              collapseBtn.style.cssText = 'background:none;border:1px solid var(--vscode-button-border,#555);color:var(--vscode-descriptionForeground);border-radius:2px;padding:2px 6px;cursor:pointer;font-size:11px;';
+              
+              toolbar.appendChild(expandBtn);
+              toolbar.appendChild(collapseBtn);
+              viewerTabContainer.appendChild(toolbar);
+
+              const treeEl = renderJsonTree(parsed);
+              viewerTabContainer.appendChild(treeEl);
+
+              expandBtn.addEventListener('click', () => {
+                const arrows = treeEl.querySelectorAll('.json-arrow');
+                const bodies = treeEl.querySelectorAll('.json-body');
+                const previews = treeEl.querySelectorAll('.json-preview');
+                arrows.forEach(el => el.textContent = '▼ ');
+                bodies.forEach(el => (el as HTMLElement).style.display = 'block');
+                previews.forEach(el => (el as HTMLElement).style.display = 'none');
+              });
+
+              collapseBtn.addEventListener('click', () => {
+                const arrows = treeEl.querySelectorAll('.json-arrow');
+                const bodies = treeEl.querySelectorAll('.json-body');
+                const previews = treeEl.querySelectorAll('.json-preview');
+                arrows.forEach(el => el.textContent = '▶ ');
+                bodies.forEach(el => (el as HTMLElement).style.display = 'none');
+                previews.forEach(el => (el as HTMLElement).style.display = 'inline');
+              });
+            } catch (e) {
+              const errBanner = document.createElement('div');
+              errBanner.style.cssText = 'color:var(--vscode-errorForeground);padding:10px;border:1px solid var(--vscode-errorForeground);background:rgba(244,67,54,0.08);border-radius:4px;font-size:12px;font-family:monospace;';
+              errBanner.textContent = `Invalid JSON: ${(e as Error).message}`;
+              viewerTabContainer.appendChild(errBanner);
+            }
+          } else if (activeFormat === 'xml' || activeFormat === 'html') {
+            const isHtml = activeFormat === 'html';
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(currentVal, isHtml ? 'text/html' : 'application/xml');
+            const parseError = doc.querySelector('parsererror');
+
+            if (parseError) {
+              const errBanner = document.createElement('div');
+              errBanner.style.cssText = 'color:var(--vscode-errorForeground);padding:10px;border:1px solid var(--vscode-errorForeground);background:rgba(244,67,54,0.08);border-radius:4px;font-size:12px;font-family:monospace;';
+              errBanner.textContent = `Parse Error: ${parseError.textContent}`;
+              viewerTabContainer.appendChild(errBanner);
+            } else {
+              const toolbar = document.createElement('div');
+              toolbar.style.cssText = 'display:flex;gap:6px;margin-bottom:6px;justify-content:flex-end;';
+              
+              const expandBtn = document.createElement('button');
+              expandBtn.textContent = 'Expand All';
+              expandBtn.style.cssText = 'background:none;border:1px solid var(--vscode-button-border,#555);color:var(--vscode-descriptionForeground);border-radius:2px;padding:2px 6px;cursor:pointer;font-size:11px;';
+              
+              const collapseBtn = document.createElement('button');
+              collapseBtn.textContent = 'Collapse All';
+              collapseBtn.style.cssText = 'background:none;border:1px solid var(--vscode-button-border,#555);color:var(--vscode-descriptionForeground);border-radius:2px;padding:2px 6px;cursor:pointer;font-size:11px;';
+              
+              toolbar.appendChild(expandBtn);
+              toolbar.appendChild(collapseBtn);
+              viewerTabContainer.appendChild(toolbar);
+
+              const treeEl = isHtml ? renderHtmlTree(currentVal) : renderXmlTree(currentVal);
+              viewerTabContainer.appendChild(treeEl);
+
+              const arrowClass = isHtml ? '.html-arrow' : '.xml-arrow';
+              const bodyClass = isHtml ? '.html-body' : '.xml-body';
+              const previewClass = isHtml ? '.html-preview' : '.xml-preview';
+
+              expandBtn.addEventListener('click', () => {
+                const arrows = treeEl.querySelectorAll(arrowClass);
+                const bodies = treeEl.querySelectorAll(bodyClass);
+                const previews = treeEl.querySelectorAll(previewClass);
+                arrows.forEach(el => el.textContent = '▼ ');
+                bodies.forEach(el => (el as HTMLElement).style.display = 'block');
+                previews.forEach(el => (el as HTMLElement).style.display = 'none');
+              });
+
+              collapseBtn.addEventListener('click', () => {
+                const arrows = treeEl.querySelectorAll(arrowClass);
+                const bodies = treeEl.querySelectorAll(bodyClass);
+                const previews = treeEl.querySelectorAll(previewClass);
+                arrows.forEach(el => el.textContent = '▶ ');
+                bodies.forEach(el => (el as HTMLElement).style.display = 'none');
+                previews.forEach(el => (el as HTMLElement).style.display = 'inline');
+              });
+            }
+          }
+        }
+      };
+
+      tabEdit.addEventListener('click', () => switchTab('edit'));
+      tabView.addEventListener('click', () => switchTab('view'));
+      
+      applyTabStyle(tabEdit, true);
+      applyTabStyle(tabView, false);
+
+      tabsContainer.appendChild(tabEdit);
+      tabsContainer.appendChild(tabView);
+    }
 
     // ── Lifecycle ──
     const keyboardTrapAbort = new AbortController();
@@ -963,7 +1728,13 @@ function createModalEditor(opts: ModalEditorOptions): HTMLElement {
 
     // ── Assemble & mount ──
     wrapper.appendChild(titleBar);
-    wrapper.appendChild(textarea);
+    if (activeFormat) {
+      wrapper.appendChild(tabsContainer);
+    }
+    wrapper.appendChild(editorTabContainer);
+    if (activeFormat) {
+      wrapper.appendChild(viewerTabContainer);
+    }
     wrapper.appendChild(errorDiv);
     wrapper.appendChild(btnRow);
 
