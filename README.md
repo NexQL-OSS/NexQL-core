@@ -7,7 +7,7 @@
 [![Version](https://img.shields.io/visual-studio-marketplace/v/ric-v.postgres-explorer?style=for-the-badge&logo=visual-studio-code&logoColor=white&color=0066CC)](https://marketplace.visualstudio.com/items?itemName=ric-v.postgres-explorer)
 [![Downloads](https://img.shields.io/visual-studio-marketplace/d/ric-v.postgres-explorer?style=for-the-badge&logo=visual-studio-code&logoColor=white&color=2ECC71)](https://marketplace.visualstudio.com/items?itemName=ric-v.postgres-explorer)
 [![Rating](https://img.shields.io/visual-studio-marketplace/r/ric-v.postgres-explorer?style=for-the-badge&logo=visual-studio-code&logoColor=white&color=F39C12)](https://marketplace.visualstudio.com/items?itemName=ric-v.postgres-explorer)
-[![Status](https://img.shields.io/badge/status-stable%20v2.0.0%20%2B%20nightly-blue?style=for-the-badge&logo=git&logoColor=white)](https://github.com/dev-asterix/PgStudio/releases)
+[![Status](https://img.shields.io/badge/status-stable%20v2.0.0%20%2B%20nightly-blue?style=for-the-badge&logo=git&logoColor=white)](https://github.com/dev-asterix/NexQL/releases)
 
 **NexQL** (formerly YAPE) is a comprehensive PostgreSQL database management extension featuring interactive SQL notebooks, real-time monitoring dashboard, AI-powered assistance, and advanced database operations—all within VS Code.
 
@@ -360,7 +360,7 @@ Turn any query result into beautiful, interactive charts in seconds.
 
 ```bash
 # Clone the repository
-git clone https://github.com/dev-asterix/PgStudio.git
+git clone https://github.com/dev-asterix/NexQL.git
 cd NexQL
 
 # Install dependencies
@@ -472,8 +472,8 @@ NexQL includes comprehensive testing infrastructure:
 
 ## 🤝 Contributing
 
-- 🐛 [Report Bugs](https://github.com/dev-asterix/PgStudio/issues/new?template=bug_report.md)
-- 💡 [Request Features](https://github.com/dev-asterix/PgStudio/issues/new?template=feature_request.md)
+- 🐛 [Report Bugs](https://github.com/dev-asterix/NexQL/issues/new?template=bug_report.md)
+- 💡 [Request Features](https://github.com/dev-asterix/NexQL/issues/new?template=feature_request.md)
 - 🔧 Fork → Branch → PR
 - 🧪 Ensure all tests pass: `npm run test:all && npm run coverage`
 

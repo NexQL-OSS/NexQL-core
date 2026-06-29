@@ -4,7 +4,7 @@ export {
 } from './resolveOpencodeCli';
 export { resolveOpencodeWorkingDirectory } from './resolveOpencodeWorkingDirectory';
 export { appendOpencodeLog, showOpencodeLog } from './opencodeLog';
-export { PGSTUDIO_SQL_AGENT_ID } from './opencodeHeadlessEnv';
+export { NEXQL_SQL_AGENT_ID } from './opencodeHeadlessEnv';
 export { OpencodePermissionBridge } from './opencodePermissionBridge';
 export { OpencodeServeManager } from './opencodeServeManager';
 export {

@@ -1,6 +1,6 @@
 import { parseThemeSummary } from "./vendor/parse-theme-summary.mjs";
 
-const THEME_KEY = "pgstudio-docs-theme";
+const THEME_KEY = "nexql-docs-theme";
 const DEFAULT_THEME_ID = "claudy-day";
 
 /** @type {Array<Record<string, unknown>>} */

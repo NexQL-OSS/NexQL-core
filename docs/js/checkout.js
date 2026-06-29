@@ -145,7 +145,7 @@
   }
 
   const ACTIVATE_URI_BASE = 'vscode://ric-v.postgres-explorer/activate?key=';
-  const LICENSE_STORAGE_KEY = 'pgstudio_license';
+  const LICENSE_STORAGE_KEY = 'nexql_license';
 
   // Poll the lookup endpoint until the webhook has issued a license key.
   async function pollLicenseKey(subscriptionId, attempts = 6) {

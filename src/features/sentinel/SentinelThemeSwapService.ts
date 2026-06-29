@@ -2,8 +2,8 @@ import * as vscode from 'vscode';
 import { environmentLabel } from './constants';
 import type { SentinelEnvironment, SentinelSettings } from './types';
 
-const THEME_SNAPSHOT_KEY = 'pgstudio.sentinel.themeSnapshot.v1';
-const AUTO_CONFIRMED_KEY = 'pgstudio.sentinel.themeSwap.autoConfirmed';
+const THEME_SNAPSHOT_KEY = 'nexql.sentinel.themeSnapshot.v1';
+const AUTO_CONFIRMED_KEY = 'nexql.sentinel.themeSwap.autoConfirmed';
 
 export interface ThemeSwapApplyOptions {
   isTransition?: boolean;

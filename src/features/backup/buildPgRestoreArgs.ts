@@ -34,7 +34,7 @@ export function buildPgRestoreArgv(opts: PgRestoreFormState): PgRestoreArgvResul
 
   if (opts.selectedListLines && opts.selectedListLines.length > 0) {
     const body = opts.selectedListLines.join('\n') + '\n';
-    const tmp = path.join(os.tmpdir(), `pgstudio-restore-list-${Date.now()}-${Math.random().toString(36).slice(2)}.lst`);
+    const tmp = path.join(os.tmpdir(), `nexql-restore-list-${Date.now()}-${Math.random().toString(36).slice(2)}.lst`);
     fs.writeFileSync(tmp, body, 'utf8');
     tempFiles.push(tmp);
     argv.push('-L', tmp);

@@ -29,10 +29,10 @@ async function ensureSchema() {
   if (!schemaReady) {
     schemaReady = (async () => {
       const db = getSql();
-      await db`CREATE SCHEMA IF NOT EXISTS pgstudio_sync`;
-      await db`CREATE SEQUENCE IF NOT EXISTS pgstudio_sync.cursor_seq`;
+      await db`CREATE SCHEMA IF NOT EXISTS nexql_sync`;
+      await db`CREATE SEQUENCE IF NOT EXISTS nexql_sync.cursor_seq`;
       await db`
-        CREATE TABLE IF NOT EXISTS pgstudio_sync.items_v2 (
+        CREATE TABLE IF NOT EXISTS nexql_sync.items_v2 (
           space_id     TEXT        NOT NULL,
           item_id      TEXT        NOT NULL,
           kind         TEXT        NOT NULL CHECK (kind IN ('connection','query','notebook')),
@@ -46,11 +46,11 @@ async function ensureSchema() {
       `;
       await db`
         CREATE INDEX IF NOT EXISTS items_v2_cursor_idx
-          ON pgstudio_sync.items_v2 (space_id, version)
+          ON nexql_sync.items_v2 (space_id, version)
       `;
       // Permanent delete log — never pruned. Stops deleted items resurrecting.
       await db`
-        CREATE TABLE IF NOT EXISTS pgstudio_sync.deletes_v2 (
+        CREATE TABLE IF NOT EXISTS nexql_sync.deletes_v2 (
           space_id   TEXT        NOT NULL,
           item_id    TEXT        NOT NULL,
           version    BIGINT      NOT NULL,
@@ -61,11 +61,11 @@ async function ensureSchema() {
       `;
       await db`
         CREATE INDEX IF NOT EXISTS deletes_v2_cursor_idx
-          ON pgstudio_sync.deletes_v2 (space_id, version)
+          ON nexql_sync.deletes_v2 (space_id, version)
       `;
       // Shared workspaces (team sharing). Personal space rows are implicit.
       await db`
-        CREATE TABLE IF NOT EXISTS pgstudio_sync.spaces (
+        CREATE TABLE IF NOT EXISTS nexql_sync.spaces (
           space_id    TEXT        PRIMARY KEY,
           name        TEXT        NOT NULL,
           owner_email TEXT        NOT NULL,
@@ -73,8 +73,8 @@ async function ensureSchema() {
         )
       `;
       await db`
-        CREATE TABLE IF NOT EXISTS pgstudio_sync.space_members (
-          space_id TEXT        NOT NULL REFERENCES pgstudio_sync.spaces(space_id) ON DELETE CASCADE,
+        CREATE TABLE IF NOT EXISTS nexql_sync.space_members (
+          space_id TEXT        NOT NULL REFERENCES nexql_sync.spaces(space_id) ON DELETE CASCADE,
           email    TEXT        NOT NULL,
           role     TEXT        NOT NULL CHECK (role IN ('owner','editor','viewer')),
           added_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -82,7 +82,7 @@ async function ensureSchema() {
         )
       `;
       await db`
-        CREATE TABLE IF NOT EXISTS pgstudio_sync.sync_accounts (
+        CREATE TABLE IF NOT EXISTS nexql_sync.sync_accounts (
           account_id     TEXT        PRIMARY KEY,
           tier           TEXT        NOT NULL DEFAULT 'sponsor',
           bytes_used     BIGINT      NOT NULL DEFAULT 0,
@@ -93,13 +93,13 @@ async function ensureSchema() {
       `;
       // Migrate sync_accounts created by older deploys — CREATE TABLE IF NOT EXISTS
       // never alters an existing table, so newer columns must be added explicitly.
-      await db`ALTER TABLE pgstudio_sync.sync_accounts ADD COLUMN IF NOT EXISTS tier TEXT NOT NULL DEFAULT 'sponsor'`;
-      await db`ALTER TABLE pgstudio_sync.sync_accounts ADD COLUMN IF NOT EXISTS bytes_used BIGINT NOT NULL DEFAULT 0`;
-      await db`ALTER TABLE pgstudio_sync.sync_accounts ADD COLUMN IF NOT EXISTS item_count INT NOT NULL DEFAULT 0`;
-      await db`ALTER TABLE pgstudio_sync.sync_accounts ADD COLUMN IF NOT EXISTS inactive_since TIMESTAMPTZ`;
-      await db`ALTER TABLE pgstudio_sync.sync_accounts ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now()`;
+      await db`ALTER TABLE nexql_sync.sync_accounts ADD COLUMN IF NOT EXISTS tier TEXT NOT NULL DEFAULT 'sponsor'`;
+      await db`ALTER TABLE nexql_sync.sync_accounts ADD COLUMN IF NOT EXISTS bytes_used BIGINT NOT NULL DEFAULT 0`;
+      await db`ALTER TABLE nexql_sync.sync_accounts ADD COLUMN IF NOT EXISTS item_count INT NOT NULL DEFAULT 0`;
+      await db`ALTER TABLE nexql_sync.sync_accounts ADD COLUMN IF NOT EXISTS inactive_since TIMESTAMPTZ`;
+      await db`ALTER TABLE nexql_sync.sync_accounts ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now()`;
       await db`
-        CREATE TABLE IF NOT EXISTS pgstudio_sync.sync_devices (
+        CREATE TABLE IF NOT EXISTS nexql_sync.sync_devices (
           account_id   TEXT        NOT NULL,
           device_id    TEXT        NOT NULL,
           device_name  TEXT,
@@ -109,7 +109,7 @@ async function ensureSchema() {
       `;
       await db`
         CREATE INDEX IF NOT EXISTS sync_devices_account_idx
-          ON pgstudio_sync.sync_devices (account_id, last_seen DESC)
+          ON nexql_sync.sync_devices (account_id, last_seen DESC)
       `;
     })();
   }
@@ -131,8 +131,8 @@ async function spaceCursor(spaceId) {
   const db = getSql();
   const rows = await db`
     SELECT GREATEST(
-      COALESCE((SELECT MAX(version) FROM pgstudio_sync.items_v2   WHERE space_id = ${spaceId}), 0),
-      COALESCE((SELECT MAX(version) FROM pgstudio_sync.deletes_v2 WHERE space_id = ${spaceId}), 0)
+      COALESCE((SELECT MAX(version) FROM nexql_sync.items_v2   WHERE space_id = ${spaceId}), 0),
+      COALESCE((SELECT MAX(version) FROM nexql_sync.deletes_v2 WHERE space_id = ${spaceId}), 0)
     ) AS cursor
   `;
   return Number(rows[0]?.cursor || 0);
@@ -148,13 +148,13 @@ async function pullDelta(spaceId, since) {
     SELECT item_id, kind, content_hash, version, device_id,
            encode(blob, 'base64') AS blob,
            updated_at
-    FROM pgstudio_sync.items_v2
+    FROM nexql_sync.items_v2
     WHERE space_id = ${spaceId} AND version > ${sinceVersion}
     ORDER BY version ASC
   `;
   const deleteRows = await db`
     SELECT item_id, version
-    FROM pgstudio_sync.deletes_v2
+    FROM nexql_sync.deletes_v2
     WHERE space_id = ${spaceId} AND version > ${sinceVersion}
     ORDER BY version ASC
   `;
@@ -196,18 +196,18 @@ async function pushBatch(spaceId, deviceId, ops) {
     if (op.op === 'delete') {
       return db`
         WITH existing AS (
-          SELECT version FROM pgstudio_sync.items_v2
+          SELECT version FROM nexql_sync.items_v2
           WHERE space_id = ${spaceId} AND item_id = ${op.item_id}
         ), del AS (
-          DELETE FROM pgstudio_sync.items_v2
+          DELETE FROM nexql_sync.items_v2
           WHERE space_id = ${spaceId} AND item_id = ${op.item_id} AND version <= ${baseVersion}
           RETURNING item_id
         ), logged AS (
-          INSERT INTO pgstudio_sync.deletes_v2 (space_id, item_id, version, deleted_by, deleted_at)
-          SELECT ${spaceId}, ${op.item_id}, nextval('pgstudio_sync.cursor_seq'), ${device}, now()
+          INSERT INTO nexql_sync.deletes_v2 (space_id, item_id, version, deleted_by, deleted_at)
+          SELECT ${spaceId}, ${op.item_id}, nextval('nexql_sync.cursor_seq'), ${device}, now()
           WHERE EXISTS (SELECT 1 FROM del) OR NOT EXISTS (SELECT 1 FROM existing)
           ON CONFLICT (space_id, item_id) DO UPDATE
-            SET version = nextval('pgstudio_sync.cursor_seq'), deleted_by = EXCLUDED.deleted_by, deleted_at = now()
+            SET version = nextval('nexql_sync.cursor_seq'), deleted_by = EXCLUDED.deleted_by, deleted_at = now()
           RETURNING version
         )
         SELECT ${op.item_id} AS item_id,
@@ -219,19 +219,19 @@ async function pushBatch(spaceId, deviceId, ops) {
     const blob = Buffer.from(String(op.blob || ''), 'base64');
     return db`
       WITH existing AS (
-        SELECT version, content_hash FROM pgstudio_sync.items_v2
+        SELECT version, content_hash FROM nexql_sync.items_v2
         WHERE space_id = ${spaceId} AND item_id = ${op.item_id}
       ), up AS (
-        INSERT INTO pgstudio_sync.items_v2
+        INSERT INTO nexql_sync.items_v2
           (space_id, item_id, kind, blob, content_hash, version, device_id, updated_at)
         VALUES
           (${spaceId}, ${op.item_id}, ${op.kind}, ${blob}, ${op.content_hash},
-           nextval('pgstudio_sync.cursor_seq'), ${device}, now())
+           nextval('nexql_sync.cursor_seq'), ${device}, now())
         ON CONFLICT (space_id, item_id) DO UPDATE
           SET kind = EXCLUDED.kind, blob = EXCLUDED.blob, content_hash = EXCLUDED.content_hash,
-              version = nextval('pgstudio_sync.cursor_seq'), device_id = EXCLUDED.device_id, updated_at = now()
-          WHERE pgstudio_sync.items_v2.version <= ${baseVersion}
-             OR pgstudio_sync.items_v2.content_hash = EXCLUDED.content_hash
+              version = nextval('nexql_sync.cursor_seq'), device_id = EXCLUDED.device_id, updated_at = now()
+          WHERE nexql_sync.items_v2.version <= ${baseVersion}
+             OR nexql_sync.items_v2.content_hash = EXCLUDED.content_hash
         RETURNING version
       )
       SELECT ${op.item_id} AS item_id,
@@ -269,8 +269,8 @@ async function pushBatch(spaceId, deviceId, ops) {
 async function resetSpace(spaceId) {
   await ensureSchema();
   const db = getSql();
-  await db`DELETE FROM pgstudio_sync.items_v2   WHERE space_id = ${spaceId}`;
-  await db`DELETE FROM pgstudio_sync.deletes_v2 WHERE space_id = ${spaceId}`;
+  await db`DELETE FROM nexql_sync.items_v2   WHERE space_id = ${spaceId}`;
+  await db`DELETE FROM nexql_sync.deletes_v2 WHERE space_id = ${spaceId}`;
   await refreshAccountQuota(spaceId);
 }
 
@@ -281,12 +281,12 @@ async function createSpace(spaceId, name, ownerEmail) {
   const db = getSql();
   const owner = normalizeEmail(ownerEmail);
   await db`
-    INSERT INTO pgstudio_sync.spaces (space_id, name, owner_email)
+    INSERT INTO nexql_sync.spaces (space_id, name, owner_email)
     VALUES (${spaceId}, ${name}, ${owner})
     ON CONFLICT (space_id) DO UPDATE SET name = EXCLUDED.name
   `;
   await db`
-    INSERT INTO pgstudio_sync.space_members (space_id, email, role)
+    INSERT INTO nexql_sync.space_members (space_id, email, role)
     VALUES (${spaceId}, ${owner}, 'owner')
     ON CONFLICT (space_id, email) DO UPDATE SET role = 'owner'
   `;
@@ -297,8 +297,8 @@ async function listSpacesForEmail(email) {
   const db = getSql();
   return db`
     SELECT s.space_id, s.name, s.owner_email, m.role
-    FROM pgstudio_sync.space_members m
-    JOIN pgstudio_sync.spaces s ON s.space_id = m.space_id
+    FROM nexql_sync.space_members m
+    JOIN nexql_sync.spaces s ON s.space_id = m.space_id
     WHERE m.email = ${normalizeEmail(email)}
     ORDER BY s.created_at ASC
   `;
@@ -308,7 +308,7 @@ async function listMembers(spaceId) {
   await ensureSchema();
   const db = getSql();
   return db`
-    SELECT email, role, added_at FROM pgstudio_sync.space_members
+    SELECT email, role, added_at FROM nexql_sync.space_members
     WHERE space_id = ${spaceId} ORDER BY added_at ASC
   `;
 }
@@ -317,7 +317,7 @@ async function addMember(spaceId, email, role) {
   await ensureSchema();
   const db = getSql();
   await db`
-    INSERT INTO pgstudio_sync.space_members (space_id, email, role)
+    INSERT INTO nexql_sync.space_members (space_id, email, role)
     VALUES (${spaceId}, ${normalizeEmail(email)}, ${role})
     ON CONFLICT (space_id, email) DO UPDATE SET role = EXCLUDED.role
   `;
@@ -327,7 +327,7 @@ async function removeMember(spaceId, email) {
   await ensureSchema();
   const db = getSql();
   await db`
-    DELETE FROM pgstudio_sync.space_members
+    DELETE FROM nexql_sync.space_members
     WHERE space_id = ${spaceId} AND email = ${normalizeEmail(email)} AND role <> 'owner'
   `;
 }
@@ -342,7 +342,7 @@ async function memberRole(spaceId, email, accountId) {
   await ensureSchema();
   const db = getSql();
   const rows = await db`
-    SELECT role FROM pgstudio_sync.space_members
+    SELECT role FROM nexql_sync.space_members
     WHERE space_id = ${spaceId} AND email = ${normalizeEmail(email)} LIMIT 1
   `;
   return rows.length ? rows[0].role : null;
@@ -373,12 +373,12 @@ async function refreshAccountQuota(accountId) {
   const rows = await db`
     SELECT COALESCE(SUM(octet_length(blob)), 0)::bigint AS bytes_used,
            COUNT(*)::int AS item_count
-    FROM pgstudio_sync.items_v2
+    FROM nexql_sync.items_v2
     WHERE space_id = ${accountId}
   `;
   const stats = rows[0] || { bytes_used: 0, item_count: 0 };
   await db`
-    INSERT INTO pgstudio_sync.sync_accounts (account_id, bytes_used, item_count, updated_at)
+    INSERT INTO nexql_sync.sync_accounts (account_id, bytes_used, item_count, updated_at)
     VALUES (${accountId}, ${stats.bytes_used}, ${stats.item_count}, now())
     ON CONFLICT (account_id) DO UPDATE SET
       bytes_used = EXCLUDED.bytes_used, item_count = EXCLUDED.item_count, updated_at = now()
@@ -390,13 +390,13 @@ async function getAccountQuota(accountId) {
   const db = getSql();
   const rows = await db`
     SELECT tier, bytes_used, item_count, updated_at
-    FROM pgstudio_sync.sync_accounts WHERE account_id = ${accountId} LIMIT 1
+    FROM nexql_sync.sync_accounts WHERE account_id = ${accountId} LIMIT 1
   `;
   if (!rows.length) {
     await refreshAccountQuota(accountId);
     const again = await db`
       SELECT tier, bytes_used, item_count, updated_at
-      FROM pgstudio_sync.sync_accounts WHERE account_id = ${accountId} LIMIT 1
+      FROM nexql_sync.sync_accounts WHERE account_id = ${accountId} LIMIT 1
     `;
     return again[0] || { tier: 'sponsor', bytes_used: 0, item_count: 0, updated_at: new Date() };
   }
@@ -407,7 +407,7 @@ async function setAccountTier(accountId, tier) {
   await ensureSchema();
   const db = getSql();
   await db`
-    INSERT INTO pgstudio_sync.sync_accounts (account_id, tier, updated_at)
+    INSERT INTO nexql_sync.sync_accounts (account_id, tier, updated_at)
     VALUES (${accountId}, ${tier}, now())
     ON CONFLICT (account_id) DO UPDATE SET tier = EXCLUDED.tier, updated_at = now()
   `;
@@ -420,12 +420,12 @@ async function upsertDevice(accountId, deviceId, deviceName) {
   await ensureSchema();
   const db = getSql();
   await db`
-    INSERT INTO pgstudio_sync.sync_devices (account_id, device_id, device_name, last_seen)
+    INSERT INTO nexql_sync.sync_devices (account_id, device_id, device_name, last_seen)
     VALUES (${accountId}, ${deviceId}, ${deviceName || null}, now())
     ON CONFLICT (account_id, device_id) DO UPDATE SET
       device_name = CASE
         WHEN EXCLUDED.device_name IS NOT NULL THEN EXCLUDED.device_name
-        ELSE pgstudio_sync.sync_devices.device_name
+        ELSE nexql_sync.sync_devices.device_name
       END,
       last_seen = now()
   `;
@@ -447,7 +447,7 @@ async function listDevices(accountId) {
   await ensureSchema();
   const db = getSql();
   return db`
-    SELECT device_id, device_name, last_seen FROM pgstudio_sync.sync_devices
+    SELECT device_id, device_name, last_seen FROM nexql_sync.sync_devices
     WHERE account_id = ${accountId} ORDER BY last_seen DESC
   `;
 }
@@ -456,7 +456,7 @@ async function revokeDevice(accountId, deviceId) {
   await ensureSchema();
   const db = getSql();
   const rows = await db`
-    DELETE FROM pgstudio_sync.sync_devices
+    DELETE FROM nexql_sync.sync_devices
     WHERE account_id = ${accountId} AND device_id = ${deviceId} RETURNING device_id
   `;
   return rows.length > 0;
@@ -469,10 +469,10 @@ async function markAccountInactive(accountId) {
   await ensureSchema();
   const db = getSql();
   await db`
-    INSERT INTO pgstudio_sync.sync_accounts (account_id, inactive_since, updated_at)
+    INSERT INTO nexql_sync.sync_accounts (account_id, inactive_since, updated_at)
     VALUES (${accountId}, now(), now())
     ON CONFLICT (account_id) DO UPDATE SET
-      inactive_since = COALESCE(pgstudio_sync.sync_accounts.inactive_since, now()), updated_at = now()
+      inactive_since = COALESCE(nexql_sync.sync_accounts.inactive_since, now()), updated_at = now()
   `;
 }
 
@@ -483,7 +483,7 @@ async function markAccountActive(accountId) {
   await ensureSchema();
   const db = getSql();
   await db`
-    UPDATE pgstudio_sync.sync_accounts SET inactive_since = NULL, updated_at = now()
+    UPDATE nexql_sync.sync_accounts SET inactive_since = NULL, updated_at = now()
     WHERE account_id = ${accountId}
   `;
 }
@@ -491,14 +491,14 @@ async function markAccountActive(accountId) {
 async function deleteAccountCloudData(accountId, ownerEmail) {
   await ensureSchema();
   const db = getSql();
-  await db`DELETE FROM pgstudio_sync.items_v2   WHERE space_id = ${accountId}`;
-  await db`DELETE FROM pgstudio_sync.deletes_v2 WHERE space_id = ${accountId}`;
-  await db`DELETE FROM pgstudio_sync.sync_devices WHERE account_id = ${accountId}`;
+  await db`DELETE FROM nexql_sync.items_v2   WHERE space_id = ${accountId}`;
+  await db`DELETE FROM nexql_sync.deletes_v2 WHERE space_id = ${accountId}`;
+  await db`DELETE FROM nexql_sync.sync_devices WHERE account_id = ${accountId}`;
   if (ownerEmail) {
     const email = normalizeEmail(ownerEmail);
-    await db`DELETE FROM pgstudio_sync.spaces WHERE owner_email = ${email}`;
+    await db`DELETE FROM nexql_sync.spaces WHERE owner_email = ${email}`;
   }
-  await db`DELETE FROM pgstudio_sync.sync_accounts WHERE account_id = ${accountId}`;
+  await db`DELETE FROM nexql_sync.sync_accounts WHERE account_id = ${accountId}`;
 }
 
 /** Remove cloud blobs for accounts inactive longer than {@link CLOUD_INACTIVE_RETENTION_DAYS}. */
@@ -506,7 +506,7 @@ async function purgeInactiveCloudData() {
   await ensureSchema();
   const db = getSql();
   const rows = await db`
-    SELECT account_id FROM pgstudio_sync.sync_accounts
+    SELECT account_id FROM nexql_sync.sync_accounts
     WHERE inactive_since IS NOT NULL
       AND inactive_since < now() - (${CLOUD_INACTIVE_RETENTION_DAYS} * interval '1 day')
   `;

@@ -167,8 +167,8 @@ describe('NotebookStatusBar', () => {
     expect(riskItem.tooltip).to.equal('Production environment - Read-only mode active');
     expect(profileItem.text).to.contain('Profile: Read Only Analyst');
     expect(profileItem.text).to.contain('Limit: 100');
-    expect(executeCommandStub.calledWith('setContext', 'pgstudio.connectionName', 'Primary')).to.be.true;
-    expect(executeCommandStub.calledWith('setContext', 'pgstudio.databaseName', 'appdb')).to.be.true;
+    expect(executeCommandStub.calledWith('setContext', 'nexql.connectionName', 'Primary')).to.be.true;
+    expect(executeCommandStub.calledWith('setContext', 'nexql.databaseName', 'appdb')).to.be.true;
 
     statusBar.updateTransactionState();
     expect(transactionItem.hide.called).to.be.true;

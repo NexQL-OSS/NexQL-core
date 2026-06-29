@@ -31,7 +31,7 @@ describe('NotebookParameterBank', () => {
 
   it('clears one parameter bucket without affecting the rest of the notebook', async () => {
     const workspaceState = createWorkspaceState({
-      'pgstudio.notebookParameterBank.v1': {
+      'nexql.notebookParameterBank.v1': {
         'notebook-a': {
           'named:customer_id': ['10'],
           'named:status': ['active'],

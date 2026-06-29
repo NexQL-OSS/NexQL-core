@@ -5,8 +5,8 @@ import { ConnectionManager } from './ConnectionManager';
 import { createMetadata, getConnectionWithPassword } from '../commands/connection';
 import { PG_VERSION_10, queryServerVersionNum } from '../lib/postgresServerVersion';
 
-const DDL_VIEWER_SCHEME = 'pgstudio-ddl';
-const DDL_VIEWER_ENABLED_CONFIG = 'pgstudio.ddlViewer.enabled';
+const DDL_VIEWER_SCHEME = 'nexql-ddl';
+const DDL_VIEWER_ENABLED_CONFIG = 'nexql.ddlViewer.enabled';
 
 function isDdlViewerEnabled(): boolean {
   return vscode.workspace.getConfiguration().get<boolean>(DDL_VIEWER_ENABLED_CONFIG, true);
@@ -1621,7 +1621,7 @@ export class DdlViewerService implements vscode.Disposable {
           return;
         }
 
-        if (!vscode.workspace.getConfiguration().get<boolean>('pgstudio.ddlViewer.openOnSelection', true)) {
+        if (!vscode.workspace.getConfiguration().get<boolean>('nexql.ddlViewer.openOnSelection', true)) {
           return;
         }
 

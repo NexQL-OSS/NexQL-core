@@ -12,7 +12,7 @@ const IDE_INSTALL_PATTERNS = [
   /[/\\]node_modules[/\\]@vscode[/\\]/i,
 ];
 
-const PGSTUDIO_OPENCODE_DIR = path.join(os.homedir(), '.pgstudio', 'opencode-wd');
+const NEXQL_OPENCODE_DIR = path.join(os.homedir(), '.nexql', 'opencode-wd');
 
 function isIdeInstallPath(dirPath: string): boolean {
   const normalized = path.normalize(dirPath);
@@ -60,5 +60,5 @@ export function resolveOpencodeWorkingDirectory(
     return path.normalize(cwd);
   }
 
-  return ensureDirectory(PGSTUDIO_OPENCODE_DIR);
+  return ensureDirectory(NEXQL_OPENCODE_DIR);
 }

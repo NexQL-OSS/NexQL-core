@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
 import type { SettingsHubHostContext, SettingsHubMessage, SettingsSectionHandler } from '../types';
 
-const DDL_ENABLED_KEY = 'pgstudio.ddlViewer.enabled';
-const DDL_OPEN_ON_SELECTION_KEY = 'pgstudio.ddlViewer.openOnSelection';
+const DDL_ENABLED_KEY = 'nexql.ddlViewer.enabled';
+const DDL_OPEN_ON_SELECTION_KEY = 'nexql.ddlViewer.openOnSelection';
 
 export class PreferencesSectionHandler implements SettingsSectionHandler {
   readonly section = 'prefs';

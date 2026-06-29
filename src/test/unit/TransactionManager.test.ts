@@ -74,21 +74,21 @@ describe('TransactionManager', () => {
 
     const firstSavepoint = await manager.createSavepoint(client, 'session-2');
     const customSavepoint = await manager.createSavepoint(client, 'session-2', 'custom_sp');
-    expect(firstSavepoint).to.equal('sp_pgstudio_1');
+    expect(firstSavepoint).to.equal('sp_nexql_1');
     expect(customSavepoint).to.equal('custom_sp');
     expect(manager.getSavepoints('session-2')).to.deep.equal([
-      { name: 'sp_pgstudio_1', timestamp: 0 },
+      { name: 'sp_nexql_1', timestamp: 0 },
       { name: 'custom_sp', timestamp: 1 }
     ]);
 
     await manager.releaseSavepoint(client, 'session-2');
     expect(client.query.calledWith('RELEASE SAVEPOINT "custom_sp"')).to.be.true;
     expect(manager.getSavepoints('session-2')).to.deep.equal([
-      { name: 'sp_pgstudio_1', timestamp: 0 }
+      { name: 'sp_nexql_1', timestamp: 0 }
     ]);
 
     await manager.rollbackToSavepoint(client, 'session-2');
-    expect(client.query.calledWith('ROLLBACK TO SAVEPOINT "sp_pgstudio_1"')).to.be.true;
+    expect(client.query.calledWith('ROLLBACK TO SAVEPOINT "sp_nexql_1"')).to.be.true;
     expect(manager.getSavepoints('session-2')).to.deep.equal([]);
 
     try {

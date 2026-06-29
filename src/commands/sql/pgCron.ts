@@ -63,7 +63,7 @@ ORDER BY jobid;`,
    */
   scheduleBackupShellExample: (): string =>
     `-- pg_cron runs SQL inside PostgreSQL, not your developer machine shell.
--- For pg_dump on a schedule use: OS cron/systemd on the DB host, or a VS Code task (type pgstudio-pgdump).
+-- For pg_dump on a schedule use: OS cron/systemd on the DB host, or a VS Code task (type nexql-pgdump).
 --
 -- Example pg_cron maintenance job:
 

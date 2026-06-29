@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { PGSTUDIO_SQL_AGENT_ID } from './opencodeHeadlessEnv';
+import { NEXQL_SQL_AGENT_ID } from './opencodeHeadlessEnv';
 import { appendOpencodeLog } from './opencodeLog';
 import type { OpencodeRunOptions, OpencodeRunResult } from './opencodeRunner';
 import { resolveOpencodeWorkingDirectory } from './resolveOpencodeWorkingDirectory';
@@ -85,7 +85,7 @@ export async function runViaServeHttp(
     const modelParts = options.model ? splitProviderModel(options.model) : undefined;
     const messageBody: Record<string, unknown> = {
       parts: [{ type: 'text', text: options.prompt }],
-      agent: PGSTUDIO_SQL_AGENT_ID,
+      agent: NEXQL_SQL_AGENT_ID,
     };
     if (modelParts) {
       messageBody.model = modelParts;

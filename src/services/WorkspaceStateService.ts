@@ -1,12 +1,12 @@
 import * as vscode from 'vscode';
 
 /** Workspace-scoped defaults for NexQL (per VS Code workspace folder). */
-export interface PgStudioWorkspaceDefaults {
+export interface NexQLWorkspaceDefaults {
   lastConnectionId?: string;
   lastDatabaseName?: string;
 }
 
-const WORKSPACE_DEFAULTS_KEY = 'pgstudio.workspaceDefaults.v1';
+const WORKSPACE_DEFAULTS_KEY = 'nexql.workspaceDefaults.v1';
 
 /**
  * Centralizes reads/writes to {@link vscode.ExtensionContext.workspaceState} for NexQL.
@@ -29,18 +29,18 @@ export class WorkspaceStateService implements vscode.Disposable {
     this.context = context;
   }
 
-  getDefaults(): PgStudioWorkspaceDefaults {
+  getDefaults(): NexQLWorkspaceDefaults {
     if (!this.context) {
       return {};
     }
-    return this.context.workspaceState.get<PgStudioWorkspaceDefaults>(WORKSPACE_DEFAULTS_KEY, {}) ?? {};
+    return this.context.workspaceState.get<NexQLWorkspaceDefaults>(WORKSPACE_DEFAULTS_KEY, {}) ?? {};
   }
 
-  async setDefaults(partial: Partial<PgStudioWorkspaceDefaults>): Promise<void> {
+  async setDefaults(partial: Partial<NexQLWorkspaceDefaults>): Promise<void> {
     if (!this.context) {
       return;
     }
-    const next: PgStudioWorkspaceDefaults = { ...this.getDefaults(), ...partial };
+    const next: NexQLWorkspaceDefaults = { ...this.getDefaults(), ...partial };
     await this.context.workspaceState.update(WORKSPACE_DEFAULTS_KEY, next);
   }
 

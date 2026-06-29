@@ -75,7 +75,7 @@ describe('SSHService', () => {
 
   it('loads a private key when configured', async () => {
     const fakeClient = createClient();
-    const keyPath = path.join(os.tmpdir(), `pgstudio-ssh-${Date.now()}-${Math.random().toString(36).slice(2)}.pem`);
+    const keyPath = path.join(os.tmpdir(), `nexql-ssh-${Date.now()}-${Math.random().toString(36).slice(2)}.pem`);
     fs.writeFileSync(keyPath, 'private-key');
 
     try {

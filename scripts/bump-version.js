@@ -22,6 +22,41 @@ function parseBaseSemver(versionField) {
   return [nums[0], nums[1], nums[2]];
 }
 
+function getLastStableVersion() {
+  try {
+    const tags = execSync('git tag -l', { encoding: 'utf8' })
+      .split('\n')
+      .map(t => t.trim())
+      .filter(t => /^v\d+\.\d+\.\d+(?:-[\w.]+)?$/.test(t));
+    
+    let lastStable = null;
+    let maxSemver = [-1, -1, -1];
+    
+    for (const t of tags) {
+      const versionStr = t.slice(1); // remove 'v'
+      const parts = versionStr.split('-');
+      const core = parts[0];
+      const segments = core.split('.').map(Number);
+      if (segments.length === 3 && !segments.some(Number.isNaN)) {
+        const [major, minor, patch] = segments;
+        if (minor % 2 === 0) {
+          if (
+            major > maxSemver[0] ||
+            (major === maxSemver[0] && minor > maxSemver[1]) ||
+            (major === maxSemver[0] && minor === maxSemver[1] && patch > maxSemver[2])
+          ) {
+            maxSemver = [major, minor, patch];
+            lastStable = t;
+          }
+        }
+      }
+    }
+    return lastStable;
+  } catch (e) {
+    return null;
+  }
+}
+
 function getNextVersion(currentVersion, channel, bumpType) {
   let [major, minor, patch] = parseBaseSemver(currentVersion);
 
@@ -98,26 +133,61 @@ async function main() {
       }
     }
 
+    const lastStable = getLastStableVersion();
+    if (channel === 'stable') {
+      if (lastStable) {
+        console.log(`Last stable version: ${lastStable}`);
+      } else {
+        console.log('Last stable version: None found');
+      }
+    }
+
     let bumpType = bumpArg;
     if (!bumpType) {
       console.log('\nSelect Release Type:');
       console.log('  1) patch — patch bump (e.g. 1.0.0 → 1.0.1)');
       console.log('  2) minor — minor bump (e.g. 1.0.0 → 1.1.0)');
       console.log('  3) major — major bump (e.g. 1.0.0 → 2.0.0)');
-      const answer = await askQuestion(rl, 'Choose [1-3]: ');
+      console.log('  4) custom — enter custom version string');
+      const answer = await askQuestion(rl, 'Choose [1-4]: ');
       if (answer.trim() === '1' || answer.toLowerCase() === 'patch' || answer.toLowerCase() === 'fix') {
         bumpType = 'patch';
       } else if (answer.trim() === '2' || answer.toLowerCase() === 'minor') {
         bumpType = 'minor';
       } else if (answer.trim() === '3' || answer.toLowerCase() === 'major') {
         bumpType = 'major';
+      } else if (answer.trim() === '4' || answer.toLowerCase() === 'custom') {
+        bumpType = 'custom';
       } else {
         console.error(`Invalid choice: ${answer}`);
         process.exit(1);
       }
     }
 
-    const nextVersion = getNextVersion(currentVersion, channel, bumpType);
+    let nextVersion;
+    if (bumpType === 'custom') {
+      const customAns = await askQuestion(rl, 'Enter custom version: ');
+      nextVersion = customAns.trim().replace(/^v/, '');
+      if (!/^\d+\.\d+\.\d+(?:-[\w.]+)?$/.test(nextVersion)) {
+        console.error(`Invalid semver version: ${nextVersion}`);
+        process.exit(1);
+      }
+      const parts = nextVersion.split('-');
+      const core = parts[0];
+      const [, minorStr] = core.split('.');
+      const minorNum = Number(minorStr);
+      if (!Number.isNaN(minorNum)) {
+        channel = (minorNum % 2 === 0) ? 'stable' : 'nightly';
+      }
+    } else {
+      let baseVersion = currentVersion;
+      if (channel === 'stable' && bumpType === 'patch') {
+        if (lastStable) {
+          baseVersion = lastStable.replace(/^v/, '');
+        }
+      }
+      nextVersion = getNextVersion(baseVersion, channel, bumpType);
+    }
     console.log(`\nNext version computed: v${nextVersion} (${channel} release)`);
 
     if (!skipConfirm) {

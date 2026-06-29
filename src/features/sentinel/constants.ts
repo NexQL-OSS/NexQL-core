@@ -1,12 +1,12 @@
 import type { SentinelEnvironment } from './types';
 
 /** Notebook cell metadata role for the optional Sentinel context strip cell. */
-export const SENTINEL_HEADER_CELL_ROLE = 'pgstudio.sentinelHeader';
+export const SENTINEL_HEADER_CELL_ROLE = 'nexql.sentinelHeader';
 
 /** Per-notebook opt-out for the in-editor context strip. */
-export const SENTINEL_STRIP_HIDDEN_METADATA_KEY = 'pgstudio.sentinelStripHidden';
+export const SENTINEL_STRIP_HIDDEN_METADATA_KEY = 'nexql.sentinelStripHidden';
 
-export const SENTINEL_PROD_TOUR_KEY = 'pgstudio.sentinel.prodTourShown.v1';
+export const SENTINEL_PROD_TOUR_KEY = 'nexql.sentinel.prodTourShown.v1';
 
 export const NEXQL_THEMES_MARKETPLACE_URL = 'https://marketplace.visualstudio.com/items?itemName=ric-v.nexql-themes';
 
@@ -93,4 +93,4 @@ export function environmentIcon(environment: SentinelEnvironment): string {
   }
 }
 
-export const SENTINEL_ACCENT_SNAPSHOT_KEY = 'pgstudio.sentinel.accentSnapshot.v1';
+export const SENTINEL_ACCENT_SNAPSHOT_KEY = 'nexql.sentinel.accentSnapshot.v1';

@@ -6,7 +6,7 @@ import { appendOpencodeLog } from './opencodeLog';
 import { resolveOpencodeCli } from './resolveOpencodeCli';
 import { resolveOpencodeWorkingDirectory } from './resolveOpencodeWorkingDirectory';
 
-const OPENCODE_CLIENT_ID = 'pgstudio';
+const OPENCODE_CLIENT_ID = 'nexql';
 const MANAGED_SERVE_GLOBAL_KEY = 'postgresExplorer.opencodeManagedServeUrl';
 const SERVE_START_TIMEOUT_MS = 45_000;
 const HEALTH_POLL_MS = 250;

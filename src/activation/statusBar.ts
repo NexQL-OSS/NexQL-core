@@ -233,8 +233,8 @@ export class NotebookStatusBar implements vscode.Disposable {
     this.updateProfileIndicator(itemStyle);
     this.renderTierItem();
 
-    vscode.commands.executeCommand('setContext', 'pgstudio.connectionName', connName);
-    vscode.commands.executeCommand('setContext', 'pgstudio.databaseName', dbName);
+    vscode.commands.executeCommand('setContext', 'nexql.connectionName', connName);
+    vscode.commands.executeCommand('setContext', 'nexql.databaseName', dbName);
   }
 
   private buildConnectionTooltip(

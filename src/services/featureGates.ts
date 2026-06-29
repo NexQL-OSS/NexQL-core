@@ -181,6 +181,9 @@ function quotaWord(period: FeatureQuota['period']): string {
  * the action via {@link requirePro}). Features without a quota are paid-only.
  */
 export function isProFeatureEnabled(feature: ProFeature): boolean {
+  if (feature === ProFeature.AiAssistant || feature === ProFeature.AgenticModes) {
+    return true;
+  }
   if (enforcement() === 'off') {
     return true;
   }

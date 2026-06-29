@@ -1,9 +1,9 @@
 import type * as vscode from 'vscode';
 
-const MUTED_FOREVER_KEY = 'pgstudio.cursorStream.bannerMutedForever.v1';
-const DISMISSED_AT_KEY = 'pgstudio.cursorStream.bannerDismissedAt.v1';
-const COUNT_AT_DISMISS_KEY = 'pgstudio.cursorStream.bannerCountAtDismiss.v1';
-const SLIDING_EXEC_COUNT_KEY = 'pgstudio.cursorStream.slidingExecCount.v1';
+const MUTED_FOREVER_KEY = 'nexql.cursorStream.bannerMutedForever.v1';
+const DISMISSED_AT_KEY = 'nexql.cursorStream.bannerDismissedAt.v1';
+const COUNT_AT_DISMISS_KEY = 'nexql.cursorStream.bannerCountAtDismiss.v1';
+const SLIDING_EXEC_COUNT_KEY = 'nexql.cursorStream.slidingExecCount.v1';
 
 /** Snooze banner for 7 days after dismiss. */
 const SNOOZE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;

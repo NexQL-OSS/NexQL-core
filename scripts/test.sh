@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# PgStudio Test Runner Script
+# NexQL Test Runner Script
 # This script helps run tests with various configurations
 
 set -e
@@ -71,7 +71,7 @@ done
 
 show_help() {
   cat << 'EOF'
-PgStudio Test Runner
+NexQL Test Runner
 
 Usage:
   ./scripts/test.sh [OPTIONS]

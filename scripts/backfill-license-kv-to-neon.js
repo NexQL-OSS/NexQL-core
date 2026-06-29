@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// One-off: scan KV ent:* keys (or .kv-dev.json) and upsert into Neon pgstudio_license.
+// One-off: scan KV ent:* keys (or .kv-dev.json) and upsert into Neon nexql_license.
 // Usage: node scripts/backfill-license-kv-to-neon.js [--dry-run]
 
 'use strict';

@@ -135,7 +135,7 @@ const PRODUCT_HIGHLIGHTS = {
 
 // ── Search index ──────────────────────────────────────────
 const SEARCH_INDEX = [
-  { key: "readme", label: "README.md", path: "NEXQL", text: "overview connect sql notebooks explorer ai assistant schema safety performance pgstudio postgres postgresql vs code extension free open source database management developer tool sql ide database client query editor productivity" },
+  { key: "readme", label: "README.md", path: "NEXQL", text: "overview connect sql notebooks explorer ai assistant schema safety performance nexql postgres postgresql vs code extension free open source database management developer tool sql ide database client query editor productivity" },
   { key: "query", label: "query.pgsql", path: "NOTEBOOKS", text: "sql query run execute select orders revenue notebook cell results daily aggregation date_trunc count sum group by where interval explain analyze explain plan query tuning performance optimization index recommendation" },
   { key: "features", label: "features.md", path: "NEXQL", text: "features notebooks explorer ai assistant schema tools visual safety performance 50 capabilities pgadmin dbeaver alternative vs code native postgres client free faq questions postgresql gui sql workflow developer experience" },
   { key: "connections", label: "connections.demo", path: "WORKFLOW", text: "connect database host port username password ssl tls dev stage prod environment connection ssh tunnel rds supabase neon timescale yugabyte aurora cloud sql alloydb azure amazon secure secretstorage connection manager postgres connection setup platform compatibility pg-wire" },
@@ -204,14 +204,14 @@ const SNIPPET_RESPONSES = {
 // ── Tour step configuration (4 steps) ────────────────────
 const TOUR_STEPS_CONFIG = [
   {
-    file: "connections", panel: "pgstudio",
+    file: "connections", panel: "nexql",
     target: "#file-connections",
     title: "Connect",
     body: "Label environments as DEV, STAGE, or PROD. NexQL makes it obvious which database you're working on — before you run anything. Test & Connect validates credentials first."
   },
   {
-    file: "doc-explorer", panel: "pgstudio",
-    target: "#sidebar-pgstudio",
+    file: "doc-explorer", panel: "nexql",
+    target: "#sidebar-nexql",
     title: "Explore",
     body: "The Database Explorer gives you a live tree of every table, view, function, and index. Right-click anything to generate ready-to-run SQL — SELECT, INSERT, CREATE, ALTER, DROP."
   },
@@ -232,7 +232,7 @@ const TOUR_STEPS_CONFIG = [
 // ── Constants ─────────────────────────────────────────────
 const TYPING_INTERVAL_MS = 16;
 const RUN_RESULT_DELAY_MS = 900;
-const THEME_KEY = "pgstudio-docs-theme";
+const THEME_KEY = "nexql-docs-theme";
 const CLOSE_REDIRECT_MIN_MS = 1000;
 const CLOSE_REDIRECT_MAX_MS = 2000;
 

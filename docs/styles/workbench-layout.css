@@ -114,14 +114,14 @@
   content: none;
 }
 
-.activity-icon.pgstudio img {
+.activity-icon.nexql img {
   border-radius: 6px;
   height: 20px;
   object-fit: cover;
   width: 20px;
 }
 
-.activity-icon.pgstudio img {
+.activity-icon.nexql img {
   filter: none;
 }
 

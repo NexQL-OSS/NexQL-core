@@ -82,7 +82,7 @@ export class BackupRestorePanel {
     }
 
     const panel = vscode.window.createWebviewPanel(
-      'pgstudioBackupRestore',
+      'nexqlBackupRestore',
       'PostgreSQL · Backup & Restore',
       column,
       {
@@ -707,7 +707,7 @@ export class BackupRestorePanel {
   private async _generateTaskSnippet(payload: Record<string, unknown>): Promise<void> {
     const task = {
       label: String(payload.label ?? 'PostgreSQL backup'),
-      type: 'pgstudio-pgdump',
+      type: 'nexql-pgdump',
       connectionId: this._options.connectionId,
       databaseName: String(payload.database ?? this._options.databaseName),
       dumpFormat: String(payload.format ?? 'custom'),

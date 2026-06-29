@@ -82,7 +82,7 @@ Or use the walkthrough: **Set up NexQL Sync** (from the Welcome / Getting Starte
 
 | Backend | Plan | Best for |
 |---------|------|----------|
-| **Shared Postgres** | Free+ | Your own DB; `pgstudio_sync` schema |
+| **Shared Postgres** | Free+ | Your own DB; `nexql_sync` schema |
 | **GitHub Gist** | Sponsor+ | Quick start; private gist; works in most editors |
 | **OneDrive** | Sponsor+ | Microsoft 365 users; files in app folder |
 | **Google Drive** | Sponsor+ | Google accounts; `drive.appdata` hidden folder |
@@ -129,7 +129,7 @@ Configure in **Settings → PostgreSQL Explorer → Sync**:
 |---------|---------|
 | `postgresExplorer.sync.auto` | Automatic debounced push and periodic pull (default: on) |
 | `postgresExplorer.sync.pullIntervalMinutes` | How often to pull remote changes (default: 5) |
-| `postgresExplorer.sync.notebookFolder` | Local folder for synced `.pgsql` notebooks (default: `~/PgStudioNotebooks`) |
+| `postgresExplorer.sync.notebookFolder` | Local folder for synced `.pgsql` notebooks (default: `~/NexQLNotebooks`) |
 | `postgresExplorer.sync.postgresConnectionId` | Connection ID for Shared Postgres backend |
 | `postgresExplorer.sync.apiEndpoint` | NexQL Cloud API base URL |
 | `postgresExplorer.sync.githubClientId` | GitHub OAuth app (device-flow fallback) |

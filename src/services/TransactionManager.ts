@@ -29,7 +29,7 @@ export class TransactionManager {
   private connectionClients: Map<string, Client | PoolClient> = new Map();
   private savepointCounters: Map<string, number> = new Map();
 
-  public static readonly DEFAULT_SAVEPOINT_PREFIX = 'sp_pgstudio_';
+  public static readonly DEFAULT_SAVEPOINT_PREFIX = 'sp_nexql_';
 
   /**
    * Initialize transaction tracking for a session

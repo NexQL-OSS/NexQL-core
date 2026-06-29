@@ -112,7 +112,7 @@ app.use((err, req, res, next) => {
 
 app.listen(PORT, () => {
   console.log(`\n========================================================`);
-  console.log(`🚀 PgStudio Marketing & Razorpay Checkout Server`);
+  console.log(`🚀 NexQL Marketing & Razorpay Checkout Server`);
   console.log(`🌐 Address: http://localhost:${PORT}`);
   console.log(`🔑 RAZORPAY_KEY_ID: ${process.env.RAZORPAY_KEY_ID || 'Missing!'}`);
   console.log(`========================================================\n`);

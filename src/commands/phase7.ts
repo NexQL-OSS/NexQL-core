@@ -770,7 +770,7 @@ export async function exportConnectionProfiles(): Promise<void> {
   const json = JSON.stringify(safeProfiles, null, 2);
 
   const uri = await vscode.window.showSaveDialog({
-    defaultUri: vscode.Uri.file(`pgstudio-profiles-${new Date().toISOString().split('T')[0]}.json`),
+    defaultUri: vscode.Uri.file(`nexql-profiles-${new Date().toISOString().split('T')[0]}.json`),
     filters: { 'JSON Files': ['json'] },
   });
 

@@ -1,10 +1,10 @@
 # Neon Database Reference & Cheatsheet
 
-This document serves as the comprehensive reference and cheatsheet for all tables created and actively used on the Neon PostgreSQL database by the PgStudio (NexQL) backend.
+This document serves as the comprehensive reference and cheatsheet for all tables created and actively used on the Neon PostgreSQL database by the NexQL (NexQL) backend.
 
 The database is divided into two primary schemas:
-1. **`pgstudio_license`**: Manages user licenses, device bindings, transaction events, and Razorpay webhook idempotency.
-2. **`pgstudio_sync`**: Powers the NexQL Cloud Sync v2 service using an optimized, git-like, end-to-end encrypted delta synchronization mechanism.
+1. **`nexql_license`**: Manages user licenses, device bindings, transaction events, and Razorpay webhook idempotency.
+2. **`nexql_sync`**: Powers the NexQL Cloud Sync v2 service using an optimized, git-like, end-to-end encrypted delta synchronization mechanism.
 
 ---
 
@@ -14,8 +14,8 @@ The following Mermaid diagram outlines the entity-relationship model and schema 
 
 ```mermaid
 erDiagram
-    %% Schema: pgstudio_license
-    subgraph pgstudio_license ["Schema: pgstudio_license (Licensing)"]
+    %% Schema: nexql_license
+    subgraph nexql_license ["Schema: nexql_license (Licensing)"]
         licenses {
             text license_key PK
             text tier "sponsor | singularity"
@@ -50,8 +50,8 @@ erDiagram
         }
     end
 
-    %% Schema: pgstudio_sync
-    subgraph pgstudio_sync ["Schema: pgstudio_sync (NexQL Cloud Sync)"]
+    %% Schema: nexql_sync
+    subgraph nexql_sync ["Schema: nexql_sync (NexQL Cloud Sync)"]
         sync_accounts {
             text account_id PK "maps to license_key or github_id"
             text tier "sponsor | singularity"
@@ -113,20 +113,20 @@ erDiagram
 
 | Schema / Table | Status | Read / Write Intensity | Primary Purpose | Why it is Used & What relies on it |
 | :--- | :--- | :--- | :--- | :--- |
-| **`pgstudio_license.licenses`** | **Active** | High / Medium | Entitlement State | Tracks subscription tiers, expiration dates, and validation status. Relied upon by client licensing API requests. |
-| **`pgstudio_license.devices`** | **Active** | High / High | Device Validation | Prevents users from exceeding activation limits (4 devices per tier). Excess devices pruned on validate. |
-| **`pgstudio_license.license_events`** | **Active** | Low / Medium | Audit Trail | Log of license changes (issuance, device bindings, subscription status modifications). |
-| **`pgstudio_license.webhook_events`** | **Active** | Medium / Low | Idempotency | Ensures Razorpay webhooks are processed exactly once. |
-| **`pgstudio_sync.sync_accounts`** | **Active** | High / Medium | Quota & Storage Tracking | Stores tenant usage limits (bytes used, item count, tier) and triggers cloud pruning if inactive. |
-| **`pgstudio_sync.sync_devices`** | **Active** | Medium / Medium | Sync Device Registry | Tracks active sync client devices for each user account. |
-| **`pgstudio_sync.spaces`** | **Active** | Medium / Low | Shared Workspace Registry | Models collaboration units (e.g. shared folders/teams). Personal folders are implicit. |
-| **`pgstudio_sync.space_members`** | **Active** | High / Low | ACL / Role Mapping | Authorizes pull/push actions for workspaces using Roles (`owner`, `editor`, `viewer`). |
-| **`pgstudio_sync.items_v2`** | **Active** | High / High | Encrypted Sync Storage | Holds AES-256-GCM encrypted client configurations, queries, and notebook blobs. |
-| **`pgstudio_sync.deletes_v2`** | **Active** | High / Medium | Delete Logs (Tombstones) | Git-like tombstones to prevent deleted items from resurrecting on client pulls. |
+| **`nexql_license.licenses`** | **Active** | High / Medium | Entitlement State | Tracks subscription tiers, expiration dates, and validation status. Relied upon by client licensing API requests. |
+| **`nexql_license.devices`** | **Active** | High / High | Device Validation | Prevents users from exceeding activation limits (4 devices per tier). Excess devices pruned on validate. |
+| **`nexql_license.license_events`** | **Active** | Low / Medium | Audit Trail | Log of license changes (issuance, device bindings, subscription status modifications). |
+| **`nexql_license.webhook_events`** | **Active** | Medium / Low | Idempotency | Ensures Razorpay webhooks are processed exactly once. |
+| **`nexql_sync.sync_accounts`** | **Active** | High / Medium | Quota & Storage Tracking | Stores tenant usage limits (bytes used, item count, tier) and triggers cloud pruning if inactive. |
+| **`nexql_sync.sync_devices`** | **Active** | Medium / Medium | Sync Device Registry | Tracks active sync client devices for each user account. |
+| **`nexql_sync.spaces`** | **Active** | Medium / Low | Shared Workspace Registry | Models collaboration units (e.g. shared folders/teams). Personal folders are implicit. |
+| **`nexql_sync.space_members`** | **Active** | High / Low | ACL / Role Mapping | Authorizes pull/push actions for workspaces using Roles (`owner`, `editor`, `viewer`). |
+| **`nexql_sync.items_v2`** | **Active** | High / High | Encrypted Sync Storage | Holds AES-256-GCM encrypted client configurations, queries, and notebook blobs. |
+| **`nexql_sync.deletes_v2`** | **Active** | High / Medium | Delete Logs (Tombstones) | Git-like tombstones to prevent deleted items from resurrecting on client pulls. |
 
 ---
 
-## 🔧 Schema `pgstudio_license` (Detailed Definition)
+## 🔧 Schema `nexql_license` (Detailed Definition)
 
 This schema controls user licenses and limits device activations.
 
@@ -135,7 +135,7 @@ Stores valid license keys, emails, tiers, subscription periods, status, and expi
 
 * **DDL Definition**:
   ```sql
-  CREATE TABLE IF NOT EXISTS pgstudio_license.licenses (
+  CREATE TABLE IF NOT EXISTS nexql_license.licenses (
     license_key      TEXT PRIMARY KEY,
     tier             TEXT NOT NULL CHECK (tier IN ('sponsor','singularity')),
     period           TEXT NOT NULL DEFAULT 'monthly',
@@ -160,8 +160,8 @@ Tracks active client machines bound to each license key.
 
 * **DDL Definition**:
   ```sql
-  CREATE TABLE IF NOT EXISTS pgstudio_license.devices (
-    license_key  TEXT NOT NULL REFERENCES pgstudio_license.licenses(license_key),
+  CREATE TABLE IF NOT EXISTS nexql_license.devices (
+    license_key  TEXT NOT NULL REFERENCES nexql_license.licenses(license_key),
     instance_id  TEXT NOT NULL,
     device_name  TEXT,
     first_seen   TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -180,7 +180,7 @@ Stores an append-only JSON audit log of operations associated with a license.
 
 * **DDL Definition**:
   ```sql
-  CREATE TABLE IF NOT EXISTS pgstudio_license.license_events (
+  CREATE TABLE IF NOT EXISTS nexql_license.license_events (
     id           BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     license_key  TEXT NOT NULL,
     event_type   TEXT NOT NULL,
@@ -199,7 +199,7 @@ Protects subscription webhook handlers against network retransmissions and doubl
 
 * **DDL Definition**:
   ```sql
-  CREATE TABLE IF NOT EXISTS pgstudio_license.webhook_events (
+  CREATE TABLE IF NOT EXISTS nexql_license.webhook_events (
     razorpay_event_id TEXT PRIMARY KEY,
     received_at       TIMESTAMPTZ NOT NULL DEFAULT now()
   );
@@ -209,7 +209,7 @@ Protects subscription webhook handlers against network retransmissions and doubl
 
 ---
 
-## 📡 Schema `pgstudio_sync` (Detailed Definition)
+## 📡 Schema `nexql_sync` (Detailed Definition)
 
 Powers the git-like, multi-device cloud synchronization feature.
 
@@ -218,7 +218,7 @@ Stores the active state of sync items (connections, queries, and SQL notebooks).
 
 * **DDL Definition**:
   ```sql
-  CREATE TABLE IF NOT EXISTS pgstudio_sync.items_v2 (
+  CREATE TABLE IF NOT EXISTS nexql_sync.items_v2 (
     space_id     TEXT        NOT NULL,
     item_id      TEXT        NOT NULL,
     kind         TEXT        NOT NULL CHECK (kind IN ('connection','query','notebook')),
@@ -231,7 +231,7 @@ Stores the active state of sync items (connections, queries, and SQL notebooks).
   );
   ```
 * **Indexes & Sequences**:
-  * Sequence: `pgstudio_sync.cursor_seq` used to supply monotonic version sequences.
+  * Sequence: `nexql_sync.cursor_seq` used to supply monotonic version sequences.
   * Index: `items_v2_cursor_idx` ON `(space_id, version)` used to accelerate delta pulls.
 * **Why & What**:
   * Contains the encrypted sync payloads (encrypted client-side using AES-256-GCM).
@@ -242,7 +242,7 @@ Tombstone ledger tracking deleted items in a space.
 
 * **DDL Definition**:
   ```sql
-  CREATE TABLE IF NOT EXISTS pgstudio_sync.deletes_v2 (
+  CREATE TABLE IF NOT EXISTS nexql_sync.deletes_v2 (
     space_id   TEXT        NOT NULL,
     item_id    TEXT        NOT NULL,
     version    BIGINT      NOT NULL,
@@ -261,15 +261,15 @@ Models shared team spaces and role permissions. Personal spaces are represented 
 
 * **DDL Definitions**:
   ```sql
-  CREATE TABLE IF NOT EXISTS pgstudio_sync.spaces (
+  CREATE TABLE IF NOT EXISTS nexql_sync.spaces (
     space_id    TEXT        PRIMARY KEY,
     name        TEXT        NOT NULL,
     owner_email TEXT        NOT NULL,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
   );
 
-  CREATE TABLE IF NOT EXISTS pgstudio_sync.space_members (
-    space_id TEXT        NOT NULL REFERENCES pgstudio_sync.spaces(space_id) ON DELETE CASCADE,
+  CREATE TABLE IF NOT EXISTS nexql_sync.space_members (
+    space_id TEXT        NOT NULL REFERENCES nexql_sync.spaces(space_id) ON DELETE CASCADE,
     email    TEXT        NOT NULL,
     role     TEXT        NOT NULL CHECK (role IN ('owner','editor','viewer')),
     added_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -284,7 +284,7 @@ Tracks quota limits, active sync client configurations, and handles retention pa
 
 * **DDL Definitions**:
   ```sql
-  CREATE TABLE IF NOT EXISTS pgstudio_sync.sync_accounts (
+  CREATE TABLE IF NOT EXISTS nexql_sync.sync_accounts (
     account_id     TEXT        PRIMARY KEY,
     tier           TEXT        NOT NULL DEFAULT 'sponsor',
     bytes_used     BIGINT      NOT NULL DEFAULT 0,
@@ -293,7 +293,7 @@ Tracks quota limits, active sync client configurations, and handles retention pa
     updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
   );
 
-  CREATE TABLE IF NOT EXISTS pgstudio_sync.sync_devices (
+  CREATE TABLE IF NOT EXISTS nexql_sync.sync_devices (
     account_id   TEXT        NOT NULL,
     device_id    TEXT        NOT NULL,
     device_name  TEXT,
@@ -314,7 +314,7 @@ Tracks quota limits, active sync client configurations, and handles retention pa
 ### 1. Subscription Expiration Cron
 Runs periodically (via `expirePastDueLicenses()`) to flag licenses whose expiration timestamp has passed as `'expired'`.
 ```sql
-UPDATE pgstudio_license.licenses
+UPDATE nexql_license.licenses
 SET status = 'expired', updated_at = now()
 WHERE status = 'active'
   AND expires_at IS NOT NULL
@@ -329,7 +329,7 @@ To optimize Neon DB storage usage, a routine runs (`purgeInactiveCloudData()`) t
 2. Permanently deletes blobs and account entries from `items_v2`, `deletes_v2`, `sync_devices`, `spaces`, and `sync_accounts`.
 
 ### 3. Backfill One-Off Script
-A CLI script `scripts/backfill-license-kv-to-neon.js` allows migrating license entitlements from legacy KV databases (or local dev files) into `pgstudio_license.licenses` inside the Neon DB.
+A CLI script `scripts/backfill-license-kv-to-neon.js` allows migrating license entitlements from legacy KV databases (or local dev files) into `nexql_license.licenses` inside the Neon DB.
 
 ---
 
@@ -351,8 +351,8 @@ SELECT
     COALESCE(sa.item_count, 0) AS sync_item_count,
     sa.inactive_since AS sync_inactive_since,
     l.created_at AS user_created_at
-FROM pgstudio_license.licenses l
-LEFT JOIN pgstudio_sync.sync_accounts sa 
+FROM nexql_license.licenses l
+LEFT JOIN nexql_sync.sync_accounts sa 
     ON l.license_key = sa.account_id OR lower(l.email) = lower(sa.account_id)
 ORDER BY l.created_at DESC;
 ```
@@ -368,8 +368,8 @@ SELECT
     COALESCE(d.device_name, 'Unnamed Device') AS device_name,
     d.first_seen,
     d.last_seen
-FROM pgstudio_license.licenses l
-JOIN pgstudio_license.devices d ON l.license_key = d.license_key
+FROM nexql_license.licenses l
+JOIN nexql_license.devices d ON l.license_key = d.license_key
 WHERE d.revoked_at IS NULL
 ORDER BY l.email, d.last_seen DESC;
 ```
@@ -383,8 +383,8 @@ SELECT
     sd.device_id AS sync_device_id,
     COALESCE(sd.device_name, 'Unnamed Device') AS sync_device_name,
     sd.last_seen AS sync_device_last_seen
-FROM pgstudio_license.licenses l
-JOIN pgstudio_sync.sync_devices sd ON l.license_key = sd.account_id
+FROM nexql_license.licenses l
+JOIN nexql_sync.sync_devices sd ON l.license_key = sd.account_id
 ORDER BY l.email, sd.last_seen DESC;
 ```
 
@@ -401,8 +401,8 @@ WITH combined_devices AS (
         d.instance_id AS device_id,
         d.device_name,
         d.last_seen
-    FROM pgstudio_license.licenses l
-    JOIN pgstudio_license.devices d ON l.license_key = d.license_key
+    FROM nexql_license.licenses l
+    JOIN nexql_license.devices d ON l.license_key = d.license_key
     WHERE d.revoked_at IS NULL
     
     UNION ALL
@@ -415,8 +415,8 @@ WITH combined_devices AS (
         sd.device_id AS device_id,
         sd.device_name,
         sd.last_seen
-    FROM pgstudio_license.licenses l
-    JOIN pgstudio_sync.sync_devices sd ON l.license_key = sd.account_id
+    FROM nexql_license.licenses l
+    JOIN nexql_sync.sync_devices sd ON l.license_key = sd.account_id
 )
 SELECT 
     user_email,
@@ -440,8 +440,8 @@ SELECT
     sm.email AS member_email,
     sm.role AS member_role,
     sm.added_at
-FROM pgstudio_sync.spaces s
-JOIN pgstudio_sync.space_members sm ON s.space_id = sm.space_id
+FROM nexql_sync.spaces s
+JOIN nexql_sync.space_members sm ON s.space_id = sm.space_id
 ORDER BY s.owner_email, s.name, sm.role DESC;
 ```
 

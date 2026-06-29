@@ -13,7 +13,7 @@ import { resolveOpencodeCli } from './resolveOpencodeCli';
 import { resolveOpencodeWorkingDirectory } from './resolveOpencodeWorkingDirectory';
 
 const DEFAULT_RUN_TIMEOUT_MS = 5 * 60 * 1000;
-const OPENCODE_CLIENT_ID = 'pgstudio';
+const OPENCODE_CLIENT_ID = 'nexql';
 
 export interface OpencodeRunOptions {
   prompt: string;

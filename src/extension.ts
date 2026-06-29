@@ -1,3 +1,4 @@
+import * as crypto from 'crypto';
 import * as vscode from 'vscode';
 import { ConnectionManager } from './services/ConnectionManager';
 import { SecretStorageService } from './services/SecretStorageService';
@@ -374,11 +375,11 @@ export async function activate(context: vscode.ExtensionContext) {
   const connections = config.get<any[]>('postgresExplorer.connections') || [];
   let hasChanges = false;
 
-  const migratedConnections = connections.map((conn, index) => {
+  const migratedConnections = connections.map((conn) => {
     if (!conn.id) {
       hasChanges = true;
-      // Generate a stable-ish ID for legacy connections
-      return { ...conn, id: `${Date.now()}-${index}` };
+      const fp = `${conn.host ?? ''}:${conn.port ?? 5432}:${conn.username ?? conn.user ?? ''}:${conn.database ?? conn.dbname ?? ''}`;
+      return { ...conn, id: `legacy-${crypto.createHash('sha256').update(fp).digest('hex').slice(0, 16)}` };
     }
     return conn;
   });

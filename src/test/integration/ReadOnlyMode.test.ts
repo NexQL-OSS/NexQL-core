@@ -56,7 +56,7 @@ describe('Read-only mode integration tests', () => {
       }
     }
 
-    const tableName = `pgstudio_readonly_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const tableName = `nexql_readonly_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const quotedTable = quoteIdentifier(tableName);
 
     const setupConfig = baseConn({ id: 'readonly-setup' });

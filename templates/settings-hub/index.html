@@ -945,9 +945,9 @@
                   <p class="sync-sql-warn">⚠️ WARNING: Do not run this script on critical or production databases.</p>
                   <p class="label-hint hub-prose">This sync backend requires Postgres. Other databases are not supported.</p>
                   <p class="label-hint hub-prose">Execute the following SQL on your sync database to create the required schema:</p>
-                  <pre class="mono sync-sql-block"><code id="syncPostgresErrorSqlCode"><span class="sql-keyword">CREATE SCHEMA IF NOT EXISTS</span> pgstudio_sync;
+                  <pre class="mono sync-sql-block"><code id="syncPostgresErrorSqlCode"><span class="sql-keyword">CREATE SCHEMA IF NOT EXISTS</span> nexql_sync;
 
-<span class="sql-keyword">CREATE TABLE IF NOT EXISTS</span> pgstudio_sync.sync_items (
+<span class="sql-keyword">CREATE TABLE IF NOT EXISTS</span> nexql_sync.sync_items (
     account_id   <span class="sql-type">TEXT</span> <span class="sql-keyword">NOT NULL</span>,
     item_id      <span class="sql-type">TEXT</span> <span class="sql-keyword">NOT NULL</span>,
     kind         <span class="sql-type">TEXT</span> <span class="sql-keyword">NOT NULL</span>,
@@ -960,7 +960,7 @@
     <span class="sql-keyword">PRIMARY KEY</span> (account_id, item_id)
 );
 
-<span class="sql-keyword">CREATE TABLE IF NOT EXISTS</span> pgstudio_sync.sync_meta (
+<span class="sql-keyword">CREATE TABLE IF NOT EXISTS</span> nexql_sync.sync_meta (
     account_id      <span class="sql-type">TEXT</span> <span class="sql-keyword">PRIMARY KEY</span>,
     bound_device_id <span class="sql-type">TEXT</span>,
     updated_at      <span class="sql-type">TIMESTAMPTZ</span> <span class="sql-keyword">NOT NULL DEFAULT</span> <span class="sql-func">now</span>()
@@ -1023,9 +1023,9 @@
                     <div class="sync-sql-setup">
                       <p class="sync-sql-warn">⚠️ WARNING: Do not run this script on critical or production databases.</p>
                       <p class="label-hint hub-prose">This sync backend requires Postgres.</p>
-                      <pre class="mono sync-sql-block"><code id="syncSettingsPostgresSqlCode"><span class="sql-keyword">CREATE SCHEMA IF NOT EXISTS</span> pgstudio_sync;
+                      <pre class="mono sync-sql-block"><code id="syncSettingsPostgresSqlCode"><span class="sql-keyword">CREATE SCHEMA IF NOT EXISTS</span> nexql_sync;
 
-<span class="sql-keyword">CREATE TABLE IF NOT EXISTS</span> pgstudio_sync.sync_items (
+<span class="sql-keyword">CREATE TABLE IF NOT EXISTS</span> nexql_sync.sync_items (
     account_id   <span class="sql-type">TEXT</span> <span class="sql-keyword">NOT NULL</span>,
     item_id      <span class="sql-type">TEXT</span> <span class="sql-keyword">NOT NULL</span>,
     kind         <span class="sql-type">TEXT</span> <span class="sql-keyword">NOT NULL</span>,
@@ -1038,7 +1038,7 @@
     <span class="sql-keyword">PRIMARY KEY</span> (account_id, item_id)
 );
 
-<span class="sql-keyword">CREATE TABLE IF NOT EXISTS</span> pgstudio_sync.sync_meta (
+<span class="sql-keyword">CREATE TABLE IF NOT EXISTS</span> nexql_sync.sync_meta (
     account_id      <span class="sql-type">TEXT</span> <span class="sql-keyword">PRIMARY KEY</span>,
     bound_device_id <span class="sql-type">TEXT</span>,
     updated_at      <span class="sql-type">TIMESTAMPTZ</span> <span class="sql-keyword">NOT NULL DEFAULT</span> <span class="sql-func">now</span>()

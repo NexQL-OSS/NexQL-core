@@ -290,7 +290,7 @@ export function renderPostgresNotebookResult(
         const base = (exportQuery || query || '').trim();
         if (!base) return undefined;
         const baseNoSemicolon = base.replace(/;\s*$/, '');
-        const alias = 'pgstudio_src';
+        const alias = 'nexql_src';
         const globalParts: string[] = [];
         const whereParts: string[] = [];
 

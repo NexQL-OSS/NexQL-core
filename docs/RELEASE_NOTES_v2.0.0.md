@@ -77,4 +77,4 @@ Simply let VS Code auto-update the extension, or run:
 ```bash
 ext install ric-v.postgres-explorer
 ```
-If you encounter any issues, please submit them to our repository [GitHub Issues](https://github.com/dev-asterix/PgStudio/issues). Thank you for being a part of the NexQL community!
+If you encounter any issues, please submit them to our repository [GitHub Issues](https://github.com/dev-asterix/NexQL/issues). Thank you for being a part of the NexQL community!

@@ -52,7 +52,7 @@ function openFile(fileName) {
 
 // ── Sidebar panel switching ───────────────────────────────
 function switchSidebarPanel(panelId) {
-  ["explorer", "search", "pgstudio"].forEach((id) => {
+  ["explorer", "search", "nexql"].forEach((id) => {
     document.getElementById(`sidebar-${id}`)?.classList.toggle("active", id === panelId);
   });
   document.querySelectorAll(".activity-icon[data-panel]").forEach((icon) => {
@@ -111,7 +111,7 @@ function wireWindowControls() {
   restoreShortcut?.addEventListener("click", () => {
     setEditorMinimizedState(false);
     openFile("query");
-    switchSidebarPanel("pgstudio");
+    switchSidebarPanel("nexql");
   });
 
   terminalButtons.forEach((button) => {
@@ -120,7 +120,7 @@ function wireWindowControls() {
       e.stopPropagation();
       setEditorMinimizedState(false);
       openFile("query");
-      switchSidebarPanel("pgstudio");
+      switchSidebarPanel("nexql");
     });
   });
 
@@ -129,7 +129,7 @@ function wireWindowControls() {
     if (el instanceof Element && el.closest("button")) return;
     setEditorMinimizedState(false);
     openFile("query");
-    switchSidebarPanel("pgstudio");
+    switchSidebarPanel("nexql");
   });
 }
 

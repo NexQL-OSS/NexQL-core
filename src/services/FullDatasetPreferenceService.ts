@@ -1,6 +1,6 @@
 import { extensionContext } from '../extension';
 
-const STORAGE_KEY = 'pgstudio.fullDatasetByCell.v1';
+const STORAGE_KEY = 'nexql.fullDatasetByCell.v1';
 
 type FullDatasetByCell = Record<string, boolean>;
 
@@ -18,7 +18,7 @@ async function writeMap(map: FullDatasetByCell): Promise<void> {
 /** Per-cell sticky preference to run SELECT results without streaming window or auto-LIMIT. */
 export class FullDatasetPreferenceService {
   public static hasCommentDirective(sql: string): boolean {
-    return /\bpgstudio:(?:full-dataset|no-stream)\b/i.test(sql);
+    return /\bnexql:(?:full-dataset|no-stream)\b/i.test(sql);
   }
 
   public static isEnabled(cellUri: string, sql?: string): boolean {

@@ -1,9 +1,9 @@
 import * as vscode from 'vscode';
 
-export const PGSTUDIO_SQL_AGENT_ID = 'pgstudio-sql';
+export const NEXQL_SQL_AGENT_ID = 'nexql-sql';
 
-/** Inline OpenCode config for headless PgStudio SQL assistance. */
-export function buildPgStudioInlineConfig(): Record<string, unknown> {
+/** Inline OpenCode config for headless NexQL SQL assistance. */
+export function buildNexQLInlineConfig(): Record<string, unknown> {
   return {
     $schema: 'https://opencode.ai/config.json',
     permission: {
@@ -13,7 +13,7 @@ export function buildPgStudioInlineConfig(): Record<string, unknown> {
       question: 'allow',
     },
     agent: {
-      [PGSTUDIO_SQL_AGENT_ID]: {
+      [NEXQL_SQL_AGENT_ID]: {
         description: 'NexQL PostgreSQL SQL assistant (text-only, no tools)',
         mode: 'primary',
         permission: {
@@ -59,6 +59,6 @@ export function buildOpencodeHeadlessEnv(
     });
   }
 
-  env.OPENCODE_CONFIG_CONTENT = JSON.stringify(buildPgStudioInlineConfig());
+  env.OPENCODE_CONFIG_CONTENT = JSON.stringify(buildNexQLInlineConfig());
   return env;
 }

@@ -50,7 +50,7 @@ describe('SqlExecutor - notebook parameter bank', () => {
   });
 
   it('reuses a previous value from the same notebook', async () => {
-    workspaceState.state['pgstudio.notebookParameterBank.v1'] = {
+    workspaceState.state['nexql.notebookParameterBank.v1'] = {
       'vscode-notebook:test': {
         'named:color': ['blue', 'green'],
       },
@@ -64,7 +64,7 @@ describe('SqlExecutor - notebook parameter bank', () => {
     expect(values).to.deep.equal(['blue']);
     expect(quickPick.calledOnce).to.be.true;
     expect(inputBox.called).to.be.false;
-    expect(workspaceState.state['pgstudio.notebookParameterBank.v1']['vscode-notebook:test']['named:color'][0]).to.equal('blue');
+    expect(workspaceState.state['nexql.notebookParameterBank.v1']['vscode-notebook:test']['named:color'][0]).to.equal('blue');
   });
 
   it('stores a new value in the notebook bank when no history exists', async () => {
@@ -76,6 +76,6 @@ describe('SqlExecutor - notebook parameter bank', () => {
     expect(values).to.deep.equal(['acme']);
     expect(quickPick.called).to.be.false;
     expect(inputBox.calledOnce).to.be.true;
-    expect(workspaceState.state['pgstudio.notebookParameterBank.v1']['vscode-notebook:test']['named:customer']).to.deep.equal(['acme']);
+    expect(workspaceState.state['nexql.notebookParameterBank.v1']['vscode-notebook:test']['named:customer']).to.deep.equal(['acme']);
   });
 });

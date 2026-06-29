@@ -52,7 +52,7 @@ export class PoolerWarningService {
       if (choice === docsAction) {
         void vscode.env.openExternal(
           vscode.Uri.parse(
-            'https://github.com/dev-asterix/PgStudio/blob/main/docs/COMPATIBILITY.md',
+            'https://github.com/dev-asterix/NexQL/blob/main/docs/COMPATIBILITY.md',
           ),
         );
       } else if (choice === 'Dismiss') {

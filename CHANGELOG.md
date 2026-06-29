@@ -13,7 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - **Rebranded to NexQL** — Complete rebranding from PostgreSQL Explorer (YAPE) to **NexQL - postgres explorer**.
   - Updated all extension icons, assets, extension configurations, display names, and marketplace metadata.
-  - Redesigned the project website/documentation page at [docs/index.html](file:///home/ric-v/projects/ric-v/PgStudio/docs/index.html) and [nexql.html](file:///home/ric-v/projects/ric-v/PgStudio/nexql.html) featuring a beautiful dark layout with a new spectrum color palette (blue → indigo → magenta → amber) and interactive product tour.
+  - Redesigned the project website/documentation page at [docs/index.html](file:///home/ric-v/projects/ric-v/NexQL/docs/index.html) and [nexql.html](file:///home/ric-v/projects/ric-v/NexQL/nexql.html) featuring a beautiful dark layout with a new spectrum color palette (blue → indigo → magenta → amber) and interactive product tour.
 
 ### Added
 
@@ -265,7 +265,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 NexQL v1.0.0 is a major milestone release with comprehensive stability improvements, security hardening, and production-ready tooling.
 
 #### Added
-- **DDL Viewer SQL Preview toggle**: Added user-facing toggle command and setting (`pgstudio.ddlViewer.enabled`) to quickly enable/disable definition preview actions.
+- **DDL Viewer SQL Preview toggle**: Added user-facing toggle command and setting (`nexql.ddlViewer.enabled`) to quickly enable/disable definition preview actions.
 - **Definition Viewer workflow actions**: Improved DDL viewer command surface for opening editable copies, copying SQL, and routine execution scaffolding.
 
 #### Changed

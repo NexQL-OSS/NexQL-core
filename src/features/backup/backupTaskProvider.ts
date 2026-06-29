@@ -6,8 +6,8 @@ import { runPgTool } from './PgToolRunner';
 import { prependConnectionArgs, resolveConnectionForTools } from './resolveConnectionForTools';
 import type { PgDumpFormatFlag } from './types';
 
-export interface PgStudioPgDumpTaskDefinition extends vscode.TaskDefinition {
-  type: 'pgstudio-pgdump';
+export interface NexQLPgDumpTaskDefinition extends vscode.TaskDefinition {
+  type: 'nexql-pgdump';
   connectionId: string;
   databaseName: string;
   outputPath: string;
@@ -22,10 +22,10 @@ export function registerPgDumpTaskProvider(context: vscode.ExtensionContext): vo
     provideTasks: () => Promise.resolve([]),
 
     resolveTask(task: vscode.Task): vscode.Task | undefined {
-      if (task.definition.type !== 'pgstudio-pgdump') {
+      if (task.definition.type !== 'nexql-pgdump') {
         return undefined;
       }
-      const def = task.definition as PgStudioPgDumpTaskDefinition;
+      const def = task.definition as NexQLPgDumpTaskDefinition;
       if (!def.connectionId || !def.databaseName || !def.outputPath) {
         return undefined;
       }
@@ -99,12 +99,12 @@ export function registerPgDumpTaskProvider(context: vscode.ExtensionContext): vo
         task.definition as vscode.TaskDefinition,
         task.scope ?? vscode.TaskScope.Workspace,
         task.name || `pg_dump ${def.databaseName}`,
-        task.source || 'pgstudio',
+        task.source || 'nexql',
         execution,
         task.problemMatchers ?? []
       );
     }
   };
 
-  context.subscriptions.push(vscode.tasks.registerTaskProvider('pgstudio-pgdump', provider));
+  context.subscriptions.push(vscode.tasks.registerTaskProvider('nexql-pgdump', provider));
 }

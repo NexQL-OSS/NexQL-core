@@ -1,8 +1,8 @@
-# DbStudio: Expanding PgStudio to a Multi-Database Extension
+# DbStudio: Expanding NexQL to a Multi-Database Extension
 
 ## Context
 
-PgStudio today is a single-database VS Code extension (`ric-v.postgres-explorer`) built end-to-end around PostgreSQL: the `pg` driver is imported in 23 files, all 28 SQL templates use PG dialect (mix of `information_schema` and `pg_catalog`), the tree provider exposes ~40 object types (~10 of which are PG-only: publications, subscriptions, tablespaces, event-triggers, pgcron, FDWs), and `package.json` ships ~494 command IDs, 25 config keys, 2 notebook types, a `.pgsql` file extension, a `postgres` language ID, and a `postgres-explorer` activity-bar container — all hard-branded PostgreSQL.
+NexQL today is a single-database VS Code extension (`ric-v.postgres-explorer`) built end-to-end around PostgreSQL: the `pg` driver is imported in 23 files, all 28 SQL templates use PG dialect (mix of `information_schema` and `pg_catalog`), the tree provider exposes ~40 object types (~10 of which are PG-only: publications, subscriptions, tablespaces, event-triggers, pgcron, FDWs), and `package.json` ships ~494 command IDs, 25 config keys, 2 notebook types, a `.pgsql` file extension, a `postgres` language ID, and a `postgres-explorer` activity-bar container — all hard-branded PostgreSQL.
 
 The goal: rebrand to **DbStudio**, a single extension where the user picks a database type per connection. MySQL/MariaDB lands first, followed by SQLite, MSSQL, Oracle, and other common SQL engines, each targeting near-full feature parity. Per-DB features that have no equivalent (LISTEN/NOTIFY, publications, tablespaces, pgcron) stay gated to their engine.
 
@@ -59,7 +59,7 @@ export function getDialect(engine: DbEngine): DbDialect;
 - **Exit criterion:** full test suite still green; no behavior change; all `import { Pool, Client } from 'pg'` removed from everywhere except `PostgresDriver.ts`.
 
 **Phase 1 — Rebrand manifest (1 week, parallelizable with Phase 0)**
-- Rename extension: `postgres-explorer` → `dbstudio`, display name `PgStudio (PostgreSQL Explorer)` → `DbStudio`, publisher stays `ric-v`.
+- Rename extension: `postgres-explorer` → `dbstudio`, display name `NexQL (PostgreSQL Explorer)` → `DbStudio`, publisher stays `ric-v`.
 - Command namespace migration: `postgres-explorer.*` → `dbstudio.*` for all 494 commands. Keep old IDs as deprecated aliases for one release cycle (users have keybindings).
 - Config keys: `postgresExplorer.*` → `dbstudio.*` with a one-shot migration on activation that copies old settings forward. Register both namespaces as readable; only write to the new one.
 - Activity bar container: `postgres-explorer` → `dbstudio`; keep the view IDs stable where possible to avoid breaking layouts.
@@ -180,7 +180,7 @@ Parallelizable if more than one engineer: Phases 0+1 can run concurrently; Phase
 - Manual smoke in Extension Development Host (F5): connect to each supported engine, browse tree, run notebook cell, save query, invoke AI assistant, export result grid
 
 **Phase 1 specifically — migration safety:**
-- Install old PgStudio, create connections + saved queries + notebooks, upgrade to DbStudio build, verify connections/saves/notebooks still appear and work
+- Install old NexQL, create connections + saved queries + notebooks, upgrade to DbStudio build, verify connections/saves/notebooks still appear and work
 - Verify old command IDs still invoke (deprecated-alias path) for one release
 - Verify old `postgresExplorer.*` config values are read and copied to `dbstudio.*`
 

@@ -142,7 +142,7 @@ export class ResultCursorService {
     fields: Array<{ name: string; dataTypeID: number }>;
   } | null> {
     const innerSql = stripTrailingSemicolon(options.sql.trim());
-    const cursorName = `pgstudio_sw_${randomUUID().replace(/-/g, '')}`;
+    const cursorName = `nexql_sw_${randomUUID().replace(/-/g, '')}`;
     const cursorQuoted = quoteIdent(cursorName);
     const { client, inTransaction, windowSize } = options;
     const sessionId = randomUUID();
@@ -186,7 +186,7 @@ export class ResultCursorService {
         debugLog(`[ResultCursorService] Starting row count for session ${sessionId.substring(0, 8)}`);
         // Strip comments from inner SQL to avoid syntax errors in wrapped COUNT query
         const innerSqlClean = stripSqlComments(innerSql);
-        countSql = `SELECT COUNT(*) AS cnt FROM (${innerSqlClean}) AS pgstudio_count`;
+        countSql = `SELECT COUNT(*) AS cnt FROM (${innerSqlClean}) AS nexql_count`;
         debugLog(`[ResultCursorService] COUNT query: ${countSql.substring(0, 120)}...`);
         
         const cres = await client.query(countSql);

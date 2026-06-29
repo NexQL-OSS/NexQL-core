@@ -71,9 +71,9 @@ export class WhatsNewManager {
       homepage?: string;
       repository?: { url?: string } | string;
     };
-    const issues = pkg.bugs?.url ?? 'https://github.com/dev-asterix/PgStudio/issues';
+    const issues = pkg.bugs?.url ?? 'https://github.com/dev-asterix/NexQL/issues';
     const website = pkg.homepage ?? 'https://nexql.astrx.dev/';
-    let repoBase = 'https://github.com/dev-asterix/PgStudio';
+    let repoBase = 'https://github.com/dev-asterix/NexQL';
     const repo = pkg.repository;
     if (typeof repo === 'object' && repo?.url) {
       repoBase = repo.url.replace(/\.git$/i, '');

@@ -26,7 +26,7 @@ export const CLOUD_QUOTA_BYTES: Record<'sponsor' | 'singularity', number> = {
   singularity: CLOUD_QUOTA_MB * BYTES_PER_MB,
 };
 
-export const DEFAULT_NOTEBOOK_FOLDER = 'PgStudioNotebooks';
+export const DEFAULT_NOTEBOOK_FOLDER = 'NexQLNotebooks';
 export const DEFAULT_SYNC_API_ENDPOINT = 'https://nexql.astrx.dev/api';
 
 export const TOMBSTONE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
@@ -39,7 +39,7 @@ export const SCRYPT_P = 1;
 export const SECRETS_PAD_BUCKET_BYTES = 4096;
 export const GIST_MAX_FILE_BYTES = 1024 * 1024;
 export const GIST_DESCRIPTION = 'NexQL E2E Sync Vault';
-export const GIST_META_FILE = 'pgstudio-meta.json';
+export const GIST_META_FILE = 'nexql-meta.json';
 
 export const SYNC_DEBOUNCE_MS = 5000;
 export const SYNC_PERIODIC_MS = 60 * 60 * 1000;

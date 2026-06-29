@@ -1,17 +1,17 @@
 {
   "name": "postgres-explorer",
   "displayName": "NexQL - Postgres Explorer",
-  "version": "2.1.3",
+  "version": "2.0.1",
   "description": "PostgreSQL database explorer for VS Code with notebook support [Nightly]",
   "publisher": "ric-v",
   "private": false,
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/dev-asterix/PgStudio.git"
+    "url": "https://github.com/dev-asterix/NexQL.git"
   },
   "bugs": {
-    "url": "https://github.com/dev-asterix/PgStudio/issues"
+    "url": "https://github.com/dev-asterix/NexQL/issues"
   },
   "homepage": "https://nexql.astrx.dev/",
   "icon": "resources/NexQL.png",
@@ -1896,12 +1896,12 @@
     },
     "walkthroughs": [
       {
-        "id": "pgstudioWelcome",
+        "id": "nexqlWelcome",
         "title": "NexQL: PostgreSQL in VS Code",
         "description": "Connect to a database, explore objects, and run SQL in notebooks.",
         "steps": [
           {
-            "id": "pgstudioWelcome.addConnection",
+            "id": "nexqlWelcome.addConnection",
             "title": "Add a database connection",
             "description": "Save your server and credentials securely, then connect.\n[Add PostgreSQL Connection](command:postgres-explorer.addConnection)",
             "media": {
@@ -1913,7 +1913,7 @@
             ]
           },
           {
-            "id": "pgstudioWelcome.openExplorer",
+            "id": "nexqlWelcome.openExplorer",
             "title": "Open the NexQL explorer",
             "description": "Browse databases, schemas, and objects from the sidebar.\n[Show NexQL](command:workbench.view.extension.postgres-explorer)",
             "media": {
@@ -1925,7 +1925,7 @@
             ]
           },
           {
-            "id": "pgstudioWelcome.newNotebook",
+            "id": "nexqlWelcome.newNotebook",
             "title": "Create a SQL notebook",
             "description": "Use interactive `.pgsql` notebooks for queries and results.\n[New SQL Notebook](command:postgres-explorer.newNotebook)",
             "media": {
@@ -1939,12 +1939,12 @@
         ]
       },
       {
-        "id": "pgstudioSyncSetup",
+        "id": "nexqlSyncSetup",
         "title": "Set up NexQL Sync",
         "description": "E2E-encrypted sync for connections, notebooks, and saved queries across editors.",
         "steps": [
           {
-            "id": "pgstudioSyncSetup.openWizard",
+            "id": "nexqlSyncSetup.openWizard",
             "title": "Set up sync",
             "description": "Run the guided wizard to create or unlock your encrypted vault.\n[Set Up Sync](command:postgres-explorer.sync.setup)",
             "media": {
@@ -1956,7 +1956,7 @@
             ]
           },
           {
-            "id": "pgstudioSyncSetup.chooseItems",
+            "id": "nexqlSyncSetup.chooseItems",
             "title": "Choose what to sync",
             "description": "Pick connections, saved queries, notebooks, and optionally passwords during setup.",
             "media": {
@@ -1965,7 +1965,7 @@
             }
           },
           {
-            "id": "pgstudioSyncSetup.firstSync",
+            "id": "nexqlSyncSetup.firstSync",
             "title": "Run your first sync",
             "description": "Sync runs automatically after setup. Use the status bar to sync anytime.\n[Sync Now](command:postgres-explorer.sync.now)",
             "media": {
@@ -2168,7 +2168,7 @@
         },
         "postgresExplorer.sync.notebookFolder": {
           "type": "string",
-          "default": "~/PgStudioNotebooks",
+          "default": "~/NexQLNotebooks",
           "description": "Folder for synced .pgsql notebooks (supports ~ for home directory)."
         },
         "postgresExplorer.sync.pullIntervalMinutes": {
@@ -2187,7 +2187,7 @@
           "type": "string",
           "default": "",
           "scope": "machine",
-          "description": "Connection ID for optional team Postgres sync backend (pgstudio_sync schema)."
+          "description": "Connection ID for optional team Postgres sync backend (nexql_sync schema)."
         },
         "postgresExplorer.dbIndex.enableEmbeddings": {
           "type": "boolean",
@@ -2275,7 +2275,7 @@
         "postgresExplorer.opencodeWorkingDirectory": {
           "type": "string",
           "default": "",
-          "description": "Working directory for OpenCode serve/run. Defaults to the VS Code workspace folder, or ~/.pgstudio/opencode-wd when the host folder is an IDE install path."
+          "description": "Working directory for OpenCode serve/run. Defaults to the VS Code workspace folder, or ~/.nexql/opencode-wd when the host folder is an IDE install path."
         },
         "postgresExplorer.opencodeServeUrl": {
           "type": "string",
@@ -2478,12 +2478,12 @@
           "default": false,
           "description": "Automatically format .pgsql / .sql files on save."
         },
-        "pgstudio.ddlViewer.openOnSelection": {
+        "nexql.ddlViewer.openOnSelection": {
           "type": "boolean",
           "default": true,
           "description": "Open the Definition Viewer automatically when selecting supported tree items."
         },
-        "pgstudio.ddlViewer.enabled": {
+        "nexql.ddlViewer.enabled": {
           "type": "boolean",
           "default": true,
           "description": "Enable SQL Preview (Definition Viewer) features and actions."
@@ -2504,7 +2504,7 @@
     },
     "taskDefinitions": [
       {
-        "type": "pgstudio-pgdump",
+        "type": "nexql-pgdump",
         "required": [
           "connectionId",
           "databaseName",
@@ -2642,17 +2642,17 @@
       "editor/title": [
         {
           "command": "postgres-explorer.ddlViewer.copyToClipboard",
-          "when": "resourceScheme == pgstudio-ddl",
+          "when": "resourceScheme == nexql-ddl",
           "group": "navigation@1"
         },
         {
           "command": "postgres-explorer.ddlViewer.toggleEnabled",
-          "when": "resourceScheme == pgstudio-ddl",
+          "when": "resourceScheme == nexql-ddl",
           "group": "navigation@2"
         },
         {
           "command": "postgres-explorer.ddlViewer.openEditableCopy",
-          "when": "resourceScheme == pgstudio-ddl",
+          "when": "resourceScheme == nexql-ddl",
           "group": "navigation@3"
         }
       ],

@@ -50,7 +50,7 @@ export function createTopBar(options: TopBarOptions, postMessage: (msg: any) => 
   ensureTopBarStyle();
 
   const bar = document.createElement('div');
-  bar.className = 'pgstudio-topbar';
+  bar.className = 'nexql-topbar';
   bar.style.cssText = `
     display: flex;
     align-items: center;
@@ -83,7 +83,7 @@ export function createTopBar(options: TopBarOptions, postMessage: (msg: any) => 
 
 function createContextStrip(options: TopBarOptions): HTMLElement {
   const strip = document.createElement('div');
-  strip.className = 'pgstudio-sentinel-strip';
+  strip.className = 'nexql-sentinel-strip';
   strip.style.cssText = `
     display: flex;
     align-items: center;

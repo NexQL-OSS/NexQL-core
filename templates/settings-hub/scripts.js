@@ -2619,16 +2619,16 @@ function renderSyncWizardStep() {
             return `<option value="${c.id}">${escapeText(label)}</option>`;
           }).join('\n'),
           '  </select>',
-          '  <p class="label-hint" style="margin-top: 8px;">Connection that stores your synced data (pgstudio_sync schema).</p>',
+          '  <p class="label-hint" style="margin-top: 8px;">Connection that stores your synced data (nexql_sync schema).</p>',
           '</div>'
         ].join('\n');
       }
 
       const sqlCode = [
-        'CREATE SCHEMA IF NOT EXISTS pgstudio_sync;',
-        'CREATE SEQUENCE IF NOT EXISTS pgstudio_sync.cursor_seq;',
+        'CREATE SCHEMA IF NOT EXISTS nexql_sync;',
+        'CREATE SEQUENCE IF NOT EXISTS nexql_sync.cursor_seq;',
         '',
-        'CREATE TABLE IF NOT EXISTS pgstudio_sync.items_v2 (',
+        'CREATE TABLE IF NOT EXISTS nexql_sync.items_v2 (',
         '    space_id     TEXT NOT NULL,',
         '    item_id      TEXT NOT NULL,',
         '    kind         TEXT NOT NULL,',
@@ -2640,7 +2640,7 @@ function renderSyncWizardStep() {
         '    PRIMARY KEY (space_id, item_id)',
         ');',
         '',
-        'CREATE TABLE IF NOT EXISTS pgstudio_sync.deletes_v2 (',
+        'CREATE TABLE IF NOT EXISTS nexql_sync.deletes_v2 (',
         '    space_id   TEXT NOT NULL,',
         '    item_id    TEXT NOT NULL,',
         '    version    BIGINT NOT NULL,',
@@ -2651,10 +2651,10 @@ function renderSyncWizardStep() {
       ].join('\n');
 
       const highlightedSqlHtml = [
-        '<span class="sql-keyword">CREATE SCHEMA IF NOT EXISTS</span> pgstudio_sync;',
-        '<span class="sql-keyword">CREATE SEQUENCE IF NOT EXISTS</span> pgstudio_sync.cursor_seq;',
+        '<span class="sql-keyword">CREATE SCHEMA IF NOT EXISTS</span> nexql_sync;',
+        '<span class="sql-keyword">CREATE SEQUENCE IF NOT EXISTS</span> nexql_sync.cursor_seq;',
         '',
-        '<span class="sql-keyword">CREATE TABLE IF NOT EXISTS</span> pgstudio_sync.items_v2 (',
+        '<span class="sql-keyword">CREATE TABLE IF NOT EXISTS</span> nexql_sync.items_v2 (',
         '    space_id     <span class="sql-type">TEXT</span> <span class="sql-keyword">NOT NULL</span>,',
         '    item_id      <span class="sql-type">TEXT</span> <span class="sql-keyword">NOT NULL</span>,',
         '    kind         <span class="sql-type">TEXT</span> <span class="sql-keyword">NOT NULL</span>,',
@@ -2666,7 +2666,7 @@ function renderSyncWizardStep() {
         '    <span class="sql-keyword">PRIMARY KEY</span> (space_id, item_id)',
         ');',
         '',
-        '<span class="sql-keyword">CREATE TABLE IF NOT EXISTS</span> pgstudio_sync.deletes_v2 (',
+        '<span class="sql-keyword">CREATE TABLE IF NOT EXISTS</span> nexql_sync.deletes_v2 (',
         '    space_id   <span class="sql-type">TEXT</span> <span class="sql-keyword">NOT NULL</span>,',
         '    item_id    <span class="sql-type">TEXT</span> <span class="sql-keyword">NOT NULL</span>,',
         '    version    <span class="sql-type">BIGINT</span> <span class="sql-keyword">NOT NULL</span>,',

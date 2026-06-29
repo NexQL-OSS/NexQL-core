@@ -587,7 +587,7 @@ export class RunDerivedQueryHandler implements IMessageHandler {
     const fullDatasetRequested =
       message?.fullDataset === true ||
       (typeof message?.source === 'string' && message.source.startsWith('streaming-'));
-    const cellSql = fullDatasetRequested ? `-- pgstudio:full-dataset\n${sql}` : sql;
+    const cellSql = fullDatasetRequested ? `-- nexql:full-dataset\n${sql}` : sql;
     const cell = new vscode.NotebookCellData(vscode.NotebookCellKind.Code, cellSql, 'sql');
     const edit = new vscode.WorkspaceEdit();
     edit.set(notebook.uri, [vscode.NotebookEdit.insertCells(insertionIndex, [cell])]);

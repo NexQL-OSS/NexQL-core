@@ -286,7 +286,7 @@ Success: `{ "ok": true, "limit", "devices": [{ "instanceId" }] }`.
 - **INR** if timezone is `Asia/Kolkata`, or `navigator.language` is `en-in` / `hi-in`
 - **USD** otherwise
 
-User overrides are stored in `sessionStorage` (`pgstudio_pricing_currency`, `pgstudio_pricing_period`).
+User overrides are stored in `sessionStorage` (`nexql_pricing_currency`, `nexql_pricing_period`).
 
 ---
 

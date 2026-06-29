@@ -1,5 +1,5 @@
 @echo off
-REM PgStudio Test Runner Script for Windows
+REM NexQL Test Runner Script for Windows
 REM This script helps run tests with various configurations
 
 setlocal enabledelayedexpansion
@@ -94,7 +94,7 @@ echo [OK] Test run completed successfully!
 exit /b 0
 
 :show_help
-echo PgStudio Test Runner
+echo NexQL Test Runner
 echo.
 echo Usage:
 echo   test.bat [OPTIONS]

@@ -1,5 +1,17 @@
+import * as crypto from 'crypto';
 import * as vscode from 'vscode';
 import { debugLog } from '../common/logger';
+
+/**
+ * Derive a stable connection ID from connection properties.
+ * Using a hash instead of Date.now() ensures migration is idempotent:
+ * if settings.json loses IDs (e.g. via Settings Sync overwrite) and
+ * migration re-runs, the same ID is produced so SecretStorage keys still match.
+ */
+function stableLegacyId(conn: { host?: string; port?: number; username?: string; user?: string; database?: string; dbname?: string }): string {
+  const fp = `${conn.host ?? ''}:${conn.port ?? 5432}:${conn.username ?? conn.user ?? ''}:${conn.database ?? conn.dbname ?? ''}`;
+  return `legacy-${crypto.createHash('sha256').update(fp).digest('hex').slice(0, 16)}`;
+}
 
 export class SecretStorageService {
   private static instance: SecretStorageService;
@@ -109,9 +121,9 @@ export async function migrateExistingPasswords(context: vscode.ExtensionContext)
   let settingsDirty = false;
   let legacyDirty = false;
 
-  const ensureId = (conn: any, idx: number) => {
+  const ensureId = (conn: any, _idx: number) => {
     if (!conn.id) {
-      conn.id = `${Date.now()}-${idx}`;
+      conn.id = stableLegacyId(conn);
     }
   };
 

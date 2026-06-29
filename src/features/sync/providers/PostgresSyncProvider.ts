@@ -10,7 +10,7 @@ type Client = {
 };
 
 /**
- * Self-hosted sync backend via the pgstudio_sync schema in a Postgres DB the
+ * Self-hosted sync backend via the nexql_sync schema in a Postgres DB the
  * user controls. Implements the same git-like v2 protocol as the cloud: a
  * monotonic cursor, atomic compare-and-swap push, and a permanent delete log.
  *
@@ -50,10 +50,10 @@ export class PostgresSyncProvider implements SyncProviderV2 {
   }
 
   private async ensureSchema(client: Client): Promise<void> {
-    await client.query('CREATE SCHEMA IF NOT EXISTS pgstudio_sync');
-    await client.query("CREATE SEQUENCE IF NOT EXISTS pgstudio_sync.cursor_seq");
+    await client.query('CREATE SCHEMA IF NOT EXISTS nexql_sync');
+    await client.query("CREATE SEQUENCE IF NOT EXISTS nexql_sync.cursor_seq");
     await client.query(
-      `CREATE TABLE IF NOT EXISTS pgstudio_sync.items_v2 (
+      `CREATE TABLE IF NOT EXISTS nexql_sync.items_v2 (
          space_id TEXT NOT NULL, item_id TEXT NOT NULL,
          kind TEXT NOT NULL CHECK (kind IN ('connection','query','notebook')),
          blob BYTEA NOT NULL, content_hash TEXT NOT NULL,
@@ -62,17 +62,17 @@ export class PostgresSyncProvider implements SyncProviderV2 {
          PRIMARY KEY (space_id, item_id))`,
     );
     await client.query(
-      'CREATE INDEX IF NOT EXISTS items_v2_cursor_idx ON pgstudio_sync.items_v2 (space_id, version)',
+      'CREATE INDEX IF NOT EXISTS items_v2_cursor_idx ON nexql_sync.items_v2 (space_id, version)',
     );
     await client.query(
-      `CREATE TABLE IF NOT EXISTS pgstudio_sync.deletes_v2 (
+      `CREATE TABLE IF NOT EXISTS nexql_sync.deletes_v2 (
          space_id TEXT NOT NULL, item_id TEXT NOT NULL,
          version BIGINT NOT NULL, deleted_by TEXT NOT NULL,
          deleted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
          PRIMARY KEY (space_id, item_id))`,
     );
     await client.query(
-      'CREATE INDEX IF NOT EXISTS deletes_v2_cursor_idx ON pgstudio_sync.deletes_v2 (space_id, version)',
+      'CREATE INDEX IF NOT EXISTS deletes_v2_cursor_idx ON nexql_sync.deletes_v2 (space_id, version)',
     );
   }
 
@@ -93,8 +93,8 @@ export class PostgresSyncProvider implements SyncProviderV2 {
   private async spaceCursor(client: Client, space: string): Promise<number> {
     const res = await client.query(
       `SELECT GREATEST(
-         COALESCE((SELECT MAX(version) FROM pgstudio_sync.items_v2   WHERE space_id = $1), 0),
-         COALESCE((SELECT MAX(version) FROM pgstudio_sync.deletes_v2 WHERE space_id = $1), 0)
+         COALESCE((SELECT MAX(version) FROM nexql_sync.items_v2   WHERE space_id = $1), 0),
+         COALESCE((SELECT MAX(version) FROM nexql_sync.deletes_v2 WHERE space_id = $1), 0)
        ) AS cursor`,
       [space],
     );
@@ -108,11 +108,11 @@ export class PostgresSyncProvider implements SyncProviderV2 {
       await this.ensureSchema(client);
       const items = await client.query(
         `SELECT item_id, kind, content_hash, version, device_id, blob, updated_at
-         FROM pgstudio_sync.items_v2 WHERE space_id = $1 AND version > $2 ORDER BY version ASC`,
+         FROM nexql_sync.items_v2 WHERE space_id = $1 AND version > $2 ORDER BY version ASC`,
         [space, since],
       );
       const deletes = await client.query(
-        `SELECT item_id FROM pgstudio_sync.deletes_v2 WHERE space_id = $1 AND version > $2 ORDER BY version ASC`,
+        `SELECT item_id FROM nexql_sync.deletes_v2 WHERE space_id = $1 AND version > $2 ORDER BY version ASC`,
         [space, since],
       );
       const cursor = await this.spaceCursor(client, space);
@@ -177,14 +177,14 @@ export class PostgresSyncProvider implements SyncProviderV2 {
   private async applyUpsert(client: Client, space: string, device: string, op: SyncOp): Promise<any> {
     const res = await client.query(
       `WITH existing AS (
-         SELECT version, content_hash FROM pgstudio_sync.items_v2 WHERE space_id = $1 AND item_id = $2
+         SELECT version, content_hash FROM nexql_sync.items_v2 WHERE space_id = $1 AND item_id = $2
        ), up AS (
-         INSERT INTO pgstudio_sync.items_v2 (space_id, item_id, kind, blob, content_hash, version, device_id, updated_at)
-         VALUES ($1, $2, $3, $4, $5, nextval('pgstudio_sync.cursor_seq'), $6, now())
+         INSERT INTO nexql_sync.items_v2 (space_id, item_id, kind, blob, content_hash, version, device_id, updated_at)
+         VALUES ($1, $2, $3, $4, $5, nextval('nexql_sync.cursor_seq'), $6, now())
          ON CONFLICT (space_id, item_id) DO UPDATE
            SET kind = EXCLUDED.kind, blob = EXCLUDED.blob, content_hash = EXCLUDED.content_hash,
-               version = nextval('pgstudio_sync.cursor_seq'), device_id = EXCLUDED.device_id, updated_at = now()
-           WHERE pgstudio_sync.items_v2.version <= $7 OR pgstudio_sync.items_v2.content_hash = EXCLUDED.content_hash
+               version = nextval('nexql_sync.cursor_seq'), device_id = EXCLUDED.device_id, updated_at = now()
+           WHERE nexql_sync.items_v2.version <= $7 OR nexql_sync.items_v2.content_hash = EXCLUDED.content_hash
          RETURNING version
        )
        SELECT (SELECT version FROM up) AS new_version,
@@ -198,16 +198,16 @@ export class PostgresSyncProvider implements SyncProviderV2 {
   private async applyDelete(client: Client, space: string, device: string, op: SyncOp): Promise<any> {
     const res = await client.query(
       `WITH existing AS (
-         SELECT version FROM pgstudio_sync.items_v2 WHERE space_id = $1 AND item_id = $2
+         SELECT version FROM nexql_sync.items_v2 WHERE space_id = $1 AND item_id = $2
        ), del AS (
-         DELETE FROM pgstudio_sync.items_v2
+         DELETE FROM nexql_sync.items_v2
          WHERE space_id = $1 AND item_id = $2 AND version <= $3 RETURNING item_id
        ), logged AS (
-         INSERT INTO pgstudio_sync.deletes_v2 (space_id, item_id, version, deleted_by, deleted_at)
-         SELECT $1, $2, nextval('pgstudio_sync.cursor_seq'), $4, now()
+         INSERT INTO nexql_sync.deletes_v2 (space_id, item_id, version, deleted_by, deleted_at)
+         SELECT $1, $2, nextval('nexql_sync.cursor_seq'), $4, now()
          WHERE EXISTS (SELECT 1 FROM del) OR NOT EXISTS (SELECT 1 FROM existing)
          ON CONFLICT (space_id, item_id) DO UPDATE
-           SET version = nextval('pgstudio_sync.cursor_seq'), deleted_by = EXCLUDED.deleted_by, deleted_at = now()
+           SET version = nextval('nexql_sync.cursor_seq'), deleted_by = EXCLUDED.deleted_by, deleted_at = now()
          RETURNING version
        )
        SELECT (SELECT version FROM logged) AS new_version,
@@ -223,8 +223,8 @@ export class PostgresSyncProvider implements SyncProviderV2 {
     const space = this.space();
     try {
       await this.ensureSchema(client);
-      await client.query('DELETE FROM pgstudio_sync.items_v2 WHERE space_id = $1', [space]);
-      await client.query('DELETE FROM pgstudio_sync.deletes_v2 WHERE space_id = $1', [space]);
+      await client.query('DELETE FROM nexql_sync.items_v2 WHERE space_id = $1', [space]);
+      await client.query('DELETE FROM nexql_sync.deletes_v2 WHERE space_id = $1', [space]);
     } finally {
       client.release();
     }

@@ -50,7 +50,7 @@ function wireLandingChrome() {
       e.preventDefault();
       setEditorMinimizedState(false);
       openFile("query");
-      switchSidebarPanel("pgstudio");
+      switchSidebarPanel("nexql");
     });
   });
 }

@@ -68,7 +68,7 @@ describe('ConnectionManager additional coverage', () => {
     secretStorageStub.getPassword.resolves('stored-password');
     workspaceConfigGetStub.callsFake((key: string) => (key === 'queryTimeout' ? 25 : undefined));
 
-    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pgstudio-ssl-'));
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nexql-ssl-'));
     const caPath = path.join(tempDir, 'ca.pem');
     const certPath = path.join(tempDir, 'cert.pem');
     const keyPath = path.join(tempDir, 'key.pem');

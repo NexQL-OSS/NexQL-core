@@ -75,9 +75,9 @@ async function ensureSchema() {
   if (!schemaReady) {
     schemaReady = (async () => {
       const db = getSql();
-      await db`CREATE SCHEMA IF NOT EXISTS pgstudio_license`;
+      await db`CREATE SCHEMA IF NOT EXISTS nexql_license`;
       await db`
-        CREATE TABLE IF NOT EXISTS pgstudio_license.licenses (
+        CREATE TABLE IF NOT EXISTS nexql_license.licenses (
           license_key      TEXT PRIMARY KEY,
           tier             TEXT NOT NULL CHECK (tier IN ('sponsor','singularity')),
           period           TEXT NOT NULL DEFAULT 'monthly',
@@ -93,11 +93,11 @@ async function ensureSchema() {
       `;
       await db`
         CREATE INDEX IF NOT EXISTS licenses_email_idx
-          ON pgstudio_license.licenses (lower(email))
+          ON nexql_license.licenses (lower(email))
       `;
       await db`
-        CREATE TABLE IF NOT EXISTS pgstudio_license.devices (
-          license_key  TEXT NOT NULL REFERENCES pgstudio_license.licenses(license_key),
+        CREATE TABLE IF NOT EXISTS nexql_license.devices (
+          license_key  TEXT NOT NULL REFERENCES nexql_license.licenses(license_key),
           instance_id  TEXT NOT NULL,
           device_name  TEXT,
           first_seen   TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -107,7 +107,7 @@ async function ensureSchema() {
         )
       `;
       await db`
-        CREATE TABLE IF NOT EXISTS pgstudio_license.license_events (
+        CREATE TABLE IF NOT EXISTS nexql_license.license_events (
           id           BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
           license_key  TEXT NOT NULL,
           event_type   TEXT NOT NULL,
@@ -118,10 +118,10 @@ async function ensureSchema() {
       `;
       await db`
         CREATE INDEX IF NOT EXISTS license_events_key_created_idx
-          ON pgstudio_license.license_events (license_key, created_at DESC)
+          ON nexql_license.license_events (license_key, created_at DESC)
       `;
       await db`
-        CREATE TABLE IF NOT EXISTS pgstudio_license.webhook_events (
+        CREATE TABLE IF NOT EXISTS nexql_license.webhook_events (
           razorpay_event_id TEXT PRIMARY KEY,
           received_at       TIMESTAMPTZ NOT NULL DEFAULT now()
         )
@@ -137,7 +137,7 @@ async function fetchLicenseRow(licenseKey) {
   const key = normalizeKey(licenseKey);
   const rows = await db`
     SELECT *
-    FROM pgstudio_license.licenses
+    FROM nexql_license.licenses
     WHERE license_key = ${key}
     LIMIT 1
   `;
@@ -150,7 +150,7 @@ async function fetchDeviceRows(licenseKey) {
   const key = normalizeKey(licenseKey);
   return db`
     SELECT instance_id, device_name, first_seen, last_seen, revoked_at
-    FROM pgstudio_license.devices
+    FROM nexql_license.devices
     WHERE license_key = ${key}
     ORDER BY last_seen DESC
   `;
@@ -169,7 +169,7 @@ async function getLicenseBySubscription(subscriptionId) {
   const db = getSql();
   const rows = await db`
     SELECT license_key
-    FROM pgstudio_license.licenses
+    FROM nexql_license.licenses
     WHERE subscription_id = ${subscriptionId}
     LIMIT 1
   `;
@@ -184,7 +184,7 @@ async function getLicenseByEmail(email) {
   const db = getSql();
   const rows = await db`
     SELECT license_key
-    FROM pgstudio_license.licenses
+    FROM nexql_license.licenses
     WHERE lower(email) = ${norm}
     ORDER BY updated_at DESC
     LIMIT 1
@@ -197,7 +197,7 @@ async function appendEvent(licenseKey, eventType, detail, source) {
   await ensureSchema();
   const db = getSql();
   await db`
-    INSERT INTO pgstudio_license.license_events (license_key, event_type, detail, source)
+    INSERT INTO nexql_license.license_events (license_key, event_type, detail, source)
     VALUES (
       ${normalizeKey(licenseKey)},
       ${eventType},
@@ -212,7 +212,7 @@ async function countRenewals(licenseKey) {
   const db = getSql();
   const rows = await db`
     SELECT COUNT(*)::int AS n
-    FROM pgstudio_license.license_events
+    FROM nexql_license.license_events
     WHERE license_key = ${normalizeKey(licenseKey)}
       AND event_type IN ('renewed', 'expiry_extended')
   `;
@@ -224,7 +224,7 @@ async function getRecentEvents(licenseKey, limit = 50) {
   const db = getSql();
   const rows = await db`
     SELECT event_type, detail, source, created_at
-    FROM pgstudio_license.license_events
+    FROM nexql_license.license_events
     WHERE license_key = ${normalizeKey(licenseKey)}
     ORDER BY created_at DESC
     LIMIT ${limit}
@@ -242,7 +242,7 @@ async function recordWebhookEvent(razorpayEventId) {
   await ensureSchema();
   const db = getSql();
   const rows = await db`
-    INSERT INTO pgstudio_license.webhook_events (razorpay_event_id)
+    INSERT INTO nexql_license.webhook_events (razorpay_event_id)
     VALUES (${razorpayEventId})
     ON CONFLICT (razorpay_event_id) DO NOTHING
     RETURNING razorpay_event_id
@@ -258,7 +258,7 @@ async function syncDevicesFromEntitlement(licenseKey, instanceIds) {
   const db = getSql();
   for (const instanceId of ids) {
     await db`
-      INSERT INTO pgstudio_license.devices (license_key, instance_id, last_seen, revoked_at)
+      INSERT INTO nexql_license.devices (license_key, instance_id, last_seen, revoked_at)
       VALUES (${key}, ${instanceId}, now(), NULL)
       ON CONFLICT (license_key, instance_id) DO UPDATE SET
         last_seen = now(),
@@ -283,7 +283,7 @@ async function upsertLicense(entitlement, meta = {}) {
   const createdAt = msToIso(ent.createdAt) || (existing && existing.created_at) || new Date().toISOString();
 
   await db`
-    INSERT INTO pgstudio_license.licenses (
+    INSERT INTO nexql_license.licenses (
       license_key, tier, period, currency, status, subscription_id, email,
       expires_at, created_at, updated_at
     )
@@ -304,8 +304,8 @@ async function upsertLicense(entitlement, meta = {}) {
       period = EXCLUDED.period,
       currency = EXCLUDED.currency,
       status = EXCLUDED.status,
-      subscription_id = COALESCE(EXCLUDED.subscription_id, pgstudio_license.licenses.subscription_id),
-      email = COALESCE(EXCLUDED.email, pgstudio_license.licenses.email),
+      subscription_id = COALESCE(EXCLUDED.subscription_id, nexql_license.licenses.subscription_id),
+      email = COALESCE(EXCLUDED.email, nexql_license.licenses.email),
       expires_at = EXCLUDED.expires_at,
       updated_at = now()
   `;
@@ -359,7 +359,7 @@ async function countActiveDevices(licenseKey) {
   const db = getSql();
   const rows = await db`
     SELECT COUNT(*)::int AS n
-    FROM pgstudio_license.devices
+    FROM nexql_license.devices
     WHERE license_key = ${normalizeKey(licenseKey)}
       AND revoked_at IS NULL
   `;
@@ -371,7 +371,7 @@ async function isDeviceActive(licenseKey, instanceId) {
   const db = getSql();
   const rows = await db`
     SELECT 1
-    FROM pgstudio_license.devices
+    FROM nexql_license.devices
     WHERE license_key = ${normalizeKey(licenseKey)}
       AND instance_id = ${instanceId}
       AND revoked_at IS NULL
@@ -388,7 +388,7 @@ async function bindDevice(licenseKey, instanceId, meta = {}) {
   const db = getSql();
   const existing = await db`
     SELECT instance_id, revoked_at, last_seen
-    FROM pgstudio_license.devices
+    FROM nexql_license.devices
     WHERE license_key = ${key} AND instance_id = ${instanceId}
     LIMIT 1
   `;
@@ -397,14 +397,14 @@ async function bindDevice(licenseKey, instanceId, meta = {}) {
   const isNew = existing.length === 0;
 
   await db`
-    INSERT INTO pgstudio_license.devices (license_key, instance_id, device_name, last_seen, revoked_at)
+    INSERT INTO nexql_license.devices (license_key, instance_id, device_name, last_seen, revoked_at)
     VALUES (${key}, ${instanceId}, ${meta.deviceName || null}, now(), NULL)
     ON CONFLICT (license_key, instance_id) DO UPDATE SET
       last_seen = now(),
       revoked_at = NULL,
       device_name = CASE
         WHEN EXCLUDED.device_name IS NOT NULL THEN EXCLUDED.device_name
-        ELSE pgstudio_license.devices.device_name
+        ELSE nexql_license.devices.device_name
       END
   `;
 
@@ -428,7 +428,7 @@ async function removeDevice(licenseKey, instanceId, meta = {}) {
   await ensureSchema();
   const db = getSql();
   const rows = await db`
-    UPDATE pgstudio_license.devices
+    UPDATE nexql_license.devices
     SET revoked_at = now()
     WHERE license_key = ${key}
       AND instance_id = ${instanceId}
@@ -447,7 +447,7 @@ async function listActiveDevicesOldestFirst(licenseKey) {
   const db = getSql();
   const rows = await db`
     SELECT instance_id, device_name, first_seen, last_seen
-    FROM pgstudio_license.devices
+    FROM nexql_license.devices
     WHERE license_key = ${normalizeKey(licenseKey)}
       AND revoked_at IS NULL
     ORDER BY last_seen ASC NULLS FIRST, first_seen ASC
@@ -489,7 +489,7 @@ async function listActiveDevices(licenseKey) {
   const db = getSql();
   const rows = await db`
     SELECT instance_id, device_name, first_seen, last_seen
-    FROM pgstudio_license.devices
+    FROM nexql_license.devices
     WHERE license_key = ${normalizeKey(licenseKey)}
       AND revoked_at IS NULL
     ORDER BY last_seen DESC
@@ -506,7 +506,7 @@ async function expirePastDueLicenses() {
   await ensureSchema();
   const db = getSql();
   const rows = await db`
-    UPDATE pgstudio_license.licenses
+    UPDATE nexql_license.licenses
     SET status = 'expired', updated_at = now()
     WHERE status = 'active'
       AND expires_at IS NOT NULL

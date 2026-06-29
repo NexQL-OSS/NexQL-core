@@ -4,7 +4,7 @@ export interface NotebookParameterBankState {
   [notebookUri: string]: Record<string, string[]>;
 }
 
-const STORAGE_KEY = 'pgstudio.notebookParameterBank.v1';
+const STORAGE_KEY = 'nexql.notebookParameterBank.v1';
 const MAX_VALUES_PER_PARAMETER = 20;
 
 function readState(workspaceState?: vscode.Memento): NotebookParameterBankState {

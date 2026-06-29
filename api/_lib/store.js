@@ -1,6 +1,6 @@
 // Entitlement store abstraction.
 //
-// Primary store: Neon Postgres (pgstudio_license schema) when DATABASE_URL is set.
+// Primary store: Neon Postgres (nexql_license schema) when DATABASE_URL is set.
 // Legacy dual-write: Vercel KV (Upstash Redis) when KV_REST_API_URL is present.
 // Dev fallback: local JSON file (.kv-dev.json at repo root) when neither is configured.
 //

@@ -1,8 +1,8 @@
 // Pricing tier UI: currency auto-detect, billing/currency toggles, dynamic price labels.
 
 (function () {
-  const STORAGE_CURRENCY = 'pgstudio_pricing_currency';
-  const STORAGE_PERIOD = 'pgstudio_pricing_period';
+  const STORAGE_CURRENCY = 'nexql_pricing_currency';
+  const STORAGE_PERIOD = 'nexql_pricing_period';
 
   let catalog = null;
 

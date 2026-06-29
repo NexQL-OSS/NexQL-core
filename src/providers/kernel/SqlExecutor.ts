@@ -523,18 +523,18 @@ export class SqlExecutor {
 
   /**
    * Optional execution directives embedded as SQL comments at top-level.
-   * - pgstudio:full-dataset => disable streaming + disable auto-limit for this statement.
-   * - pgstudio:no-stream    => disable streaming + disable auto-limit for this statement.
+   * - nexql:full-dataset => disable streaming + disable auto-limit for this statement.
+   * - nexql:no-stream    => disable streaming + disable auto-limit for this statement.
    */
   private consumeExecutionDirectives(query: string): {
     query: string;
     disableStreaming: boolean;
     disableAutoLimit: boolean;
   } {
-    const hasFullDataset = /\bpgstudio:(?:full-dataset|no-stream)\b/i.test(query);
+    const hasFullDataset = /\bnexql:(?:full-dataset|no-stream)\b/i.test(query);
     const stripped = query
-      .replace(/^\s*--\s*pgstudio:(?:full-dataset|no-stream)\s*$/gim, '')
-      .replace(/\/\*\s*pgstudio:(?:full-dataset|no-stream)\s*\*\//gim, '')
+      .replace(/^\s*--\s*nexql:(?:full-dataset|no-stream)\s*$/gim, '')
+      .replace(/\/\*\s*nexql:(?:full-dataset|no-stream)\s*\*\//gim, '')
       .trim();
     return {
       query: stripped,

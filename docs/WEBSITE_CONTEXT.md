@@ -33,7 +33,7 @@ Theme JSON lives only in the **[NexQL-Themes](https://github.com/ric-v/NexQL-The
 
 **Runtime module:** `docs/js/theme-loader.mjs`
 - Fetches manifest + theme JSON → `parseThemeSummary()` → CSS custom properties on `:root`
-- Persists choice in `localStorage` key `pgstudio-docs-theme`
+- Persists choice in `localStorage` key `nexql-docs-theme`
 - Default theme: `claudy-day`
 - Fallback palette if CDN/proxy unavailable (Drift Dark–like tokens)
 - Exposes `window.NexqlThemes` for workbench integration

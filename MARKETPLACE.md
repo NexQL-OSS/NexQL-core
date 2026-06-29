@@ -158,7 +158,7 @@ NexQL connects to **any PostgreSQL-wire-compatible database**:
 - ✅ **YugabyteDB** (YSQL) — distributed Postgres, port 5433
 - ✅ **AWS RDS / Aurora**, **Google Cloud SQL / AlloyDB**, **Azure Database for PostgreSQL**
 
-See the [compatibility guide](https://github.com/dev-asterix/PgStudio/blob/main/docs/COMPATIBILITY.md) for per-platform connection settings and caveats.
+See the [compatibility guide](https://github.com/dev-asterix/NexQL/blob/main/docs/COMPATIBILITY.md) for per-platform connection settings and caveats.
 
 ---
 
@@ -284,15 +284,15 @@ code --install-extension ric-v.postgres-explorer
 ## 📚 Resources
 
 - 📖 [Full Documentation](https://nexql.astrx.dev/)
-- 🐛 [Report Issues](https://github.com/dev-asterix/PgStudio/issues)
-- 💡 [Request Features](https://github.com/dev-asterix/PgStudio/issues/new?template=feature_request.md)
-- ⭐ [Star on GitHub](https://github.com/dev-asterix/PgStudio)
+- 🐛 [Report Issues](https://github.com/dev-asterix/NexQL/issues)
+- 💡 [Request Features](https://github.com/dev-asterix/NexQL/issues/new?template=feature_request.md)
+- ⭐ [Star on GitHub](https://github.com/dev-asterix/NexQL)
 
 ---
 
 ## 📝 License
 
-This extension is licensed under the [MIT License](https://github.com/dev-asterix/PgStudio/blob/main/LICENSE).
+This extension is licensed under the [MIT License](https://github.com/dev-asterix/NexQL/blob/main/LICENSE).
 
 ---
 
