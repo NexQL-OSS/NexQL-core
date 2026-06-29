@@ -1,7 +1,7 @@
 {
   "name": "postgres-explorer",
   "displayName": "NexQL - Postgres Explorer",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "PostgreSQL database explorer for VS Code with notebook support [Nightly]",
   "publisher": "ric-v",
   "private": false,
@@ -14,7 +14,7 @@
     "url": "https://github.com/dev-asterix/PgStudio/issues"
   },
   "homepage": "https://nexql.astrx.dev/",
-  "icon": "resources/postgres-explorer.png",
+  "icon": "resources/NexQL.png",
   "galleryBanner": {
     "color": "#575584",
     "theme": "dark"
