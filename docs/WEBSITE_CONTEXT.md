@@ -16,11 +16,12 @@ Core concept:
 - Let users interact with a realistic editor + explorer + SQL assistant shell.
 - Keep install CTA visible from minimized and expanded states.
 - Paid subscriptions via Razorpay (server API + Razorpay Plans in dashboard).
-- **Live theme switching** via the header dropdown — landing + workbench chrome repaint from NexQL Themes JSON (no theme files committed in PgStudio).
+- **Live theme switching** via the header dropdown — landing + workbench chrome repaint from NexQL Themes JSON (no theme files committed in NexQL).
+- **Themes bridge** loading NexQL-Themes at runtime.
 
 ## NexQL Themes integration (no duplication)
 
-Theme JSON lives only in the **[NexQL-Themes](https://github.com/ric-v/NexQL-Themes)** repo (`themes/*.json`). PgStudio loads them at runtime:
+Theme JSON lives only in the **[NexQL-Themes](https://github.com/ric-v/NexQL-Themes)** repo (`themes/*.json`). NexQL loads them at runtime:
 
 | Environment | Theme source |
 |-------------|----------------|
@@ -120,6 +121,6 @@ Extension license delivery after payment is **not** implemented yet — see `doc
 
 - Keep partial paths and script order stable (theme-loader before bootstrap).
 - Preserve interactive demo behavior; reskin via CSS tokens + theme-loader only.
-- Do **not** commit `themes/*.json` into PgStudio — update themes in NexQL-Themes repo.
+- Do **not** commit `themes/*.json` into NexQL — update themes in NexQL-Themes repo.
 - After NexQL-Themes parser changes, run `npm run prebuild:site` (or full `build:site`) before deploy.
 - Mobile: test 375px / 640px / 980px — theme dropdown in topbar actions.

@@ -1,4 +1,4 @@
-// PgStudio Settings Hub webview controller.
+// NexQL Settings Hub webview controller.
 // Message protocol: webview → host `{ command: '<section>/<action>', ... }`,
 // host → webview `{ type: '<section>/<event>', ... }`.
 
@@ -11,7 +11,7 @@ const platformPresetById = Object.fromEntries(
 );
 
 window.onerror = function (msg) {
-  console.error('[PgStudio Settings Hub] Error:', msg);
+  console.error('[NexQL Settings Hub] Error:', msg);
 };
 
 const $ = (id) => document.getElementById(id);
@@ -2314,7 +2314,7 @@ function handleAiMessage(message) {
       break;
     case 'ai/githubDisconnected':
       updateGitHubAuthStatus({ connected: false });
-      aiShowMessage('✓ GitHub disconnected from PgStudio');
+      aiShowMessage('✓ GitHub disconnected from NexQL');
       break;
     case 'ai/githubDisconnectError':
       aiShowMessage('✗ GitHub disconnect failed: ' + message.error, true);

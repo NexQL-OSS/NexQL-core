@@ -1,8 +1,8 @@
 {
   "name": "postgres-explorer",
   "displayName": "NexQL - Postgres Explorer",
-  "version": "1.5.0",
-  "description": "PostgreSQL database explorer for VS Code with notebook support [Nightly]",
+  "version": "2.0.0",
+  "description": "PostgreSQL database explorer for VS Code with notebook support",
   "publisher": "ric-v",
   "private": false,
   "license": "MIT",
@@ -419,7 +419,7 @@
       {
         "command": "postgresExplorer.openColumnNotebook",
         "title": "Open Column Analysis",
-        "category": "Postgres Explorer"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.showViewProperties",
@@ -579,37 +579,37 @@
       {
         "command": "postgres-explorer.refreshMaterializedView",
         "title": "Refresh Materialized View",
-        "category": "Postgres Explorer",
+        "category": "NexQL",
         "icon": "$(refresh)"
       },
       {
         "command": "postgres-explorer.materializedViewOperations",
         "title": "Materialized View Operations",
-        "category": "Postgres Explorer",
+        "category": "NexQL",
         "icon": "$(notebook)"
       },
       {
         "command": "postgres-explorer.foreignTableOperations",
         "title": "Foreign Table Operations",
-        "category": "Postgres Explorer",
+        "category": "NexQL",
         "icon": "$(notebook)"
       },
       {
         "command": "postgres-explorer.dropForeignTable",
         "title": "Drop Foreign Table",
-        "category": "Postgres Explorer",
+        "category": "NexQL",
         "icon": "$(trash)"
       },
       {
         "command": "postgres-explorer.typeOperations",
         "title": "Type Operations",
-        "category": "Postgres Explorer",
+        "category": "NexQL",
         "icon": "$(notebook)"
       },
       {
         "command": "postgres-explorer.dropType",
         "title": "Drop Type",
-        "category": "Postgres Explorer",
+        "category": "NexQL",
         "icon": "$(trash)"
       },
       {
@@ -720,19 +720,19 @@
       {
         "command": "postgres-explorer.viewMaterializedViewData",
         "title": "View Data",
-        "category": "Postgres Explorer",
+        "category": "NexQL",
         "icon": "$(table)"
       },
       {
         "command": "postgres-explorer.disconnectConnection",
         "title": "Disconnect",
-        "category": "Postgres Explorer",
+        "category": "NexQL",
         "icon": "$(debug-disconnect)"
       },
       {
         "command": "postgres-explorer.reconnectConnection",
         "title": "Connect",
-        "category": "Postgres Explorer",
+        "category": "NexQL",
         "icon": "$(plug)"
       },
       {
@@ -778,19 +778,19 @@
       {
         "command": "postgres-explorer.dropMatView",
         "title": "Drop Materialized View",
-        "category": "Postgres Explorer",
+        "category": "NexQL",
         "icon": "$(trash)"
       },
       {
         "command": "postgres-explorer.editMaterializedView",
         "title": "Edit Materialized View",
-        "category": "Postgres Explorer",
+        "category": "NexQL",
         "icon": "$(edit)"
       },
       {
         "command": "postgres-explorer.showMaterializedViewProperties",
         "title": "Show Materialized View Properties",
-        "category": "Postgres Explorer",
+        "category": "NexQL",
         "icon": "$(info)"
       },
       {
@@ -1108,7 +1108,7 @@
       {
         "command": "postgres-explorer.generateScriptCreate",
         "title": "CREATE Script",
-        "category": "PostgreSQL Explorer"
+        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.analyzeIndexUsage",
@@ -1940,7 +1940,7 @@
       },
       {
         "id": "pgstudioSyncSetup",
-        "title": "Set up PgStudio Sync",
+        "title": "Set up NexQL Sync",
         "description": "E2E-encrypted sync for connections, notebooks, and saved queries across editors.",
         "steps": [
           {
@@ -1949,7 +1949,7 @@
             "description": "Run the guided wizard to create or unlock your encrypted vault.\n[Set Up Sync](command:postgres-explorer.sync.setup)",
             "media": {
               "markdown": "walkthroughs/step-sync-setup.md",
-              "altText": "Set up PgStudio Sync"
+              "altText": "Set up NexQL Sync"
             },
             "completionEvents": [
               "onCommand:postgres-explorer.sync.setup"
@@ -2019,7 +2019,7 @@
       }
     ],
     "configuration": {
-      "title": "PostgreSQL Explorer",
+      "title": "NexQL",
       "properties": {
         "postgresExplorer.debug": {
           "type": "boolean",
@@ -2709,17 +2709,17 @@
         },
         {
           "command": "postgres-explorer.attachToChat",
-          "when": "view == postgresExplorer && viewItem =~ /^(table|partition|view|function|procedure|materialized-view|type|foreign-table|schema)$/",
+          "when": "view == postgresExplorer && viewItem =~ /^(table|partition|view|function|procedure|materialized-view|type|foreign-table|schema)(:|$)/",
           "group": "inline@0"
         },
         {
           "command": "postgres-explorer.openDefinition",
-          "when": "view == postgresExplorer && viewItem =~ /^(table|partition|view|function|procedure|index|materialized-view|sequence|type|trigger|policy|extension|role|foreign-table|foreign-data-wrapper|foreign-server)$/",
+          "when": "view == postgresExplorer && viewItem =~ /^(table|partition|view|function|procedure|index|materialized-view|sequence|type|trigger|policy|extension|role|foreign-table|foreign-data-wrapper|foreign-server)(:|$)/",
           "group": "inline@1"
         },
         {
           "command": "postgres-explorer.showTableProperties",
-          "when": "view == postgresExplorer && viewItem == table",
+          "when": "view == postgresExplorer && viewItem =~ /^table(:|$)/",
           "group": "inline@2"
         },
         {
@@ -2729,7 +2729,7 @@
         },
         {
           "command": "postgres-explorer.newNotebook",
-          "when": "view == postgresExplorer && viewItem =~ /^(schema|table|partition)$/",
+          "when": "view == postgresExplorer && viewItem =~ /^(schema|table|partition)(:|$)/",
           "group": "1_actions"
         },
         {
@@ -2739,12 +2739,12 @@
         },
         {
           "command": "postgres-explorer.addToFavorites",
-          "when": "view == postgresExplorer && viewItem =~ /^(table|partition|view|function|procedure|materialized-view)$/ && !postgresExplorer.isFavorite",
+          "when": "view == postgresExplorer && viewItem =~ /^(table|partition|view|function|procedure|materialized-view)(:|$)/ && !postgresExplorer.isFavorite",
           "group": "0_favorites"
         },
         {
           "command": "postgres-explorer.removeFromFavorites",
-          "when": "view == postgresExplorer && viewItem =~ /^(table|partition|view|function|procedure|materialized-view)$/ && postgresExplorer.isFavorite",
+          "when": "view == postgresExplorer && viewItem =~ /^(table|partition|view|function|procedure|materialized-view)(:|$)/ && postgresExplorer.isFavorite",
           "group": "0_favorites"
         },
         {
@@ -2874,12 +2874,12 @@
         },
         {
           "command": "postgres-explorer.viewTableData",
-          "when": "view == postgresExplorer && viewItem =~ /^(table|partition)$/",
+          "when": "view == postgresExplorer && viewItem =~ /^(table|partition)(:|$)/",
           "group": "inline@2"
         },
         {
           "command": "postgres-explorer.dropTable",
-          "when": "view == postgresExplorer && viewItem =~ /^(table|partition)$/",
+          "when": "view == postgresExplorer && viewItem =~ /^(table|partition)(:|$)/",
           "group": "9_delete"
         },
         {
@@ -2894,37 +2894,37 @@
         },
         {
           "command": "postgres-explorer.tableOperations",
-          "when": "view == postgresExplorer && viewItem =~ /^(table|partition)$/",
+          "when": "view == postgresExplorer && viewItem =~ /^(table|partition)(:|$)/",
           "group": "1_actions@0"
         },
         {
           "submenu": "postgres-explorer.scriptsMenu",
-          "when": "view == postgresExplorer && viewItem =~ /^(table|partition)$/",
+          "when": "view == postgresExplorer && viewItem =~ /^(table|partition)(:|$)/",
           "group": "1_actions@1"
         },
         {
           "submenu": "postgres-explorer.maintenanceMenu",
-          "when": "view == postgresExplorer && viewItem =~ /^(table|partition)$/",
+          "when": "view == postgresExplorer && viewItem =~ /^(table|partition)(:|$)/",
           "group": "1_actions@2"
         },
         {
           "command": "postgres-explorer.tableProfile",
-          "when": "view == postgresExplorer && viewItem =~ /^(table|partition)$/",
+          "when": "view == postgresExplorer && viewItem =~ /^(table|partition)(:|$)/",
           "group": "2_analysis@0"
         },
         {
           "command": "postgres-explorer.tableActivity",
-          "when": "view == postgresExplorer && viewItem =~ /^(table|partition)$/",
+          "when": "view == postgresExplorer && viewItem =~ /^(table|partition)(:|$)/",
           "group": "2_analysis@1"
         },
         {
           "command": "postgres-explorer.indexUsage",
-          "when": "view == postgresExplorer && viewItem =~ /^(table|partition)$/",
+          "when": "view == postgresExplorer && viewItem =~ /^(table|partition)(:|$)/",
           "group": "2_analysis@2"
         },
         {
           "command": "postgres-explorer.tableDefinition",
-          "when": "view == postgresExplorer && viewItem =~ /^(table|partition)$/",
+          "when": "view == postgresExplorer && viewItem =~ /^(table|partition)(:|$)/",
           "group": "2_analysis@3"
         },
         {
@@ -2944,27 +2944,27 @@
         },
         {
           "command": "postgres-explorer.truncateTable",
-          "when": "view == postgresExplorer && viewItem =~ /^(table|partition)$/",
+          "when": "view == postgresExplorer && viewItem =~ /^(table|partition)(:|$)/",
           "group": "2_operations@1"
         },
         {
           "command": "postgres-explorer.quickClone",
-          "when": "view == postgresExplorer && viewItem =~ /^(table|partition)$/",
+          "when": "view == postgresExplorer && viewItem =~ /^(table|partition)(:|$)/",
           "group": "2_operations@0"
         },
         {
           "command": "postgres-explorer.insertData",
-          "when": "view == postgresExplorer && viewItem =~ /^(table|partition)$/",
+          "when": "view == postgresExplorer && viewItem =~ /^(table|partition)(:|$)/",
           "group": "2_operations@2"
         },
         {
           "command": "postgres-explorer.exportTable",
-          "when": "view == postgresExplorer && viewItem =~ /^(table|partition)$/",
+          "when": "view == postgresExplorer && viewItem =~ /^(table|partition)(:|$)/",
           "group": "2_operations@3"
         },
         {
           "command": "postgres-explorer.updateData",
-          "when": "view == postgresExplorer && viewItem =~ /^(table|partition)$/",
+          "when": "view == postgresExplorer && viewItem =~ /^(table|partition)(:|$)/",
           "group": "2_operations@3"
         },
         {
@@ -2979,7 +2979,7 @@
         },
         {
           "command": "postgres-explorer.pasteTable",
-          "when": "view == postgresExplorer && viewItem =~ /^(table|partition)$/",
+          "when": "view == postgresExplorer && viewItem =~ /^(table|partition)(:|$)/",
           "group": "1_actions"
         },
         {
@@ -3457,17 +3457,17 @@
         },
         {
           "command": "postgres-explorer.openTableDesigner",
-          "when": "view == postgresExplorer && viewItem =~ /^(table|partition)$/",
+          "when": "view == postgresExplorer && viewItem =~ /^(table|partition)(:|$)/",
           "group": "1_actions"
         },
         {
           "command": "postgres-explorer.importData",
-          "when": "view == postgresExplorer && viewItem =~ /^(table|partition)$/",
+          "when": "view == postgresExplorer && viewItem =~ /^(table|partition)(:|$)/",
           "group": "1_actions"
         },
         {
           "command": "postgres-explorer.openSchemaDiff",
-          "when": "view == postgresExplorer && viewItem =~ /^(table|partition)$/",
+          "when": "view == postgresExplorer && viewItem =~ /^(table|partition)(:|$)/",
           "group": "1_actions"
         },
         {
@@ -3522,7 +3522,7 @@
         },
         {
           "command": "postgres-explorer.createPolicy",
-          "when": "view == postgresExplorer && viewItem == table",
+          "when": "view == postgresExplorer && viewItem =~ /^table(:|$)/",
           "group": "1_actions"
         },
         {

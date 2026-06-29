@@ -8,7 +8,7 @@ NexQL works with **any database that speaks the PostgreSQL wire protocol**. This
 
 ## Adding a connection (Settings Hub)
 
-1. Open **PgStudio Settings** → **Connections** → **Add Connection**
+1. Open **NexQL Settings** → **Connections** → **Add Connection**
 2. Choose a **Database platform** preset (PostgreSQL, Neon, Supabase, TimescaleDB, YugabyteDB, RDS, Aurora, Cloud SQL, AlloyDB, Azure) — icons pre-fill SSL mode and port
 3. Paste a `postgresql://` URL in **Connection URL** (or use **Import from .env** / explorer **Add Connection from Clipboard URL**)
 4. **Test Connection** — warns on PostgreSQL &lt; 12 or transaction-mode poolers

@@ -1,5 +1,5 @@
 /**
- * PgStudio shared webview template layer — tokens + primitives aligned with
+ * NexQL shared webview template layer — tokens + primitives aligned with
  * notebook output chrome (VS Code theme vars, color-mix surfaces) and
  * backup-restore / chat / dashboard patterns.
  * Compose after MODERN_WEBVIEW_BASE_CSS when that bundle is injected.

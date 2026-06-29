@@ -1,4 +1,4 @@
-# PgStudio Design System
+# NexQL Design System
 
 Unified visual language for webview panels, tree views, and notebook renderer output.
 

@@ -161,7 +161,7 @@ export async function handleExportIndex(
     async () => {
       const mdParts: string[] = [
         `# Data Dictionary: ${database}`,
-        `*Generated from PgStudio Local Index on ${new Date(manifest.indexedAt).toLocaleDateString()}*\n`,
+        `*Generated from NexQL Local Index on ${new Date(manifest.indexedAt).toLocaleDateString()}*\n`,
         `## Overview`,
         `- **PG Version**: ${manifest.pgVersion}`,
         `- **Build Depth**: ${manifest.buildDepth}`,

@@ -389,7 +389,7 @@ npm run compile
 
 ### Debugging Tips
 
-- **Output Panel**: `Ctrl+Shift+U` → Select "PostgreSQL Explorer"
+- **Output Panel**: `Ctrl+Shift+U` → Select "NexQL"
 - **DevTools**: `Ctrl+Shift+I` in Extension Development Host
 - **Webview Debug**: Right-click in webview → "Inspect"
 

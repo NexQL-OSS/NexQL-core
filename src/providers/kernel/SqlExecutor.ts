@@ -1123,6 +1123,11 @@ export class SqlExecutor {
             errorCode: pgErrorCode,
             errorExplanation: pgErrorCode ? getErrorExplanation(pgErrorCode) : undefined,
             sourceCellIndex: cell.index,
+            breadcrumb: {
+              connectionId: connection.id,
+              connectionName: connection.name || connection.host,
+              database: metadata.databaseName || connection.database,
+            },
           };
 
           const errorOutput = new NotebookCellOutput([
@@ -1209,6 +1214,24 @@ export class SqlExecutor {
     } catch (err: any) {
       console.error('SqlExecutor: Execution failed:', err);
       const pgErrorCode: string | undefined = err.code;
+
+      let breadcrumb: any = undefined;
+      try {
+        const metadata = ConnectionUtils.getEffectiveMetadata(cell.notebook.metadata);
+        if (metadata) {
+          const connection = ConnectionUtils.findConnectionWithFallback(metadata.connectionId, cell.notebook.metadata);
+          if (connection) {
+            breadcrumb = {
+              connectionId: connection.id,
+              connectionName: connection.name || connection.host,
+              database: metadata.databaseName || connection.database,
+            };
+          }
+        }
+      } catch {
+        // Ignore
+      }
+
       const errorData = {
         success: false,
         error: err.message || String(err),
@@ -1219,6 +1242,7 @@ export class SqlExecutor {
         errorCode: pgErrorCode,
         errorExplanation: pgErrorCode ? getErrorExplanation(pgErrorCode) : undefined,
         sourceCellIndex: cell.index,
+        ...(breadcrumb ? { breadcrumb } : {}),
       };
 
       await execution.replaceOutput(new NotebookCellOutput([

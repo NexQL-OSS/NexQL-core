@@ -75,7 +75,7 @@ async function fetchGithubUser(token: string): Promise<string> {
         method: 'GET',
         headers: {
           Authorization: `Bearer ${token}`,
-          'User-Agent': 'PgStudio-Sync',
+          'User-Agent': 'NexQL-Sync',
           Accept: 'application/json',
         },
       },

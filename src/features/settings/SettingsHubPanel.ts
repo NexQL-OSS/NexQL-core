@@ -115,7 +115,7 @@ export class SettingsHubPanel {
 
     const panel = vscode.window.createWebviewPanel(
       'settingsHub',
-      'PgStudio Settings',
+      'NexQL Settings',
       vscode.ViewColumn.One,
       {
         enableScripts: true,
@@ -225,7 +225,7 @@ export class SettingsHubPanel {
       return `<!DOCTYPE html>
         <html>
         <body>
-          <h1>Error loading PgStudio Settings</h1>
+          <h1>Error loading NexQL Settings</h1>
           <p>Could not load template files. Please check that the extension is installed correctly.</p>
           <p>Error: ${error instanceof Error ? error.message : String(error)}</p>
         </body>

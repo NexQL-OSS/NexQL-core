@@ -1,5 +1,5 @@
 /**
- * Shared PgStudio component partial — cards, tabs, badges, modals, toasts.
+ * Shared NexQL component partial — cards, tabs, badges, modals, toasts.
  * Composed after templates/shared/styles.css (requires --pg-* tokens).
  * Selective glass: blur only on .pg-modal-backdrop and .pg-toast (floating).
  */

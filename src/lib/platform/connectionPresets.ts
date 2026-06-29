@@ -47,7 +47,7 @@ export const CONNECTION_PLATFORM_PRESETS: readonly ConnectionPresetDefinition[] 
     label: 'Neon',
     icon: 'neon',
     hint: 'Use the direct endpoint (without -pooler) for notebook transactions. SSL required.',
-    defaults: { port: 5432, sslmode: 'require', applicationName: 'PgStudio' },
+    defaults: { port: 5432, sslmode: 'require', applicationName: 'NexQL' },
     hostPlaceholder: 'ep-xxx.region.aws.neon.tech',
   },
   {
@@ -55,7 +55,7 @@ export const CONNECTION_PLATFORM_PRESETS: readonly ConnectionPresetDefinition[] 
     label: 'Supabase',
     icon: 'supabase',
     hint: 'Prefer direct connection or session pooler (port 5432). Avoid transaction pooler (6543).',
-    defaults: { port: 5432, sslmode: 'require', applicationName: 'PgStudio' },
+    defaults: { port: 5432, sslmode: 'require', applicationName: 'NexQL' },
     hostPlaceholder: 'db.xxx.supabase.co',
   },
   {
@@ -63,7 +63,7 @@ export const CONNECTION_PLATFORM_PRESETS: readonly ConnectionPresetDefinition[] 
     label: 'TimescaleDB',
     icon: 'timescale',
     hint: 'Timescale Cloud or self-hosted extension — full PostgreSQL compatibility.',
-    defaults: { port: 5432, sslmode: 'require', applicationName: 'PgStudio' },
+    defaults: { port: 5432, sslmode: 'require', applicationName: 'NexQL' },
     hostPlaceholder: 'xxx.tsdb.cloud.timescale.com',
   },
   {
@@ -71,7 +71,7 @@ export const CONNECTION_PLATFORM_PRESETS: readonly ConnectionPresetDefinition[] 
     label: 'YugabyteDB',
     icon: 'yugabytedb',
     hint: 'YSQL wire protocol. Some maintenance commands are no-ops on distributed storage.',
-    defaults: { port: 5433, sslmode: 'prefer', applicationName: 'PgStudio' },
+    defaults: { port: 5433, sslmode: 'prefer', applicationName: 'NexQL' },
     hostPlaceholder: '127.0.0.1',
   },
   {
@@ -79,7 +79,7 @@ export const CONNECTION_PLATFORM_PRESETS: readonly ConnectionPresetDefinition[] 
     label: 'AWS RDS PostgreSQL',
     icon: 'aws',
     hint: 'Use the RDS instance endpoint. Set SSL Mode to require.',
-    defaults: { port: 5432, sslmode: 'require', applicationName: 'PgStudio' },
+    defaults: { port: 5432, sslmode: 'require', applicationName: 'NexQL' },
     hostPlaceholder: 'mydb.xxx.region.rds.amazonaws.com',
   },
   {
@@ -87,7 +87,7 @@ export const CONNECTION_PLATFORM_PRESETS: readonly ConnectionPresetDefinition[] 
     label: 'AWS Aurora PostgreSQL',
     icon: 'aurora',
     hint: 'Cluster writer endpoint recommended. SSL Mode require.',
-    defaults: { port: 5432, sslmode: 'require', applicationName: 'PgStudio' },
+    defaults: { port: 5432, sslmode: 'require', applicationName: 'NexQL' },
     hostPlaceholder: 'mycluster.cluster-xxx.region.rds.amazonaws.com',
   },
   {
@@ -95,7 +95,7 @@ export const CONNECTION_PLATFORM_PRESETS: readonly ConnectionPresetDefinition[] 
     label: 'Google Cloud SQL',
     icon: 'googlecloud',
     hint: 'Use Cloud SQL Auth Proxy or SSL client certs. SSL Mode require when connecting over the network.',
-    defaults: { port: 5432, sslmode: 'require', applicationName: 'PgStudio' },
+    defaults: { port: 5432, sslmode: 'require', applicationName: 'NexQL' },
     hostPlaceholder: '127.0.0.1',
   },
   {
@@ -103,7 +103,7 @@ export const CONNECTION_PLATFORM_PRESETS: readonly ConnectionPresetDefinition[] 
     label: 'Google AlloyDB',
     icon: 'alloydb',
     hint: 'AlloyDB for PostgreSQL — use the instance IP or Auth Proxy. SSL Mode require.',
-    defaults: { port: 5432, sslmode: 'require', applicationName: 'PgStudio' },
+    defaults: { port: 5432, sslmode: 'require', applicationName: 'NexQL' },
     hostPlaceholder: '127.0.0.1',
   },
   {
@@ -111,7 +111,7 @@ export const CONNECTION_PLATFORM_PRESETS: readonly ConnectionPresetDefinition[] 
     label: 'Azure Database for PostgreSQL',
     icon: 'azure',
     hint: 'Flexible Server endpoint from the Azure portal. SSL Mode require.',
-    defaults: { port: 5432, sslmode: 'require', applicationName: 'PgStudio' },
+    defaults: { port: 5432, sslmode: 'require', applicationName: 'NexQL' },
     hostPlaceholder: 'myserver.postgres.database.azure.com',
   },
 ] as const;

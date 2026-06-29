@@ -14,7 +14,7 @@ export function buildPgStudioInlineConfig(): Record<string, unknown> {
     },
     agent: {
       [PGSTUDIO_SQL_AGENT_ID]: {
-        description: 'PgStudio PostgreSQL SQL assistant (text-only, no tools)',
+        description: 'NexQL PostgreSQL SQL assistant (text-only, no tools)',
         mode: 'primary',
         permission: {
           bash: 'deny',

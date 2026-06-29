@@ -6,7 +6,7 @@ import { detectFrameworks, MIGRATION_FRAMEWORKS, MigrationFramework } from './mi
 /**
  * Migration Hub: detect the migration framework(s) used in the open workspace and
  * open a runbook with the framework's status / apply / rollback / create commands.
- * Bridges PgStudio with external migration tooling (previously detection-only).
+ * Bridges NexQL with external migration tooling (previously detection-only).
  */
 export async function cmdMigrationHub(): Promise<void> {
   const folders = vscode.workspace.workspaceFolders ?? [];
@@ -64,7 +64,7 @@ function renderDetectedRunbook(matches: { fw: MigrationFramework; root: string }
     '# Migration Hub',
     '',
     `Detected ${matches.length} migration framework${matches.length === 1 ? '' : 's'} in this workspace.`,
-    'Run these in your terminal. PgStudio does not execute them for you — review before applying to production.',
+    'Run these in your terminal. NexQL does not execute them for you — review before applying to production.',
     '',
     ...sections,
   ].join('\n');

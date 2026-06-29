@@ -5,6 +5,7 @@ import {
   buildSelectionId,
   providerDisplayName,
   readAiScopeSettings,
+  getChatCompletionEndpoint,
 } from './aiConfig';
 import { listOpencodeModels } from './opencode';
 import {
@@ -144,19 +145,21 @@ export class AiModelCatalogService {
     }
 
     const customKey = await this.credentials.getApiKey('custom');
-    const endpoint = config.get<string>('aiEndpoint') || '';
+    const endpoint = getChatCompletionEndpoint(config.get<string>('aiEndpoint') || '');
     if (customKey && endpoint) {
       await this._appendProviderModels(catalog, 'custom', () =>
         listCustomModels(endpoint, customKey),
       );
     }
 
-    const ollamaEndpoint =
-      config.get<string>('aiEndpoint') || 'http://localhost:11434/v1/chat/completions';
+    const ollamaEndpoint = getChatCompletionEndpoint(
+      config.get<string>('aiEndpoint') || 'http://localhost:11434/v1/chat/completions'
+    );
     await this._appendProviderModels(catalog, 'ollama', () => listCustomModels(ollamaEndpoint, ''));
 
-    const lmEndpoint =
-      config.get<string>('aiEndpoint') || 'http://localhost:1234/v1/chat/completions';
+    const lmEndpoint = getChatCompletionEndpoint(
+      config.get<string>('aiEndpoint') || 'http://localhost:1234/v1/chat/completions'
+    );
     await this._appendProviderModels(catalog, 'lmstudio', () => listCustomModels(lmEndpoint, ''));
 
     if (catalog.length === 0) {

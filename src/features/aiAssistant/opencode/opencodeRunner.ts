@@ -250,7 +250,7 @@ async function runViaSdk(options: OpencodeRunOptions): Promise<OpencodeRunResult
 
   try {
     const created = await opencode.client.session.create({
-      body: { title: 'PgStudio SQL Assistant' },
+      body: { title: 'NexQL SQL Assistant' },
     });
     const sessionId = created.data?.id;
     if (!sessionId) {

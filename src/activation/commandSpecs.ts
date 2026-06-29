@@ -1500,28 +1500,7 @@ export function getCommandSpecs(
     // Breadcrumb navigation commands
     {
       command: 'postgres-explorer.switchConnection',
-      callback: async () => {
-        const editor = ConnectionUtils.getActivePostgresNotebook();
-        if (!editor) {
-          vscode.window.showWarningMessage('No active PostgreSQL notebook.');
-          return;
-        }
-
-        const metadata = editor.notebook.metadata as any;
-        const selected = await ConnectionUtils.showConnectionPicker(metadata?.connectionId);
-
-        if (selected) {
-          await ConnectionUtils.updateNotebookMetadata(editor.notebook, {
-            connectionId: selected.id,
-            databaseName: selected.database,
-            host: selected.host,
-            port: selected.port,
-            username: selected.username
-          });
-          await WorkspaceStateService.getInstance().recordConnectionSwitch(selected.id, selected.database);
-          vscode.window.showInformationMessage(`Switched to: ${selected.name || selected.host}`);
-        }
-      }
+      callback: async () => await cmdSwitchNotebookConnection()
     },
     {
       command: 'postgres-explorer.showConnectionSafety',

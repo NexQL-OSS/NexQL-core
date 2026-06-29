@@ -237,7 +237,7 @@ Transform your data into insights without exporting to Excel.
 ### Installation
 
 1. Open VS Code → Press `Ctrl+Shift+X`
-2. Search for **PostgreSQL Explorer**
+2. Search for **NexQL**
 3. Click **Install**
 
 Or install via command line:

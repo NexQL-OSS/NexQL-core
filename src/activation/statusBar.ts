@@ -506,7 +506,7 @@ export class SyncStatusBar implements vscode.Disposable {
 
     if (!configured) {
       this.item.text = '$(cloud-upload) Set up sync';
-      this.item.tooltip = 'PgStudio sync not configured. Click to set up.';
+      this.item.tooltip = 'NexQL sync not configured. Click to set up.';
       this.item.backgroundColor = undefined;
       return;
     }
@@ -514,7 +514,7 @@ export class SyncStatusBar implements vscode.Disposable {
     switch (status) {
       case 'synced':
         this.item.text = '$(cloud) Synced';
-        this.item.tooltip = this.buildTooltip('PgStudio sync is up to date.');
+        this.item.tooltip = this.buildTooltip('NexQL sync is up to date.');
         this.item.backgroundColor = undefined;
         break;
       case 'idle':

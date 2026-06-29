@@ -16,22 +16,27 @@ export class ShowConnectionSwitcherHandler implements IMessageHandler {
   async handle(message: any, context: { editor: vscode.NotebookEditor }) {
     if (!context.editor) return;
 
-    // const metadata = context.editor.metadata as PostgresMetadata; // Not directly accessible on editor type sometimes, check usage
-    // Actually editor.notebook.metadata is read-only in API but we update via workspace edit or custom util
-    // ConnectionUtils.updateNotebookMetadata handles the edit.
-
     const selected = await ConnectionUtils.showConnectionPicker(message.connectionId);
 
-    if (selected && selected.id !== message.connectionId) {
+    if (selected) {
+      const dbName = await ConnectionUtils.showDatabasePicker(selected, selected.database, {
+        title: 'Switch Notebook Database',
+        placeHolder: 'Select a database for this connection'
+      });
+
+      if (!dbName) {
+        return;
+      }
+
       await ConnectionUtils.updateNotebookMetadata(context.editor.notebook, {
         connectionId: selected.id,
-        databaseName: selected.database,
+        databaseName: dbName,
         host: selected.host,
         port: selected.port,
         username: selected.username
       });
-      await WorkspaceStateService.getInstance().recordConnectionSwitch(selected.id, selected.database);
-      vscode.window.showInformationMessage(`Switched to: ${selected.name || selected.host}`);
+      await WorkspaceStateService.getInstance().recordConnectionSwitch(selected.id, dbName);
+      vscode.window.showInformationMessage(`Switched to: ${selected.name || selected.host} (DB: ${dbName})`);
       this.statusBar.update();
     }
   }
@@ -51,7 +56,7 @@ export class ShowDatabaseSwitcherHandler implements IMessageHandler {
 
     const selectedDb = await ConnectionUtils.showDatabasePicker(connection, message.currentDatabase);
 
-    if (selectedDb && selectedDb !== message.currentDatabase) {
+    if (selectedDb) {
       await ConnectionUtils.updateNotebookMetadata(context.editor.notebook, { databaseName: selectedDb });
       const connectionId = (context.editor.notebook.metadata as PostgresMetadata | undefined)?.connectionId;
       if (connectionId) {

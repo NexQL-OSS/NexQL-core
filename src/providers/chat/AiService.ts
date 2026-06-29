@@ -15,7 +15,7 @@ export interface AiResponse {
 
 import { SecretStorageService } from '../../services/SecretStorageService';
 import { AiCredentialsService } from '../../features/aiAssistant/AiCredentialsService';
-import { readAiScopeSettings } from '../../features/aiAssistant/aiConfig';
+import { readAiScopeSettings, getChatCompletionEndpoint } from '../../features/aiAssistant/aiConfig';
 import { resolveVsCodeLanguageModel } from '../../features/aiAssistant/modelListing';
 import { AiConfigScope } from '../../features/aiAssistant/types';
 import { DirectApiKeyProvider } from '../../features/aiAssistant/types';
@@ -1257,18 +1257,18 @@ export class AiService {
         model = model || DEFAULT_OPENAI_MODEL;
         body.model = model;
       } else if (provider === 'custom') {
-        endpoint = config.get<string>('aiEndpoint') || '';
+        endpoint = getChatCompletionEndpoint(config.get<string>('aiEndpoint') || '');
         if (!endpoint) {
           throw new Error('Endpoint is required for custom provider');
         }
         model = model || 'gpt-3.5-turbo';
         body.model = model;
       } else if (provider === 'ollama') {
-        endpoint = config.get<string>('aiEndpoint') || 'http://localhost:11434/v1/chat/completions';
+        endpoint = getChatCompletionEndpoint(config.get<string>('aiEndpoint') || 'http://localhost:11434/v1/chat/completions');
         model = model || '';
         body.model = model;
       } else if (provider === 'lmstudio') {
-        endpoint = config.get<string>('aiEndpoint') || 'http://localhost:1234/v1/chat/completions';
+        endpoint = getChatCompletionEndpoint(config.get<string>('aiEndpoint') || 'http://localhost:1234/v1/chat/completions');
         model = model || '';
         body.model = model;
       } else if (provider === 'github') {

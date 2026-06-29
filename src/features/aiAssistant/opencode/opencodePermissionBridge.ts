@@ -11,7 +11,7 @@ interface PermissionRequest {
 }
 
 /**
- * Auto-approves OpenCode permission prompts while PgStudio waits on a headless run.
+ * Auto-approves OpenCode permission prompts while NexQL waits on a headless run.
  * Needed because `opencode serve` + `--attach` handles permissions on the server side.
  */
 export class OpencodePermissionBridge {

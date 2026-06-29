@@ -409,7 +409,7 @@ export async function cmdSyncStatus(): Promise<void> {
 /** Security/privacy info — pass 1 stores items in plaintext (TLS in transit). */
 export async function cmdSyncShowSecretKey(_context: vscode.ExtensionContext): Promise<void> {
   await vscode.window.showInformationMessage(
-    'PgStudio Sync stores your connections (without passwords), saved queries and notebooks on the sync backend in plain text, protected by TLS in transit and your account credentials. Passwords and SSH/SSL key paths never leave this device. End-to-end encryption is planned for a future release.',
+    'NexQL Sync stores your connections (without passwords), saved queries and notebooks on the sync backend in plain text, protected by TLS in transit and your account credentials. Passwords and SSH/SSL key paths never leave this device. End-to-end encryption is planned for a future release.',
     { modal: true },
   );
 }
@@ -469,7 +469,7 @@ export async function cmdSyncStatusMenu(context?: vscode.ExtensionContext): Prom
       ];
 
   const pick = await vscode.window.showQuickPick(items, {
-    title: 'PgStudio Sync',
+    title: 'NexQL Sync',
     placeHolder: 'Choose an action',
   });
   if (!pick) {

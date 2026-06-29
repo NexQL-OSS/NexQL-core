@@ -68,7 +68,7 @@ export async function runViaServeHttp(
     const sessionRes = await fetch(`${base}/session`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: 'PgStudio SQL Assistant' }),
+      body: JSON.stringify({ title: 'NexQL SQL Assistant' }),
       signal: controller.signal,
     });
     if (!sessionRes.ok) {

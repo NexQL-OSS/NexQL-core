@@ -1,6 +1,6 @@
 # Cloud Sync
 
-PgStudio Cloud Sync keeps your **connections**, **saved queries**, and **SQL notebooks** consistent across machines and editors (VS Code, Cursor, Windsurf, and other VS Code–compatible forks). Data is **encrypted on your device** before it leaves your machine — storage backends only see opaque blobs.
+NexQL Cloud Sync keeps your **connections**, **saved queries**, and **SQL notebooks** consistent across machines and editors (VS Code, Cursor, Windsurf, and other VS Code–compatible forks). Data is **encrypted on your device** before it leaves your machine — storage backends only see opaque blobs.
 
 **Plan matrix:**
 
@@ -40,7 +40,7 @@ Sync uses a merge model: changes from any signed-in device are combined. Conflic
 
 ## End-to-end encryption
 
-PgStudio encrypts sync data with a **client-side vault**:
+NexQL encrypts sync data with a **client-side vault**:
 
 1. **Vault key** — random 256-bit key used to encrypt all sync payloads (AES-256-GCM).
 2. **Secret key** — auto-generated (~26 characters) when you create a vault, or a **custom passphrase** if you prefer. Shown **once** at setup.
@@ -49,7 +49,7 @@ PgStudio encrypts sync data with a **client-side vault**:
 
 **On the wire:** payloads are optionally Brotli-compressed (for larger items), then encrypted. Storage providers never receive plaintext connection details or query text.
 
-If you lose your **secret key**, encrypted data **cannot be recovered** — not by PgStudio, not by your storage provider. Save the recovery kit when prompted.
+If you lose your **secret key**, encrypted data **cannot be recovered** — not by NexQL, not by your storage provider. Save the recovery kit when prompted.
 
 ---
 
@@ -64,7 +64,7 @@ If you lose your **secret key**, encrypted data **cannot be recovered** — not 
 
 ## Cross-editor support
 
-Sync is editor-agnostic. Install NexQL/PgStudio in any VS Code–compatible editor, run the same setup wizard, unlock with the same secret key, and point at the same storage backend. GitHub Gist works well when built-in GitHub authentication is available; other backends use OAuth device or loopback flows.
+Sync is editor-agnostic. Install NexQL in any VS Code–compatible editor, run the same setup wizard, unlock with the same secret key, and point at the same storage backend. GitHub Gist works well when built-in GitHub authentication is available; other backends use OAuth device or loopback flows.
 
 ---
 
@@ -76,7 +76,7 @@ Open the Command Palette and run:
 
 **`NexQL Sync: Set Up Sync`** (`postgres-explorer.sync.setup`)
 
-Or use the walkthrough: **Set up PgStudio Sync** (from the Welcome / Getting Started experience).
+Or use the walkthrough: **Set up NexQL Sync** (from the Welcome / Getting Started experience).
 
 ### 2. Choose a storage backend
 

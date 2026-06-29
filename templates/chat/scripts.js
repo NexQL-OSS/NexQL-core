@@ -1,13 +1,13 @@
 // DEBUG: Initialization Logger
-console.log('[PgStudio] Chat script starting...');
+console.log('[NexQL] Chat script starting...');
 window.onerror = function (message, source, lineno, colno, error) {
-  console.error('[PgStudio] Global Error:', message, error);
+  console.error('[NexQL] Global Error:', message, error);
   if (typeof vscode !== 'undefined') {
     vscode.postMessage({ type: 'error', error: message });
   }
 };
 const vscode = acquireVsCodeApi();
-console.log('[PgStudio] VS Code API acquired');
+console.log('[NexQL] VS Code API acquired');
 
 const messagesContainer = document.getElementById('messagesContainer');
 const chatInput = document.getElementById('chatInput');
@@ -2197,7 +2197,7 @@ function buildAssistantIconActions(plainTextForClipboard) {
         await navigator.clipboard.writeText(plainTextForClipboard || '');
         showToast('Copied', 'info');
       } catch (e) {
-        console.warn('[PgStudio] Copy failed', e);
+        console.warn('[NexQL] Copy failed', e);
       }
     }),
   );
@@ -2223,7 +2223,7 @@ function buildUserIconActions(plainTextForClipboard, userMessageIndex) {
         await navigator.clipboard.writeText(plainTextForClipboard || '');
         showToast('Copied', 'info');
       } catch (e) {
-        console.warn('[PgStudio] Copy failed', e);
+        console.warn('[NexQL] Copy failed', e);
       }
     }),
   );
@@ -2910,7 +2910,7 @@ function safeJsonTailExtract(responseText) {
     return { content: responseText, bubbles: [] };
   } catch (err) {
     // JSON parse failed, return original content
-    console.warn('[PgStudio] JSON extraction failed:', err.message);
+    console.warn('[NexQL] JSON extraction failed:', err.message);
     return { content: responseText, bubbles: [] };
   }
 }

@@ -1474,7 +1474,7 @@ export class SyncController implements vscode.Disposable {
   async runDiagnostics(): Promise<void> {
     const config = this.getConfig();
     this.output.show(true);
-    this.output.appendLine('── PgStudio Sync diagnostics ──');
+    this.output.appendLine('── NexQL Sync diagnostics ──');
     this.output.appendLine(`provider: ${config.providerId ?? 'none'}`);
     this.output.appendLine(`status: ${this.status} | conflicts: ${this.conflictCount}`);
     this.output.appendLine(`cursor: ${this.getCursor(config)}`);
