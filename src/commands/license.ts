@@ -95,44 +95,65 @@ export async function cmdLicenseOpenUpgrade(): Promise<void> {
 /** Quick pick listing remaining free usage for every metered feature. */
 export async function cmdLicenseShowUsage(): Promise<void> {
   const svc = LicenseService.getInstance();
-  if (svc.isPaid()) {
-    const choice = await vscode.window.showInformationMessage(
-      `NexQL ${svc.getTier() === 'singularity' ? 'Singularity' : 'Sponsor'} — all features are unlimited.`,
-      'Open Settings',
-    );
-    if (choice === 'Open Settings') {
-      await vscode.commands.executeCommand('postgres-explorer.settingsHub', { section: 'license' });
-    }
-    return;
-  }
-
-  const OPEN_SETTINGS_LABEL = '$(gear) Manage license & usage in Settings';
   const quotas = QuotaService.getInstance();
   const now = new Date();
-  const items: vscode.QuickPickItem[] = (Object.keys(FREE_QUOTAS) as ProFeature[]).map((feature) => {
-    const status = quotas.peek(feature, now);
-    if (!status) {
-      return { label: featureLabel(feature), description: 'unlimited' };
-    }
-    const word = status.period === 'week' ? 'this week' : 'today';
-    return {
-      label: featureLabel(feature),
-      description: `${status.remaining}/${status.limit} left ${word}`,
-      detail: quotas.resetHint(feature, now),
-    };
+
+  let aiUsage: { used: number; limit: number; remaining: number } | null = null;
+  try {
+    const { fetchAiUsage } = await import('../services/aiUsage');
+    const { extensionContext } = await import('../extension');
+    aiUsage = await fetchAiUsage(extensionContext);
+  } catch {
+    // Silent
+  }
+
+  const tier = svc.getTier();
+  const aiLimit = aiUsage ? aiUsage.limit : (tier === 'singularity' ? 200 : (tier === 'sponsor' ? 50 : 5));
+  const aiRemaining = aiUsage ? aiUsage.remaining : aiLimit;
+  const nextMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+  const daysUntilReset = Math.ceil((nextMonth.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+  const aiResetHint = `resets in ${daysUntilReset}d`;
+
+  const items: vscode.QuickPickItem[] = [];
+
+  items.push({
+    label: 'AI Chat Assistant',
+    description: `${aiRemaining}/${aiLimit} left this month`,
+    detail: aiResetHint,
   });
+
+  (Object.keys(FREE_QUOTAS) as ProFeature[]).forEach((feature) => {
+    if (tier === 'free') {
+      const status = quotas.peek(feature, now);
+      if (status) {
+        const word = status.period === 'week' ? 'this week' : 'today';
+        items.push({
+          label: featureLabel(feature),
+          description: `${status.remaining}/${status.limit} left ${word}`,
+          detail: quotas.resetHint(feature, now),
+        });
+      }
+    } else {
+      items.push({
+        label: featureLabel(feature),
+        description: 'unlimited',
+      });
+    }
+  });
+
+  const OPEN_SETTINGS_LABEL = '$(gear) Manage license & usage in Settings';
   items.push(
     { label: '', kind: vscode.QuickPickItemKind.Separator },
     { label: OPEN_SETTINGS_LABEL, description: 'Full usage view in Settings → License' },
   );
 
   const picked = await vscode.window.showQuickPick(items, {
-    title: 'NexQL Free Usage',
-    placeHolder: 'Remaining free usage per feature — upgrade for unlimited',
+    title: svc.isPaid() ? `NexQL ${tier[0].toUpperCase() + tier.slice(1)} Usage` : 'NexQL Free Usage',
+    placeHolder: 'Remaining usage per feature',
   });
   if (picked?.label === OPEN_SETTINGS_LABEL) {
     await vscode.commands.executeCommand('postgres-explorer.settingsHub', { section: 'license' });
-  } else if (picked) {
+  } else if (picked && !svc.isPaid()) {
     await vscode.env.openExternal(vscode.Uri.parse(PRICING_URL));
   }
 }

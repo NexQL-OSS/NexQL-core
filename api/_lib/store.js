@@ -127,16 +127,27 @@ async function getEntitlement(licenseKey) {
   if (!licenseKey) return null;
   const key = String(licenseKey).trim().toUpperCase();
 
+  let neonError = false;
   if (useNeon) {
     try {
       const ent = await licenseDb.getLicense(key);
       if (ent) return ent;
     } catch (err) {
       console.error('store: neon read failed, falling back to kv', err);
+      neonError = true;
     }
   }
 
-  return rawGet(ENT_PREFIX + key);
+  const kvEnt = await rawGet(ENT_PREFIX + key);
+  if (kvEnt && useNeon && !neonError) {
+    // Backfill KV entitlement into Neon to prevent later referential-integrity errors
+    // (e.g. FK violations in the devices table). Fire-and-forget so the read path
+    // isn't blocked on a write we don't need the result of.
+    void Promise.resolve(licenseDb.upsertLicense(kvEnt, { source: 'kv_backfill' })).catch((err) => {
+      console.error('store: neon backfill failed', err);
+    });
+  }
+  return kvEnt;
 }
 
 async function putEntitlement(entitlement, meta = {}) {

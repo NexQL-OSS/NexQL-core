@@ -1500,15 +1500,15 @@
           bottom: 100%;
           left: 0;
           right: 0;
-          max-height: 250px;
-          background: var(--vscode-dropdown-background);
-          border: 1px solid var(--vscode-dropdown-border);
-          border-radius: var(--chat-radius);
-          margin-bottom: 4px;
+          max-height: 340px;
+          background: var(--vscode-dropdown-background, var(--vscode-editorWidget-background));
+          border: 1px solid var(--vscode-widget-border, var(--vscode-dropdown-border));
+          border-radius: 8px;
+          margin-bottom: 6px;
           display: none;
           flex-direction: column;
           overflow: hidden;
-          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+          box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
           z-index: 1000;
         }
 
@@ -1516,59 +1516,77 @@
           display: flex;
         }
 
-        .mention-picker-header {
-          padding: 8px 12px;
-          border-bottom: 1px solid var(--vscode-widget-border);
+        /* Quick-input style search bar (top of picker) */
+        .mention-picker-searchbar {
           display: flex;
           align-items: center;
-          gap: 8px;
-          font-size: 11px;
-          color: var(--vscode-descriptionForeground);
+          gap: 6px;
+          padding: 7px 10px;
+          border-bottom: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
         }
 
-        .mention-breadcrumbs {
+        .mention-search-icon {
           display: flex;
           align-items: center;
-          gap: 4px;
-          padding: 4px 8px;
-          border-bottom: 1px solid var(--vscode-widget-border);
-          font-size: 11px;
-          overflow-x: auto;
-          white-space: nowrap;
-        }
-
-        .mention-breadcrumb-item {
-          cursor: pointer;
-          color: var(--vscode-textLink-foreground);
-          padding: 2px 4px;
-          border-radius: 3px;
-        }
-
-        .mention-breadcrumb-item:hover {
-          background: var(--vscode-list-hoverBackground);
-        }
-
-        .mention-breadcrumb-separator {
           color: var(--vscode-descriptionForeground);
+          flex-shrink: 0;
         }
 
         .mention-picker-search {
           flex: 1;
-          padding: 6px 10px;
-          border: 1px solid var(--vscode-input-border);
-          background: var(--vscode-input-background);
-          color: var(--vscode-input-foreground);
-          border-radius: var(--chat-radius-sm);
-          font-size: 12px;
+          min-width: 0;
+          padding: 0;
+          border: none;
+          background: transparent;
+          color: var(--vscode-input-foreground, var(--vscode-foreground));
+          font-size: 13px;
+          line-height: 18px;
           outline: none;
         }
 
-        .mention-picker-search:focus {
-          border-color: var(--vscode-focusBorder);
+        .mention-picker-search::placeholder {
+          color: var(--vscode-input-placeholderForeground, var(--vscode-descriptionForeground));
         }
 
-        .mention-picker-search::placeholder {
-          color: var(--vscode-input-placeholderForeground);
+        /* Breadcrumb scope row */
+        .mention-breadcrumbs {
+          display: flex;
+          align-items: center;
+          gap: 2px;
+          padding: 5px 10px;
+          border-bottom: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
+          font-size: 11px;
+          overflow-x: auto;
+          white-space: nowrap;
+          scrollbar-width: none;
+        }
+
+        .mention-breadcrumbs::-webkit-scrollbar {
+          display: none;
+        }
+
+        .mention-breadcrumb-item {
+          cursor: pointer;
+          color: var(--vscode-descriptionForeground);
+          padding: 1px 5px;
+          border-radius: 4px;
+          transition: color var(--transition-fast), background var(--transition-fast);
+        }
+
+        .mention-breadcrumb-item:last-child {
+          color: var(--vscode-foreground);
+          font-weight: 500;
+        }
+
+        .mention-breadcrumb-item:hover {
+          background: var(--vscode-list-hoverBackground);
+          color: var(--vscode-foreground);
+        }
+
+        .mention-breadcrumb-separator {
+          color: var(--vscode-descriptionForeground);
+          opacity: 0.55;
+          font-size: 10px;
         }
 
         .mention-picker-list {
@@ -1577,37 +1595,73 @@
           padding: 4px;
         }
 
+        /* Dense single-line rows, VS Code list feel */
         .mention-item {
-          padding: 8px 10px;
-          border-radius: var(--chat-radius-sm);
+          padding: 4px 8px;
+          border-radius: 5px;
           cursor: pointer;
           display: flex;
-          flex-direction: column;
-          gap: 2px;
-          transition: all var(--transition-fast);
+          flex-direction: row;
+          align-items: center;
+          gap: 8px;
+          min-height: 24px;
+          transition: background var(--transition-fast);
         }
 
-        .mention-item:hover,
-        .mention-item.selected {
+        .mention-item:hover {
           background: var(--vscode-list-hoverBackground);
         }
 
+        .mention-item.selected {
+          background: var(--vscode-list-activeSelectionBackground);
+          color: var(--vscode-list-activeSelectionForeground);
+        }
+
+        .mention-item.selected .mention-item-meta {
+          color: var(--vscode-list-activeSelectionForeground);
+          opacity: 0.7;
+        }
+
         .mention-item-name {
-          font-size: 12px;
-          font-weight: 500;
+          font-size: 13px;
+          font-weight: 400;
           display: flex;
           align-items: center;
-          gap: 6px;
+          gap: 7px;
+          flex: 1;
+          min-width: 0;
+        }
+
+        .mention-item-label {
+          font-family: var(--vscode-font-family);
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
         }
 
         .mention-item-meta {
-          font-size: 10px;
+          font-size: 11px;
           color: var(--vscode-descriptionForeground);
-          margin-left: 20px;
+          margin-left: auto;
+          padding-left: 8px;
+          max-width: 45%;
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
-          opacity: 0.8;
+          flex-shrink: 0;
+        }
+
+        /* Drill-down affordance for containers (connection/database/schema) */
+        .mention-item.is-container::after {
+          content: '';
+          width: 6px;
+          height: 6px;
+          border-top: 1.3px solid var(--vscode-descriptionForeground);
+          border-right: 1.3px solid var(--vscode-descriptionForeground);
+          transform: rotate(45deg);
+          margin-left: 4px;
+          flex-shrink: 0;
+          opacity: 0.7;
         }
 
         .mention-item-type {
@@ -1632,6 +1686,18 @@
           text-align: center;
           color: var(--vscode-descriptionForeground);
           font-size: 12px;
+          line-height: 1.5;
+        }
+
+        .mention-picker-link {
+          color: var(--vscode-textLink-foreground);
+          cursor: pointer;
+          text-decoration: none;
+        }
+
+        .mention-picker-link:hover {
+          text-decoration: underline;
+          color: var(--vscode-textLink-activeForeground);
         }
 
         .mention-group-header {
@@ -1658,10 +1724,6 @@
           text-align: center;
           font-style: italic;
           border-top: 1px solid var(--vscode-panel-border);
-        }
-
-        .mention-item-label {
-          font-family: var(--vscode-font-family);
         }
 
         .mention-picker-loading {
@@ -1746,7 +1808,12 @@
 
         /* Type icons for database objects */
         .db-type-icon {
-          font-size: 11px;
+          font-size: 13px;
+          line-height: 1;
+          width: 16px;
+          text-align: center;
+          flex-shrink: 0;
+          filter: grayscale(0.25);
         }
 
         /* Inline @mention highlight in messages */

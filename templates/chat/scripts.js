@@ -295,6 +295,10 @@ function openAiSettings() {
   vscode.postMessage({ type: 'openAiSettings' });
 }
 
+function openIndexPanel() {
+  vscode.postMessage({ type: 'openIndexPanel' });
+}
+
 function setAiModelPickerLabel(label, title) {
   currentModelLabel = label || 'Loading models…';
   if (aiModelTriggerLabel) {
@@ -591,7 +595,13 @@ function searchMentions(query) {
     vscode.postMessage({ type: 'getDbHierarchy', path });
     return;
   }
-  vscode.postMessage({ type: 'searchDbObjects', query: query });
+  // Scope the search to the current breadcrumb location so we don't scan every connection.
+  const scope = {
+    connectionId: currentHierarchyPath.connection ? currentHierarchyPath.connection.id : undefined,
+    database: currentHierarchyPath.database || undefined,
+    schema: currentHierarchyPath.schema || undefined
+  };
+  vscode.postMessage({ type: 'searchDbObjects', query: query, scope: scope });
 }
 
 function getDbTypeIcon(type) {
@@ -637,7 +647,7 @@ function renderHierarchyItems(items) {
 
   items.forEach((obj, idx) => {
     const el = document.createElement('div');
-    el.className = 'mention-item';
+    el.className = obj.isContainer ? 'mention-item is-container' : 'mention-item is-leaf';
     el.dataset.index = String(idx);
 
     const nameDiv = document.createElement('div');
@@ -688,7 +698,24 @@ function renderDbObjects(objects) {
     while (mentionList.firstChild) mentionList.removeChild(mentionList.firstChild);
     const empty = document.createElement('div');
     empty.className = 'mention-picker-empty';
-    empty.textContent = 'No matches found. Try a different search term.';
+    // At Home (no connection selected), object search relies on a built DB index.
+    const atHome = !currentHierarchyPath.connection;
+    if (atHome) {
+      empty.appendChild(document.createTextNode('No matches. Global search needs a built DB index. '));
+      const link = document.createElement('a');
+      link.href = '#';
+      link.className = 'mention-picker-link';
+      link.textContent = 'Index a database';
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        openIndexPanel();
+        hideMentionPicker();
+      });
+      empty.appendChild(link);
+      empty.appendChild(document.createTextNode(' — or open a connection to browse its objects.'));
+    } else {
+      empty.textContent = 'No matches found. Try a different search term.';
+    }
     mentionList.appendChild(empty);
     return;
   }
@@ -720,7 +747,6 @@ function renderDbObjects(objects) {
     'other': 'Other'
   };
 
-  let html = '';
   let globalIdx = 0;
 
   // Helper to generate item element with metadata
@@ -760,27 +786,6 @@ function renderDbObjects(objects) {
 
     return itemEl;
   };
-
-  // Render in type order
-  typeOrder.forEach(type => {
-    if (grouped[type] && grouped[type].length > 0) {
-      html += '<div class="mention-group-header">' + (typeLabels[type] || type) + ' (' + grouped[type].length + ')</div>';
-      grouped[type].forEach(obj => {
-        html += renderItem(obj);
-      });
-    }
-  });
-
-  // Handle types not in order
-  Object.keys(grouped).forEach(type => {
-    if (!typeOrder.includes(type) && grouped[type].length > 0) {
-      html += '<div class="mention-group-header">' + (typeLabels[type] || type) + ' (' + grouped[type].length + ')</div>';
-      grouped[type].forEach(obj => {
-        html += renderItem(obj);
-      });
-    }
-  });
-
 
   // Build DOM and append
   while (mentionList.firstChild) mentionList.removeChild(mentionList.firstChild);
@@ -3008,6 +3013,7 @@ function wireChatDomEvents() {
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
       closeAiModelMenu();
+      closeLightbox();
     }
   });
   vscode.postMessage({ type: 'getModelCatalog' });
@@ -3031,7 +3037,11 @@ function wireChatDomEvents() {
   document.getElementById('errorDismissBtn')?.addEventListener('click', dismissError);
 
   if (mentionSearch) {
-    mentionSearch.addEventListener('input', () => searchMentions(mentionSearch.value));
+    mentionSearch.addEventListener('input', () => {
+      const value = mentionSearch.value;
+      if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+      searchDebounceTimer = setTimeout(() => searchMentions(value), 180);
+    });
     mentionSearch.addEventListener('keydown', handleMentionSearchKeydown);
   }
 
@@ -3048,6 +3058,10 @@ function wireChatDomEvents() {
   stopBtn?.addEventListener('click', cancelRequest);
 
   document.getElementById('imageLightbox')?.addEventListener('click', closeLightbox);
+  document.getElementById('closeLightboxBtn')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    closeLightbox();
+  });
 
   const connSelect = document.getElementById('contextConnectionSelect');
   const dbSelect = document.getElementById('contextDatabaseSelect');

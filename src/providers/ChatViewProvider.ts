@@ -18,6 +18,7 @@ import {
   DbMention,
   DbObject,
   DbObjectService,
+  DbSearchScope,
   AiService,
   AiProviderHttpError,
   SessionService,
@@ -282,7 +283,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           this._sendHistoryToWebview();
           break;
         case 'searchDbObjects':
-          await this._handleSearchDbObjects(data.query);
+          await this._handleSearchDbObjects(data.query, data.scope);
           break;
         case 'getDbObjectDetails':
           await this._handleGetDbObjectDetails(data.object);
@@ -295,6 +296,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           break;
         case 'openAiSettings':
           vscode.commands.executeCommand('postgres-explorer.aiSettings');
+          break;
+        case 'openIndexPanel':
+          await vscode.commands.executeCommand('postgres-explorer.dbindex.openPanel');
           break;
         case 'openConnectionSafety':
           await vscode.commands.executeCommand('postgres-explorer.showConnectionSafety');
@@ -913,17 +917,43 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       error.httpStatus === 402 ||
       error.httpStatus === 403 ||
       error.httpStatus === 503 ||
-      ['quota_exceeded', 'pool_exhausted', 'free_ai_disabled', 'tier_required'].includes(error.errorCode || '')
+      ['quota_exceeded', 'rate_limited', 'pool_exhausted', 'free_ai_disabled', 'tier_required'].includes(error.errorCode || '')
     );
+  }
+
+  /** Human-readable "resets <date>" suffix from a server-provided ISO reset timestamp. */
+  private _resetSuffix(error: AiProviderHttpError): string {
+    const resetAt = error.errorData?.resetAt;
+    if (typeof resetAt !== 'string') {
+      return '';
+    }
+    const when = new Date(resetAt);
+    if (Number.isNaN(when.getTime())) {
+      return '';
+    }
+    return ` Resets ${when.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}.`;
   }
 
   private _handleNexqlFreeLimitError(error: AiProviderHttpError): void {
     let title: string;
     let content: string;
+    // Burst throttle (transient) — distinct from the monthly cap; a short wait fixes it.
+    if (error.errorCode === 'rate_limited') {
+      title = 'Sending requests too quickly.';
+      content =
+        '🐢 **Sending requests too quickly.**\n\n' +
+        'Please wait a few seconds and try again.';
+      this._messages.push({ role: 'assistant', content });
+      void vscode.window.showWarningMessage(title);
+      return;
+    }
     if (error.httpStatus === 429 || error.errorCode === 'quota_exceeded') {
+      const suffix = this._resetSuffix(error);
+      const limit = typeof error.errorData?.limit === 'number' ? error.errorData.limit : undefined;
+      const capNote = limit !== undefined ? ` (${limit}/month)` : '';
       title = 'Free AI limit reached for this month.';
       content =
-        '⏳ **Free AI limit reached for this month.**\n\n' +
+        `⏳ **Free AI limit reached for this month${capNote}.**${suffix}\n\n` +
         'Upgrade for a higher monthly cap, or switch to your own API key in AI Settings.';
     } else if (error.httpStatus === 403 || error.errorCode === 'tier_required') {
       title = 'This model requires a higher NexQL tier.';
@@ -1118,9 +1148,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  private async _handleSearchDbObjects(query: string): Promise<void> {
+  private async _handleSearchDbObjects(query: string, scope?: DbSearchScope): Promise<void> {
     try {
-      const filtered = await this._dbObjectService.searchObjectsAsync(query);
+      const filtered = await this._dbObjectService.searchObjectsAsync(query, scope);
 
       this._getTargetWebview()?.postMessage({
         type: 'dbObjectsResult',

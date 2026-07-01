@@ -6,6 +6,7 @@ import { getTransactionManager } from '../services/TransactionManager';
 import { ConnectionUtils } from '../utils/connectionUtils';
 import { FREE_QUOTAS, ProFeature, featureLabel } from '../services/featureGates';
 import { QuotaService } from '../services/QuotaService';
+import { getCachedAiUsage, refreshAiUsageInBackground } from '../services/aiUsage';
 import { environmentLabel } from '../features/sentinel/constants';
 import type { SentinelEnvironment } from '../features/sentinel/types';
 import type { SentinelContext, SentinelSettings } from '../features/sentinel/types';
@@ -451,6 +452,18 @@ export class NotebookStatusBar implements vscode.Disposable {
   private buildFreeUsageTooltip(envTooltip: string): vscode.MarkdownString {
     const md = new vscode.MarkdownString();
     md.appendMarkdown('**NexQL Free** — click for usage details\n\n');
+
+    // AI Chat Assistant is the headline free feature — list it first. Its monthly count
+    // is metered server-side, so render the cached value and refresh in the background
+    // (which re-renders this tooltip when a fresh count lands).
+    const aiUsage = getCachedAiUsage();
+    if (aiUsage) {
+      md.appendMarkdown(`- AI Chat Assistant: ${aiUsage.remaining}/${aiUsage.limit} left this month\n`);
+    } else {
+      md.appendMarkdown('- AI Chat Assistant: … this month\n');
+    }
+    refreshAiUsageInBackground(extensionContext, () => this.renderTierItem());
+
     const quotas = QuotaService.getInstance();
     const now = new Date();
     for (const feature of Object.keys(FREE_QUOTAS) as ProFeature[]) {

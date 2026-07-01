@@ -24,6 +24,41 @@ export class IndexStore {
   }
 
   /**
+   * Enumerate every built index by reading each manifest (dir segments are lossy, so the real
+   * connectionId/database are taken from the manifest). Pure disk reads — no DB connections.
+   */
+  public async listIndexedDatabases(): Promise<Array<{ connectionId: string; database: string }>> {
+    const results: Array<{ connectionId: string; database: string }> = [];
+    const root = vscode.Uri.joinPath(this.globalStorageUri, 'dbindex');
+
+    let connDirs: [string, vscode.FileType][];
+    try {
+      connDirs = await vscode.workspace.fs.readDirectory(root);
+    } catch {
+      return results; // no index root yet
+    }
+
+    for (const [connSeg, connType] of connDirs) {
+      if (connType !== vscode.FileType.Directory) { continue; }
+      const connUri = vscode.Uri.joinPath(root, connSeg);
+      let dbDirs: [string, vscode.FileType][];
+      try {
+        dbDirs = await vscode.workspace.fs.readDirectory(connUri);
+      } catch {
+        continue;
+      }
+      for (const [dbSeg, dbType] of dbDirs) {
+        if (dbType !== vscode.FileType.Directory) { continue; }
+        const manifest = await this.readManifest(vscode.Uri.joinPath(connUri, dbSeg));
+        if (manifest && manifest.connectionId && manifest.database) {
+          results.push({ connectionId: manifest.connectionId, database: manifest.database });
+        }
+      }
+    }
+    return results;
+  }
+
+  /**
    * Acquire a build lock to prevent concurrent build tasks.
    * If a lock exists and is older than 10 minutes, it is ignored/overwritten.
    */
