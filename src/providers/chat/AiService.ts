@@ -1711,7 +1711,32 @@ export class AiService {
           } else {
             let response: Record<string, unknown>;
             try {
-              response = JSON.parse(data) as Record<string, unknown>;
+              // Some proxies (e.g. nexql-free on an older deploy) stream SSE even
+              // when a non-streaming request was made — fall back to concatenating
+              // the delta text instead of choking on "data: {...}" as raw JSON.
+              const trimmed = data.trimStart();
+              if (trimmed.startsWith('data:')) {
+                let text = '';
+                for (const rawLine of data.split('\n')) {
+                  const line = rawLine.trim();
+                  if (!line.startsWith('data:')) {
+                    continue;
+                  }
+                  const dataVal = line.slice(5).trim();
+                  if (dataVal === '[DONE]' || !dataVal) {
+                    continue;
+                  }
+                  try {
+                    const parsed = JSON.parse(dataVal);
+                    text += parsed.choices?.[0]?.delta?.content || '';
+                  } catch {
+                    // ignore partial/meta lines
+                  }
+                }
+                response = { choices: [{ message: { content: text } }] };
+              } else {
+                response = JSON.parse(data) as Record<string, unknown>;
+              }
             } catch (e) {
               reject(
                 new AiProviderHttpError(
