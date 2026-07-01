@@ -1,8 +1,39 @@
 import * as https from 'https';
 import * as http from 'http';
 import * as vscode from 'vscode';
+import type { LicenseTier } from '../../services/LicenseService';
+import { meetsTier } from '../../services/featureGates';
 
 const GITHUB_MODELS_SCOPES: string[] = [];
+
+/** Insider alias shown to the user; the real vendor/model is only known server-side. */
+export interface NexqlFreeModelEntry {
+  id: 'smart' | 'engineer' | 'architect';
+  displayName: string;
+  locked: boolean;
+}
+
+const NEXQL_FREE_MIN_TIER: Record<NexqlFreeModelEntry['id'], LicenseTier> = {
+  smart: 'free',
+  engineer: 'sponsor',
+  architect: 'singularity',
+};
+
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/**
+ * The NexQL free proxy always exposes all three masked tiers (for upsell
+ * visibility) but marks the ones above the caller's license tier as locked —
+ * the server enforces the same gate on the actual request.
+ */
+export function listNexqlFreeModels(currentTier: LicenseTier): NexqlFreeModelEntry[] {
+  return (Object.keys(NEXQL_FREE_MIN_TIER) as NexqlFreeModelEntry['id'][]).map((id) => {
+    const locked = !meetsTier(currentTier, NEXQL_FREE_MIN_TIER[id]);
+    return { id, displayName: `${capitalize(id)}${locked ? ' (Pro)' : ''}`, locked };
+  });
+}
 
 export async function listOpenAIModels(apiKey: string): Promise<string[]> {
   return new Promise((resolve, reject) => {
