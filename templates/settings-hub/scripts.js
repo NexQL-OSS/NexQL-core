@@ -1431,7 +1431,9 @@ function autoLoadModels(provider, apiKey, endpoint, options = {}) {
   
   const settings = { provider, apiKey: apiKey || '', endpoint: endpoint || '', scope };
   
-  if (provider === 'vscode-lm') {
+  if (provider === 'nexql-free') {
+    vscode.postMessage({ command: 'ai/listModels', settings });
+  } else if (provider === 'vscode-lm') {
     vscode.postMessage({ command: 'ai/listModels', settings });
   } else if (provider === 'github') {
     if (allowPrompt || options.force) {
