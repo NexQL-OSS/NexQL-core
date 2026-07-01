@@ -21,10 +21,13 @@ import {
   listGitHubModels,
   listMistralModels,
   listMoonshotModels,
+  listNexqlFreeModels,
   listOpenAIModels,
   listVsCodeLanguageModels,
   resolveVsCodeLanguageModel,
 } from '../../aiAssistant/modelListing';
+import { AccountService } from '../../sync/AccountService';
+import { LicenseService } from '../../../services/LicenseService';
 import { listOpencodeModels, testOpencodeConnection } from '../../aiAssistant/opencode';
 import type { SettingsHubHostContext, SettingsHubMessage, SettingsSectionHandler } from '../types';
 
@@ -248,7 +251,14 @@ export class AiSectionHandler implements SettingsSectionHandler {
       const config = vscode.workspace.getConfiguration('postgresExplorer');
       let testResult = '';
 
-      if (settings.provider === 'vscode-lm') {
+      if (settings.provider === 'nexql-free') {
+        const account = AccountService.getInstance(this.host.extensionContext);
+        await account.ensureAiSession();
+        const email = await account.getAccountEmail();
+        testResult = email
+          ? `NexQL Free AI ready — signed in as ${email}.`
+          : 'NexQL Free AI ready.';
+      } else if (settings.provider === 'vscode-lm') {
         if (settings.model) {
           const resolved = await resolveVsCodeLanguageModel(settings.model);
           if (resolved) {
@@ -355,7 +365,10 @@ export class AiSectionHandler implements SettingsSectionHandler {
     try {
       let models: Array<string | { id: string; displayName?: string }> = [];
 
-      if (settings.provider === 'vscode-lm') {
+      if (settings.provider === 'nexql-free') {
+        const currentTier = LicenseService.getInstance().getTier();
+        models = listNexqlFreeModels(currentTier).map((m) => ({ id: m.id, displayName: m.displayName }));
+      } else if (settings.provider === 'vscode-lm') {
         models = await listVsCodeLanguageModels();
       } else if (settings.provider === 'github') {
         const session = await this.requestGitHubSession(true);
