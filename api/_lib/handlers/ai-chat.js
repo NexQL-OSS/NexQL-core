@@ -101,6 +101,37 @@ function readBody(res) {
   });
 }
 
+/** Buffer an SSE gateway response and concatenate the streamed delta text into one string. */
+function collectSseText(res) {
+  return new Promise((resolve) => {
+    let buffer = '';
+    let text = '';
+    res.on('data', (chunk) => {
+      buffer += chunk.toString('utf8');
+      let lineEnd = buffer.indexOf('\n');
+      while (lineEnd !== -1) {
+        const line = buffer.slice(0, lineEnd).trim();
+        buffer = buffer.slice(lineEnd + 1);
+        lineEnd = buffer.indexOf('\n');
+        if (line.startsWith('data:')) {
+          const dataVal = line.slice(5).trim();
+          if (dataVal === '[DONE]') {
+            continue;
+          }
+          try {
+            const parsed = JSON.parse(dataVal);
+            text += parsed.choices?.[0]?.delta?.content || '';
+          } catch {
+            // ignore partial/meta lines
+          }
+        }
+      }
+    });
+    res.on('end', () => resolve(text));
+    res.on('error', () => resolve(text));
+  });
+}
+
 module.exports = async (req, res) => {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed' });
@@ -189,21 +220,34 @@ module.exports = async (req, res) => {
     return res.status(502).json({ error: 'gateway_unavailable' });
   }
 
-  res.writeHead(200, {
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
-    'Connection': 'keep-alive',
-  });
+  const wantStream = (req.body || {}).stream === true;
 
-  await new Promise((resolve) => {
-    upstream.res.on('data', (chunk) => res.write(chunk));
-    upstream.res.on('end', resolve);
-    upstream.res.on('error', (err) => {
-      console.error('ai/chat: gateway stream error', err);
-      resolve();
+  if (wantStream) {
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
     });
-  });
-  res.end();
+
+    await new Promise((resolve) => {
+      upstream.res.on('data', (chunk) => res.write(chunk));
+      upstream.res.on('end', resolve);
+      upstream.res.on('error', (err) => {
+        console.error('ai/chat: gateway stream error', err);
+        resolve();
+      });
+    });
+    res.end();
+  } else {
+    // Caller didn't request SSE — buffer the upstream stream and reply with a
+    // single OpenAI-compatible JSON object instead (matches how real providers
+    // behave when `stream` is omitted, so AiService's non-streaming JSON.parse
+    // path never sees raw "data: {...}" text).
+    const content = await collectSseText(upstream.res);
+    res.status(200).json({
+      choices: [{ message: { role: 'assistant', content }, finish_reason: 'stop' }],
+    });
+  }
 
   try {
     await incrementUsage(auth.account_id, period);
