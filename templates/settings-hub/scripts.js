@@ -3882,7 +3882,13 @@ function renderQuotas(quotas) {
       bar.appendChild(fill);
       remainTd.appendChild(bar);
       const label = document.createElement('span');
-      label.textContent = q.remaining + '/' + q.limit + (q.period === 'week' ? ' this week' : ' today');
+      let periodSuffix = ' today';
+      if (q.period === 'week') {
+        periodSuffix = ' this week';
+      } else if (q.period === 'month') {
+        periodSuffix = ' this month';
+      }
+      label.textContent = q.remaining + '/' + q.limit + periodSuffix;
       remainTd.appendChild(label);
     }
     tr.appendChild(remainTd);

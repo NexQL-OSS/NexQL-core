@@ -4,6 +4,7 @@ const { catchAllHead } = require('../_lib/catch-all-route');
 
 const handlers = {
   chat: require('../_lib/handlers/ai-chat'),
+  usage: require('../_lib/handlers/ai-usage'),
 };
 
 module.exports = async (req, res) => {

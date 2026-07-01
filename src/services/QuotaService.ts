@@ -59,6 +59,7 @@ export class QuotaService {
     const result = consumeQuota(this.read(feature), quota, now);
     if (result.record) {
       await this.context.globalState.update(this.storeKey(feature), result.record);
+      void refreshQuotaUI();
     }
     return result;
   }
@@ -69,3 +70,23 @@ export class QuotaService {
     return status ? formatReset(status.resetsAt, now) : '';
   }
 }
+
+export async function refreshQuotaUI(): Promise<void> {
+  try {
+    const { statusBar } = await import('../extension');
+    if (statusBar) {
+      statusBar.update();
+    }
+  } catch (err) {
+    // Silent
+  }
+  try {
+    const { SettingsHubPanel } = await import('../features/settings/SettingsHubPanel');
+    if (SettingsHubPanel.currentPanel) {
+      SettingsHubPanel.currentPanel.refreshSection('license');
+    }
+  } catch (err) {
+    // Silent
+  }
+}
+

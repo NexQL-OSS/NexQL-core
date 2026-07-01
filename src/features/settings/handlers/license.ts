@@ -4,6 +4,7 @@ import { defaultDeviceName, getDeviceName, getOrCreateDeviceId } from '../../syn
 import { saveDeviceDisplayName } from '../../sync/deviceRename';
 import { QuotaService } from '../../../services/QuotaService';
 import { SecretStorageService } from '../../../services/SecretStorageService';
+import { fetchAiUsage } from '../../../services/aiUsage';
 import {
   FREE_QUOTAS,
   ProFeature,
@@ -160,6 +161,26 @@ export class LicenseSectionHandler implements SettingsSectionHandler {
       };
     });
 
+    const aiUsage = await fetchAiUsage(this.host.extensionContext);
+    const aiLimit = aiUsage ? aiUsage.limit : (effectiveTier === 'singularity' ? 200 : (effectiveTier === 'sponsor' ? 50 : 5));
+    const aiUsed = aiUsage ? aiUsage.used : 0;
+    const aiRemaining = aiUsage ? aiUsage.remaining : aiLimit;
+
+    const nextMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+    const daysUntilReset = Math.ceil((nextMonth.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    const aiResetHint = `resets in ${daysUntilReset}d`;
+
+    // AI Chat Assistant is the headline free feature — show it first in the table.
+    quotaRows.unshift({
+      feature: ProFeature.AiAssistant,
+      label: 'AI Chat Assistant',
+      used: aiUsed,
+      remaining: aiRemaining,
+      limit: aiLimit,
+      period: 'month',
+      resetHint: aiResetHint,
+    });
+
     this.host.post({
       type: 'license/state',
       license: {
@@ -305,3 +326,4 @@ export class LicenseSectionHandler implements SettingsSectionHandler {
     await this.sendState();
   }
 }
+

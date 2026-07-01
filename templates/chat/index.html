@@ -171,12 +171,16 @@
         </div>
 
         <div class="mention-picker" id="mentionPicker">
-          <div class="mention-picker-header">
-            <span>🔗 Reference DB Object</span>
+          <div class="mention-picker-searchbar">
+            <span class="mention-search-icon" aria-hidden="true">
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path fill-rule="evenodd" clip-rule="evenodd" d="M10.68 11.74a6 6 0 1 1 1.06-1.06l3.04 3.04-1.06 1.06-3.04-3.04zM11 6.5a4.5 4.5 0 1 0-9 0 4.5 4.5 0 0 0 9 0z" fill="currentColor"/>
+              </svg>
+            </span>
+            <input type="text" class="mention-picker-search" id="mentionSearch"
+              placeholder="Search tables, views, functions..." autocomplete="off" spellcheck="false">
           </div>
           <div class="mention-breadcrumbs" id="mentionBreadcrumbs"></div>
-          <input type="text" class="mention-picker-search" id="mentionSearch"
-            placeholder="Search tables, views, functions...">
           <div class="mention-picker-list" id="mentionList">
             <div class="mention-picker-loading">Loading database objects...</div>
           </div>
@@ -224,7 +228,8 @@
   <script nonce="{{NONCE}}">{{INLINE_SCRIPTS}}</script>
 
   <!-- Image lightbox -->
-  <div id="imageLightbox" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:9999;align-items:center;justify-content:center;cursor:zoom-out;">
+  <div id="imageLightbox" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:9999;align-items:center;justify-content:center;cursor:zoom-out;">
+    <button id="closeLightboxBtn" style="position:absolute;top:20px;right:20px;background:rgba(255,255,255,0.15);border:none;color:#fff;width:40px;height:40px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:24px;z-index:10000;transition:background 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.3)'" onmouseout="this.style.background='rgba(255,255,255,0.15)'" title="Close preview">&times;</button>
     <img id="lightboxImg" src="" alt="" style="max-width:90vw;max-height:90vh;border-radius:8px;object-fit:contain;box-shadow:0 8px 32px rgba(0,0,0,0.5);">
   </div>
 </body>

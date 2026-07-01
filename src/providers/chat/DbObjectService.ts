@@ -7,7 +7,7 @@ import { extensionContext } from '../../extension';
 import { Client, PoolClient } from 'pg';
 import { ConnectionManager } from '../../services/ConnectionManager';
 import { getSchemaCache, SchemaCache } from '../../lib/schema-cache';
-import { DbObject } from './types';
+import { DbObject, DbObjectType } from './types';
 import {
   ColumnInfo,
   ForeignKeyInfo,
@@ -26,11 +26,23 @@ export interface SchemaRenderContext {
   userMessage?: string;
 }
 
+/**
+ * Current breadcrumb location the picker search is scoped to. When a database is set the search
+ * stays within that single database (optionally a single schema) instead of scanning every
+ * connection × database.
+ */
+export interface DbSearchScope {
+  connectionId?: string;
+  database?: string;
+  schema?: string;
+}
+
 export class DbObjectService {
   private _cache: DbObject[] = [];
   private _dbListCache: SchemaCache = getSchemaCache();
   private _lastSearchQuery = '';
   private _lastSearchResults: DbObject[] = [];
+  private _indexedDbsCache: { list: Array<{ connectionId: string; database: string }>; ts: number } | null = null;
   private readonly SEARCH_MIN_CHARS = 2;
   private readonly MAX_RESULTS = 100;
   private readonly INITIAL_RESULTS = 40;
@@ -404,20 +416,22 @@ export class DbObjectService {
   }
 
   /**
-   * Optimized search for DB objects. Avoids full scans by querying server-side with limits.
+   * Search for DB objects. When {@link scope} is provided the search is scoped to the current
+   * breadcrumb location and resolves from in-memory / cached data (no per-keystroke live scan).
+   * Without a scope it falls back to the legacy all-connections search for backward compatibility.
    */
-  async searchObjectsAsync(query: string): Promise<DbObject[]> {
-    const trimmed = query.trim();
-
-    if (trimmed.length < this.SEARCH_MIN_CHARS) {
-      // Return a small cached subset if available
-      return this._cache.slice(0, 20);
+  async searchObjectsAsync(query: string, scope?: DbSearchScope): Promise<DbObject[]> {
+    if (scope) {
+      return this.searchScoped(query, scope);
     }
 
+    const trimmed = query.trim();
+    if (trimmed.length < this.SEARCH_MIN_CHARS) {
+      return this._cache.slice(0, 20);
+    }
     if (trimmed === this._lastSearchQuery && this._lastSearchResults.length > 0) {
       return this._lastSearchResults;
     }
-
     const results = await this.fetchDbObjectsBySearch(trimmed, this.MAX_RESULTS, false);
     this._lastSearchQuery = trimmed;
     this._lastSearchResults = results;
@@ -425,12 +439,234 @@ export class DbObjectService {
   }
 
   /**
-   * Lightweight initial list to populate the picker quickly.
+   * Scope-aware search. Filters within the current breadcrumb location instead of scanning every
+   * connection × database. Each level resolves from cached / in-memory data after the first load,
+   * so incremental typing does no live DB round-trips.
+   */
+  async searchScoped(query: string, scope: DbSearchScope): Promise<DbObject[]> {
+    const lower = query.trim().toLowerCase();
+
+    // Root: no connection selected.
+    if (!scope.connectionId) {
+      const conns = await this.getConnections();
+      if (!lower) { return conns; }
+      const connMatches = conns.filter(c => c.name.toLowerCase().includes(lower));
+      // Below the object-search threshold, only match connection names.
+      if (lower.length < this.SEARCH_MIN_CHARS) { return connMatches; }
+      // Global object search backed by the local DB indexes (graph/lexical), no live scans.
+      const objectHits = await this.searchAllIndexes(query.trim(), this.MAX_RESULTS);
+      return [...connMatches, ...objectHits];
+    }
+
+    // Connection selected, no database -> filter database names.
+    if (!scope.database) {
+      const dbs = await this.getDatabases(scope.connectionId);
+      return lower ? dbs.filter(d => d.name.toLowerCase().includes(lower)) : dbs;
+    }
+
+    // Database (optionally schema) selected -> search objects within that one database.
+    const inSchema = (o: DbObject) => !scope.schema || o.schema === scope.schema;
+
+    // Fast-path: local dbindex, if one is built for this connection+database.
+    if (lower.length >= this.SEARCH_MIN_CHARS) {
+      const indexHits = await this._searchLocalIndex(scope.connectionId, scope.database, query.trim());
+      if (indexHits && indexHits.length > 0) {
+        const scoped = indexHits.filter(inSchema);
+        if (scoped.length > 0) return scoped.slice(0, this.MAX_RESULTS);
+      }
+    }
+
+    // Fallback: filter the cached flat catalog in-memory.
+    const catalog = await this.getDatabaseCatalog(scope.connectionId, scope.database);
+    let filtered = catalog.filter(inSchema);
+    if (lower) {
+      filtered = filtered.filter(o =>
+        o.name.toLowerCase().includes(lower) || o.schema.toLowerCase().includes(lower)
+      );
+    }
+    return filtered.slice(0, this.MAX_RESULTS);
+  }
+
+  /**
+   * Lightweight initial list to populate the picker quickly. The picker opens at the root, so
+   * return the configured connections (no DB round-trip) rather than scanning every database.
    */
   async getInitialObjects(): Promise<DbObject[]> {
-    const results = await this.fetchDbObjectsBySearch('', this.INITIAL_RESULTS, true);
+    const results = await this.getConnections();
     this._cache = results;
     return results;
+  }
+
+  private _getConn(connectionId: string): any | undefined {
+    const connections = vscode.workspace.getConfiguration().get<any[]>('postgresExplorer.connections') || [];
+    return connections.find(c => c.id === connectionId);
+  }
+
+  /**
+   * Flat catalog (name/schema/type) for a single database, built with ONE query and cached
+   * (5-min TTL) via {@link SchemaCache}. Keystroke filtering runs against this in memory.
+   */
+  private async getDatabaseCatalog(connectionId: string, database: string): Promise<DbObject[]> {
+    const conn = this._getConn(connectionId);
+    if (!conn) return [];
+    const connName = conn.name || conn.host;
+    const key = SchemaCache.buildKey(connectionId, database, undefined, 'obj-catalog');
+
+    return this._dbListCache.getOrFetch<DbObject[]>(key, async () => {
+      let client: PoolClient | undefined;
+      try {
+        client = await ConnectionManager.getInstance().getPooledClient({
+          id: conn.id,
+          host: conn.host,
+          port: conn.port,
+          username: conn.username,
+          database,
+          name: conn.name
+        });
+        if (!client) return [];
+
+        const res = await client.query(
+          `SELECT CASE c.relkind
+                    WHEN 'v' THEN 'view'
+                    WHEN 'm' THEN 'materialized-view'
+                    ELSE 'table'
+                  END AS type,
+                  n.nspname AS schema, c.relname AS name
+           FROM pg_class c
+           JOIN pg_namespace n ON n.oid = c.relnamespace
+           WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+             AND c.relkind IN ('r', 'v', 'm', 'f', 'p')
+           UNION ALL
+           SELECT 'function' AS type, n.nspname AS schema, p.proname AS name
+           FROM pg_proc p
+           JOIN pg_namespace n ON n.oid = p.pronamespace
+           WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+           LIMIT 5000`
+        );
+
+        return res.rows.map((row: any) => ({
+          name: row.name,
+          type: row.type as DbObjectType,
+          schema: row.schema,
+          database,
+          connectionId: conn.id,
+          connectionName: connName,
+          breadcrumb: `${connName} > ${database} > ${row.schema} > ${row.name}`,
+          isContainer: false
+        }));
+      } catch (e) {
+        console.error('[ChatView] Catalog build error for db ' + database + ':', e);
+        return [];
+      } finally {
+        if (client) client.release();
+      }
+    }, 300000);
+  }
+
+  /**
+   * Query the local dbindex for this connection+database when an index has been built. Returns
+   * mapped {@link DbObject}s, or null when no index exists / no hits (caller falls back to catalog).
+   */
+  private async _searchLocalIndex(connectionId: string, database: string, query: string): Promise<DbObject[] | null> {
+    if (!extensionContext) return null;
+    try {
+      const { IndexStore } = await import('../../features/dbindex/IndexStore');
+      const { IndexQueryService } = await import('../../features/dbindex/IndexQueryService');
+      const store = new IndexStore(extensionContext.globalStorageUri);
+      const queryService = new IndexQueryService(store);
+      const hits = await queryService.search(connectionId, database, query, this.MAX_RESULTS);
+      if (!hits || hits.length === 0) return null;
+
+      const conn = this._getConn(connectionId);
+      const connName = conn ? (conn.name || conn.host) : '';
+      return hits.map(h => {
+        const parts = h.ref.split('.');
+        const schema = parts[0] || 'public';
+        const name = parts[1] || h.ref;
+        return {
+          name,
+          type: this._indexKindToType(h.kind),
+          schema,
+          database,
+          connectionId,
+          connectionName: connName,
+          breadcrumb: `${connName} > ${database} > ${schema} > ${name}`,
+          isContainer: false
+        } as DbObject;
+      });
+    } catch (e) {
+      debugLog('[ChatView] Local index search bypassed or failed:', e);
+      return null;
+    }
+  }
+
+  /**
+   * Global object search across every built local index (all connections × databases). Reads only
+   * on-disk index shards — no live DB connections — so it stays fast even with many connections.
+   * Returns [] when no index has been built yet.
+   */
+  private async searchAllIndexes(query: string, limit: number): Promise<DbObject[]> {
+    if (!extensionContext) { return []; }
+    try {
+      const { IndexStore } = await import('../../features/dbindex/IndexStore');
+      const { IndexQueryService } = await import('../../features/dbindex/IndexQueryService');
+      const store = new IndexStore(extensionContext.globalStorageUri);
+
+      // Cache the built-index list briefly so incremental typing doesn't re-scan manifests.
+      const now = Date.now();
+      if (!this._indexedDbsCache || now - this._indexedDbsCache.ts > 30000) {
+        this._indexedDbsCache = { list: await store.listIndexedDatabases(), ts: now };
+      }
+      const indexed = this._indexedDbsCache.list;
+      if (indexed.length === 0) { return []; }
+
+      const queryService = new IndexQueryService(store);
+      const perLimit = Math.max(5, Math.ceil(limit / indexed.length));
+      const collected: Array<{ obj: DbObject; score: number }> = [];
+
+      for (const { connectionId, database } of indexed) {
+        const hits = await queryService.search(connectionId, database, query, perLimit);
+        if (!hits || hits.length === 0) { continue; }
+        const conn = this._getConn(connectionId);
+        const connName = conn ? (conn.name || conn.host) : connectionId;
+        for (const h of hits) {
+          const parts = h.ref.split('.');
+          const schema = parts[0] || 'public';
+          const name = parts[1] || h.ref;
+          collected.push({
+            score: h.score,
+            obj: {
+              name,
+              type: this._indexKindToType(h.kind),
+              schema,
+              database,
+              connectionId,
+              connectionName: connName,
+              breadcrumb: `${connName} > ${database} > ${schema} > ${name}`,
+              isContainer: false
+            }
+          });
+        }
+      }
+
+      collected.sort((a, b) => b.score - a.score);
+      return collected.slice(0, limit).map(c => c.obj);
+    } catch (e) {
+      debugLog('[ChatView] Global index search failed:', e);
+      return [];
+    }
+  }
+
+  private _indexKindToType(kind: string): DbObjectType {
+    switch (kind) {
+      case 'view': return 'view';
+      case 'materialized_view':
+      case 'materialized-view':
+      case 'matview': return 'materialized-view';
+      case 'function': return 'function';
+      case 'type': return 'type';
+      default: return 'table';
+    }
   }
 
   private async fetchDbObjectsBySearch(query: string, maxResults: number, allowEmptyQuery: boolean): Promise<DbObject[]> {

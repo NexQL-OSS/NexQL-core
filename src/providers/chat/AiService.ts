@@ -29,6 +29,7 @@ import {
 } from '../../features/aiAssistant/opencode';
 import { AccountService } from '../../features/sync/AccountService';
 import { DEFAULT_SYNC_API_ENDPOINT } from '../../features/sync/constants';
+import { invalidateAiUsageCache } from '../../services/aiUsage';
 import { extensionContext } from '../../extension';
 
 // GitHub Models permission applies to fine-grained tokens/GitHub Apps.
@@ -79,6 +80,7 @@ export class AiProviderHttpError extends Error {
     message: string,
     readonly httpStatus?: number,
     readonly errorCode?: string,
+    readonly errorData?: Record<string, unknown>,
   ) {
     super(message);
     this.name = 'AiProviderHttpError';
@@ -1459,6 +1461,10 @@ export class AiService {
     try {
       const response = await this._makeHttpRequestWithRetry(endpoint, headers, body, provider, onChunk);
       telemetry.trackEvent('ai_request', { provider, success: true });
+      if (provider === 'nexql-free') {
+        // Monthly count just changed server-side — force the usage displays to refetch.
+        invalidateAiUsageCache();
+      }
       return response;
     } catch (error) {
       // A stale NexQL session token is the one case worth a single silent re-auth retry.
@@ -1474,6 +1480,7 @@ export class AiService {
           headers['Authorization'] = `Bearer ${refreshedToken}`;
           const response = await this._makeHttpRequestWithRetry(endpoint, headers, body, provider, onChunk);
           telemetry.trackEvent('ai_request', { provider, success: true });
+          invalidateAiUsageCache();
           return response;
         } catch (retryError) {
           telemetry.trackEvent('ai_request', { provider, success: false });
@@ -1637,8 +1644,10 @@ export class AiService {
           res.on('end', () => {
             let detail = `API request failed with status ${statusCode}`;
             let errorCode: string | undefined;
+            let errorData: Record<string, unknown> | undefined;
             try {
-              const errBody = JSON.parse(data) as { error?: { message?: string } | string };
+              const errBody = JSON.parse(data) as { error?: { message?: string } | string } & Record<string, unknown>;
+              errorData = errBody;
               if (errBody.error && typeof errBody.error === 'object' && errBody.error.message) {
                 detail = String(errBody.error.message);
               } else if (typeof errBody.error === 'string') {
@@ -1651,7 +1660,7 @@ export class AiService {
                 detail = `${detail} — ${snippet}`;
               }
             }
-            reject(new AiProviderHttpError(detail, statusCode, errorCode));
+            reject(new AiProviderHttpError(detail, statusCode, errorCode, errorData));
           });
           return;
         }
