@@ -5,7 +5,7 @@ export type { AiConfigScope } from './types';
 const SCOPED_SETTINGS_MIGRATION_FLAG = 'postgresExplorer.aiScopedSettingsMigrated';
 const LAST_MODELS_KEY = 'postgresExplorer.ai.lastModelsByProvider';
 
-const DEFAULT_PROVIDER: AiProviderId = 'vscode-lm';
+const DEFAULT_PROVIDER: AiProviderId = 'nexql-free';
 
 export function getScopedProviderKey(scope: AiConfigScope): string {
   return scope === 'chat' ? 'ai.chat.provider' : 'ai.notebook.provider';
@@ -135,6 +135,8 @@ export function providerDisplayName(provider: AiProviderId): string {
   switch (provider) {
     case 'vscode-lm':
       return 'VS Code LM';
+    case 'nexql-free':
+      return 'NexQL Free AI';
     case 'github':
       return 'GitHub Models';
     case 'cursor':

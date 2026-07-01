@@ -20,6 +20,7 @@ export const DIRECT_API_KEY_PROVIDERS: readonly DirectApiKeyProvider[] = [
 
 export type AiProviderId =
   | 'vscode-lm'
+  | 'nexql-free'
   | 'github'
   | 'cursor'
   | 'opencode'

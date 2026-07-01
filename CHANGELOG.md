@@ -1,8 +1,10 @@
 # Changelog
 
-All notable changes to the NexQL extension will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
+Quick links:
+- [NexQL Homepage](https://nexql.astrx.dev/)
+- [Github](https://github.com/dev-asterix/NexQL) 
+- [NexQL VSC Themes](https://marketplace.visualstudio.com/items?itemName=ric-v.nexql-themes&ssr=false#overview) 
+- [NexQL OpenVSC Themes](https://open-vsx.org/extension/ric-v/nexql-themes)
 
 ---
 
@@ -10,12 +12,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
-- **Masked NexQL Free AI Model Tiers** — Exposed smart/engineer/architect tier aliases for NexQL Free models instead of raw vendor/model strings.
-  - **Smart** (free tier): qwen-3-235b with ministral-3b/llama-3.2-11b fallbacks
-  - **Engineer** (sponsor tier): deepseek-v3 with codestral/mimo-v2.5-pro/gpt-oss-120b fallbacks
-  - **Architect** (singularity tier): claude-3.5-haiku with minimax-m3/gemma-4-31b/gpt-5.4-nano fallbacks
-  - Server-side tier gating: 403 tier_required response when user lacks access; reuses upgrade CTA UX
-  - Per-tier env var overrides (AI_MODEL_SMART[_FALLBACK], AI_MODEL_ENGINEER[_FALLBACK], AI_MODEL_ARCHITECT[_FALLBACK]) for runtime model tuning
+- **NexQL Free AI Model Tiers** — Exposed smart/engineer/architect tier aliases for NexQL Free models instead of raw vendor/model strings.
+  - **Smart** (free tier): for daily use 3 free requests/month
+  - **Engineer** (sponsor tier): smarter model for tough problems with 50 requests on sponsor tier
+  - **Architect** (singularity tier): the best AI for database with 500 requests on singularity tier
 
 ---
 

@@ -10,6 +10,7 @@ const handlers = {
   session: require('../_lib/handlers/auth-session'),
   'device-bind': require('../_lib/handlers/auth-device-bind'),
   status: require('../_lib/handlers/auth-status'),
+  'free-session': require('../_lib/handlers/auth-free-session'),
 };
 
 module.exports = async (req, res) => {
