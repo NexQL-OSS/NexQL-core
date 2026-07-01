@@ -30,6 +30,10 @@
       "memory": 128,
       "maxDuration": 10
     },
+    "api/ai/[...route].js": {
+      "memory": 128,
+      "maxDuration": 30
+    },
     "api/license/[...route].js": {
       "memory": 128,
       "maxDuration": 10

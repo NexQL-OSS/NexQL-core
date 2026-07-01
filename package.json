@@ -2222,6 +2222,7 @@
         "postgresExplorer.ai.chat.provider": {
           "type": "string",
           "enum": [
+            "nexql-free",
             "vscode-lm",
             "github",
             "cursor",
@@ -2233,7 +2234,7 @@
             "lmstudio",
             "custom"
           ],
-          "default": "vscode-lm",
+          "default": "nexql-free",
           "description": "AI provider for the SQL Assistant chat panel"
         },
         "postgresExplorer.ai.chat.model": {
@@ -2244,6 +2245,7 @@
         "postgresExplorer.ai.notebook.provider": {
           "type": "string",
           "enum": [
+            "nexql-free",
             "vscode-lm",
             "github",
             "cursor",
@@ -2255,7 +2257,7 @@
             "lmstudio",
             "custom"
           ],
-          "default": "vscode-lm",
+          "default": "nexql-free",
           "description": "AI provider for notebook assist, dashboard, and saved-query AI"
         },
         "postgresExplorer.ai.notebook.model": {

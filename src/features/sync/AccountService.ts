@@ -102,6 +102,61 @@ export class AccountService {
     return this.postJson<DeviceAuthStartResponse>('/auth/device', {});
   }
 
+  /** Free-tier lite sign-in via the editor's GitHub session — no license required. */
+  async signInFree(): Promise<{ email?: string }> {
+    const session = await vscode.authentication.getSession('github', [], { createIfNone: true });
+    if (!session) {
+      throw new Error('GitHub sign-in is required to use NexQL free AI.');
+    }
+
+    const res = await this.postJson<SessionAuthResponse>('/auth/free-session', {
+      provider: 'github',
+      access_token: session.accessToken,
+      deviceId: getOrCreateDeviceId(this.context),
+      deviceName: getDeviceName(this.context),
+    });
+
+    if (!res.access_token) {
+      throw new Error(res.error ?? 'Free sign-in failed');
+    }
+
+    await this.completeSignIn(res as DeviceAuthTokenResponse, res.email ?? undefined);
+    return { email: res.email ?? (await this.getAccountEmail()) };
+  }
+
+  /**
+   * Resolve a bearer token for the AI Gateway proxy: reuse an existing (free or
+   * paid) session, refresh it, sign in with a stored license (paid), or fall
+   * back to free GitHub lite sign-in.
+   */
+  async ensureAiSession(options?: { invalidateAccess?: boolean }): Promise<string> {
+    if (options?.invalidateAccess) {
+      await this.context.secrets.delete(ACCESS_TOKEN_KEY);
+    } else {
+      const existing = await this.getAccessToken();
+      if (existing) {
+        return existing;
+      }
+    }
+
+    const refreshed = await this.refreshAccessToken();
+    if (refreshed) {
+      return refreshed;
+    }
+
+    if (LicenseService.getInstance().getLicenseKey()) {
+      await this.signInWithLicense();
+    } else {
+      await this.signInFree();
+    }
+
+    const token = await this.getAccessToken();
+    if (!token) {
+      throw new Error('Not signed in to NexQL AI');
+    }
+    return token;
+  }
+
   /** Pre-bind license to pending device session before opening browser. */
   async bindDeviceLicense(deviceCode: string): Promise<void> {
     const licenseKey = LicenseService.getInstance().getLicenseKey();
