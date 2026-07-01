@@ -10,7 +10,9 @@ import { TableRenderer } from '../../../renderer/components/table/TableRenderer'
 import { createErrorPanel } from '../../../renderer/components/ErrorPanel';
 import {
   createAiMenuButton,
+  createActionsMenuButton,
   type AiMenuOptions,
+  type ActionsMenuOptions,
   type RowToolsOptions,
 } from '../../../renderer/components/ActionBar';
 import {
@@ -19,12 +21,9 @@ import {
   attachResultRowToolInteractions,
   attachResultViewTabHover,
   fillToolbarButtonContent,
-  fillOutputHoverToolButton,
-  type ResultToolbarGlyph,
 } from '../../../renderer/components/ResultToolbarUi';
 import { createResultIdentityBar } from '../../../renderer/components/ResultIdentityBar';
 import { createInlineBanner } from '../../../renderer/components/InlineBanner';
-import { openCommitConfirmDialog } from '../../../renderer/components/CommitConfirmDialog';
 import {
   createResultFooter,
   formatResultExecutionStats,
@@ -372,6 +371,7 @@ export function renderPostgresNotebookResult(
           query: rerunQuery,
           source,
           fullDataset: true,
+          sourceCellIndex,
         });
       };
 
@@ -405,6 +405,7 @@ export function renderPostgresNotebookResult(
               query: derived,
               source: 'streaming-local-scope',
               fullDataset: true,
+              sourceCellIndex,
             });
           },
           dismissible: false,
@@ -843,6 +844,29 @@ export function renderPostgresNotebookResult(
         }
       }
 
+      /** Tracks whether the commit button is in the "Confirm?" armed state. */
+      let commitArmed = false;
+      let commitArmTimer: ReturnType<typeof setTimeout> | undefined;
+
+      function resetCommitArm(): void {
+        commitArmed = false;
+        if (commitArmTimer !== undefined) {
+          clearTimeout(commitArmTimer);
+          commitArmTimer = undefined;
+        }
+        // Reset the commit button appearance back to normal
+        const commitBtn = contentContainer.querySelector<HTMLButtonElement>(
+          '[data-pg-result-commit]',
+        );
+        if (commitBtn) {
+          const dirty = modifiedCells.size + rowsMarkedForDeletion.size;
+          commitBtn.textContent = `Commit (${dirty})`;
+          commitBtn.style.background = 'color-mix(in srgb, #f59e0b 15%, transparent)';
+          commitBtn.style.color = '#f59e0b';
+          commitBtn.style.borderColor = 'color-mix(in srgb, #f59e0b 40%, transparent)';
+        }
+      }
+
       function performSave(): void {
         const dirty = modifiedCells.size + rowsMarkedForDeletion.size;
         if (dirty <= 0) {
@@ -852,21 +876,38 @@ export function renderPostgresNotebookResult(
           runPerformSaveCommit();
           return;
         }
-        openCommitConfirmDialog({
-          confirmLabel: `Commit (${dirty})`,
-          onConfirm: (dontAskAgain) => {
-            if (dontAskAgain) {
-              skipGridCommitConfirm = true;
-              context.postMessage?.({
-                type: 'gridCommitPreference',
-                action: 'set',
-                skipConfirm: true,
-              });
-            }
-            runPerformSaveCommit();
-          },
-          onCancel: () => {},
-        });
+
+        if (commitArmed) {
+          // Second click — actually commit
+          resetCommitArm();
+          runPerformSaveCommit();
+          return;
+        }
+
+        // First click — arm the button: turn red with "Confirm?" text
+        commitArmed = true;
+        const commitBtn = contentContainer.querySelector<HTMLButtonElement>(
+          '[data-pg-result-commit]',
+        );
+        if (commitBtn) {
+          const CONFIRM_RED = '#ef4444';
+          commitBtn.textContent = `Confirm? (${dirty})`;
+          commitBtn.style.background = `color-mix(in srgb, ${CONFIRM_RED} 18%, transparent)`;
+          commitBtn.style.color = CONFIRM_RED;
+          commitBtn.style.borderColor = `color-mix(in srgb, ${CONFIRM_RED} 50%, transparent)`;
+        }
+
+        // Auto-reset after 4 seconds
+        commitArmTimer = setTimeout(resetCommitArm, 4000);
+
+        // Reset if user clicks anywhere else
+        const onClickElsewhere = (e: MouseEvent) => {
+          if (commitBtn && !commitBtn.contains(e.target as Node)) {
+            resetCommitArm();
+            document.removeEventListener('click', onClickElsewhere, true);
+          }
+        };
+        document.addEventListener('click', onClickElsewhere, true);
       }
 
       let applyCursorResponse: ((message: any) => void) | undefined;
@@ -1483,8 +1524,32 @@ export function renderPostgresNotebookResult(
           a.click();
         }
       };
+      const actionsMenuCallbacks: ActionsMenuOptions = {
+        onSendToChat: () => {
+          aiMenuCallbacks.onSendToChat();
+        },
+        onSaveQuery: () => {
+          context.postMessage?.({
+            type: 'notebookOutputToolbar',
+            action: 'saveQuery',
+            cellIndex: sourceCellIndex,
+          });
+        },
+        onRunFullDataset: () => {
+          runFullDatasetRerun('result-actions-full-dataset');
+        },
+        onExplainAnalyze: () => {
+          context.postMessage?.({
+            type: 'notebookOutputToolbar',
+            action: 'explainAnalyze',
+            cellIndex: sourceCellIndex,
+          });
+        },
+      };
+
       secondaryTabsRight.appendChild(exportChartBtn);
       secondaryTabsRight.appendChild(createAiMenuButton(aiMenuCallbacks));
+      secondaryTabsRight.appendChild(createActionsMenuButton(actionsMenuCallbacks));
 
       const updateActionsVisibility = () => {
         if (currentMode === 'chart') {
@@ -1591,6 +1656,7 @@ export function renderPostgresNotebookResult(
               exportQuery,
               query,
               postMessage: (msg) => context.postMessage?.(msg),
+              sourceCellIndex,
             });
           });
         } else {
@@ -1763,187 +1829,9 @@ export function renderPostgresNotebookResult(
       if (tabStripEl) element.appendChild(tabStripEl);
 
       const outputRoot = document.createElement('div');
-      outputRoot.setAttribute('data-pg-output-hover-root', 'true');
       outputRoot.style.cssText = 'position:relative;display:flex;flex-direction:column;';
 
-      const hoverToolbar = document.createElement('div');
-      hoverToolbar.setAttribute('role', 'toolbar');
-      hoverToolbar.setAttribute('aria-label', 'Result quick actions');
-      hoverToolbar.style.cssText = `
-        display:flex;
-        flex-wrap:wrap;
-        justify-content:flex-end;
-        align-items:center;
-        gap:6px;
-        max-width:min(680px, 100%);
-        padding:5px 8px;
-        border-radius:10px;
-        background:${RENDERER_GLASS_BG};
-        border:1px solid color-mix(in srgb, var(--vscode-widget-border) 42%, transparent);
-        box-shadow:${RENDERER_ELEVATION_2};
-        backdrop-filter:${RENDERER_GLASS_BLUR};
-        -webkit-backdrop-filter:${RENDERER_GLASS_BLUR};
-      `;
-
-      const toolbarDock = document.createElement('div');
-      toolbarDock.style.cssText = `
-        display:flex;
-        flex-direction:column;
-        align-items:flex-end;
-        gap:6px;
-        position:absolute;
-        right:10px;
-        top:-30px;
-        z-index:34;
-      `;
-      const toolbarToggle = document.createElement('button');
-      toolbarToggle.type = 'button';
-      fillOutputHoverToolButton(toolbarToggle, 'sparkles', 'AI actions');
-      toolbarToggle.style.padding = '5px 12px';
-      toolbarToggle.style.fontSize = '11px';
-      const toggleChevron = document.createElement('span');
-      toggleChevron.style.cssText = 'font-size:11px;line-height:1;opacity:0.85;';
-      toggleChevron.textContent = '▸';
-      toolbarToggle.appendChild(toggleChevron);
-
-      let toolbarCollapsed = true;
-      const updateToolbarVisibility = (): void => {
-        hoverToolbar.style.display = toolbarCollapsed ? 'none' : 'flex';
-        toolbarToggle.setAttribute('aria-expanded', toolbarCollapsed ? 'false' : 'true');
-        toolbarToggle.title = toolbarCollapsed ? 'Show result AI actions' : 'Hide result AI actions';
-        toggleChevron.textContent = toolbarCollapsed ? '▸' : '▾';
-      };
-      toolbarToggle.addEventListener('click', (ev) => {
-        ev.stopPropagation();
-        toolbarCollapsed = !toolbarCollapsed;
-        updateToolbarVisibility();
-      });
-      updateToolbarVisibility();
-
-      const addHoverTool = (
-        glyph: ResultToolbarGlyph,
-        label: string,
-        onClick: () => void,
-        opts?: { disabled?: boolean; title?: string },
-      ): void => {
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        fillOutputHoverToolButton(btn, glyph, label);
-        const title = opts?.title ?? label;
-        btn.title = title;
-        btn.setAttribute('aria-label', title);
-        if (opts?.disabled) {
-          btn.disabled = true;
-          btn.style.opacity = '0.42';
-          btn.style.cursor = 'not-allowed';
-        }
-        btn.addEventListener('click', (ev) => {
-          ev.stopPropagation();
-          if (btn.disabled) {
-            return;
-          }
-          onClick();
-        });
-        hoverToolbar.appendChild(btn);
-      };
-
-      const queryTrimmed = (query || '').trim();
-      const cellLinked = sourceCellIndex >= 0;
-
-      addHoverTool(
-        'menuChat',
-        'Add to chat',
-        () => {
-          const resultsJson = buildChatResultsSampleJson(
-            columns,
-            currentRows,
-            CHAT_SEND_SAMPLE_ROW_CAP,
-          );
-          context.postMessage?.({
-            type: 'sendToChat',
-            data: {
-              query: queryTrimmed,
-              ...(resultsJson ? { results: resultsJson } : {}),
-              ...(noticeItems.length > 0
-                ? { notices: noticeItems.map(n => (n.message || '').trim()).filter(Boolean) }
-                : {}),
-              message:
-                currentRows.length === 0
-                  ? 'I ran this query. No rows were returned. Help me validate the query intent and next checks.'
-                  : `I ran this query. The attachment includes at most ${CHAT_SEND_SAMPLE_ROW_CAP} sample rows from the result (not the full grid). Help me interpret it.`,
-            },
-          });
-        },
-        {
-          disabled: !queryTrimmed,
-          title: queryTrimmed
-            ? 'Attach SQL and sampled result rows to SQL Assistant'
-            : 'No query text',
-        },
-      );
-      addHoverTool(
-        'menuBolt',
-        'Optimize',
-        () => {
-          aiMenuCallbacks.onOptimize();
-        },
-        {
-          disabled: !queryTrimmed,
-          title: queryTrimmed ? 'Suggest optimizations for this query' : 'No query text',
-        },
-      );
-      addHoverTool(
-        'sparkles',
-        'Ask AI',
-        () => {
-          context.postMessage?.({
-            type: 'notebookOutputToolbar',
-            action: 'aiAssist',
-            cellIndex: sourceCellIndex,
-          });
-        },
-        {
-          disabled: !cellLinked,
-          title: cellLinked
-            ? 'Ask AI to modify this query'
-            : 'Re-run the cell to link actions to the source cell',
-        },
-      );
-      addHoverTool(
-        'save',
-        'Save',
-        () => {
-          context.postMessage?.({
-            type: 'notebookOutputToolbar',
-            action: 'saveQuery',
-            cellIndex: sourceCellIndex,
-          });
-        },
-        {
-          disabled: !cellLinked,
-          title: cellLinked ? 'Save query to library' : 'Re-run the cell to link actions to the source cell',
-        },
-      );
-      addHoverTool(
-        'expandCell',
-        'Expand',
-        () => {
-          context.postMessage?.({
-            type: 'notebookOutputToolbar',
-            action: 'expand',
-            cellIndex: sourceCellIndex,
-          });
-        },
-        {
-          disabled: !cellLinked,
-          title: cellLinked ? 'Focus the SQL cell in the editor' : 'Re-run the cell to link actions to the source cell',
-        },
-      );
-
       outputRoot.appendChild(mainContainer);
-      toolbarDock.appendChild(toolbarToggle);
-      toolbarDock.appendChild(hoverToolbar);
-      outputRoot.appendChild(toolbarDock);
       element.appendChild(outputRoot);
 
       // Transaction state: show banner and amber gutter

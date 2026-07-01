@@ -3,6 +3,7 @@ import { BaseLoader, LoaderContext } from './BaseLoader';
 import { DatabaseTreeItem } from '../../DatabaseTreeProvider';
 import { PG_VERSION_10, PG_VERSION_11 } from '../../../lib/postgresServerVersion';
 import { capabilityTagsForProfile } from '../../../lib/platform/PlatformProfile';
+import { getSchemaCache, SchemaCache } from '../../../lib/schema-cache';
 
 export class SchemaLoader extends BaseLoader {
   async getChildren(ctx: LoaderContext): Promise<DatabaseTreeItem[]> {
@@ -10,104 +11,58 @@ export class SchemaLoader extends BaseLoader {
 
     switch (element.type) {
       case 'schema': {
-        const tablesCountResult = await client.query(
-          `SELECT COUNT(*)
-           FROM information_schema.tables t
-           JOIN pg_class c ON c.relname = t.table_name
-           JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = t.table_schema
-           WHERE t.table_schema = $1
-             AND t.table_type = 'BASE TABLE'
-             ${pgVer >= PG_VERSION_10 ? 'AND NOT c.relispartition\n             ' : ''}AND t.table_name NOT LIKE 'pg\\_%' ESCAPE E'\\\\'
-             AND t.table_name NOT LIKE 'sql\\_%' ESCAPE E'\\\\'`,
-          [element.schema]
-        );
-
-        const systemTablesCountResult = await client.query(
-          "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = $1 AND table_type = 'BASE TABLE' AND (table_name LIKE 'pg\\_%' ESCAPE E'\\\\' OR table_name LIKE 'sql\\_%' ESCAPE E'\\\\')",
-          [element.schema]
-        );
-
-        const viewsCountResult = await client.query(
-          "SELECT COUNT(*) FROM information_schema.views WHERE table_schema = $1",
-          [element.schema]
-        );
-
-        const functionsCountResult = await client.query(
-          "SELECT COUNT(*) FROM information_schema.routines WHERE routine_schema = $1 AND routine_type = 'FUNCTION'",
-          [element.schema]
-        );
-
-        const proceduresCountResult =
-          pgVer >= PG_VERSION_11
-            ? await client.query(
-                `SELECT COUNT(*)
-                 FROM pg_proc p
-                 JOIN pg_namespace n ON n.oid = p.pronamespace
-                 WHERE n.nspname = $1 AND p.prokind = 'p'`,
-                [element.schema]
-              )
-            : { rows: [{ count: 0 }] };
-
-        const materializedViewsCountResult = await client.query(
-          "SELECT COUNT(*) FROM pg_matviews WHERE schemaname = $1",
-          [element.schema]
-        );
-
-        const typesCountResult = await client.query(
-          "SELECT COUNT(*) FROM pg_type t JOIN pg_namespace n ON t.typnamespace = n.oid WHERE n.nspname = $1 AND t.typtype = 'c'",
-          [element.schema]
-        );
-
-        const foreignTablesCountResult = await client.query(
-          "SELECT COUNT(*) FROM information_schema.foreign_tables WHERE foreign_table_schema = $1",
-          [element.schema]
-        );
-
-        const seqCountResult = await client.query(
-          pgVer >= PG_VERSION_10
-            ? 'SELECT COUNT(*) FROM pg_sequences WHERE schemaname = $1'
-            : 'SELECT COUNT(*) FROM information_schema.sequences WHERE sequence_schema = $1',
-          [element.schema]
-        );
-
-        const trigCountResult = await client.query(
-          "SELECT COUNT(*) FROM information_schema.triggers WHERE trigger_schema = $1",
-          [element.schema]
-        );
-
-        const domCountResult = await client.query(
-          "SELECT COUNT(*) FROM pg_type t JOIN pg_namespace n ON t.typnamespace = n.oid WHERE t.typtype = 'd' AND n.nspname = $1",
-          [element.schema]
-        );
-
-        const aggCountResult = await client.query(
-          pgVer >= PG_VERSION_11
-            ? "SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON p.pronamespace = n.oid WHERE p.prokind = 'a' AND n.nspname = $1"
-            : "SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON p.pronamespace = n.oid WHERE p.proisagg AND n.nspname = $1",
-          [element.schema]
-        );
-
-        const ruleCountResult = await client.query(
-          "SELECT COUNT(*) FROM pg_rules WHERE schemaname = $1",
-          [element.schema]
-        );
+        const cacheKey = SchemaCache.buildKey(element.connectionId!, element.databaseName!, element.schema!, 'schema-counts');
+        const countResult = await getSchemaCache().getOrFetch(cacheKey, async () => {
+          const sql = `
+            SELECT
+              (SELECT COUNT(*)
+               FROM information_schema.tables t
+               JOIN pg_class c ON c.relname = t.table_name
+               JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = t.table_schema
+               WHERE t.table_schema = $1
+                 AND t.table_type = 'BASE TABLE'
+                 ${pgVer >= PG_VERSION_10 ? 'AND NOT c.relispartition' : ''}
+                 AND t.table_name NOT LIKE 'pg\\_%' ESCAPE E'\\\\'
+                 AND t.table_name NOT LIKE 'sql\\_%' ESCAPE E'\\\\') AS tables_count,
+              (SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = $1 AND table_type = 'BASE TABLE' AND (table_name LIKE 'pg\\_%' ESCAPE E'\\\\' OR table_name LIKE 'sql\\_%' ESCAPE E'\\\\')) AS system_tables_count,
+              (SELECT COUNT(*) FROM information_schema.views WHERE table_schema = $1) AS views_count,
+              (SELECT COUNT(*) FROM information_schema.routines WHERE routine_schema = $1 AND routine_type = 'FUNCTION') AS functions_count,
+              ${pgVer >= PG_VERSION_11
+                ? `(SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = $1 AND p.prokind = 'p')`
+                : '0'} AS procedures_count,
+              (SELECT COUNT(*) FROM pg_matviews WHERE schemaname = $1) AS materialized_views_count,
+              (SELECT COUNT(*) FROM pg_type t JOIN pg_namespace n ON t.typnamespace = n.oid WHERE n.nspname = $1 AND t.typtype = 'c') AS types_count,
+              (SELECT COUNT(*) FROM information_schema.foreign_tables WHERE foreign_table_schema = $1) AS foreign_tables_count,
+              ${pgVer >= PG_VERSION_10
+                ? '(SELECT COUNT(*) FROM pg_sequences WHERE schemaname = $1)'
+                : '(SELECT COUNT(*) FROM information_schema.sequences WHERE sequence_schema = $1)'} AS sequences_count,
+              (SELECT COUNT(*) FROM information_schema.triggers WHERE trigger_schema = $1) AS triggers_count,
+              (SELECT COUNT(*) FROM pg_type t JOIN pg_namespace n ON t.typnamespace = n.oid WHERE t.typtype = 'd' AND n.nspname = $1) AS domains_count,
+              ${pgVer >= PG_VERSION_11
+                ? "(SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON p.pronamespace = n.oid WHERE p.prokind = 'a' AND n.nspname = $1)"
+                : "(SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON p.pronamespace = n.oid WHERE p.proisagg AND n.nspname = $1)"} AS aggregates_count,
+              (SELECT COUNT(*) FROM pg_rules WHERE schemaname = $1) AS rules_count
+          `;
+          const res = await client.query(sql, [element.schema]);
+          return res.rows[0];
+        });
 
         const schemaItems: DatabaseTreeItem[] = [
-          new DatabaseTreeItem('Tables', vscode.TreeItemCollapsibleState.Collapsed, 'category', element.connectionId, element.databaseName, element.schema, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, tablesCountResult.rows[0].count),
-          new DatabaseTreeItem('Views', vscode.TreeItemCollapsibleState.Collapsed, 'category', element.connectionId, element.databaseName, element.schema, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, viewsCountResult.rows[0].count),
-          new DatabaseTreeItem('Functions', vscode.TreeItemCollapsibleState.Collapsed, 'category', element.connectionId, element.databaseName, element.schema, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, functionsCountResult.rows[0].count),
-          new DatabaseTreeItem('Procedures', vscode.TreeItemCollapsibleState.Collapsed, 'category', element.connectionId, element.databaseName, element.schema, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, proceduresCountResult.rows[0].count),
-          new DatabaseTreeItem('Materialized Views', vscode.TreeItemCollapsibleState.Collapsed, 'category', element.connectionId, element.databaseName, element.schema, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, materializedViewsCountResult.rows[0].count),
-          new DatabaseTreeItem('Types', vscode.TreeItemCollapsibleState.Collapsed, 'category', element.connectionId, element.databaseName, element.schema, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, typesCountResult.rows[0].count),
-          new DatabaseTreeItem('Foreign Tables', vscode.TreeItemCollapsibleState.Collapsed, 'category', element.connectionId, element.databaseName, element.schema, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, foreignTablesCountResult.rows[0].count),
-          new DatabaseTreeItem('Sequences', vscode.TreeItemCollapsibleState.Collapsed, 'category', element.connectionId, element.databaseName, element.schema, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, seqCountResult.rows[0].count),
-          new DatabaseTreeItem('Triggers', vscode.TreeItemCollapsibleState.Collapsed, 'category', element.connectionId, element.databaseName, element.schema, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, trigCountResult.rows[0].count),
-          new DatabaseTreeItem('Domains', vscode.TreeItemCollapsibleState.Collapsed, 'category', element.connectionId, element.databaseName, element.schema, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, domCountResult.rows[0].count),
-          new DatabaseTreeItem('Aggregates', vscode.TreeItemCollapsibleState.Collapsed, 'category', element.connectionId, element.databaseName, element.schema, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, aggCountResult.rows[0].count),
-          new DatabaseTreeItem('Rules', vscode.TreeItemCollapsibleState.Collapsed, 'category', element.connectionId, element.databaseName, element.schema, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, ruleCountResult.rows[0].count)
+          new DatabaseTreeItem('Tables', vscode.TreeItemCollapsibleState.Collapsed, 'category', element.connectionId, element.databaseName, element.schema, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, Number(countResult.tables_count || 0)),
+          new DatabaseTreeItem('Views', vscode.TreeItemCollapsibleState.Collapsed, 'category', element.connectionId, element.databaseName, element.schema, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, Number(countResult.views_count || 0)),
+          new DatabaseTreeItem('Functions', vscode.TreeItemCollapsibleState.Collapsed, 'category', element.connectionId, element.databaseName, element.schema, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, Number(countResult.functions_count || 0)),
+          new DatabaseTreeItem('Procedures', vscode.TreeItemCollapsibleState.Collapsed, 'category', element.connectionId, element.databaseName, element.schema, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, Number(countResult.procedures_count || 0)),
+          new DatabaseTreeItem('Materialized Views', vscode.TreeItemCollapsibleState.Collapsed, 'category', element.connectionId, element.databaseName, element.schema, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, Number(countResult.materialized_views_count || 0)),
+          new DatabaseTreeItem('Types', vscode.TreeItemCollapsibleState.Collapsed, 'category', element.connectionId, element.databaseName, element.schema, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, Number(countResult.types_count || 0)),
+          new DatabaseTreeItem('Foreign Tables', vscode.TreeItemCollapsibleState.Collapsed, 'category', element.connectionId, element.databaseName, element.schema, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, Number(countResult.foreign_tables_count || 0)),
+          new DatabaseTreeItem('Sequences', vscode.TreeItemCollapsibleState.Collapsed, 'category', element.connectionId, element.databaseName, element.schema, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, Number(countResult.sequences_count || 0)),
+          new DatabaseTreeItem('Triggers', vscode.TreeItemCollapsibleState.Collapsed, 'category', element.connectionId, element.databaseName, element.schema, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, Number(countResult.triggers_count || 0)),
+          new DatabaseTreeItem('Domains', vscode.TreeItemCollapsibleState.Collapsed, 'category', element.connectionId, element.databaseName, element.schema, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, Number(countResult.domains_count || 0)),
+          new DatabaseTreeItem('Aggregates', vscode.TreeItemCollapsibleState.Collapsed, 'category', element.connectionId, element.databaseName, element.schema, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, Number(countResult.aggregates_count || 0)),
+          new DatabaseTreeItem('Rules', vscode.TreeItemCollapsibleState.Collapsed, 'category', element.connectionId, element.databaseName, element.schema, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, Number(countResult.rules_count || 0))
         ];
 
-        const systemTableCount = Number(systemTablesCountResult.rows[0].count || 0);
+        const systemTableCount = Number(countResult.system_tables_count || 0);
         if (systemTableCount > 0) {
           schemaItems.splice(1, 0, new DatabaseTreeItem(
             'System Tables',
@@ -135,7 +90,9 @@ export class SchemaLoader extends BaseLoader {
         if (!element.schema || element.tableName) return [];
 
         const categoryName = element.label.split(' • ')[0];
-        switch (categoryName) {
+        const cacheKey = SchemaCache.buildKey(element.connectionId!, element.databaseName!, element.schema!, `cat:${categoryName}`);
+        return await getSchemaCache().getOrFetch(cacheKey, async () => {
+          switch (categoryName) {
           case 'Tables': {
             const tableResult = await client.query(
               `SELECT 
@@ -444,7 +401,9 @@ export class SchemaLoader extends BaseLoader {
             ));
           }
         }
-      }
+        return [];
+      });
+    }
 
       default:
         return [];

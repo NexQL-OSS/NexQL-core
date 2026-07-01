@@ -10,6 +10,7 @@ export interface MountAnalystTabOptions {
   exportQuery: string | undefined;
   query: string | undefined;
   postMessage: (msg: Record<string, unknown>) => void;
+  sourceCellIndex: number;
 }
 
 export async function mountAnalystTab(
@@ -48,6 +49,7 @@ export async function mountAnalystTab(
           query: rerunQuery,
           source: 'streaming-analyst-pivot-full-dataset',
           fullDataset: true,
+          sourceCellIndex: opts.sourceCellIndex,
         });
       },
     }),

@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import type { Client } from 'pg';
 import { randomUUID } from 'crypto';
-import { getPgDataTypeName } from '../common/pgDataTypeNames';
+import { getPgDataTypeName, deduplicateColumns } from '../common/pgDataTypeNames';
 import { debugLog, debugWarn } from '../common/logger';
 
 /** Idle cursor sessions are closed to free server resources */
@@ -28,6 +28,7 @@ interface SessionRecord {
   countAttempted?: boolean;
   countError?: string;
   idleTimer?: NodeJS.Timeout;
+  uniqueColumns?: string[];
 }
 
 function stripSqlComments(sql: string): string {
@@ -176,29 +177,39 @@ export class ResultCursorService {
       });
       ResultCursorService.refreshIdleTimer(sessionId);
 
-      // Attempt to estimate total rows for UI (best-effort; errors ignored)
+      // Attempt to estimate total rows for UI (best-effort; errors ignored).
+      // A short statement_timeout prevents this nested COUNT from hanging a pool connection
+      // on tables with millions of records or complex joins.
+      const COUNT_TIMEOUT_MS = 1000;
       const countStartTime = Date.now();
       let sessionRecord = ResultCursorService.sessions.get(sessionId);
       if (sessionRecord) sessionRecord.countAttempted = true;
 
       let countSql: string | undefined;
       try {
-        debugLog(`[ResultCursorService] Starting row count for session ${sessionId.substring(0, 8)}`);
+        debugLog(`[ResultCursorService] Starting row count (timeout ${COUNT_TIMEOUT_MS}ms) for session ${sessionId.substring(0, 8)}`);
         // Strip comments from inner SQL to avoid syntax errors in wrapped COUNT query
         const innerSqlClean = stripSqlComments(innerSql);
         countSql = `SELECT COUNT(*) AS cnt FROM (${innerSqlClean}) AS nexql_count`;
         debugLog(`[ResultCursorService] COUNT query: ${countSql.substring(0, 120)}...`);
-        
-        const cres = await client.query(countSql);
-        const countDuration = Date.now() - countStartTime;
-        
-        const cntVal = cres?.rows?.[0]?.cnt ?? cres?.rows?.[0]?.count;
-        const n = cntVal !== undefined && cntVal !== null ? Number(cntVal) : undefined;
-        
-        sessionRecord = ResultCursorService.sessions.get(sessionId);
-        if (sessionRecord) {
-          sessionRecord.totalRows = Number.isFinite(n) ? n : undefined;
-          debugLog(`[ResultCursorService] Row count succeeded: ${sessionRecord.totalRows} rows (${countDuration}ms) for session ${sessionId.substring(0, 8)}`);
+
+        // Apply a tight timeout only for the count query; reset it immediately after.
+        await client.query(`SET LOCAL statement_timeout = ${COUNT_TIMEOUT_MS}`);
+        try {
+          const cres = await client.query(countSql);
+          const countDuration = Date.now() - countStartTime;
+
+          const cntVal = cres?.rows?.[0]?.cnt ?? cres?.rows?.[0]?.count;
+          const n = cntVal !== undefined && cntVal !== null ? Number(cntVal) : undefined;
+
+          sessionRecord = ResultCursorService.sessions.get(sessionId);
+          if (sessionRecord) {
+            sessionRecord.totalRows = Number.isFinite(n) ? n : undefined;
+            debugLog(`[ResultCursorService] Row count succeeded: ${sessionRecord.totalRows} rows (${countDuration}ms) for session ${sessionId.substring(0, 8)}`);
+          }
+        } finally {
+          // Always reset the statement_timeout so subsequent queries are unaffected.
+          await client.query('RESET statement_timeout').catch(() => {});
         }
       } catch (e) {
         const countDuration = Date.now() - countStartTime;
@@ -275,13 +286,38 @@ export class ResultCursorService {
     // FETCH FORWARD k, move to N-1 first (or 0 for the first page).
     const moveTarget = Math.max(0, pageStartRow - 1);
     await s.client.query(`MOVE ABSOLUTE ${moveTarget} FROM ${s.cursorQuoted}`);
-    const result = await s.client.query(`FETCH FORWARD ${s.windowSize} FROM ${s.cursorQuoted}`);
+    const result = await s.client.query({
+      text: `FETCH FORWARD ${s.windowSize} FROM ${s.cursorQuoted}`,
+      rowMode: 'array',
+    });
 
-    const rows = result.rows || [];
     const fields = (result.fields || []).map((f: { name: string; dataTypeID: number }) => ({
       name: f.name,
       dataTypeID: f.dataTypeID,
     }));
+
+    if (!s.uniqueColumns) {
+      s.uniqueColumns = deduplicateColumns(fields.map(f => f.name));
+    }
+
+    // Rewrite fields names to unique names so client matches them
+    fields.forEach((f, idx) => {
+      if (s.uniqueColumns && s.uniqueColumns[idx]) {
+        f.name = s.uniqueColumns[idx];
+      }
+    });
+
+    const rawRows = result.rows || [];
+    const rows = rawRows.map((rowArray: any) => {
+      if (Array.isArray(rowArray)) {
+        const rowObj: Record<string, any> = {};
+        s.uniqueColumns!.forEach((colName, index) => {
+          rowObj[colName] = rowArray[index];
+        });
+        return rowObj;
+      }
+      return rowArray;
+    });
 
     ResultCursorService.refreshIdleTimer(sessionId);
 
@@ -336,17 +372,15 @@ export class ResultCursorService {
     fields: Array<{ name: string; dataTypeID: number }>,
     columns: string[]
   ): Record<string, string> {
-    const columnTypes: Record<string, string> = {
-      ...(fields.reduce((acc: Record<string, string>, f) => {
-        acc[f.name] = getPgDataTypeName(f.dataTypeID);
-        return acc;
-      }, {}) || {}),
-    };
-    for (const c of columns) {
-      if (columnTypes[c] === undefined) {
+    const columnTypes: Record<string, string> = {};
+    columns.forEach((c, i) => {
+      const f = fields[i];
+      if (f) {
+        columnTypes[c] = getPgDataTypeName(f.dataTypeID);
+      } else {
         columnTypes[c] = 'text';
       }
-    }
+    });
     return columnTypes;
   }
 }

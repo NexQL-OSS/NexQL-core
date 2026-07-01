@@ -48,6 +48,15 @@ export class SchemaCache {
       accessCount: 1,
       lastAccess: now
     });
+
+    if (this.cache.size > 1500) {
+      const entries = [...this.cache.entries()]
+        .sort((a, b) => a[1].lastAccess - b[1].lastAccess);
+      const toRemove = entries.slice(0, this.cache.size - 1500);
+      for (const [k] of toRemove) {
+        this.cache.delete(k);
+      }
+    }
     return data;
   }
 

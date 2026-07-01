@@ -42,7 +42,14 @@ export type DatabaseTreeIconType =
   | 'sponsor-badge'
   | 'team-badge'
   | 'connection-notebooks-folder'
-  | 'connection-notebook-file';
+  | 'connection-notebooks-db'
+  | 'connection-notebook-file'
+  | 'connection-saved-queries-folder'
+  | 'connection-saved-queries-db'
+  | 'connection-saved-query-item'
+  | 'connection-query-history-folder'
+  | 'connection-query-history-db'
+  | 'connection-query-history-item';
 
 export type NotebookTreeIconType =
   | 'folder'
@@ -237,6 +244,71 @@ function generateNotebooksFolderSvg(): string {
 </svg>`;
 }
 
+function generateSavedQueriesFolderSvg(): string {
+  return `<svg viewBox="0 0 24 24" width="24" height="24" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="sqFolderGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2dd4bf" />
+      <stop offset="100%" stop-color="#0d9488" />
+    </linearGradient>
+  </defs>
+  <path d="M 5,5 H 17 L 19,7 V 18.5 A 1.5,1.5 0 0 1 17.5,20 H 6.5 A 1.5,1.5 0 0 1 5,18.5 Z" fill="url(#sqFolderGrad)" />
+  <path d="M 8,5 H 15 V 9 H 8 Z" fill="#ffffff" opacity="0.85" />
+  <rect x="13" y="6" width="1.4" height="2" rx="0.3" fill="#0d9488" />
+  <rect x="8.5" y="12" width="7" height="1.2" rx="0.3" fill="#ffffff" opacity="0.7" />
+  <rect x="8.5" y="15" width="4.5" height="1.2" rx="0.3" fill="#ffffff" opacity="0.55" />
+</svg>`;
+}
+
+function generateQueryHistoryFolderSvg(): string {
+  return `<svg viewBox="0 0 24 24" width="24" height="24" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="qhBackGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7c3aed" />
+      <stop offset="100%" stop-color="#4c1d95" />
+    </linearGradient>
+    <linearGradient id="qhRimGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ddd6fe" />
+      <stop offset="100%" stop-color="#a78bfa" />
+    </linearGradient>
+  </defs>
+  <circle cx="12" cy="12" r="8" fill="url(#qhBackGrad)" stroke="url(#qhRimGrad)" stroke-width="1.8" />
+  <line x1="12" y1="12" x2="15.5" y2="12" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round" />
+  <line x1="12" y1="12" x2="12" y2="7.5" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round" />
+  <circle cx="12" cy="12" r="1.2" fill="#ffffff" />
+  <path d="M 4.2,9 A 8,8 0 0 1 6,6" fill="none" stroke="#ddd6fe" stroke-width="1.4" stroke-linecap="round" />
+</svg>`;
+}
+
+function generateSavedQueryItemSvg(): string {
+  return `<svg viewBox="0 0 24 24" width="24" height="24" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="sqItemGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#5eead4" />
+      <stop offset="100%" stop-color="#14b8a6" />
+    </linearGradient>
+  </defs>
+  <path d="M 6,3 H 14 L 19,8 V 20 A 1.5,1.5 0 0 1 17.5,21.5 H 6.5 A 1.5,1.5 0 0 1 5,20 V 4.5 A 1.5,1.5 0 0 1 6,3 Z" fill="url(#sqItemGrad)" />
+  <path d="M 14,3 V 8 H 19 Z" fill="#0f766e" opacity="0.6" />
+  <path d="M 8.5,12.5 L 10.5,14.5 L 8.5,16.5" fill="none" stroke="#0f766e" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" />
+  <line x1="12" y1="16.5" x2="15.5" y2="16.5" stroke="#0f766e" stroke-width="1.3" stroke-linecap="round" />
+</svg>`;
+}
+
+function generateQueryHistoryItemSvg(): string {
+  return `<svg viewBox="0 0 24 24" width="24" height="24" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="qhItemGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#c4b5fd" />
+      <stop offset="100%" stop-color="#8b5cf6" />
+    </linearGradient>
+  </defs>
+  <circle cx="12" cy="12" r="8" fill="none" stroke="url(#qhItemGrad)" stroke-width="1.8" />
+  <line x1="12" y1="12" x2="15" y2="12" stroke="url(#qhItemGrad)" stroke-width="1.8" stroke-linecap="round" />
+  <line x1="12" y1="12" x2="12" y2="8" stroke="url(#qhItemGrad)" stroke-width="1.8" stroke-linecap="round" />
+</svg>`;
+}
+
 function generateUsersRolesSvg(): string {
   return `<svg viewBox="0 0 24 24" width="24" height="24" xmlns="http://www.w3.org/2000/svg">
   <defs>
@@ -311,6 +383,23 @@ function generateCustomIconSvg(
 
     case 'connection-notebooks-folder':
       return generateNotebooksFolderSvg();
+
+    case 'connection-saved-queries-folder':
+      return generateSavedQueriesFolderSvg();
+
+    case 'connection-query-history-folder':
+      return generateQueryHistoryFolderSvg();
+
+    case 'connection-notebooks-db':
+    case 'connection-saved-queries-db':
+    case 'connection-query-history-db':
+      return generateThemedDatabaseSvg('db', '#fef9c3', '#fbbf24', '#d97706', '#78350f'); // Golden amber (matches database)
+
+    case 'connection-saved-query-item':
+      return generateSavedQueryItemSvg();
+
+    case 'connection-query-history-item':
+      return generateQueryHistoryItemSvg();
 
     case 'connection-notebook-file':
       return `<svg viewBox="0 0 24 24" width="24" height="24" xmlns="http://www.w3.org/2000/svg">
@@ -786,14 +875,28 @@ function generateCustomIconSvg(
   }
 }
 
+const iconCache = new Map<string, vscode.Uri>();
+
+export function clearIconCache(): void {
+  iconCache.clear();
+}
+
 export function getDatabaseTreeIcon(
   type: DatabaseTreeIconType,
   options: DatabaseTreeIconOptions = {},
 ): vscode.ThemeIcon | vscode.Uri | undefined {
+  const cacheKey = `${type}:${options.isDisconnected ?? ''}:${options.isInstalled ?? ''}:${options.color ?? ''}:${options.label ?? ''}`;
+  const cached = iconCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
   const svgStr = generateCustomIconSvg(type, options);
   if (svgStr) {
     const base64 = Buffer.from(svgStr).toString('base64');
-    return vscode.Uri.parse(`data:image/svg+xml;base64,${base64}`);
+    const uri = vscode.Uri.parse(`data:image/svg+xml;base64,${base64}`);
+    iconCache.set(cacheKey, uri);
+    return uri;
   }
   return undefined;
 }

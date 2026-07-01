@@ -67,6 +67,70 @@ async function validateLicenseKey(licenseKey) {
   return { ok: true, entitlement: ent };
 }
 
+// ── Free identity (lite sign-in, no license) ──────────────────────────────────
+// account_id for free users: `oauth:<provider>:<subject>`. No entitlement record
+// exists for these — tier is always 'free' and there is nothing to validate against
+// license-db. Used only by the AI Gateway proxy (api/ai/*), not Cloud Sync.
+
+const OAUTH_ACCOUNT_PREFIX = 'oauth:';
+
+function isFreeAccountId(accountId) {
+  return typeof accountId === 'string' && accountId.startsWith(OAUTH_ACCOUNT_PREFIX);
+}
+
+function oauthAccountId(provider, subject) {
+  return `${OAUTH_ACCOUNT_PREFIX}${provider}:${subject}`;
+}
+
+/** Verify a GitHub access token and return { subject, email, login }. */
+async function verifyGitHubToken(accessToken) {
+  const res = await fetch('https://api.github.com/user', {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'nexql-ai-gateway',
+    },
+  });
+  if (!res.ok) {
+    return null;
+  }
+  const user = await res.json();
+  if (!user || !user.id) {
+    return null;
+  }
+  return { subject: String(user.id), email: user.email || null, login: user.login || null };
+}
+
+/** Mint a NexQL session for a free OAuth identity (no license key). */
+async function createSessionFromOAuth(provider, accessToken, deviceId, deviceName) {
+  const verified = provider === 'github' ? await verifyGitHubToken(accessToken) : null;
+  if (!verified) {
+    return { ok: false, error: 'Could not verify OAuth identity.' };
+  }
+
+  const accountId = oauthAccountId(provider, verified.subject);
+  const access = await storeToken(accountId, 'access', ACCESS_TTL_SEC);
+  const refresh = await storeToken(accountId, 'refresh', REFRESH_TTL_SEC);
+
+  const { setAccountTier, markAccountActive } = require('./sync-db');
+  await setAccountTier(accountId, 'free');
+  await markAccountActive(accountId);
+  if (deviceId) {
+    const { upsertDevice } = require('./sync-db');
+    await upsertDevice(accountId, String(deviceId), deviceName ? String(deviceName) : undefined);
+  }
+
+  return {
+    ok: true,
+    access_token: access.token,
+    refresh_token: refresh.token,
+    token_type: 'Bearer',
+    expires_in: access.expires_in,
+    email: verified.email,
+    tier: 'free',
+  };
+}
+
 async function startDeviceAuth() {
   const deviceCode = crypto.randomBytes(24).toString('hex');
   const userCode = formatUserCode();
@@ -292,14 +356,17 @@ async function refreshAccessToken(refreshToken) {
     return { error: 'invalid_grant' };
   }
 
-  const license = await validateLicenseKey(record.account_id);
-  if (!license.ok) {
-    const { markAccountInactive } = require('./sync-db');
-    await markAccountInactive(record.account_id);
-    return { error: 'invalid_grant', error_description: license.error };
+  const { markAccountActive } = require('./sync-db');
+
+  if (!isFreeAccountId(record.account_id)) {
+    const license = await validateLicenseKey(record.account_id);
+    if (!license.ok) {
+      const { markAccountInactive } = require('./sync-db');
+      await markAccountInactive(record.account_id);
+      return { error: 'invalid_grant', error_description: license.error };
+    }
   }
 
-  const { markAccountActive } = require('./sync-db');
   await markAccountActive(record.account_id);
 
   await kvDel(TOKEN_PREFIX + sha256(refreshToken));
@@ -352,13 +419,41 @@ async function authenticateBearer(req) {
   };
 }
 
+/**
+ * Like {@link authenticateBearer} but also accepts free OAuth identities
+ * (`oauth:*` account ids, no license required). Used only by the AI Gateway
+ * proxy — Cloud Sync stays paid-only via {@link authenticateBearer}.
+ */
+async function authenticateBearerRelaxed(req) {
+  const header = req.headers.authorization || req.headers.Authorization;
+  if (!header || !header.startsWith('Bearer ')) {
+    return null;
+  }
+  const token = header.slice('Bearer '.length).trim();
+  const record = await kvGet(TOKEN_PREFIX + sha256(token));
+  if (!record || record.token_type !== 'access' || record.expires_at <= Date.now()) {
+    return null;
+  }
+
+  if (isFreeAccountId(record.account_id)) {
+    const { markAccountActive } = require('./sync-db');
+    await markAccountActive(record.account_id);
+    return { account_id: record.account_id, email: null, tier: 'free' };
+  }
+
+  return authenticateBearer(req);
+}
+
 module.exports = {
   startDeviceAuth,
   authorizeDevice,
   pollDeviceToken,
   refreshAccessToken,
   authenticateBearer,
+  authenticateBearerRelaxed,
   getDeviceAuthStatus,
   bindDeviceLicense,
   createSessionFromLicense,
+  createSessionFromOAuth,
+  isFreeAccountId,
 };

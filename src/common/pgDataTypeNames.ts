@@ -18,3 +18,20 @@ const BUILTIN_OID_TO_TYPNAME: Record<number, string> = (() => {
 export function getPgDataTypeName(dataTypeID: number): string {
   return BUILTIN_OID_TO_TYPNAME[dataTypeID] ?? `oid:${dataTypeID}`;
 }
+
+export function deduplicateColumns(fieldNames: string[]): string[] {
+  const seen = new Map<string, number>();
+  return fieldNames.map(name => {
+    let cleanName = name ? name.trim() : '';
+    if (!cleanName) {
+      cleanName = '?column?';
+    }
+    const count = seen.get(cleanName) || 0;
+    seen.set(cleanName, count + 1);
+    if (count > 0) {
+      return `${cleanName} (${count})`;
+    }
+    return cleanName;
+  });
+}
+

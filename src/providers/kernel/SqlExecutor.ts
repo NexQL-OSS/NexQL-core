@@ -11,7 +11,7 @@ import {
   BYTEA_DISPLAY_DEFAULT,
   ByteaDisplayFormat,
 } from '../../common/types';
-import { getPgDataTypeName } from '../../common/pgDataTypeNames';
+import { getPgDataTypeName, deduplicateColumns } from '../../common/pgDataTypeNames';
 import { SqlParser } from './SqlParser';
 import { SecretStorageService } from '../../services/SecretStorageService';
 import { ErrorService, getErrorExplanation } from '../../services/ErrorService';
@@ -32,6 +32,7 @@ import { CursorStreamBannerPolicy } from '../../services/CursorStreamBannerPolic
 import { FullDatasetPreferenceService } from '../../services/FullDatasetPreferenceService';
 import { ConnectionUtils } from '../../utils/connectionUtils';
 import { AuditLogService } from '../../features/audit/AuditLogService';
+import { getSchemaCache } from '../../lib/schema-cache';
 
 /** Streaming NOTICE feed during a single-statement cell run (replaced by final result output). */
 const MIME_NOTICES_LIVE = 'application/vnd.postgres-notebook.notices-live';
@@ -854,8 +855,8 @@ export class SqlExecutor {
           } else {
             result =
               pgParamValues !== undefined
-                ? await client.query(queryForExecution, pgParamValues)
-                : await client.query(queryForExecution);
+                ? await client.query({ text: queryForExecution, values: pgParamValues, rowMode: 'array' })
+                : await client.query({ text: queryForExecution, rowMode: 'array' });
           }
 
           const stmtEndTime = Date.now();
@@ -932,22 +933,41 @@ export class SqlExecutor {
             autoLimitValue = lim ? parseInt(lim[1], 10) : undefined;
           }
 
-          const rows = result.rows || [];
+          const uniqueColumns = deduplicateColumns(result.fields?.map((f: any) => f.name) || []);
+
+          if (result.fields) {
+            result.fields.forEach((f: any, idx: number) => {
+              f.name = uniqueColumns[idx];
+            });
+          }
+
+          const rawRows = result.rows || [];
+          const rows = rawRows.map((rowArray: any) => {
+            if (Array.isArray(rowArray)) {
+              const rowObj: Record<string, any> = {};
+              uniqueColumns.forEach((colName, index) => {
+                rowObj[colName] = rowArray[index];
+              });
+              return rowObj;
+            }
+            return rowArray;
+          });
+
           telemetry.trackEvent('query_executed', {
             success: true,
             durationBucket: telemetry.durationBucket(durationMs),
             resultSizeBucket: rows.length === 0 ? '0' : rows.length < 10 ? '1_9' : rows.length < 100 ? '10_99' : rows.length < 1000 ? '100_999' : 'gte_1000',
           });
-          let columns = result.fields?.map((f: any) => f.name) || [];
+          let columns = uniqueColumns;
           if (columns.length === 0 && rows.length > 0) {
             columns = Object.keys(rows[0]);
           }
-          const columnTypes: Record<string, string> = {
-            ...(result.fields?.reduce((acc: any, f: any) => {
-              acc[f.name] = getPgDataTypeName(f.dataTypeID);
-              return acc;
-            }, {}) || {}),
-          };
+          const columnTypes: Record<string, string> = {};
+          if (result.fields) {
+            result.fields.forEach((f: any, idx: number) => {
+              columnTypes[f.name] = getPgDataTypeName(f.dataTypeID);
+            });
+          }
           for (const c of columns) {
             if (columnTypes[c] === undefined) {
               columnTypes[c] = 'text';
@@ -1064,7 +1084,9 @@ export class SqlExecutor {
             durationMs,
             slow: isSlow,
             rowCount: result.rowCount ?? rows.length,
-            connectionName: connection.name
+            connectionName: connection.name,
+            connectionId: connection.id,
+            databaseName: metadata.databaseName || connection.database
           });
 
           // Collect successful result
@@ -1083,9 +1105,17 @@ export class SqlExecutor {
           const qa = QueryAnalyzer.getInstance();
           if (qa.isCatalogInvalidatingSql(statements[stmtIndex]) || qa.isSearchPathChangingSql(statements[stmtIndex])) {
             const dbName = metadata.databaseName || connection.database || 'postgres';
+            // Invalidate autocomplete cache so next completion triggers a fresh catalog fetch.
             void import('../SqlCompletionProvider').then(mod => {
               mod.SqlCompletionProvider.getInstance()?.invalidate(connection.id, dbName);
             });
+            // Also invalidate the explorer SchemaCache so the sidebar tree reflects DDL changes
+            // immediately instead of waiting for the next background poller tick.
+            getSchemaCache().invalidateDatabase(connection.id, dbName);
+            void vscode.commands.executeCommand('postgres-explorer.refresh').then(
+              undefined,
+              () => { /* refresh command may not be registered during early activation */ }
+            );
           }
 
         } catch (err: any) {
@@ -1154,7 +1184,9 @@ export class SqlExecutor {
             duration: executionTime,
             durationMs,
             slow: isSlow,
-            connectionName: connection.name
+            connectionName: connection.name,
+            connectionId: connection.id,
+            databaseName: metadata.databaseName || connection.database
           });
 
           // Collect error result

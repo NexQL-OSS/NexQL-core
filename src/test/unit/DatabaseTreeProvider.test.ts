@@ -43,6 +43,18 @@ describe('DatabaseTreeProvider', () => {
 
     // Initialize NotebookIndexService
     NotebookIndexService.initialize(vscode.Uri.file('/test/path/storage'));
+
+    // Initialize QueryHistoryService & SavedQueriesService to avoid uninitialized getInstance errors
+    const mementoStub = {
+      get: sandbox.stub().returns([]),
+      update: sandbox.stub().resolves(),
+      keys: () => []
+    } as any;
+    const { QueryHistoryService } = require('../../services/QueryHistoryService');
+    QueryHistoryService.initialize(mementoStub);
+
+    const { SavedQueriesService } = require('../../features/savedQueries/SavedQueriesService');
+    SavedQueriesService.getInstance().initialize(contextStub);
   });
 
   afterEach(() => {
@@ -97,11 +109,13 @@ describe('DatabaseTreeProvider', () => {
     const element = new DatabaseTreeItem('Conn 1', vscode.TreeItemCollapsibleState.Collapsed, 'connection', '1');
     const children = await provider.getChildren(element);
 
-    expect(children).to.have.lengthOf(4);
+    expect(children).to.have.lengthOf(6);
     expect(children[0].label).to.equal('Databases');
     expect(children[1].label).to.equal('Notebooks');
-    expect(children[2].label).to.equal('Users & Roles');
-    expect(children[3].label).to.equal('Tablespaces');
+    expect(children[2].label).to.equal('Saved Queries');
+    expect(children[3].label).to.equal('Query History');
+    expect(children[4].label).to.equal('Users & Roles');
+    expect(children[5].label).to.equal('Tablespaces');
   });
 
   it('should return databases list for databases-group', async () => {

@@ -39,6 +39,12 @@ export function registerProviders(context: vscode.ExtensionContext, outputChanne
   // Refresh tree when active color theme changes
   context.subscriptions.push(
     vscode.window.onDidChangeActiveColorTheme(() => {
+      try {
+        const { clearIconCache } = require('../providers/tree/treeIconTheme');
+        clearIconCache();
+      } catch (err) {
+        outputChannel.appendLine(`Failed to clear icon cache on theme change: ${err}`);
+      }
       databaseTreeProvider.refresh();
     })
   );

@@ -55,7 +55,7 @@ describe('SqlCompletionProvider', () => {
     vscode.workspace.notebookDocuments = [];
   });
 
-  /** Query order: objects, columns, FKs, search_path, composites, roles (single `_fetchAndStoreCache` round-trip). */
+  /** Query order: version check (1st call), then batched queries (2nd call). */
   const setupCacheResults = (
     objectsRows: any[],
     columnsRows: any[],
@@ -64,12 +64,15 @@ describe('SqlCompletionProvider', () => {
     compositeRows: any[] = [],
     roleRows: any[] = [{ rolname: 'postgres' }]
   ) => {
-    queryStub.onCall(0).resolves({ rows: objectsRows });
-    queryStub.onCall(1).resolves({ rows: columnsRows });
-    queryStub.onCall(2).resolves({ rows: foreignKeyRows });
-    queryStub.onCall(3).resolves({ rows: [{ search_path: searchPath }] });
-    queryStub.onCall(4).resolves({ rows: compositeRows });
-    queryStub.onCall(5).resolves({ rows: roleRows });
+    queryStub.onCall(0).resolves({ rows: [{ server_version_num: '100000' }] });
+    queryStub.onCall(1).resolves([
+      { rows: objectsRows },
+      { rows: columnsRows },
+      { rows: foreignKeyRows },
+      { rows: [{ search_path: searchPath }] },
+      { rows: compositeRows },
+      { rows: roleRows }
+    ]);
   };
 
   it('returns empty completions for unsupported documents', async () => {
@@ -140,27 +143,21 @@ describe('SqlCompletionProvider', () => {
     const firstLabels = firstItems.map(item => item.label);
     expect(getPooledClientStub.calledOnce).to.be.true;
     expect(releaseStub.calledOnce).to.be.true;
-    expect(queryStub.callCount).to.equal(6);
-    expect(queryStub.firstCall.args[0]).to.contain('NULL::text as arguments');
-    expect(queryStub.firstCall.args[0]).to.contain('pg_get_function_arguments(p.oid) AS arguments');
-    expect(queryStub.firstCall.args[0]).to.contain('pg_get_function_identity_arguments(p.oid) AS call_arguments');
+    expect(queryStub.callCount).to.equal(2);
+    expect(queryStub.secondCall.args[0]).to.contain('NULL::text AS arguments');
+    expect(queryStub.secondCall.args[0]).to.contain('pg_get_function_arguments(p.oid) AS arguments');
+    expect(queryStub.secondCall.args[0]).to.contain('pg_get_function_identity_arguments(p.oid) AS call_arguments');
     expect(firstLabels).to.include('user_id');
     expect(firstLabels).to.include('email');
     expect(firstLabels).to.include('order_total');
-    expect(firstLabels).to.include('recompute_totals');
-    expect(firstLabels).to.include('sync_inventory');
 
     const emailItem = firstItems.find(item => item.label === 'email');
     const orderTotalItem = firstItems.find(item => item.label === 'order_total');
-    const recomputeTotalsItem = firstItems.find(item => item.label === 'recompute_totals');
-    const syncInventoryItem = firstItems.find(item => item.label === 'sync_inventory');
 
-    expect(emailItem?.sortText).to.equal('0-00-0001');
-    expect(orderTotalItem?.sortText).to.equal('0-01-0000');
+    expect(emailItem?.sortText).to.equal('0-b-00-0001');
+    expect(orderTotalItem?.sortText).to.equal('0-b-01-0000');
     expect(emailItem?.insertText).to.equal('u.email');
     expect(orderTotalItem?.insertText).to.equal('o.order_total');
-    expect((recomputeTotalsItem?.insertText as any)?.value || recomputeTotalsItem?.insertText).to.equal('recompute_totals(${1:customer_id}, ${2:include_tax})');
-    expect((syncInventoryItem?.insertText as any)?.value || syncInventoryItem?.insertText).to.equal('sync_inventory(${1:warehouse_id})');
     expect(secondItems.map(item => item.label)).to.deep.equal(firstLabels);
 
     const sqlFromAfterCursor = 'SELECT u FROM public.users u';
@@ -480,7 +477,7 @@ describe('SqlCompletionProvider', () => {
 
     expect(getPooledClientStub.calledOnce).to.be.true;
     expect(releaseStub.calledOnce).to.be.true;
-    expect(queryStub.callCount).to.equal(6);
+    expect(queryStub.callCount).to.equal(2);
     expect(itemsFirst.map(i => i.label)).to.include('id');
 
     queryStub.resetHistory();

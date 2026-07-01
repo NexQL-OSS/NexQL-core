@@ -3,6 +3,7 @@ import { BaseLoader, LoaderContext } from './BaseLoader';
 import { DatabaseTreeItem } from '../../DatabaseTreeProvider';
 import { PG_VERSION_10, PG_VERSION_11 } from '../../../lib/postgresServerVersion';
 import { isSupabasePlatformSchema } from '../../../lib/platform/supabaseSchemas';
+import { getSchemaCache, SchemaCache } from '../../../lib/schema-cache';
 
 export class DatabaseLoader extends BaseLoader {
   async getChildren(ctx: LoaderContext): Promise<DatabaseTreeItem[]> {
@@ -10,52 +11,66 @@ export class DatabaseLoader extends BaseLoader {
 
     switch (element.type) {
       case 'database': {
-        const schemaCountResult = await client.query(
-          "SELECT COUNT(*) FROM pg_namespace WHERE nspname NOT LIKE 'pg_%' AND nspname != 'information_schema'"
-        );
+        const cacheKey = SchemaCache.buildKey(element.connectionId!, element.databaseName!, undefined, 'database-counts');
+        const counts = await getSchemaCache().getOrFetch(cacheKey, async () => {
+          const safePromise = client.query(`
+            SELECT
+              (SELECT COUNT(*) FROM pg_namespace WHERE nspname NOT LIKE 'pg_%' AND nspname != 'information_schema') AS schema_count,
+              (SELECT COUNT(*) FROM pg_available_extensions WHERE installed_version IS NOT NULL) AS extension_count,
+              (SELECT COUNT(*) FROM pg_foreign_data_wrapper) AS fdw_count,
+              (SELECT COUNT(*) FROM pg_event_trigger) AS event_trigger_count,
+              (SELECT CASE WHEN EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE c.relname = 'pg_publication' AND n.nspname = 'pg_catalog') 
+                           THEN (SELECT COUNT(*) FROM pg_publication) 
+                           ELSE 0 END) AS publication_count
+          `);
 
-        const extensionCountResult = await client.query('SELECT COUNT(*) FROM pg_available_extensions WHERE installed_version IS NOT NULL');
+          const cronPromise = (async () => {
+            try {
+              const hasCron = await client.query(
+                `SELECT 1 FROM pg_catalog.pg_extension WHERE extname = 'pg_cron' LIMIT 1`,
+              );
+              if (hasCron.rows.length > 0) {
+                const cj = await client.query(`SELECT COUNT(*)::int AS n FROM cron.job`);
+                return Number(cj.rows[0].n);
+              }
+            } catch {}
+            return 0;
+          })();
 
-        let cronJobCount = 0;
-        try {
-          const hasCron = await client.query(
-            `SELECT 1 FROM pg_catalog.pg_extension WHERE extname = 'pg_cron' LIMIT 1`,
-          );
-          if (hasCron.rows.length > 0) {
-            const cj = await client.query(`SELECT COUNT(*)::int AS n FROM cron.job`);
-            cronJobCount = Number(cj.rows[0].n);
-          }
-        } catch {
-          cronJobCount = 0;
-        }
+          const subPromise = (async () => {
+            try {
+              const subResult = await client.query('SELECT COUNT(*) FROM pg_subscription');
+              return Number(subResult.rows[0].count);
+            } catch {}
+            return 0;
+          })();
 
-        const fdwCountResult = await client.query('SELECT COUNT(*) FROM pg_foreign_data_wrapper');
-        const eventTriggerCountResult = await client.query('SELECT COUNT(*) FROM pg_event_trigger');
+          const [safeRes, cronCount, subCount] = await Promise.all([
+            safePromise,
+            cronPromise,
+            subPromise
+          ]);
 
-        let publicationCount = 0;
-        try {
-          const publicationCountResult = await client.query('SELECT COUNT(*) FROM pg_publication');
-          publicationCount = publicationCountResult.rows[0].count;
-        } catch {
-          // pg_publication exists only in PostgreSQL 10+
-        }
-
-        let subscriptionCount = 0;
-        try {
-          const subResult = await client.query('SELECT COUNT(*) FROM pg_subscription');
-          subscriptionCount = subResult.rows[0].count;
-        } catch {
-          // pg_subscription requires superuser
-        }
+          const row = safeRes.rows[0];
+          return {
+            schemaCount: Number(row.schema_count),
+            extensionCount: Number(row.extension_count),
+            fdwCount: Number(row.fdw_count),
+            eventTriggerCount: Number(row.event_trigger_count),
+            publicationCount: Number(row.publication_count),
+            cronJobCount: cronCount,
+            subscriptionCount: subCount
+          };
+        });
 
         return [
-          new DatabaseTreeItem('Schemas', vscode.TreeItemCollapsibleState.Collapsed, 'category', element.connectionId, element.databaseName, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, schemaCountResult.rows[0].count),
-          new DatabaseTreeItem('Extensions', vscode.TreeItemCollapsibleState.Collapsed, 'category', element.connectionId, element.databaseName, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, extensionCountResult.rows[0].count),
-          new DatabaseTreeItem('Cron Jobs', vscode.TreeItemCollapsibleState.Collapsed, 'category', element.connectionId, element.databaseName, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, cronJobCount),
-          new DatabaseTreeItem('Foreign Data Wrappers', vscode.TreeItemCollapsibleState.Collapsed, 'category', element.connectionId, element.databaseName, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, fdwCountResult.rows[0].count),
-          new DatabaseTreeItem('Event Triggers', vscode.TreeItemCollapsibleState.Collapsed, 'category', element.connectionId, element.databaseName, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, eventTriggerCountResult.rows[0].count),
-          new DatabaseTreeItem('Publications', vscode.TreeItemCollapsibleState.Collapsed, 'category', element.connectionId, element.databaseName, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, publicationCount),
-          new DatabaseTreeItem('Subscriptions', vscode.TreeItemCollapsibleState.Collapsed, 'category', element.connectionId, element.databaseName, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, subscriptionCount)
+          new DatabaseTreeItem('Schemas', vscode.TreeItemCollapsibleState.Collapsed, 'category', element.connectionId, element.databaseName, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, counts.schemaCount),
+          new DatabaseTreeItem('Extensions', vscode.TreeItemCollapsibleState.Collapsed, 'category', element.connectionId, element.databaseName, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, counts.extensionCount),
+          new DatabaseTreeItem('Cron Jobs', vscode.TreeItemCollapsibleState.Collapsed, 'category', element.connectionId, element.databaseName, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, counts.cronJobCount),
+          new DatabaseTreeItem('Foreign Data Wrappers', vscode.TreeItemCollapsibleState.Collapsed, 'category', element.connectionId, element.databaseName, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, counts.fdwCount),
+          new DatabaseTreeItem('Event Triggers', vscode.TreeItemCollapsibleState.Collapsed, 'category', element.connectionId, element.databaseName, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, counts.eventTriggerCount),
+          new DatabaseTreeItem('Publications', vscode.TreeItemCollapsibleState.Collapsed, 'category', element.connectionId, element.databaseName, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, counts.publicationCount),
+          new DatabaseTreeItem('Subscriptions', vscode.TreeItemCollapsibleState.Collapsed, 'category', element.connectionId, element.databaseName, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, counts.subscriptionCount)
         ];
       }
 
@@ -63,7 +78,9 @@ export class DatabaseLoader extends BaseLoader {
         if (element.tableName || element.schema) return []; // Handled by SchemaLoader or TableLoader
 
         const categoryName = element.label.split(' • ')[0];
-        switch (categoryName) {
+        const cacheKey = SchemaCache.buildKey(element.connectionId!, element.databaseName || 'postgres', undefined, `cat:${categoryName}`);
+        return await getSchemaCache().getOrFetch(cacheKey, async () => {
+          switch (categoryName) {
           case 'Schemas': {
             const schemaResult = await client.query(
               `SELECT nspname
@@ -316,7 +333,9 @@ export class DatabaseLoader extends BaseLoader {
             ));
           }
         }
-      }
+        return [];
+      });
+    }
 
       default:
         return [];

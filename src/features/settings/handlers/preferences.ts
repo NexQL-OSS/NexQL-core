@@ -3,6 +3,7 @@ import type { SettingsHubHostContext, SettingsHubMessage, SettingsSectionHandler
 
 const DDL_ENABLED_KEY = 'nexql.ddlViewer.enabled';
 const DDL_OPEN_ON_SELECTION_KEY = 'nexql.ddlViewer.openOnSelection';
+const HISTORY_MAX_ITEMS_KEY = 'postgresExplorer.queryHistory.maxItems';
 
 export class PreferencesSectionHandler implements SettingsSectionHandler {
   readonly section = 'prefs';
@@ -15,7 +16,7 @@ export class PreferencesSectionHandler implements SettingsSectionHandler {
         this.sendState();
         break;
       case 'update':
-        await this.update(String(message.key), !!message.value);
+        await this.update(String(message.key), message.value as boolean | number);
         break;
     }
   }
@@ -27,11 +28,12 @@ export class PreferencesSectionHandler implements SettingsSectionHandler {
       prefs: {
         ddlEnabled: config.get<boolean>(DDL_ENABLED_KEY, true),
         ddlOpenOnSelection: config.get<boolean>(DDL_OPEN_ON_SELECTION_KEY, true),
+        historyMaxItems: config.get<number>(HISTORY_MAX_ITEMS_KEY, 200),
       },
     });
   }
 
-  private async update(key: string, value: boolean): Promise<void> {
+  private async update(key: string, value: boolean | number): Promise<void> {
     try {
       if (key === 'ddlEnabled') {
         // Route through the DDL viewer command so open preview tabs are
@@ -41,6 +43,11 @@ export class PreferencesSectionHandler implements SettingsSectionHandler {
         await vscode.workspace
           .getConfiguration()
           .update(DDL_OPEN_ON_SELECTION_KEY, value, vscode.ConfigurationTarget.Global);
+      } else if (key === 'historyMaxItems') {
+        const n = Math.max(10, Math.min(1000, Number(value)));
+        await vscode.workspace
+          .getConfiguration()
+          .update(HISTORY_MAX_ITEMS_KEY, n, vscode.ConfigurationTarget.Global);
       } else {
         this.host.post({ type: 'prefs/error', error: `Unknown preference: ${key}` });
         return;

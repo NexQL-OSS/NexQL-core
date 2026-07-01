@@ -77,6 +77,12 @@ interface SchemaCache {
   /** Role names for GRANT ... TO */
   roles: string[];
   updatedAt: number;
+  /**
+   * Pre-built CompletionItem array for all relation objects (tables, views, functions…).
+   * Populated lazily on first access after each cache refresh; reused on every subsequent
+   * keystroke. Naturally invalidated when the cache object is replaced on catalog refresh.
+   */
+  _cachedRelationItems?: vscode.CompletionItem[];
 }
 
 const EMPTY_CACHE: SchemaCache = {
@@ -641,7 +647,18 @@ export class SqlCompletionProvider implements vscode.CompletionItemProvider {
       });
 
       const pgVer = await queryServerVersionNum(client);
-      const objectsResult = await client.query(SqlCompletionProvider.buildCatalogObjectsSql(pgVer));
+      const sql = `
+        ${SqlCompletionProvider.buildCatalogObjectsSql(pgVer)};
+        ${SqlCompletionProvider.CATALOG_COLUMNS_SQL};
+        ${SqlCompletionProvider.CATALOG_FK_SQL};
+        SHOW search_path;
+        ${SqlCompletionProvider.CATALOG_COMPOSITE_SQL};
+        SELECT rolname FROM pg_roles ORDER BY rolname;
+      `;
+
+      const results = await client.query(sql) as any;
+      const [objectsResult, columnsResult, fkResult, searchPathResult, compositeResult, rolesResult] = results;
+
       const objects = this._dedupeTables(
         objectsResult.rows.map(
           (row: {
@@ -662,7 +679,6 @@ export class SqlCompletionProvider implements vscode.CompletionItemProvider {
         )
       );
 
-      const columnsResult = await client.query(SqlCompletionProvider.CATALOG_COLUMNS_SQL);
       const columns = this._dedupeColumns(
         columnsResult.rows.map(
           (row: {
@@ -683,7 +699,6 @@ export class SqlCompletionProvider implements vscode.CompletionItemProvider {
         )
       );
 
-      const fkResult = await client.query(SqlCompletionProvider.CATALOG_FK_SQL);
       const foreignKeys: ForeignKeyInfo[] = fkResult.rows.map(
         (row: { schema: string; table_name: string; columns: string[]; ref_schema: string; ref_table: string; ref_columns: string[] }) => ({
           schema: row.schema,
@@ -695,17 +710,14 @@ export class SqlCompletionProvider implements vscode.CompletionItemProvider {
         })
       );
 
-      const searchPathResult = await client.query('SHOW search_path');
       const searchPath = this._parseSearchPath(searchPathResult.rows[0]?.search_path || '', cfg.username);
 
-      const compositeResult = await client.query(SqlCompletionProvider.CATALOG_COMPOSITE_SQL);
       const compositeAttrs = new Map<string, string[]>();
       for (const row of compositeResult.rows as { schema: string; type_name: string; attrs: string[] }[]) {
         const key = `${row.schema}.${row.type_name}`.toLowerCase();
         compositeAttrs.set(key, row.attrs || []);
       }
 
-      const rolesResult = await client.query(`SELECT rolname FROM pg_roles ORDER BY rolname`);
       const roles = (rolesResult.rows as { rolname: string }[]).map(r => r.rolname);
 
       if ((this.catalogEpoch.get(cacheKey) ?? 0) !== epochAtStart) {
@@ -826,7 +838,7 @@ export class SqlCompletionProvider implements vscode.CompletionItemProvider {
       return false;
     }
     let last = -1;
-    const re = /\binsert\s+into\s+/gi;
+    const re = /\binsert\s+into\b/gi;
     let mm: RegExpExecArray | null;
     while ((mm = re.exec(stmt)) !== null) {
       last = mm.index;
@@ -834,7 +846,7 @@ export class SqlCompletionProvider implements vscode.CompletionItemProvider {
     if (last < 0) {
       return false;
     }
-    const tail = stmt.slice(last).replace(/\binsert\s+into\s+/i, '').trimStart();
+    const tail = stmt.slice(last).replace(/\binsert\s+into\b/i, '').trimStart();
     if (tail.startsWith('(')) {
       return false;
     }
@@ -1607,7 +1619,7 @@ export class SqlCompletionProvider implements vscode.CompletionItemProvider {
     }
 
     if (parsed.clause === SqlClause.InsertTarget) {
-      return this._relationObjectItems(cache.objects, cache.searchPath);
+      return this._relationObjectItems(cache);
     }
 
     if (parsed.clause === SqlClause.InsertColumns && parsed.insertTarget) {
@@ -1625,7 +1637,7 @@ export class SqlCompletionProvider implements vscode.CompletionItemProvider {
     }
 
     if (parsed.clause === SqlClause.DeleteFrom) {
-      items.push(...this._relationObjectItems(cache.objects, cache.searchPath));
+      items.push(...this._relationObjectItems(cache));
       items.push(
         ...this._keywordItems(['USING', 'WHERE', 'RETURNING', 'ORDER BY', 'LIMIT', 'OFFSET'])
       );
@@ -1633,7 +1645,7 @@ export class SqlCompletionProvider implements vscode.CompletionItemProvider {
     }
 
     if (parsed.clause === SqlClause.DeleteUsing) {
-      items.push(...this._relationObjectItems(cache.objects, cache.searchPath));
+      items.push(...this._relationObjectItems(cache));
       items.push(...this._keywordItems(['WHERE', 'RETURNING']));
       return items;
     }
@@ -1673,7 +1685,7 @@ export class SqlCompletionProvider implements vscode.CompletionItemProvider {
     }
 
     if (parsed.clause === SqlClause.GrantOn) {
-      items.push(...this._relationObjectItems(cache.objects, cache.searchPath));
+      items.push(...this._relationObjectItems(cache));
       items.push(...this._keywordItems(['SCHEMA', 'ALL TABLES IN SCHEMA', 'ALL SEQUENCES IN SCHEMA', 'DATABASE']));
       return items;
     }
@@ -1689,7 +1701,7 @@ export class SqlCompletionProvider implements vscode.CompletionItemProvider {
     }
 
     if (parsed.clause === SqlClause.From || parsed.clause === SqlClause.Join) {
-      items.push(...this._relationObjectItems(cache.objects, cache.searchPath));
+      items.push(...this._relationObjectItems(cache));
       items.push(
         ...this._keywordItems([
           'JOIN',
@@ -1811,7 +1823,7 @@ export class SqlCompletionProvider implements vscode.CompletionItemProvider {
       return items;
     }
 
-    items.push(...this._objectItemsAll(cache.objects, cache.searchPath));
+    items.push(...this._objectItemsAll(cache));
     items.push(...this._contextualColumnItems(parsed, cache.columns, '0', typedPrefix));
     items.push(
       ...this._keywordItems([
@@ -2209,15 +2221,24 @@ export class SqlCompletionProvider implements vscode.CompletionItemProvider {
     return items;
   }
 
-  /** FROM / JOIN: tables, views, matviews, functions, procedures (PostgreSQL allows routines in FROM). */
-  private _relationObjectItems(objects: TableInfo[], searchPath: string[]): vscode.CompletionItem[] {
-    const sp = new Set(searchPath.map(s => s.toLowerCase()));
-    return objects.map(obj => this._makeObjectItem(obj, sp, false));
+  /**
+   * FROM / JOIN: tables, views, matviews, functions, procedures.
+   * Items are built once per cache version and reused on subsequent keystrokes to avoid
+   * O(n) allocation overhead in databases with 1000+ objects.
+   */
+  private _relationObjectItems(cache: SchemaCache): vscode.CompletionItem[] {
+    if (cache._cachedRelationItems) {
+      return cache._cachedRelationItems;
+    }
+    const sp = new Set(cache.searchPath.map(s => s.toLowerCase()));
+    const items = cache.objects.map(obj => this._makeObjectItem(obj, sp, false));
+    cache._cachedRelationItems = items;
+    return items;
   }
 
-  private _objectItemsAll(objects: TableInfo[], searchPath: string[]): vscode.CompletionItem[] {
-    const sp = new Set(searchPath.map(s => s.toLowerCase()));
-    return objects.map(obj => this._makeObjectItem(obj, sp, false));
+  private _objectItemsAll(cache: SchemaCache): vscode.CompletionItem[] {
+    // Shares the same cached array as _relationObjectItems since both produce identical output.
+    return this._relationObjectItems(cache);
   }
 
   private _objectItemsInSchema(objects: TableInfo[], schemaAlreadyInEditor: boolean): vscode.CompletionItem[] {

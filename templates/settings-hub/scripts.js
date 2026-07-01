@@ -1154,6 +1154,7 @@ const DEFAULT_OLLAMA_ENDPOINT = 'http://localhost:11434/v1/chat/completions';
 const DEFAULT_LMSTUDIO_ENDPOINT = 'http://localhost:1234/v1/chat/completions';
 
 const ALL_PROVIDERS = [
+  { id: 'nexql-free', name: 'NexQL Free AI' },
   { id: 'vscode-lm', name: 'VS Code Language Model' },
   { id: 'github', name: 'GitHub Models' },
   { id: 'cursor', name: 'Cursor SDK' },
@@ -1192,7 +1193,7 @@ function populateDefaultProviders() {
   const cursorKey = $('apiKey-cursor')?.value.trim() || '';
   
   const isConfigured = (provId) => {
-    if (['vscode-lm', 'opencode', 'ollama', 'lmstudio', 'cursor'].includes(provId)) {
+    if (['nexql-free', 'vscode-lm', 'opencode', 'ollama', 'lmstudio', 'cursor'].includes(provId)) {
       return true;
     }
     if (provId === 'github') {
@@ -2332,6 +2333,11 @@ $('prefDdlEnabled').addEventListener('change', (e) => {
 $('prefDdlOpenOnSelection').addEventListener('change', (e) => {
   vscode.postMessage({ command: 'prefs/update', key: 'ddlOpenOnSelection', value: e.target.checked });
 });
+$('prefHistoryMaxItems').addEventListener('change', (e) => {
+  const n = Math.max(10, Math.min(1000, parseInt(e.target.value, 10) || 200));
+  e.target.value = n;
+  vscode.postMessage({ command: 'prefs/update', key: 'historyMaxItems', value: n });
+});
 
 function handlePrefsMessage(message) {
   switch (message.type) {
@@ -2340,6 +2346,7 @@ function handlePrefsMessage(message) {
       $('prefsList').hidden = false;
       $('prefDdlEnabled').checked = !!message.prefs.ddlEnabled;
       $('prefDdlOpenOnSelection').checked = !!message.prefs.ddlOpenOnSelection;
+      $('prefHistoryMaxItems').value = message.prefs.historyMaxItems ?? 200;
       break;
     case 'prefs/error':
       $('prefsState').hidden = false;

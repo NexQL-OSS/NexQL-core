@@ -19,6 +19,7 @@ import {
   DbObject,
   DbObjectService,
   AiService,
+  AiProviderHttpError,
   SessionService,
   getWebviewHtml,
   AiCapability,
@@ -888,17 +889,64 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
       await this._saveCurrentSession();
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      this._messages.push({
-        role: 'assistant',
-        content: `❌ Error: ${errorMessage}\n\nPlease check your AI provider settings in the extension configuration.`
-      });
+      if (error instanceof AiProviderHttpError && this._isNexqlFreeLimitError(error)) {
+        this._handleNexqlFreeLimitError(error);
+      } else {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        this._messages.push({
+          role: 'assistant',
+          content: `❌ Error: ${errorMessage}\n\nPlease check your AI provider settings in the extension configuration.`
+        });
+      }
     } finally {
       if (this._cancellationTokenSource) {
         this._cancellationTokenSource.dispose();
         this._cancellationTokenSource = null;
       }
     }
+  }
+
+  /** NexQL free-AI proxy responses that need an upgrade / BYOK nudge instead of a raw error. */
+  private _isNexqlFreeLimitError(error: AiProviderHttpError): boolean {
+    return (
+      error.httpStatus === 429 ||
+      error.httpStatus === 402 ||
+      error.httpStatus === 403 ||
+      error.httpStatus === 503 ||
+      ['quota_exceeded', 'pool_exhausted', 'free_ai_disabled', 'tier_required'].includes(error.errorCode || '')
+    );
+  }
+
+  private _handleNexqlFreeLimitError(error: AiProviderHttpError): void {
+    let title: string;
+    let content: string;
+    if (error.httpStatus === 429 || error.errorCode === 'quota_exceeded') {
+      title = 'Free AI limit reached for this month.';
+      content =
+        '⏳ **Free AI limit reached for this month.**\n\n' +
+        'Upgrade for a higher monthly cap, or switch to your own API key in AI Settings.';
+    } else if (error.httpStatus === 403 || error.errorCode === 'tier_required') {
+      title = 'This model requires a higher NexQL tier.';
+      content =
+        '🔒 **This model requires a higher NexQL tier.**\n\n' +
+        'Upgrade to Sponsor or Teams to unlock Engineer/Architect, or switch to your own API key in AI Settings.';
+    } else {
+      title = 'Free AI is temporarily unavailable.';
+      content =
+        '⚠️ **Free AI is temporarily unavailable.**\n\n' +
+        'Switch to your own API key in AI Settings, or try again later.';
+    }
+    this._messages.push({ role: 'assistant', content });
+
+    void vscode.window
+      .showWarningMessage(title, 'Upgrade', 'Use my own key')
+      .then(async (choice) => {
+        if (choice === 'Upgrade') {
+          await vscode.env.openExternal(vscode.Uri.parse('https://nexql.astrx.dev/#pricing'));
+        } else if (choice === 'Use my own key') {
+          await vscode.commands.executeCommand('postgres-explorer.aiSettings');
+        }
+      });
   }
 
   /** Replace the last assistant reply without appending a duplicate user turn. */

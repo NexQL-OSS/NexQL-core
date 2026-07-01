@@ -579,15 +579,48 @@ export class RunDerivedQueryHandler implements IMessageHandler {
     }
 
     const notebook = context.editor.notebook;
-    const insertionIndex = Math.min(
-      notebook.cellCount,
-      Math.max(0, (context.editor.selection?.end ?? notebook.cellCount)),
-    );
 
     const fullDatasetRequested =
       message?.fullDataset === true ||
       (typeof message?.source === 'string' && message.source.startsWith('streaming-'));
     const cellSql = fullDatasetRequested ? `-- nexql:full-dataset\n${sql}` : sql;
+
+    // When full-dataset is requested with a known source cell, update inline
+    const srcIdx =
+      typeof message?.sourceCellIndex === 'number' && message.sourceCellIndex >= 0
+        ? message.sourceCellIndex
+        : -1;
+
+    if (fullDatasetRequested && srcIdx >= 0 && srcIdx < notebook.cellCount) {
+      // Replace the existing cell content and re-execute it
+      const targetCell = notebook.cellAt(srcIdx);
+      const edit = new vscode.WorkspaceEdit();
+      const fullRange = new vscode.Range(
+        targetCell.document.lineAt(0).range.start,
+        targetCell.document.lineAt(targetCell.document.lineCount - 1).range.end,
+      );
+      edit.replace(targetCell.document.uri, fullRange, cellSql);
+      const applied = await vscode.workspace.applyEdit(edit);
+      if (!applied) {
+        vscode.window.showErrorMessage('Failed to update cell for full dataset query.');
+        return;
+      }
+
+      const range = new vscode.NotebookRange(srcIdx, srcIdx + 1);
+      context.editor.revealRange(range, vscode.NotebookEditorRevealType.InCenterIfOutsideViewport);
+      await vscode.commands.executeCommand('notebook.cell.execute', {
+        ranges: [range],
+        document: notebook.uri,
+      });
+      return;
+    }
+
+    // Fallback: insert a new cell (non-full-dataset or no source cell known)
+    const insertionIndex = Math.min(
+      notebook.cellCount,
+      Math.max(0, (context.editor.selection?.end ?? notebook.cellCount)),
+    );
+
     const cell = new vscode.NotebookCellData(vscode.NotebookCellKind.Code, cellSql, 'sql');
     const edit = new vscode.WorkspaceEdit();
     edit.set(notebook.uri, [vscode.NotebookEdit.insertCells(insertionIndex, [cell])]);
@@ -708,6 +741,12 @@ export class NotebookOutputToolbarHandler implements IMessageHandler {
 
     if (action === 'saveQuery') {
       await vscode.commands.executeCommand('postgres-explorer.saveQueryToLibraryUI');
+      return;
+    }
+
+    if (action === 'explainAnalyze') {
+      await vscode.commands.executeCommand('postgres-explorer.explainQuery', cell.document.uri, true);
+      return;
     }
   }
 }

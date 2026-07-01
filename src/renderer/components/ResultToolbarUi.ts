@@ -35,7 +35,8 @@ export type ResultToolbarGlyph =
   | 'close'
   | 'previewEye'
   | 'save'
-  | 'expandCell';
+  | 'expandCell'
+  | 'menuList';
 
 export function resultToolbarSvg(
   glyph: ResultToolbarGlyph,
@@ -138,6 +139,8 @@ export function resultToolbarSvg(
         '<path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/>',
         size,
       );
+    case 'menuList':
+      return wrapSvg('<path d="M4 6h16M4 12h16M4 18h16"/>', size);
     default:
       return wrapSvg('<circle cx="12" cy="12" r="2"/>', size);
   }

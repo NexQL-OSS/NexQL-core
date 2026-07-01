@@ -27,6 +27,9 @@ import {
   resolveOpencodeWorkingDirectory,
   runOpencodePrompt,
 } from '../../features/aiAssistant/opencode';
+import { AccountService } from '../../features/sync/AccountService';
+import { DEFAULT_SYNC_API_ENDPOINT } from '../../features/sync/constants';
+import { extensionContext } from '../../extension';
 
 // GitHub Models permission applies to fine-grained tokens/GitHub Apps.
 // For VS Code OAuth sessions, request no explicit scope.
@@ -44,7 +47,10 @@ const DIRECT_API_PROVIDERS = new Set([
   'ollama',
   'lmstudio',
   'github',
+  'nexql-free',
 ]);
+const NEXQL_AI_CHAT_ENDPOINT = `${DEFAULT_SYNC_API_ENDPOINT.replace(/\/$/, '')}/ai/chat`;
+const DEFAULT_NEXQL_FREE_MODEL = 'smart';
 
 /** Heuristic for VS Code LM when the host does not report token usage (UI hint only). */
 const ROUGH_CHARS_PER_TOKEN = 4;
@@ -68,10 +74,11 @@ const HTTP_RETRY_BASE_MS = 400;
 const HTTP_RETRY_CAP_MS = 8000;
 
 /** Carries HTTP status for non-200 / parse failures so retries can target 5xx and 429. */
-class AiProviderHttpError extends Error {
+export class AiProviderHttpError extends Error {
   constructor(
     message: string,
     readonly httpStatus?: number,
+    readonly errorCode?: string,
   ) {
     super(message);
     this.name = 'AiProviderHttpError';
@@ -1180,9 +1187,11 @@ export class AiService {
     const githubSession = provider === 'github' ? await this._getGitHubSession() : undefined;
     
     // API key is required for most providers, but optional for custom endpoints
-    if (!apiKey && provider !== 'custom' && provider !== 'ollama' && provider !== 'lmstudio' && provider !== 'github') {
+    if (!apiKey && provider !== 'custom' && provider !== 'ollama' && provider !== 'lmstudio' && provider !== 'github' && provider !== 'nexql-free') {
       throw new Error(`API Key is required for ${provider} provider. Please configure postgresExplorer.aiApiKey.`);
     }
+
+    const nexqlFreeToken = provider === 'nexql-free' ? await this._getNexqlFreeToken() : undefined;
 
     let endpoint = '';
     let model = this._resolveConfiguredModel(config, scope);
@@ -1208,7 +1217,7 @@ export class AiService {
       content: this._sanitizeContent(this._getMessageContent(msg))
     }));
 
-    if (provider === 'openai' || provider === 'custom' || provider === 'ollama' || provider === 'lmstudio' || provider === 'github') {
+    if (provider === 'openai' || provider === 'custom' || provider === 'ollama' || provider === 'lmstudio' || provider === 'github' || provider === 'nexql-free') {
       const messages: any[] = [];
       if (systemPrompt) {
         messages.push({ role: 'system', content: systemPrompt });
@@ -1282,6 +1291,17 @@ export class AiService {
           'Accept': 'application/vnd.github+json',
           'Authorization': `Bearer ${githubSession.accessToken}`,
           'X-GitHub-Api-Version': GITHUB_MODELS_API_VERSION,
+          'Content-Type': 'application/json'
+        };
+      } else if (provider === 'nexql-free') {
+        if (!nexqlFreeToken) {
+          throw new Error('Sign in to NexQL to use the free AI model.');
+        }
+        endpoint = NEXQL_AI_CHAT_ENDPOINT;
+        model = model || DEFAULT_NEXQL_FREE_MODEL;
+        body.model = model;
+        headers = {
+          'Authorization': `Bearer ${nexqlFreeToken}`,
           'Content-Type': 'application/json'
         };
       }
@@ -1441,6 +1461,25 @@ export class AiService {
       telemetry.trackEvent('ai_request', { provider, success: true });
       return response;
     } catch (error) {
+      // A stale NexQL session token is the one case worth a single silent re-auth retry.
+      if (
+        provider === 'nexql-free' &&
+        error instanceof AiProviderHttpError &&
+        error.httpStatus === 401
+      ) {
+        try {
+          const refreshedToken = await AccountService.getInstance(extensionContext).ensureAiSession({
+            invalidateAccess: true,
+          });
+          headers['Authorization'] = `Bearer ${refreshedToken}`;
+          const response = await this._makeHttpRequestWithRetry(endpoint, headers, body, provider, onChunk);
+          telemetry.trackEvent('ai_request', { provider, success: true });
+          return response;
+        } catch (retryError) {
+          telemetry.trackEvent('ai_request', { provider, success: false });
+          throw retryError;
+        }
+      }
       telemetry.trackEvent('ai_request', { provider, success: false });
       throw error;
     }
@@ -1546,6 +1585,16 @@ export class AiService {
     }
   }
 
+  /** Resolves (and lazily mints, via device-lite sign-in) the NexQL bearer used by the free AI proxy. */
+  private async _getNexqlFreeToken(): Promise<string | undefined> {
+    try {
+      return await AccountService.getInstance(extensionContext).ensureAiSession();
+    } catch (err) {
+      debugWarn('[AiService] NexQL free sign-in failed:', err);
+      return undefined;
+    }
+  }
+
   private async _getGitHubSession(): Promise<vscode.AuthenticationSession | undefined> {
     try {
       return await vscode.authentication.getSession('github', GITHUB_MODELS_SCOPES, {
@@ -1587,10 +1636,14 @@ export class AiService {
           res.on('data', chunk => data += chunk);
           res.on('end', () => {
             let detail = `API request failed with status ${statusCode}`;
+            let errorCode: string | undefined;
             try {
-              const errBody = JSON.parse(data) as { error?: { message?: string } };
-              if (errBody.error?.message) {
+              const errBody = JSON.parse(data) as { error?: { message?: string } | string };
+              if (errBody.error && typeof errBody.error === 'object' && errBody.error.message) {
                 detail = String(errBody.error.message);
+              } else if (typeof errBody.error === 'string') {
+                errorCode = errBody.error;
+                detail = errBody.error;
               }
             } catch {
               const snippet = data.replace(/\s+/g, ' ').trim().slice(0, 200);
@@ -1598,7 +1651,7 @@ export class AiService {
                 detail = `${detail} — ${snippet}`;
               }
             }
-            reject(new AiProviderHttpError(detail, statusCode));
+            reject(new AiProviderHttpError(detail, statusCode, errorCode));
           });
           return;
         }
@@ -1805,6 +1858,7 @@ export class AiService {
 
   private _getDefaultModel(provider: string): string {
     switch (provider) {
+      case 'nexql-free': return DEFAULT_NEXQL_FREE_MODEL;
       case 'github': return DEFAULT_GITHUB_MODEL;
       case 'cursor': return DEFAULT_CURSOR_MODEL;
       case 'opencode': return DEFAULT_OPENCODE_MODEL;

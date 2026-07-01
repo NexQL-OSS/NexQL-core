@@ -8,6 +8,7 @@ import {
   getChatCompletionEndpoint,
 } from './aiConfig';
 import { listOpencodeModels } from './opencode';
+import { LicenseService } from '../../services/LicenseService';
 import {
   getGitHubSession,
   listAnthropicModels,
@@ -18,6 +19,7 @@ import {
   listGitHubModels,
   listMistralModels,
   listMoonshotModels,
+  listNexqlFreeModels,
   listOpenAIModels,
   listVsCodeLanguageModels,
 } from './modelListing';
@@ -71,6 +73,20 @@ export class AiModelCatalogService {
     const scope: AiConfigScope = 'chat';
     const active = readAiScopeSettings(config, scope);
     const catalog: AiCatalogEntry[] = [];
+
+    {
+      const groupLabel = providerDisplayName('nexql-free');
+      const currentTier = LicenseService.getInstance().getTier();
+      for (const entry of listNexqlFreeModels(currentTier)) {
+        catalog.push({
+          selectionId: buildSelectionId('nexql-free', entry.id),
+          provider: 'nexql-free',
+          modelId: entry.id,
+          label: entry.displayName,
+          groupLabel,
+        });
+      }
+    }
 
     try {
       const vscodeLmModels = await listVsCodeLanguageModels();
@@ -260,6 +276,8 @@ export class AiModelCatalogService {
 
   private _defaultModelForProvider(provider: AiProviderId): string {
     switch (provider) {
+      case 'nexql-free':
+        return 'smart';
       case 'openai':
         return 'gpt-4.1';
       case 'anthropic':

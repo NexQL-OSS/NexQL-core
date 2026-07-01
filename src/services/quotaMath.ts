@@ -4,7 +4,7 @@
 // wraps this with globalState persistence.
 // ---------------------------------------------------------------------------
 
-export type QuotaPeriod = 'day' | 'week';
+export type QuotaPeriod = 'day' | 'week' | 'month';
 
 export interface FeatureQuota {
   limit: number;
@@ -47,6 +47,11 @@ function isoWeek(date: Date): { year: number; week: number } {
 
 /** Stable identifier for the current period; usage resets when this changes. */
 export function periodKey(period: QuotaPeriod, date: Date): string {
+  if (period === 'month') {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    return `${y}-${m}`;
+  }
   if (period === 'week') {
     const { year, week } = isoWeek(date);
     return `${year}-W${String(week).padStart(2, '0')}`;
@@ -57,8 +62,11 @@ export function periodKey(period: QuotaPeriod, date: Date): string {
   return `${y}-${m}-${d}`;
 }
 
-/** When the current period ends (local midnight for day; next Monday 00:00 for week). */
+/** When the current period ends (local midnight for day; next Monday 00:00 for week; 1st of next month). */
 export function nextReset(period: QuotaPeriod, date: Date): Date {
+  if (period === 'month') {
+    return new Date(date.getFullYear(), date.getMonth() + 1, 1, 0, 0, 0, 0);
+  }
   if (period === 'week') {
     const dow = date.getDay(); // 0=Sun .. 6=Sat
     let daysUntilMonday = (8 - (dow === 0 ? 7 : dow)) % 7;

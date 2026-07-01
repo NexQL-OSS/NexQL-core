@@ -209,8 +209,8 @@ export class ConnectionManager {
     const host = sourceConfig.host || '';
     const poolConfig: PoolConfig = {
       ...clientConfig,
-      max: 10,
-      idleTimeoutMillis: 30000,
+      max: 5,
+      idleTimeoutMillis: 60000,
       keepAlive: host.includes('.neon.tech'),
     };
     const pool = new Pool(poolConfig);

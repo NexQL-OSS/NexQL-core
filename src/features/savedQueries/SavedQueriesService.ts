@@ -267,6 +267,11 @@ export class SavedQueriesService {
       );
   }
 
+  /** Saved queries scoped to a single connection. */
+  getByConnection(connectionId: string): SavedQuery[] {
+    return this.getQueries().filter((q) => q.connectionId === connectionId);
+  }
+
   /** All queries including tombstones — for sync collection. */
   getAllQueriesForSync(): SavedQuery[] {
     return [...Array.from(this.queries.values()), ...this.tombstones];

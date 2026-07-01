@@ -1,7 +1,7 @@
 {
   "name": "postgres-explorer",
   "displayName": "NexQL - Postgres Explorer",
-  "version": "2.0.1",
+  "version": "2.1.5",
   "description": "PostgreSQL database explorer for VS Code with notebook support [Nightly]",
   "publisher": "ric-v",
   "private": false,
@@ -1867,7 +1867,8 @@
           "id": "postgresExplorer.notebooks",
           "name": "Notebooks",
           "contextualTitle": "NexQL",
-          "icon": "$(notebook)"
+          "icon": "$(notebook)",
+          "visibility": "collapsed"
         },
         {
           "id": "postgresExplorer.savedQueries",
@@ -2221,6 +2222,7 @@
         "postgresExplorer.ai.chat.provider": {
           "type": "string",
           "enum": [
+            "nexql-free",
             "vscode-lm",
             "github",
             "cursor",
@@ -2232,7 +2234,7 @@
             "lmstudio",
             "custom"
           ],
-          "default": "vscode-lm",
+          "default": "nexql-free",
           "description": "AI provider for the SQL Assistant chat panel"
         },
         "postgresExplorer.ai.chat.model": {
@@ -2243,6 +2245,7 @@
         "postgresExplorer.ai.notebook.provider": {
           "type": "string",
           "enum": [
+            "nexql-free",
             "vscode-lm",
             "github",
             "cursor",
@@ -2254,7 +2257,7 @@
             "lmstudio",
             "custom"
           ],
-          "default": "vscode-lm",
+          "default": "nexql-free",
           "description": "AI provider for notebook assist, dashboard, and saved-query AI"
         },
         "postgresExplorer.ai.notebook.model": {
@@ -2487,6 +2490,13 @@
           "type": "boolean",
           "default": true,
           "description": "Enable SQL Preview (Definition Viewer) features and actions."
+        },
+        "postgresExplorer.queryHistory.maxItems": {
+          "type": "number",
+          "default": 200,
+          "minimum": 10,
+          "maximum": 1000,
+          "description": "Maximum number of query history entries to retain. Older entries are removed once the limit is reached."
         }
       }
     },
@@ -2706,6 +2716,41 @@
           "command": "postgres-explorer.deleteHistoryItem",
           "when": "view == postgresExplorer.history",
           "group": "2_destructive"
+        },
+        {
+          "command": "postgres-explorer.copyQuery",
+          "when": "view == postgresExplorer && viewItem == connection-query-history-item",
+          "group": "1_modification@0"
+        },
+        {
+          "command": "postgres-explorer.openQuery",
+          "when": "view == postgresExplorer && viewItem == connection-query-history-item",
+          "group": "1_modification@1"
+        },
+        {
+          "command": "postgres-explorer.deleteHistoryItem",
+          "when": "view == postgresExplorer && viewItem == connection-query-history-item",
+          "group": "2_destructive"
+        },
+        {
+          "command": "postgres-explorer.copySavedQuery",
+          "when": "view == postgresExplorer && viewItem == connection-saved-query-item",
+          "group": "1_actions@1"
+        },
+        {
+          "command": "postgres-explorer.editSavedQuery",
+          "when": "view == postgresExplorer && viewItem == connection-saved-query-item",
+          "group": "1_actions@2"
+        },
+        {
+          "command": "postgres-explorer.openSavedQueryInNotebook",
+          "when": "view == postgresExplorer && viewItem == connection-saved-query-item",
+          "group": "1_actions@3"
+        },
+        {
+          "command": "postgres-explorer.deleteSavedQuery",
+          "when": "view == postgresExplorer && viewItem == connection-saved-query-item",
+          "group": "2_delete@1"
         },
         {
           "command": "postgres-explorer.attachToChat",

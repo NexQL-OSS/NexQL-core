@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { BaseLoader, LoaderContext } from './BaseLoader';
 import { DatabaseTreeItem } from '../../DatabaseTreeProvider';
+import { getSchemaCache, SchemaCache } from '../../../lib/schema-cache';
 
 export class TableLoader extends BaseLoader {
   async getChildren(ctx: LoaderContext): Promise<DatabaseTreeItem[]> {
@@ -98,7 +99,9 @@ export class TableLoader extends BaseLoader {
       case 'category': {
         if (!element.tableName) return [];
 
-        switch (element.label) {
+        const cacheKey = SchemaCache.buildKey(element.connectionId!, element.databaseName || 'postgres', element.schema, `table:${element.tableName}:cat:${element.label}`);
+        return await getSchemaCache().getOrFetch(cacheKey, async () => {
+          switch (element.label) {
           case 'Columns': {
             // pg_attribute covers tables, views, AND materialized views (information_schema.columns excludes mat views)
             const columnResult = await client.query(
@@ -275,7 +278,9 @@ export class TableLoader extends BaseLoader {
             ));
           }
         }
-      }
+        return [];
+      });
+    }
 
       default:
         return [];
