@@ -1,7 +1,7 @@
 {
   "name": "postgres-explorer",
   "displayName": "NexQL - Postgres Explorer",
-  "version": "2.1.5",
+  "version": "2.0.2",
   "description": "PostgreSQL database explorer for VS Code with notebook support [Nightly]",
   "publisher": "ric-v",
   "private": false,
