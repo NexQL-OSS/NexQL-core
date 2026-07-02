@@ -7,11 +7,11 @@
 [![Version](https://img.shields.io/visual-studio-marketplace/v/ric-v.postgres-explorer?style=for-the-badge&logo=visual-studio-code&logoColor=white&color=0066CC)](https://marketplace.visualstudio.com/items?itemName=ric-v.postgres-explorer)
 [![Downloads](https://img.shields.io/visual-studio-marketplace/d/ric-v.postgres-explorer?style=for-the-badge&logo=visual-studio-code&logoColor=white&color=2ECC71)](https://marketplace.visualstudio.com/items?itemName=ric-v.postgres-explorer)
 [![Rating](https://img.shields.io/visual-studio-marketplace/r/ric-v.postgres-explorer?style=for-the-badge&logo=visual-studio-code&logoColor=white&color=F39C12)](https://marketplace.visualstudio.com/items?itemName=ric-v.postgres-explorer)
-[![Status](https://img.shields.io/badge/status-stable%20v2.0.0%20%2B%20nightly-blue?style=for-the-badge&logo=git&logoColor=white)](https://github.com/dev-asterix/NexQL/releases)
+[![Status](https://img.shields.io/badge/status-stable%20v2.2.0%20%2B%20nightly-blue?style=for-the-badge&logo=git&logoColor=white)](https://github.com/dev-asterix/NexQL/releases)
 
 **NexQL** (formerly YAPE) is a comprehensive PostgreSQL database management extension featuring interactive SQL notebooks, real-time monitoring dashboard, AI-powered assistance, and advanced database operations—all within VS Code.
 
-[📖 **Documentation**](https://nexql.astrx.dev/) • [🛒 **Marketplace**](https://marketplace.visualstudio.com/items?itemName=ric-v.postgres-explorer) • [🤝 **Contributing**](#-contributing) • [📝 **v2.0.0 Release Notes**](docs/RELEASE_NOTES_v2.0.0.md) • [📋 **Changelog**](CHANGELOG.md)
+[📖 **Documentation**](https://nexql.astrx.dev/) • [🛒 **Marketplace**](https://marketplace.visualstudio.com/items?itemName=ric-v.postgres-explorer) • [🤝 **Contributing**](#-contributing) • [📝 **v2.2.0 Release Notes**](CHANGELOG.md) • [📋 **Full Changelog**](CHANGELOG.md)
 
 </div>
 
@@ -67,7 +67,7 @@
 - 🎛️ **Advanced Result UX** — Column stats, transpose view, enhanced filtering, sliding-window streaming for large `SELECT`s, configurable `bytea` display, and structured in-grid editing with explicit commit confirmation
 - 🛡️ **Auto-LIMIT** — Intelligent query protection (configurable, default 1000 rows)
 - 🌍 **Foreign Data Wrappers** — Manage foreign servers, user mappings & tables
-- 🤖 **AI-Powered** — Generate, Optimize, Explain & Analyze with guided follow-ups; regenerate or branch the conversation from a prior user message (GitHub Models, OpenAI, Anthropic, Gemini, VS Code LM)
+- 🤖 **AI-Powered** — Zero-configuration NexQL Free AI (Smart/Engineer/Architect tiers), plus GitHub Models, OpenAI, Anthropic, Gemini, and VS Code LM. Generate, optimize, explain & analyze with guided follow-ups.
 - 🧩 **Flexible SQL Assistant Layout** — Open SQL Assistant in editor tabs and keep multiple assistant tabs open simultaneously
 - 🖼️ **Vision AI** — Paste or upload images directly in the SQL Assistant; sent to vision-capable AI providers
 - 📎 **File Preview** — Click attached file chips to open them as preview tabs in the editor
@@ -128,7 +128,7 @@
 
 ## 📋 Feature Matrix
 
-| Area | NexQL v2.0.0+ | Notes |
+| Area | NexQL v2.2.0+ | Notes |
 |---|---|---|
 | Core PostgreSQL object operations | ✅ | Tables, views, mat views, functions, roles, extensions, FDWs, and more |
 | AI-assisted SQL workflows | ✅ | Generate, optimize, explain, and analyze with notebook-first execution |
@@ -223,7 +223,7 @@ If `posthogApiKey` is empty, telemetry stays local (debug sink only).
 - `SECURITY.md` - Security policy and vulnerability reporting guidance
 - `CHANGELOG.md` - Release notes and what changed across versions
 
-**Stable: v2.0.0 | Nightly: v2.1.0+ —** Latest stable introduces rebranding as NexQL, complete licensing & subscription workflows (Sponsor & Singularity tiers), secure per-provider AI configurations, and integrated What's New displays. See [CHANGELOG.md](CHANGELOG.md); v2.0 launch materials remain in [Release Notes](docs/RELEASE_NOTES_v2.0.0.md) and older v1.0 details in [v1.0.0 Release Notes](docs/RELEASE_NOTES_v1.0.0.md).
+**Stable: v2.2.0 | Nightly: v2.2.0+ —** NexQL Free AI is now **Generally Available** as the default zero-configuration AI assistant. See [CHANGELOG.md](CHANGELOG.md); v2.0 launch materials remain in [Release Notes](docs/RELEASE_NOTES_v2.0.0.md) and older v1.0 details in [v1.0.0 Release Notes](docs/RELEASE_NOTES_v1.0.0.md).
 
 ---
 
@@ -294,6 +294,19 @@ Organize, manage, and reuse your most important queries with intelligent tagging
 ## 🤖 AI-Powered Operations
 
 NexQL integrates advanced AI capabilities directly into your workflow, but keeps **YOU** in control.
+
+### 🚀 NexQL Free AI — Zero-Config (Default)
+
+No API keys, no provider accounts, no setup. NexQL Free AI is the **default AI provider**, powered by managed models behind a secure gateway proxy. Three tiered models available:
+
+- 🧠 **Smart** (free) — Daily-use AI for queries, explanations, and schema help. 30 requests/month.
+- 🔧 **Engineer** (sponsor) — Advanced model for tough optimization and migration problems. 500 requests/month.
+- 🏗️ **Architect** (singularity) — The best AI for database engineering. Unlimited requests.
+
+**Configure your AI provider**: Open VS Code Settings → search `postgresExplorer.ai.chat.provider` or run **NexQL: Open AI Settings** from the Command Palette. [AI Settings documentation →](https://nexql.astrx.dev/#ai)
+
+### 🔐 Bring Your Own Provider
+Prefer your own keys? NexQL supports GitHub Models, OpenAI, Anthropic, Gemini, VS Code LM, Ollama, LM Studio, and custom endpoints. See [AI Settings](#-ai-powered-operations) for per-provider configuration.
 
 ### 🔐 GitHub Models via GitHub Sign-In
 Use GitHub Models without manually managing a PAT in normal VS Code authentication flows.

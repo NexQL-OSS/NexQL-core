@@ -19,7 +19,7 @@
       <div class="hero-eyebrow" aria-live="polite">
         <a href="https://nexql-themes.astrx.dev/" target="_blank" rel="noopener noreferrer" class="hero-product-badge">NexQL Themes</a>
         <span class="hero-eyebrow-sep" aria-hidden="true">·</span>
-        <span><span id="min-overview-version-pill">v—</span> · 11 editor palettes · 4 AI providers</span>
+        <span><span id="min-overview-version-pill">v—</span> · 11 editor palettes · NexQL Free AI + 4 providers</span>
       </div>
 
       <h1 class="landing-hero-title">
@@ -331,10 +331,16 @@
 
   <section class="landing-section landing-section-compact landing-section-ai" id="ai"
     aria-labelledby="landing-ai-title">
-    <span class="eyebrow">Schema-aware AI</span>
-    <h2 class="section-title" id="landing-ai-title">Describe it. Get runnable SQL.</h2>
-    <p class="section-sub">It reads your actual tables and columns — not invented ones — and never auto-executes.
-      Generated SQL lands in a cell for you to review first.</p>
+    <span class="eyebrow">Schema-aware AI — Now Available for All Users</span>
+    <h2 class="section-title" id="landing-ai-title">Zero-config AI. No API keys needed.</h2>
+    <p class="section-sub">NexQL Free AI is the <strong>default provider</strong> — connect a database and start chatting immediately.
+      Three tiered models (Smart / Engineer / Architect), no setup required. Or bring your own keys for OpenAI, Anthropic, Gemini, and more.</p>
+    <div class="landing-provider-chips" style="margin-bottom: 1.5rem; justify-content: flex-start;">
+      <span class="landing-chip landing-chip-grad">🧠 NexQL Free — Smart</span>
+      <span class="landing-chip landing-chip-grad">🔧 NexQL Free — Engineer</span>
+      <span class="landing-chip landing-chip-grad">🏗️ NexQL Free — Architect</span>
+      <span class="landing-chip landing-chip-muted">+ OpenAI, Anthropic, Gemini, GitHub Models, VS Code LM</span>
+    </div>
     <div class="landing-ai-show">
       <div class="landing-ai-demo">
         <div class="landing-ai-q"><span class="landing-ai-lbl">PLAIN ENGLISH →</span>&quot;Top 10 customers by revenue
@@ -351,13 +357,9 @@
         <h3 class="landing-ai-side-title">Four ways AI helps</h3>
         <p class="section-sub landing-ai-side-sub">Text → SQL, plain-English Explain, Optimize with index
           recommendations, and Debug from a pasted error. Open the assistant in editor tabs and run parallel chats.</p>
-        <div class="landing-provider-chips">
-          <span class="landing-chip landing-chip-grad">GitHub Models · free, no key</span>
-          <span class="landing-chip landing-chip-grad">OpenAI GPT-4o</span>
-          <span class="landing-chip landing-chip-grad">Anthropic Claude</span>
-          <span class="landing-chip landing-chip-grad">Google Gemini</span>
-          <span class="landing-chip landing-chip-muted">+ VS Code LM API</span>
-        </div>
+        <p class="section-sub landing-ai-side-sub" style="margin-top: 1rem;">
+          <a href="https://nexql.astrx.dev/#ai"><strong>Configure AI Settings →</strong></a> — Switch models, manage providers, or bring your own API key.
+        </p>
       </div>
     </div>
   </section>
@@ -506,8 +508,9 @@
       </details>
       <details>
         <summary>Which AI providers are supported?</summary>
-        <p>OpenAI (GPT-4o), Anthropic Claude, Google Gemini, GitHub Models (free, no API key), and the VS Code Language
-          Model API. GitHub Models requires no configuration.</p>
+        <p><strong>NexQL Free AI</strong> (default, zero-config — Smart / Engineer / Architect tiers), OpenAI (GPT-4o),
+          Anthropic Claude, Google Gemini, GitHub Models, and the VS Code Language Model API. NexQL Free AI and GitHub
+          Models require no API keys or configuration.</p>
       </details>
       <details>
         <summary>How is it different from pgAdmin or DBeaver?</summary>
@@ -565,7 +568,7 @@
         <ul class="pricing-items">
           <li>SQL notebooks with inline results</li>
           <li>Database explorer for PostgreSQL objects</li>
-          <li>AI assistant including GitHub Models (no API key)</li>
+          <li>AI assistant — NexQL Free AI (Smart, no API key) + bring your own provider</li>
           <li>Environment safety labels and risk signals</li>
           <li>Export CSV, JSON, Excel</li>
           <li>Community support via GitHub</li>

@@ -27,6 +27,7 @@ const EVENT_SCHEMA: Record<string, { kind: TelemetryEventKind; allowedProps: Set
   cloud_auth_selected: { kind: 'usage', allowedProps: new Set(['authKind']) },
   query_executed: { kind: 'performance', allowedProps: new Set(['success', 'durationBucket', 'resultSizeBucket']) },
   ai_request: { kind: 'usage', allowedProps: new Set(['provider', 'success', 'providerUsageCount']) },
+  nexql_free_request: { kind: 'usage', allowedProps: new Set(['model', 'success', 'tier']) },
   ai_settings_error: { kind: 'usage', allowedProps: new Set(['errorType', 'errorMessage']) },
   notebook_executed: { kind: 'usage', allowedProps: new Set(['cellCountBucket']) },
   saved_query_used: { kind: 'usage', allowedProps: new Set(['queryAgeBucket', 'querySize']) },
@@ -429,6 +430,14 @@ export class TelemetryService {
    */
   public getAiProviderUsageCount(provider: string): number {
     return this.aiProviderUsageMap.get(provider) ?? 0;
+  }
+
+  /**
+   * Track NexQL-free AI request with model and tier info
+   */
+  public trackNexqlFreeRequest(model: string, success: boolean): void {
+    const tier = model === 'smart' ? 'free' : model === 'engineer' ? 'sponsor' : 'singularity';
+    this.trackEvent('nexql_free_request', { model, success, tier });
   }
 
   private bucketCommandRepeatCount(count: number): string {

@@ -8,14 +8,32 @@ Quick links:
 
 ---
 
-## [2.0.3]
+## [2.2.0] - 2026-07-02
+
+### 🚀 NexQL AI Models— Generally Available
+
+NexQL Free AI is now **Generally Available** (Beta) — a zero-configuration AI assistant powered by managed models behind a secure gateway proxy. No API keys, no provider accounts, no setup. Just connect a database and start chatting.
+This is a major milestone for NexQL as it allows us to offer a free and open-source AI assistant with a freemium model that allows users to get more work done with no/low cost.
+Note: This is a beta feature and may be subject to change in the future depending on usage patterns and demands.
+
+- **Tier-Gated Model Aliases** — Three AI tiers exposed:
+  - 🧠 **Smart** (free tier) — daily-use AI for queries, explanations, and schema help. 50 requests/month.
+  - 🔧 **Engineer** (sponsor tier $2/month plan) — advanced model for tough problems. 200 requests/month.
+  - 🏗️ **Architect** (singularity tier $9/month plan) — the best AI for database engineering. 500 requests/month.
+- **Zero-Config Onboarding** — `nexql-free` autoloads as the default AI provider. Open the SQL Assistant and start asking questions immediately — no API key or account configuration needed.
+- **Accurate Usage Displays** — Real-time usage tracking surfaced in the status bar tooltip, license quick-pick, and Settings → License panel. Cache invalidated after every request so counts stay current.
+- **Atomic Monthly Quota** — Server-side atomic quota reservation via `reserveUsage`/`refundUsage` eliminates TOCTOU race conditions. Only delivered, non-empty replies count toward your monthly limit.
+- **Per-Tier Throttling** — Per-account and per-IP fixed-window rate limiting atop the monthly cap prevents abuse while keeping the service responsive for all users.
+- **Client-Disconnect Abort** — Disconnecting mid-stream aborts the upstream gateway request, stopping billed token accumulation immediately.
 
 ### Added
 
-- **NexQL Free AI Model Tiers** — Exposed smart/engineer/architect tier aliases for NexQL Free models instead of raw vendor/model strings.
-  - **Smart** (free tier): for daily use 3 free requests/month
-  - **Engineer** (sponsor tier): smarter model for tough problems with 50 requests on sponsor tier
-  - **Architect** (singularity tier): the best AI for database with 500 requests on singularity tier
+- **Non-Streaming Request Support** — Gateway and client now honor the `req.body.stream` flag. Non-streaming requests buffer upstream SSE chunks and return a single aggregated, OpenAI-compatible JSON response. Client gracefully detects `data:`-prefixed SSE responses during non-streaming mode.
+- **PostHog NexQL AI Telemetry** — New `nexql_free_request` event tracks model model selection, success/failure, and tier, enabling per-tier usage analytics in the PostHog dashboard.
+
+### Enhanced
+
+- **Gateway Hardening** — Per-tier `max_tokens` and input caps (message count, total & per-message character limits). Temperature clamped to `[0, 2]`. Usage retention with automatic pruning of old records.
 
 ---
 
