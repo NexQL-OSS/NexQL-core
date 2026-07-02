@@ -167,19 +167,29 @@ module.exports = async (req, res) => {
     }
 
     if (STATUS_EVENTS[event]) {
-      if (existing) {
-        existing.status = STATUS_EVENTS[event];
-        await store.putEntitlement(existing, {
-          source: 'webhook',
-          razorpayEvent: razorpayEventId,
+      if (!existing) {
+        console.error(
+          `webhook: cannot apply ${event} — no entitlement found for subscription ${subscriptionId}`,
+        );
+        return res.status(200).json({
+          ok: false,
+          event,
+          status: STATUS_EVENTS[event],
+          reason: 'entitlement_not_found',
+          subscriptionId,
         });
-        if (existing.licenseKey && ['cancelled', 'halted', 'paused'].includes(existing.status)) {
-          try {
-            const { markAccountInactive } = require('./_lib/sync-db');
-            await markAccountInactive(existing.licenseKey);
-          } catch (err) {
-            console.error('webhook: markAccountInactive failed', err);
-          }
+      }
+      existing.status = STATUS_EVENTS[event];
+      await store.putEntitlement(existing, {
+        source: 'webhook',
+        razorpayEvent: razorpayEventId,
+      });
+      if (existing.licenseKey && ['cancelled', 'halted', 'paused'].includes(existing.status)) {
+        try {
+          const { markAccountInactive } = require('./_lib/sync-db');
+          await markAccountInactive(existing.licenseKey);
+        } catch (err) {
+          console.error('webhook: markAccountInactive failed', err);
         }
       }
       return res.status(200).json({ ok: true, event, status: STATUS_EVENTS[event] });
