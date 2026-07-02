@@ -14,6 +14,7 @@ import { QueryHistoryService } from './services/QueryHistoryService';
 import { QueryPerformanceService } from './services/QueryPerformanceService';
 import { WorkspaceStateService } from './services/WorkspaceStateService';
 import { QuotaService } from './services/QuotaService';
+import { invalidateAiUsageCache } from './services/aiUsage';
 import { MessageHandlerRegistry } from './services/MessageHandler';
 import { TelemetryService } from './services/TelemetryService';
 import { WEBVIEW_MESSAGE_TYPES } from './common/messageTypes';
@@ -570,6 +571,7 @@ export async function activate(context: vscode.ExtensionContext) {
   const reflectTier = () => {
     const s = license.getStatus();
     statusBar.updateTier(s.tier, s.offline);
+    invalidateAiUsageCache();
   };
   reflectTier();
   context.subscriptions.push(
