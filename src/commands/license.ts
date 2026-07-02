@@ -108,7 +108,7 @@ export async function cmdLicenseShowUsage(): Promise<void> {
   }
 
   const tier = svc.getTier();
-  const aiLimit = aiUsage ? aiUsage.limit : (tier === 'singularity' ? 200 : (tier === 'sponsor' ? 50 : 5));
+  const aiLimit = aiUsage ? aiUsage.limit : (tier === 'singularity' ? 500 : (tier === 'sponsor' ? 200 : 50));
   const aiRemaining = aiUsage ? aiUsage.remaining : aiLimit;
   const nextMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
   const daysUntilReset = Math.ceil((nextMonth.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));

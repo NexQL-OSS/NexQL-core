@@ -12,7 +12,7 @@ const store = require('./store');
 const { resolveDatabaseUrl } = require('./db-url');
 
 /** Free monthly request allowance per tier. Paid tiers still metered (trial pool). */
-const MONTHLY_LIMITS = { free: 5, sponsor: 50, singularity: 200 };
+const MONTHLY_LIMITS = { free: 50, sponsor: 200, singularity: 500 };
 
 function monthlyLimit(tier) {
   return MONTHLY_LIMITS[tier] ?? MONTHLY_LIMITS.free;

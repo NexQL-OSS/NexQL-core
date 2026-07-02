@@ -1621,7 +1621,8 @@ function createModalEditor(opts: ModalEditorOptions): HTMLElement {
             if (parseError) {
               const errBanner = document.createElement('div');
               errBanner.style.cssText = 'color:var(--vscode-errorForeground);padding:10px;border:1px solid var(--vscode-errorForeground);background:rgba(244,67,54,0.08);border-radius:4px;font-size:12px;font-family:monospace;';
-              errBanner.textContent = `Parse Error: ${parseError.textContent}`;
+              errBanner.appendChild(document.createTextNode('Parse Error: '));
+              errBanner.appendChild(document.createTextNode(parseError.textContent || ''));
               viewerTabContainer.appendChild(errBanner);
             } else {
               const toolbar = document.createElement('div');
