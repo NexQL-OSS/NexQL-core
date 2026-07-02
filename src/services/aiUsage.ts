@@ -30,6 +30,7 @@ import { refreshQuotaUI } from './QuotaService';
 
 /** Force the next refresh to hit the network (call after a chat request completes). */
 export function invalidateAiUsageCache(): void {
+  cached = null;
   lastFetch = 0;
   void refreshQuotaUI();
 }
