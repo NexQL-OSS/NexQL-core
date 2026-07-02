@@ -210,6 +210,7 @@ async function main() {
     execSync(`git tag -a "v${nextVersion}" -m "Release v${nextVersion}"`, { stdio: 'inherit' });
     execSync('git push origin main', { stdio: 'inherit' });
     execSync(`git push origin "v${nextVersion}"`, { stdio: 'inherit' });
+    execSync(`git push upstream "v${nextVersion}"`, { stdio: 'inherit' });
     console.log(`Git tag v${nextVersion} created and pushed successfully.`);
 
   } catch (error) {
