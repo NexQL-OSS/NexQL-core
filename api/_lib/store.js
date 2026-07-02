@@ -140,12 +140,14 @@ async function getEntitlement(licenseKey) {
 
   const kvEnt = await rawGet(ENT_PREFIX + key);
   if (kvEnt && useNeon && !neonError) {
-    // Backfill KV entitlement into Neon to prevent later referential-integrity errors
-    // (e.g. FK violations in the devices table). Fire-and-forget so the read path
-    // isn't blocked on a write we don't need the result of.
-    void Promise.resolve(licenseDb.upsertLicense(kvEnt, { source: 'kv_backfill' })).catch((err) => {
-      console.error('store: neon backfill failed', err);
-    });
+    // Only backfill active entitlements. Cancelled/expired/revoked records are
+    // dead weight that should never be restored into Neon — a stale KV copy of a
+    // terminated license would silently re-activate access.
+    if (kvEnt.status === 'active') {
+      void Promise.resolve(licenseDb.upsertLicense(kvEnt, { source: 'kv_backfill' })).catch((err) => {
+        console.error('store: neon backfill failed', err);
+      });
+    }
   }
   return kvEnt;
 }

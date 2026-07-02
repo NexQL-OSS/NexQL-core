@@ -1462,6 +1462,7 @@ export class AiService {
       const response = await this._makeHttpRequestWithRetry(endpoint, headers, body, provider, onChunk);
       telemetry.trackEvent('ai_request', { provider, success: true });
       if (provider === 'nexql-free') {
+        telemetry.trackNexqlFreeRequest(model || 'smart', true);
         // Monthly count just changed server-side — force the usage displays to refetch.
         invalidateAiUsageCache();
       }
@@ -1480,14 +1481,19 @@ export class AiService {
           headers['Authorization'] = `Bearer ${refreshedToken}`;
           const response = await this._makeHttpRequestWithRetry(endpoint, headers, body, provider, onChunk);
           telemetry.trackEvent('ai_request', { provider, success: true });
+          telemetry.trackNexqlFreeRequest(model || 'smart', true);
           invalidateAiUsageCache();
           return response;
         } catch (retryError) {
           telemetry.trackEvent('ai_request', { provider, success: false });
+          telemetry.trackNexqlFreeRequest(model || 'smart', false);
           throw retryError;
         }
       }
       telemetry.trackEvent('ai_request', { provider, success: false });
+      if (provider === 'nexql-free') {
+        telemetry.trackNexqlFreeRequest(model || 'smart', false);
+      }
       throw error;
     }
   }
