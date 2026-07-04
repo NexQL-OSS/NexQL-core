@@ -36,13 +36,13 @@ export async function getWebviewHtml(
     const csp = `default-src 'none'; style-src ${cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}'; img-src ${cspSource} data: blob:;`;
 
     // Replace placeholders
-    html = html.replace('{{CSP}}', csp);
-    html = html.replace('{{HIGHLIGHT_CSS_URI}}', highlightCssUri.toString());
-    html = html.replace('{{MARKED_URI}}', markedUri.toString());
-    html = html.replace('{{HIGHLIGHT_JS_URI}}', highlightJsUri.toString());
+    html = html.replace('{{CSP}}', () => csp);
+    html = html.replace('{{HIGHLIGHT_CSS_URI}}', () => highlightCssUri.toString());
+    html = html.replace('{{MARKED_URI}}', () => markedUri.toString());
+    html = html.replace('{{HIGHLIGHT_JS_URI}}', () => highlightJsUri.toString());
     const inlineStyles = `${MODERN_WEBVIEW_BASE_CSS}\n${sharedCss}\n${css}`;
     html = html.replace('{{INLINE_STYLES}}', () => inlineStyles);
-    html = html.replace(/\{\{NONCE\}\}/g, nonce);
+    html = html.replace(/\{\{NONCE\}\}/g, () => nonce);
     html = html.replace('{{THEME_DETECTION_SCRIPT}}', () => themeDetection);
     html = html.replace('{{INLINE_SCRIPTS}}', () => js);
 

@@ -846,8 +846,8 @@ export class PlanStudioPanel {
     const htmlTemplate = PlanStudioPanel.getHtmlTemplate();
     const inlineScript = PlanStudioPanel.getScriptTemplate();
     return htmlTemplate
-      .replace(/\{\{INLINE_STYLES\}\}/g, inlineStyles)
-      .replace(/\{\{INLINE_SCRIPTS\}\}/g, inlineScript)
-      .replace(/\{\{BODY_CONTENT\}\}/g, bodyContent);
+      .replace(/\{\{INLINE_STYLES\}\}/g, () => inlineStyles)
+      .replace(/\{\{INLINE_SCRIPTS\}\}/g, () => inlineScript)
+      .replace(/\{\{BODY_CONTENT\}\}/g, () => bodyContent);
   }
 }

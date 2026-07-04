@@ -10,6 +10,8 @@ import { AutoRefreshService } from '../services/AutoRefreshService';
 import { DdlViewerService } from '../services/DdlViewerService';
 import { LicenseService } from '../services/LicenseService';
 import { NotebookIndexService } from '../services/NotebookIndexService';
+import { McpDefinitionProvider } from '../mcp/McpDefinitionProvider';
+import { NexqlMcpServer } from '../mcp/NexqlMcpServer';
 
 function runDeferredProviderTask(outputChannel: vscode.OutputChannel, taskName: string, task: () => Promise<void>) {
   setTimeout(() => {
@@ -79,6 +81,28 @@ export function registerProviders(context: vscode.ExtensionContext, outputChanne
       { webviewOptions: { retainContextWhenHidden: true } }
     )
   );
+
+  // MCP server: exposes NexQL's read-only DB tools to external agents (Claude Code,
+  // Copilot, ...) over local Streamable HTTP with a per-session bearer token. Gated
+  // behind a setting — off by default; the server binds lazily on first client attach.
+  {
+    const isMcpEnabled = () =>
+      vscode.workspace.getConfiguration().get<boolean>('postgresExplorer.mcp.enabled', false);
+
+    const mcpServer = new NexqlMcpServer(context);
+    const mcpProvider = new McpDefinitionProvider(mcpServer, isMcpEnabled);
+    context.subscriptions.push(mcpServer, mcpProvider);
+    context.subscriptions.push(
+      vscode.lm.registerMcpServerDefinitionProvider('postgresExplorer.mcpServerProvider', mcpProvider)
+    );
+    context.subscriptions.push(
+      vscode.workspace.onDidChangeConfiguration((e) => {
+        if (e.affectsConfiguration('postgresExplorer.mcp.enabled')) {
+          mcpProvider.refresh();
+        }
+      })
+    );
+  }
 
   // Register notebook providers
   const notebookProvider = new PostgresNotebookProvider();

@@ -38,7 +38,7 @@ docs/plans/
 docs/specs/
 docs/plan/
 .commandcode/
-test/
+/test/
 .vercel
 .env
 .env.local

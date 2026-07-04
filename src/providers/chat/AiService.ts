@@ -1504,7 +1504,7 @@ export class AiService {
     body: any,
     provider: string,
     onChunk?: (chunk: { text?: string; toolCalls?: ToolCall[] }) => void
-  ): Promise<{ text: string; usage?: string }> {
+  ): Promise<{ text: string; usage?: string; toolCalls?: ToolCall[] }> {
     let lastErr: unknown;
     for (let attempt = 0; attempt < HTTP_RETRY_MAX_ATTEMPTS; attempt++) {
       try {
@@ -1619,13 +1619,25 @@ export class AiService {
     }
   }
 
+  /** OpenAI-style tool_call arguments arrive as a JSON string; keep the raw string if it isn't valid JSON. */
+  private _parseToolArgs(raw: unknown): any {
+    if (typeof raw !== 'string') {
+      return raw ?? {};
+    }
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return { raw };
+    }
+  }
+
   private _makeHttpRequest(
     endpoint: string,
     headers: any,
     body: any,
     provider: string,
     onChunk?: (chunk: { text?: string; toolCalls?: ToolCall[] }) => void
-  ): Promise<{ text: string, usage?: string }> {
+  ): Promise<{ text: string, usage?: string, toolCalls?: ToolCall[] }> {
     return new Promise((resolve, reject) => {
       const url = new URL(endpoint);
       const requestData = JSON.stringify(body);
@@ -1673,6 +1685,10 @@ export class AiService {
 
         let data = '';
         let buffer = '';
+        // Streamed tool-call fragments: OpenAI keys them by `delta.tool_calls[].index`
+        // (arguments arrive as string pieces), Anthropic by content-block index
+        // (`content_block_start` carries id/name, `input_json_delta` the JSON pieces).
+        const streamToolFragments = new Map<number, { id: string; name: string; args: string }>();
         res.on('data', (chunk: Buffer | string) => {
           const chunkStr = typeof chunk === 'string' ? chunk : chunk.toString('utf8');
           if (onChunk) {
@@ -1694,10 +1710,44 @@ export class AiService {
                   if (provider === 'anthropic') {
                     if (parsed.type === 'content_block_delta' && parsed.delta?.text) {
                       text = parsed.delta.text;
+                    } else if (
+                      parsed.type === 'content_block_start' &&
+                      parsed.content_block?.type === 'tool_use'
+                    ) {
+                      streamToolFragments.set(parsed.index ?? streamToolFragments.size, {
+                        id: parsed.content_block.id || '',
+                        name: parsed.content_block.name || '',
+                        args: ''
+                      });
+                    } else if (
+                      parsed.type === 'content_block_delta' &&
+                      parsed.delta?.type === 'input_json_delta'
+                    ) {
+                      const frag = streamToolFragments.get(parsed.index ?? -1);
+                      if (frag) {
+                        frag.args += parsed.delta.partial_json || '';
+                      }
                     }
                   } else {
                     // OpenAI-compatible
                     text = parsed.choices?.[0]?.delta?.content || '';
+                    for (const tc of parsed.choices?.[0]?.delta?.tool_calls ?? []) {
+                      const idx = tc.index ?? 0;
+                      let frag = streamToolFragments.get(idx);
+                      if (!frag) {
+                        frag = { id: '', name: '', args: '' };
+                        streamToolFragments.set(idx, frag);
+                      }
+                      if (tc.id) {
+                        frag.id = tc.id;
+                      }
+                      if (tc.function?.name) {
+                        frag.name = tc.function.name;
+                      }
+                      if (tc.function?.arguments) {
+                        frag.args += tc.function.arguments;
+                      }
+                    }
                   }
                   if (text) {
                     data += text;
@@ -1716,9 +1766,21 @@ export class AiService {
         res.on('end', () => {
           let content = '';
           let usage = '';
+          const toolCalls: ToolCall[] = [];
+          const finalizeStreamFragments = () => {
+            for (const frag of streamToolFragments.values()) {
+              if (frag.name) {
+                toolCalls.push({ id: frag.id, name: frag.name, arguments: this._parseToolArgs(frag.args) });
+              }
+            }
+          };
 
           if (onChunk) {
             content = data;
+            finalizeStreamFragments();
+            if (toolCalls.length > 0) {
+              onChunk({ toolCalls });
+            }
             usage = AiService._roughTokenEstimateLabel(
               AiService.estimateTokens(JSON.stringify(body.messages || '')),
               content.length
@@ -1744,10 +1806,28 @@ export class AiService {
                   try {
                     const parsed = JSON.parse(dataVal);
                     text += parsed.choices?.[0]?.delta?.content || '';
+                    for (const tc of parsed.choices?.[0]?.delta?.tool_calls ?? []) {
+                      const idx = tc.index ?? 0;
+                      let frag = streamToolFragments.get(idx);
+                      if (!frag) {
+                        frag = { id: '', name: '', args: '' };
+                        streamToolFragments.set(idx, frag);
+                      }
+                      if (tc.id) {
+                        frag.id = tc.id;
+                      }
+                      if (tc.function?.name) {
+                        frag.name = tc.function.name;
+                      }
+                      if (tc.function?.arguments) {
+                        frag.args += tc.function.arguments;
+                      }
+                    }
                   } catch {
                     // ignore partial/meta lines
                   }
                 }
+                finalizeStreamFragments();
                 response = { choices: [{ message: { content: text } }] };
               } else {
                 response = JSON.parse(data) as Record<string, unknown>;
@@ -1763,24 +1843,60 @@ export class AiService {
             }
 
             if (provider === 'anthropic') {
-              const contentArr = response.content as Array<{ text?: string }> | undefined;
-              content = contentArr?.[0]?.text || '';
+              const contentArr = response.content as Array<{
+                type?: string;
+                text?: string;
+                id?: string;
+                name?: string;
+                input?: unknown;
+              }> | undefined;
+              for (const block of contentArr ?? []) {
+                if (block.type === 'tool_use' && block.name) {
+                  toolCalls.push({ id: block.id || '', name: block.name, arguments: block.input ?? {} });
+                } else if (block.text) {
+                  content += block.text;
+                }
+              }
               const usageObj = response.usage as { input_tokens?: number; output_tokens?: number } | undefined;
               if (usageObj) {
                 usage = `${usageObj.input_tokens} input, ${usageObj.output_tokens} output`;
               }
             } else if (provider === 'gemini') {
               const candidates = response.candidates as Array<{
-                content?: { parts?: Array<{ text?: string }> };
+                content?: { parts?: Array<{ text?: string; functionCall?: { name?: string; args?: unknown } }> };
               }> | undefined;
-              content = candidates?.[0]?.content?.parts?.[0]?.text || '';
+              for (const part of candidates?.[0]?.content?.parts ?? []) {
+                if (part.functionCall?.name) {
+                  toolCalls.push({
+                    id: `gemini_call_${toolCalls.length}`,
+                    name: part.functionCall.name,
+                    arguments: part.functionCall.args ?? {}
+                  });
+                } else if (part.text) {
+                  content += part.text;
+                }
+              }
               const usageObj = response.usageMetadata as { totalTokenCount?: number } | undefined;
               if (usageObj) {
                 usage = `${usageObj.totalTokenCount} tokens`;
               }
             } else {
-              const choices = response.choices as Array<{ message?: { content?: string } }> | undefined;
+              const choices = response.choices as Array<{
+                message?: {
+                  content?: string;
+                  tool_calls?: Array<{ id?: string; function?: { name?: string; arguments?: unknown } }>;
+                };
+              }> | undefined;
               content = choices?.[0]?.message?.content || '';
+              for (const tc of choices?.[0]?.message?.tool_calls ?? []) {
+                if (tc.function?.name) {
+                  toolCalls.push({
+                    id: tc.id || '',
+                    name: tc.function.name,
+                    arguments: this._parseToolArgs(tc.function.arguments)
+                  });
+                }
+              }
               const usageObj = response.usage as {
                 total_tokens?: number;
                 prompt_tokens?: number;
@@ -1800,7 +1916,7 @@ export class AiService {
             usage = `${body.model} · ${usage}`;
           }
 
-          resolve({ text: content, usage });
+          resolve({ text: content, usage, toolCalls: toolCalls.length > 0 ? toolCalls : undefined });
         });
       });
 

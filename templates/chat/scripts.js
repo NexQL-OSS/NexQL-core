@@ -14,6 +14,14 @@ const chatInput = document.getElementById('chatInput');
 const sendBtn = document.getElementById('sendBtn');
 const stopBtn = document.getElementById('stopBtn');
 const attachBtn = document.getElementById('attachBtn');
+const attachMenuWrapper = document.getElementById('attachMenuWrapper');
+const attachMenu = document.getElementById('attachMenu');
+const attachFileOption = document.getElementById('attachFileOption');
+const attachImageOption = document.getElementById('attachImageOption');
+const imageFileInput = document.getElementById('imageFileInput');
+const chatSessionTitle = document.getElementById('chatSessionTitle');
+const chatSessionTitleText = document.getElementById('chatSessionTitleText');
+const chatSessionSubtitle = document.getElementById('chatSessionSubtitle');
 const emptyState = document.getElementById('emptyState');
 const typingIndicator = document.getElementById('typingIndicator');
 const loadingText = document.getElementById('loadingText');
@@ -47,6 +55,11 @@ let currentMessages = [];
 let currentModelCatalog = [];
 let currentModelSelectionId = '';
 let currentModelLabel = 'Loading models…';
+let currentSessionTitle = '';
+let attachMenuVisible = false;
+let liveThinkingStartedAt = null;
+let liveThinkingSteps = [];
+let modelCatalogLoading = false;
 let modelMenuVisible = false;
 let currentHierarchyPath = {
   connection: null,
@@ -299,6 +312,49 @@ function openIndexPanel() {
   vscode.postMessage({ type: 'openIndexPanel' });
 }
 
+function truncateSessionTitle(text, maxLength = 56) {
+  const cleaned = String(text || '').replace(/\s+/g, ' ').trim();
+  if (!cleaned) {
+    return 'New chat';
+  }
+  if (cleaned.length <= maxLength) {
+    return cleaned;
+  }
+  return cleaned.substring(0, maxLength - 1).trimEnd() + '…';
+}
+
+function deriveSessionTitleFromMessages(messages) {
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return '';
+  }
+  const firstUser = messages.find((msg) => msg.role === 'user' && typeof msg.content === 'string' && msg.content.trim());
+  return firstUser ? truncateSessionTitle(firstUser.content) : '';
+}
+
+function setChatSessionTitle(title) {
+  currentSessionTitle = truncateSessionTitle(title);
+  if (chatSessionTitleText) {
+    chatSessionTitleText.textContent = currentSessionTitle || 'New chat';
+  }
+}
+
+function syncChatSessionHeader(hasMessages) {
+  if (!chatSessionTitle || !chatSessionSubtitle) {
+    return;
+  }
+
+  if (!hasMessages) {
+    chatSessionTitle.hidden = true;
+    return;
+  }
+
+  chatSessionTitle.hidden = false;
+  chatSessionSubtitle.textContent = currentModelLabel || 'Smart';
+  if (chatSessionTitleText && !currentSessionTitle) {
+    chatSessionTitleText.textContent = 'New chat';
+  }
+}
+
 function setAiModelPickerLabel(label, title) {
   currentModelLabel = label || 'Loading models…';
   if (aiModelTriggerLabel) {
@@ -306,6 +362,49 @@ function setAiModelPickerLabel(label, title) {
   }
   if (aiModelTrigger) {
     aiModelTrigger.title = title || currentModelLabel || 'AI model';
+  }
+  if (chatSessionSubtitle && chatSessionTitle && !chatSessionTitle.hidden) {
+    chatSessionSubtitle.textContent = currentModelLabel;
+  }
+}
+
+function closeAttachMenu() {
+  attachMenuVisible = false;
+  if (attachMenuWrapper) {
+    attachMenuWrapper.classList.remove('open');
+  }
+  if (attachBtn) {
+    attachBtn.setAttribute('aria-expanded', 'false');
+  }
+  if (attachMenu) {
+    attachMenu.setAttribute('aria-hidden', 'true');
+  }
+}
+
+function openAttachMenu() {
+  if (!attachMenuWrapper || !attachMenu || !attachBtn) {
+    return;
+  }
+  closeAiModelMenu();
+  attachMenuVisible = true;
+  attachMenuWrapper.classList.add('open');
+  attachBtn.setAttribute('aria-expanded', 'true');
+  attachMenu.setAttribute('aria-hidden', 'false');
+}
+
+function toggleAttachMenu() {
+  if (attachMenuVisible) {
+    closeAttachMenu();
+  } else {
+    openAttachMenu();
+  }
+}
+
+function setComposerControlsDisabled(disabled) {
+  if (attachBtn) attachBtn.disabled = disabled;
+  if (mentionBtn) mentionBtn.disabled = disabled;
+  if (disabled) {
+    closeAttachMenu();
   }
 }
 
@@ -326,6 +425,7 @@ function openAiModelMenu() {
   if (!aiModelPicker || !aiModelMenu || !aiModelTrigger) {
     return;
   }
+  closeAttachMenu();
   modelMenuVisible = true;
   aiModelPicker.classList.add('open');
   aiModelTrigger.setAttribute('aria-expanded', 'true');
@@ -356,6 +456,14 @@ function selectAiModel(selectionId) {
   vscode.postMessage({ type: 'switchChatModel', selectionId });
 }
 
+// One-line job descriptions for the known NexQL Free tiers (nexql-free:<tier>).
+// Other providers don't have a fixed tier set, so they render label-only.
+const NEXQL_FREE_TIER_DESCRIPTIONS = {
+  smart: 'Fast, everyday queries & explanations',
+  engineer: 'Deeper reasoning, multi-step plans',
+  architect: 'Schema design, migrations, reviews',
+};
+
 function renderAiModelGroup(groupLabel, entries, activeSelectionId) {
   const group = document.createElement('div');
   group.className = 'ai-model-menu-group';
@@ -376,10 +484,24 @@ function renderAiModelGroup(groupLabel, entries, activeSelectionId) {
       item.classList.add('is-active');
     }
 
+    const textCol = document.createElement('span');
+    textCol.className = 'ai-model-menu-item-text';
+
     const label = document.createElement('span');
     label.className = 'ai-model-menu-item-label';
     label.textContent = entry.label;
-    item.appendChild(label);
+    textCol.appendChild(label);
+
+    const tier = typeof entry.selectionId === 'string' ? entry.selectionId.split(':')[1] : '';
+    const description = NEXQL_FREE_TIER_DESCRIPTIONS[tier];
+    if (description) {
+      const desc = document.createElement('span');
+      desc.className = 'ai-model-menu-item-description';
+      desc.textContent = description;
+      textCol.appendChild(desc);
+    }
+
+    item.appendChild(textCol);
 
     if (entry.selectionId === activeSelectionId) {
       const check = document.createElement('span');
@@ -395,6 +517,32 @@ function renderAiModelGroup(groupLabel, entries, activeSelectionId) {
   return group;
 }
 
+function renderAiModelMenuSkeleton() {
+  const group = document.createElement('div');
+  group.className = 'ai-model-menu-group ai-model-menu-group--loading';
+  group.setAttribute('aria-hidden', 'true');
+
+  const heading = document.createElement('div');
+  heading.className = 'ai-model-menu-group-title';
+  heading.textContent = 'More providers';
+  group.appendChild(heading);
+
+  const widths = ['72%', '58%', '64%'];
+  for (const width of widths) {
+    const row = document.createElement('div');
+    row.className = 'ai-model-menu-skeleton-item';
+
+    const bar = document.createElement('div');
+    bar.className = 'skeleton ai-model-menu-skeleton-bar';
+    bar.style.width = width;
+    row.appendChild(bar);
+
+    group.appendChild(row);
+  }
+
+  return group;
+}
+
 function applyModelCatalog(message) {
   if (!aiModelMenu || !Array.isArray(message.catalog)) {
     return;
@@ -403,6 +551,7 @@ function applyModelCatalog(message) {
   const previous = currentModelSelectionId;
   currentModelCatalog = message.catalog.slice();
   currentModelSelectionId = message.activeSelectionId || previous || '';
+  modelCatalogLoading = message.catalogLoading === true;
 
   aiModelMenu.innerHTML = '';
 
@@ -415,7 +564,7 @@ function applyModelCatalog(message) {
     groups.get(group).push(entry);
   }
 
-  if (groups.size === 0) {
+  if (groups.size === 0 && !modelCatalogLoading) {
     const empty = document.createElement('div');
     empty.className = 'ai-model-menu-empty';
     empty.textContent = 'No models found';
@@ -423,6 +572,9 @@ function applyModelCatalog(message) {
   } else {
     for (const [groupLabel, entries] of groups) {
       aiModelMenu.appendChild(renderAiModelGroup(groupLabel, entries, currentModelSelectionId));
+    }
+    if (modelCatalogLoading) {
+      aiModelMenu.appendChild(renderAiModelMenuSkeleton());
     }
   }
 
@@ -471,11 +623,11 @@ function onAiModelTriggerKeyDown(event) {
 }
 
 function onDocumentClick(event) {
-  if (!aiModelPicker || !modelMenuVisible) {
-    return;
-  }
-  if (!aiModelPicker.contains(event.target)) {
+  if (aiModelPicker && modelMenuVisible && !aiModelPicker.contains(event.target)) {
     closeAiModelMenu();
+  }
+  if (attachMenuWrapper && attachMenuVisible && !attachMenuWrapper.contains(event.target)) {
+    closeAttachMenu();
   }
 }
 
@@ -499,6 +651,15 @@ function formatDate(timestamp) {
 function renderHistory(sessions) {
   console.log('[WebView] renderHistory called with', sessions?.length, 'sessions');
   chatHistory = sessions;
+
+  const activeSession = Array.isArray(sessions)
+    ? sessions.find((session) => session.isActive)
+    : null;
+  if (activeSession?.title) {
+    setChatSessionTitle(activeSession.title);
+    syncChatSessionHeader(currentMessages.length > 0);
+  }
+
   filterHistory(historySearch.value);
 }
 
@@ -516,38 +677,59 @@ function filterHistory(query) {
     return;
   }
   while (historyList.firstChild) historyList.removeChild(historyList.firstChild);
+
+  // Bucket sessions by day using the same day-diff logic as formatDate().
+  const now = new Date();
+  const buckets = { Today: [], Yesterday: [], Older: [] };
   filtered.forEach(session => {
-    const item = document.createElement('div');
-    item.className = 'history-item' + (session.isActive ? ' active' : '');
-    item.addEventListener('click', () => loadSession(session.id));
+    const days = Math.floor((now - new Date(session.updatedAt)) / (1000 * 60 * 60 * 24));
+    if (days === 0) buckets.Today.push(session);
+    else if (days === 1) buckets.Yesterday.push(session);
+    else buckets.Older.push(session);
+  });
 
-    const titleDiv = document.createElement('div');
-    titleDiv.className = 'history-item-title';
-    titleDiv.textContent = session.title || '';
+  ['Today', 'Yesterday', 'Older'].forEach(bucketName => {
+    const sessions = buckets[bucketName];
+    if (sessions.length === 0) return;
 
-    const metaDiv = document.createElement('div');
-    metaDiv.className = 'history-item-meta';
-    const dateSpan = document.createElement('span');
-    dateSpan.textContent = '📅 ' + formatDate(session.updatedAt);
-    const countSpan = document.createElement('span');
-    countSpan.textContent = '💬 ' + (session.messageCount || 0) + ' messages';
-    metaDiv.appendChild(dateSpan);
-    metaDiv.appendChild(countSpan);
+    const header = document.createElement('div');
+    header.className = 'history-date-group-header';
+    header.textContent = bucketName;
+    historyList.appendChild(header);
 
-    const delBtn = document.createElement('button');
-    delBtn.className = 'history-item-delete';
-    delBtn.title = 'Delete chat';
-    delBtn.innerHTML = `
-      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-        <path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/>
-        <path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4L4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/>
-      </svg>`;
-    delBtn.addEventListener('click', (e) => { e.stopPropagation(); deleteSession(session.id, e); });
+    sessions.forEach(session => {
+      const item = document.createElement('div');
+      item.className = 'history-item' + (session.isActive ? ' active' : '');
+      item.addEventListener('click', () => loadSession(session.id));
 
-    item.appendChild(titleDiv);
-    item.appendChild(metaDiv);
-    item.appendChild(delBtn);
-    historyList.appendChild(item);
+      const titleDiv = document.createElement('div');
+      titleDiv.className = 'history-item-title';
+      titleDiv.textContent = session.title || '';
+
+      const metaDiv = document.createElement('div');
+      metaDiv.className = 'history-item-meta';
+      const dateSpan = document.createElement('span');
+      dateSpan.textContent = '📅 ' + formatDate(session.updatedAt);
+      const countSpan = document.createElement('span');
+      countSpan.textContent = '💬 ' + (session.messageCount || 0) + ' messages';
+      metaDiv.appendChild(dateSpan);
+      metaDiv.appendChild(countSpan);
+
+      const delBtn = document.createElement('button');
+      delBtn.className = 'history-item-delete';
+      delBtn.title = 'Delete chat';
+      delBtn.innerHTML = `
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/>
+          <path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4L4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/>
+        </svg>`;
+      delBtn.addEventListener('click', (e) => { e.stopPropagation(); deleteSession(session.id, e); });
+
+      item.appendChild(titleDiv);
+      item.appendChild(metaDiv);
+      item.appendChild(delBtn);
+      historyList.appendChild(item);
+    });
   });
 }
 
@@ -1186,15 +1368,24 @@ const quirkyMessages = [
 ];
 
 function startLoadingMessages() {
+  const textEl = resolveActiveLoadingTextElement(true);
+  if (!textEl) {
+    return;
+  }
+
   let index = Math.floor(Math.random() * quirkyMessages.length);
-  loadingText.textContent = quirkyMessages[index];
+  textEl.textContent = quirkyMessages[index];
 
   loadingInterval = setInterval(() => {
+    const activeTextEl = resolveActiveLoadingTextElement(false);
+    if (!activeTextEl) {
+      return;
+    }
     index = (index + 1) % quirkyMessages.length;
-    loadingText.style.animation = 'none';
-    loadingText.offsetHeight; // Trigger reflow
-    loadingText.style.animation = 'fadeInOut 0.3s ease';
-    loadingText.textContent = quirkyMessages[index];
+    activeTextEl.style.animation = 'none';
+    activeTextEl.offsetHeight; // Trigger reflow
+    activeTextEl.style.animation = 'fadeInOut 0.3s ease';
+    activeTextEl.textContent = quirkyMessages[index];
   }, 2500);
 }
 
@@ -1203,15 +1394,22 @@ function stopLoadingMessages() {
     clearInterval(loadingInterval);
     loadingInterval = null;
   }
-  loadingText.textContent = '';
+  if (loadingText) {
+    loadingText.textContent = '';
+  }
+  hideInlineTypingIndicator();
 }
 
 function attachFile() {
+  closeAttachMenu();
   vscode.postMessage({ type: 'pickFile' });
 }
 
 function attachImage() {
-  document.getElementById('imageFileInput').click();
+  closeAttachMenu();
+  if (imageFileInput) {
+    imageFileInput.click();
+  }
 }
 
 function handleImageFileInput(event) {
@@ -1362,6 +1560,11 @@ function sendMessage() {
   // Dismiss bubble strip when user sends a message
   dismissBubbleStrip();
 
+  if (message && !currentSessionTitle) {
+    setChatSessionTitle(message);
+  }
+  syncChatSessionHeader(true);
+
   vscode.postMessage({
     type: 'sendMessage',
     message: message || (selectedMentions.length > 0 ? 'Please analyze the referenced database objects' : 'Please analyze the attached file(s)'),
@@ -1373,9 +1576,7 @@ function sendMessage() {
   resizeChatInput();
   chatInput.disabled = true;
   sendBtn.disabled = true;
-  attachBtn.disabled = true;
-  document.getElementById('imageBtn').disabled = true;
-  mentionBtn.disabled = true;
+  setComposerControlsDisabled(true);
 
   // Clear attachments and mentions after sending
   attachedFiles = [];
@@ -1709,24 +1910,24 @@ function getMarkedRenderer() {
     return `<div class="code-block-wrapper">
             <div class="code-block-header">
               <span class="code-language">${displayLang}</span>
+              <div class="code-block-actions">
+                ${isSQL ? `<button type="button" class="notebook-btn" title="Add to active notebook">
+                  <svg viewBox="-0.5 -0.5 17 17" fill="currentColor" aria-hidden="true">
+                    <path d="M2.5 2A1.5 1.5 0 001 3.5v9A1.5 1.5 0 002.5 14h11a1.5 1.5 0 001.5-1.5v-9A1.5 1.5 0 0013.5 2h-11zM2 3.5a.5.5 0 01.5-.5h11a.5.5 0 01.5.5v9a.5.5 0 01-.5.5h-11a.5.5 0 01-.5-.5v-9z"/>
+                    <path d="M7.5 5.5v2h-2v1h2v2h1v-2h2v-1h-2v-2h-1z"/>
+                  </svg>
+                  Notebook
+                </button>` : ''}
+                <button type="button" class="copy-btn" title="Copy">
+                  <svg viewBox="-0.5 -0.5 17 17" fill="currentColor" aria-hidden="true">
+                    <path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z"/>
+                    <path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z"/>
+                  </svg>
+                  Copy
+                </button>
+              </div>
             </div>
             <pre><code id="${codeId}" class="hljs language-${language}" data-raw="${safeRawCode}">${highlightedCode}</code></pre>
-            <div class="code-block-actions">
-              ${isSQL ? `<button class="notebook-btn" title="Add to active notebook">
-                <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor">
-                  <path d="M2.5 2A1.5 1.5 0 001 3.5v9A1.5 1.5 0 002.5 14h11a1.5 1.5 0 001.5-1.5v-9A1.5 1.5 0 0013.5 2h-11zM2 3.5a.5.5 0 01.5-.5h11a.5.5 0 01.5.5v9a.5.5 0 01-.5.5h-11a.5.5 0 01-.5-.5v-9z"/>
-                  <path d="M7.5 5.5v2h-2v1h2v2h1v-2h2v-1h-2v-2h-1z"/>
-                </svg>
-                Notebook
-              </button>` : ''}
-              <button class="copy-btn">
-                <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor">
-                  <path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z"/>
-                  <path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z"/>
-                </svg>
-                Copy
-              </button>
-            </div>
           </div>`;
   };
 
@@ -1905,38 +2106,27 @@ window.addEventListener('message', event => {
         console.log('[WebView] startStream received');
         stopLoadingMessages();
         emptyState.style.display = 'none';
+        syncChatSessionHeader(true);
         dismissBubbleStrip();
-        typingIndicator.classList.remove('visible');
+        syncGlobalTypingVisibility(false);
 
-        // Render an empty assistant message element in-place
-        const messageDiv = document.createElement('div');
-        messageDiv.className = 'message assistant';
+        const messageDiv = getOrCreateLiveAssistantMessage();
+        const bubbleDiv = messageDiv.querySelector('.message-bubble');
 
-        const roleDiv = document.createElement('div');
-        roleDiv.className = 'message-role';
-        roleDiv.textContent = '🤖 PG Studio Bot';
+        let contentDiv = document.getElementById('streaming-content');
+        if (!contentDiv && bubbleDiv) {
+          contentDiv = document.createElement('div');
+          contentDiv.className = 'message-content';
+          contentDiv.id = 'streaming-content';
+          bubbleDiv.appendChild(contentDiv);
+        }
 
-        const bubbleDiv = document.createElement('div');
-        bubbleDiv.className = 'message-bubble';
+        if (!messageDiv.querySelector('.message-usage-row')) {
+          messageDiv.appendChild(buildAssistantFooterRow('', ''));
+        }
 
-        const contentDiv = document.createElement('div');
-        contentDiv.className = 'message-content';
-        contentDiv.id = 'streaming-content';
-
-        bubbleDiv.appendChild(contentDiv);
-        messageDiv.appendChild(roleDiv);
-        messageDiv.appendChild(bubbleDiv);
-
-        // Append footer row initially without text content for copy action
-        messageDiv.appendChild(buildAssistantFooterRow('', ''));
-
-        // Insert before typing indicator
-        messagesContainer.insertBefore(messageDiv, typingIndicator);
-
-        // Scroll to the start of this message
         messageDiv.scrollIntoView({ block: 'start', behavior: 'smooth' });
 
-        // Update local arrays/variables to be in sync
         currentMessages.push({ role: 'assistant', content: '' });
         lastMessageCount = currentMessages.length;
       }
@@ -1948,8 +2138,22 @@ window.addEventListener('message', event => {
         if (contentDiv) {
           contentDiv.innerHTML = parseMarkdown(message.accumulated);
 
-          // Update plain text in footer buttons copy action
           const messageDiv = contentDiv.closest('.message');
+          const liveThinking = messageDiv?.querySelector('#live-thinking-trace, .thinking-trace--live');
+          if (liveThinking && message.accumulated && message.accumulated.trim()) {
+            liveThinking.open = false;
+            const summary = liveThinking.querySelector('summary');
+            if (summary) {
+              summary.textContent = formatThinkingSummary(
+                liveThinkingSteps,
+                liveThinkingStartedAt,
+                true
+              );
+            }
+            liveThinking.classList.remove('thinking-trace--live');
+          }
+          hideInlineTypingIndicator();
+
           if (messageDiv) {
             const usageEl = messageDiv.querySelector('.message-usage-row');
             if (usageEl) {
@@ -1965,33 +2169,89 @@ window.addEventListener('message', event => {
       break;
     case 'updateMessages':
       stopLoadingMessages();
+      promoteLiveAssistantMessage();
+      if (message.sessionTitle) {
+        setChatSessionTitle(message.sessionTitle);
+      } else if (!currentSessionTitle) {
+        const derivedTitle = deriveSessionTitleFromMessages(message.messages);
+        if (derivedTitle) {
+          setChatSessionTitle(derivedTitle);
+        }
+      }
       renderMessages(message.messages, true);
       chatInput.disabled = false;
       sendBtn.disabled = false;
-      attachBtn.disabled = false;
-      document.getElementById('imageBtn').disabled = false;
-      mentionBtn.disabled = false;
+      setComposerControlsDisabled(false);
       chatInput.focus();
       break;
     case 'setTyping':
       if (message.isTyping) {
-        typingIndicator.classList.add('visible');
+        syncGlobalTypingVisibility(true);
         startLoadingMessages();
         scrollMessagesToEnd('auto');
-        // Swap send button with stop button
         sendBtn.style.display = 'none';
         stopBtn.style.display = 'flex';
       } else {
-        typingIndicator.classList.remove('visible');
+        syncGlobalTypingVisibility(false);
         stopLoadingMessages();
-        // Swap stop button back to send button
         stopBtn.style.display = 'none';
         sendBtn.style.display = 'flex';
       }
       break;
+    case 'thinkingStart':
+      liveThinkingStartedAt = Date.now();
+      renderInlineLiveThinking(message.steps || [], { allowEmpty: true });
+      break;
+    case 'thinkingUpdate':
+      renderInlineLiveThinking(message.steps || []);
+      break;
+    case 'thinkingEnd':
+      finalizeInlineLiveThinking(message.steps || []);
+      break;
     case 'fileAttached':
       attachedFiles.push(message.file);
       renderAttachments();
+      break;
+    case 'attachInvocation':
+      // Unified attach path for AssistantGateway invocations (tree @, result grid,
+      // EXPLAIN tab, migration generator, index advisor, backup tools, ...). Never
+      // writes temp files — attachments carry their content in-memory.
+      if (Array.isArray(message.attachments) && message.attachments.length > 0) {
+        attachedFiles.push(...message.attachments);
+        renderAttachments();
+      }
+      if (Array.isArray(message.mentions) && message.mentions.length > 0) {
+        for (const obj of message.mentions) {
+          const mention = {
+            name: obj.name,
+            type: obj.type,
+            schema: obj.schema,
+            database: obj.database,
+            connectionId: obj.connectionId,
+            connectionName: obj.connectionName,
+            breadcrumb: obj.breadcrumb,
+            schemaInfo: obj.details
+          };
+          const exists = selectedMentions.find(m =>
+            m.name === mention.name && m.schema === mention.schema && m.database === mention.database
+          );
+          if (!exists) {
+            selectedMentions.push(mention);
+          }
+        }
+        renderMentionChips();
+      }
+      if (typeof message.draftText === 'string' && message.draftText.length > 0) {
+        chatInput.value = message.draftText;
+        chatInput.style.height = 'auto';
+        chatInput.style.height = Math.min(chatInput.scrollHeight, 200) + 'px';
+      }
+      if (message.autoSend) {
+        sendMessage();
+      } else {
+        chatInput.focus();
+        chatInput.selectionStart = chatInput.selectionEnd = chatInput.value.length;
+      }
       break;
     case 'updateHistory':
       renderHistory(message.sessions);
@@ -2067,14 +2327,8 @@ window.addEventListener('message', event => {
       applyModelCatalog(message);
       break;
     case 'updateModelInfo':
-      {
-        if (message.modelName) {
-          if (currentModelLabel === 'Loading models…') {
-            setAiModelPickerLabel(message.modelName, message.modelName);
-          } else if (aiModelTrigger) {
-            aiModelTrigger.title = message.modelName;
-          }
-        }
+      if (message.modelName) {
+        setAiModelPickerLabel(message.modelName, message.modelName);
       }
       break;
 
@@ -2112,6 +2366,10 @@ window.addEventListener('message', event => {
     // Phase B: Error card display
     case 'error':
       showErrorCard(message.title || 'Error', message.message || 'An error occurred');
+      break;
+
+    case 'noConnectionsAvailable':
+      showNoConnectionCard();
       break;
   }
 });
@@ -2297,6 +2555,288 @@ function showToast(text, type = 'info') {
   }, 5000);
 }
 
+function renderThinkingStepRow(step) {
+  const row = document.createElement('div');
+  row.className = 'thinking-step thinking-step-' + step.status;
+  row.dataset.stepId = step.id;
+
+  const icon = document.createElement('span');
+  icon.className = 'thinking-step-icon';
+  if (step.status === 'active') {
+    icon.innerHTML = '<span class="thinking-spinner"></span>';
+  } else if (step.status === 'done') {
+    icon.textContent = '✓';
+  } else if (step.status === 'error') {
+    icon.textContent = '✕';
+  }
+
+  const label = document.createElement('span');
+  label.className = 'thinking-step-label';
+  label.textContent = step.label;
+
+  row.appendChild(icon);
+  row.appendChild(label);
+
+  if (step.ragContext) {
+    const ragCollapsible = buildRagContextCollapsible(step.ragContext);
+    if (ragCollapsible) {
+      ragCollapsible.classList.add('thinking-step-rag');
+      row.appendChild(ragCollapsible);
+    }
+  }
+
+  return row;
+}
+
+function formatThinkingSummary(steps, startedAt, forceDone) {
+  if (!steps || steps.length === 0) {
+    return 'Thinking…';
+  }
+
+  const hasActive = !forceDone && steps.some((step) => step.status === 'active');
+  if (hasActive) {
+    return 'Thinking…';
+  }
+
+  if (startedAt) {
+    const elapsedSeconds = Math.max(1, Math.round((Date.now() - startedAt) / 1000));
+    return `Thought for ${elapsedSeconds}s`;
+  }
+
+  return 'Thought';
+}
+
+function getOrCreateLiveAssistantMessage() {
+  let messageDiv = document.getElementById('live-assistant-message');
+  if (messageDiv) {
+    return messageDiv;
+  }
+
+  messageDiv = document.createElement('div');
+  messageDiv.className = 'message assistant';
+  messageDiv.id = 'live-assistant-message';
+
+  const roleDiv = document.createElement('div');
+  roleDiv.className = 'message-role';
+  roleDiv.textContent = '🤖 PG Studio Bot';
+
+  const bubbleDiv = document.createElement('div');
+  bubbleDiv.className = 'message-bubble';
+
+  messageDiv.appendChild(roleDiv);
+  messageDiv.appendChild(bubbleDiv);
+  messagesContainer.insertBefore(messageDiv, typingIndicator);
+  return messageDiv;
+}
+
+function getLiveAssistantBubble() {
+  const messageDiv = getOrCreateLiveAssistantMessage();
+  return messageDiv.querySelector('.message-bubble');
+}
+
+function syncGlobalTypingVisibility(isTyping) {
+  if (!typingIndicator) {
+    return;
+  }
+  const hasLiveAssistant = !!document.getElementById('live-assistant-message');
+  if (isTyping && hasLiveAssistant) {
+    typingIndicator.classList.remove('visible');
+    showInlineTypingIndicator();
+    return;
+  }
+  hideInlineTypingIndicator();
+  if (isTyping) {
+    typingIndicator.classList.add('visible');
+  } else {
+    typingIndicator.classList.remove('visible');
+  }
+}
+
+function ensureInlineTypingIndicator(bubbleDiv) {
+  let indicator = bubbleDiv.querySelector('#inline-typing-indicator');
+  if (indicator) {
+    return indicator;
+  }
+
+  indicator = document.createElement('div');
+  indicator.className = 'typing-indicator inline-typing-indicator';
+  indicator.id = 'inline-typing-indicator';
+
+  const dots = document.createElement('div');
+  dots.className = 'typing-dots';
+  for (let i = 0; i < 3; i += 1) {
+    dots.appendChild(document.createElement('span'));
+  }
+
+  const text = document.createElement('div');
+  text.className = 'loading-text';
+  text.id = 'inlineLoadingText';
+
+  indicator.appendChild(dots);
+  indicator.appendChild(text);
+
+  const contentDiv = bubbleDiv.querySelector('#streaming-content');
+  const thinkingTrace = bubbleDiv.querySelector('#live-thinking-trace, .thinking-trace');
+  if (contentDiv) {
+    bubbleDiv.insertBefore(indicator, contentDiv);
+  } else if (thinkingTrace) {
+    thinkingTrace.insertAdjacentElement('afterend', indicator);
+  } else {
+    bubbleDiv.appendChild(indicator);
+  }
+
+  return indicator;
+}
+
+function showInlineTypingIndicator() {
+  const bubbleDiv = getLiveAssistantBubble();
+  if (!bubbleDiv) {
+    return null;
+  }
+
+  const hasStreamedContent = bubbleDiv.querySelector('#streaming-content')?.textContent?.trim();
+  if (hasStreamedContent) {
+    return null;
+  }
+
+  const indicator = ensureInlineTypingIndicator(bubbleDiv);
+  indicator.classList.add('visible');
+  return indicator.querySelector('#inlineLoadingText');
+}
+
+function hideInlineTypingIndicator() {
+  const indicator = document.getElementById('inline-typing-indicator');
+  if (indicator) {
+    indicator.classList.remove('visible');
+    indicator.remove();
+  }
+}
+
+function resolveActiveLoadingTextElement(createInlineIfNeeded) {
+  const hasLiveAssistant = !!document.getElementById('live-assistant-message');
+  if (hasLiveAssistant) {
+    const inlineText = createInlineIfNeeded
+      ? showInlineTypingIndicator()
+      : document.getElementById('inlineLoadingText');
+    if (inlineText) {
+      return inlineText;
+    }
+  }
+  return loadingText;
+}
+
+function renderInlineLiveThinking(steps, options = {}) {
+  if (Array.isArray(steps) && steps.length > 0) {
+    liveThinkingSteps = steps;
+  }
+
+  const normalizedSteps = liveThinkingSteps;
+  if (normalizedSteps.length === 0 && !options.allowEmpty) {
+    return;
+  }
+
+  if (!liveThinkingStartedAt) {
+    liveThinkingStartedAt = Date.now();
+  }
+
+  const bubbleDiv = getLiveAssistantBubble();
+  if (!bubbleDiv) {
+    return;
+  }
+
+  let details = bubbleDiv.querySelector('#live-thinking-trace');
+  if (!details) {
+    details = document.createElement('details');
+    details.className = 'collapsible-process thinking-trace thinking-trace--live';
+    details.id = 'live-thinking-trace';
+    details.open = true;
+
+    const summary = document.createElement('summary');
+    details.appendChild(summary);
+
+    const content = document.createElement('div');
+    content.className = 'collapsible-process-content thinking-trace-content';
+    content.id = 'live-thinking-trace-content';
+    details.appendChild(content);
+
+    const contentDiv = bubbleDiv.querySelector('#streaming-content');
+    if (contentDiv) {
+      bubbleDiv.insertBefore(details, contentDiv);
+    } else {
+      bubbleDiv.prepend(details);
+    }
+  }
+
+  const summary = details.querySelector('summary');
+  if (summary) {
+    summary.textContent = formatThinkingSummary(
+      normalizedSteps,
+      liveThinkingStartedAt,
+      options.forceDone === true
+    );
+  }
+
+  const content = details.querySelector('#live-thinking-trace-content');
+  if (content) {
+    content.replaceChildren();
+    normalizedSteps.forEach((step) => {
+      content.appendChild(renderThinkingStepRow(step));
+    });
+  }
+
+  details.open = options.forceDone ? false : normalizedSteps.some((step) => step.status === 'active');
+  scrollMessagesToEnd('auto');
+}
+
+function finalizeInlineLiveThinking(steps) {
+  const resolvedSteps = Array.isArray(steps) && steps.length > 0 ? steps : liveThinkingSteps;
+  renderInlineLiveThinking(resolvedSteps, { forceDone: true, allowEmpty: true });
+  liveThinkingSteps = [];
+}
+
+function promoteLiveAssistantMessage() {
+  const messageDiv = document.getElementById('live-assistant-message');
+  if (!messageDiv) {
+    return;
+  }
+  hideInlineTypingIndicator();
+  messageDiv.removeAttribute('id');
+  const thinkingTrace = messageDiv.querySelector('#live-thinking-trace');
+  if (thinkingTrace) {
+    thinkingTrace.removeAttribute('id');
+    thinkingTrace.classList.remove('thinking-trace--live');
+    const content = thinkingTrace.querySelector('#live-thinking-trace-content');
+    if (content) {
+      content.removeAttribute('id');
+    }
+  }
+  liveThinkingStartedAt = null;
+}
+
+function buildThinkingTraceCollapsible(thinkingTrace) {
+  if (!thinkingTrace || thinkingTrace.length === 0) {
+    return null;
+  }
+
+  const details = document.createElement('details');
+  details.className = 'collapsible-process thinking-trace';
+  details.open = false;
+
+  const summary = document.createElement('summary');
+  summary.textContent = formatThinkingSummary(thinkingTrace, null, true);
+  details.appendChild(summary);
+
+  const content = document.createElement('div');
+  content.className = 'collapsible-process-content thinking-trace-content';
+
+  thinkingTrace.forEach((step) => {
+    content.appendChild(renderThinkingStepRow(step));
+  });
+
+  details.appendChild(content);
+  return details;
+}
+
 function buildRagContextCollapsible(ragContext) {
   if (!ragContext) return null;
 
@@ -2422,6 +2962,10 @@ function renderMessages(messages, animate = false) {
 
   if (messages.length === 0) {
     emptyState.style.display = 'flex';
+    currentSessionTitle = '';
+    liveThinkingStartedAt = null;
+    liveThinkingSteps = [];
+    syncChatSessionHeader(false);
     const messageElements = messagesContainer.querySelectorAll('.message');
     messageElements.forEach(el => el.remove());
     dismissBubbleStrip();
@@ -2430,6 +2974,13 @@ function renderMessages(messages, animate = false) {
   }
 
   emptyState.style.display = 'none';
+  if (!currentSessionTitle) {
+    const derivedTitle = deriveSessionTitleFromMessages(messages);
+    if (derivedTitle) {
+      setChatSessionTitle(derivedTitle);
+    }
+  }
+  syncChatSessionHeader(true);
   dismissBubbleStrip();
 
   // Check if this is a new assistant message (for typing effect)
@@ -2520,6 +3071,10 @@ function renderMessages(messages, animate = false) {
 
       if (isNewAssistantMessage && isLastMessage) {
         // Will be typed out — anchor assistant turn at top so the reply is read from the start
+        const thinkingCollapsible = buildThinkingTraceCollapsible(msg.thinkingTrace);
+        if (thinkingCollapsible) {
+          bubbleDiv.appendChild(thinkingCollapsible);
+        }
         const agentCollapsible = buildAgenticStepsCollapsible(msg.agenticSteps);
         if (agentCollapsible) {
           bubbleDiv.appendChild(agentCollapsible);
@@ -2553,11 +3108,11 @@ function renderMessages(messages, animate = false) {
       contentDiv.textContent = msg.content;
     }
 
-    // Add RAG context collapsible for user messages if available
-    if (msg.role === 'user' && msg.ragContext) {
-      const ragCollapsible = buildRagContextCollapsible(msg.ragContext);
-      if (ragCollapsible) {
-        bubbleDiv.appendChild(ragCollapsible);
+    // Persisted thinking trace above assistant reply (RAG, agent turns, etc.)
+    if (msg.role === 'assistant' && msg.thinkingTrace && msg.thinkingTrace.length > 0) {
+      const thinkingCollapsible = buildThinkingTraceCollapsible(msg.thinkingTrace);
+      if (thinkingCollapsible) {
+        bubbleDiv.appendChild(thinkingCollapsible);
       }
     }
 
@@ -2566,6 +3121,20 @@ function renderMessages(messages, animate = false) {
       const agentCollapsible = buildAgenticStepsCollapsible(msg.agenticSteps);
       if (agentCollapsible) {
         bubbleDiv.appendChild(agentCollapsible);
+      }
+    }
+
+    // Back-compat: sessions saved before the thinkingTrace UI stored RAG context on
+    // the user message. Only fall back to it when the following assistant reply has
+    // no thinkingTrace of its own (i.e. it's an old session, not double-rendering).
+    if (msg.role === 'user' && msg.ragContext) {
+      const nextMsg = messages[idx + 1];
+      const hasNewTrace = nextMsg && nextMsg.role === 'assistant' && nextMsg.thinkingTrace && nextMsg.thinkingTrace.length > 0;
+      if (!hasNewTrace) {
+        const ragCollapsible = buildRagContextCollapsible(msg.ragContext);
+        if (ragCollapsible) {
+          bubbleDiv.appendChild(ragCollapsible);
+        }
       }
     }
 
@@ -2582,7 +3151,7 @@ function renderMessages(messages, animate = false) {
       copyPlain = msg.content || '';
     }
     if (msg.role === 'user') {
-      messageDiv.appendChild(buildUserFooterRow(copyPlain, idx));
+      messageDiv.appendChild(buildUserFooterRow(copyPlain, typeof msg._rawIdx === 'number' ? msg._rawIdx : idx));
     }
     if (msg.role === 'assistant') {
       messageDiv.appendChild(buildAssistantFooterRow(msg.usage || '', copyPlain));
@@ -2836,21 +3405,60 @@ function extractFollowUpQuestions(responseText) {
 }
 
 /**
- * Show error card with message and action buttons
- * @param {string} title - Error title
- * @param {string} message - Error message
+ * Show error card with message and action buttons.
+ * @param {string} title - Card title
+ * @param {string} message - Card body message
+ * @param {{variant?: 'error'|'info'}} [opts] - 'info' renders a calmer, non-alarming variant
+ *   (used for routine states like "no database connected") with a single primary action
+ *   ("Connect a database") instead of Retry/Configure.
  */
-function showErrorCard(title, message) {
+function showErrorCard(title, message, opts) {
+  const variant = (opts && opts.variant) || 'error';
   const errorCard = document.getElementById('errorCard');
   const titleElem = document.getElementById('errorCardTitle');
   const messageElem = document.getElementById('errorCardMessage');
-  
+  const retryBtn = document.getElementById('errorRetryBtn');
+  const configureBtn = document.getElementById('errorConfigureBtn');
+  const dismissBtn = document.getElementById('errorDismissBtn');
+  const iconElem = errorCard ? errorCard.querySelector('.error-card-icon') : null;
+
   if (!errorCard) return;
-  
+
   if (titleElem) titleElem.textContent = title || 'Error';
   if (messageElem) messageElem.textContent = message || 'An error occurred';
-  
+  if (iconElem) iconElem.textContent = variant === 'info' ? '🔌' : '⚠️';
+
+  errorCard.classList.toggle('error-card--info', variant === 'info');
+
+  if (variant === 'info') {
+    if (retryBtn) {
+      retryBtn.textContent = '🔌 Connect a database';
+      retryBtn.title = 'Connect a database';
+    }
+    if (configureBtn) configureBtn.style.display = 'none';
+    if (dismissBtn) dismissBtn.textContent = 'Continue without connection';
+  } else {
+    if (retryBtn) {
+      retryBtn.textContent = '🔄 Retry';
+      retryBtn.title = 'Retry the last message';
+    }
+    if (configureBtn) configureBtn.style.display = '';
+    if (dismissBtn) dismissBtn.textContent = '✕ Dismiss';
+  }
+
+  errorCard.dataset.variant = variant;
   errorCard.style.display = 'flex';
+}
+
+/**
+ * Show the calm "no database connected" prompt (info variant of the error card).
+ */
+function showNoConnectionCard() {
+  showErrorCard(
+    'No database connected',
+    "I can still answer general Postgres/SQL questions — but connect a database to run queries and ground answers in your schema.",
+    { variant: 'info' }
+  );
 }
 
 /**
@@ -2864,8 +3472,14 @@ function dismissError() {
 }
 
 function retryLastMessage() {
+  const errorCard = document.getElementById('errorCard');
+  const isInfoVariant = errorCard && errorCard.dataset.variant === 'info';
   dismissError();
-  vscode.postMessage({ type: 'regenerateAssistant' });
+  if (isInfoVariant) {
+    vscode.postMessage({ type: 'requestAddConnection' });
+  } else {
+    vscode.postMessage({ type: 'regenerateAssistant' });
+  }
 }
 
 /**
@@ -3013,6 +3627,7 @@ function wireChatDomEvents() {
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
       closeAiModelMenu();
+      closeAttachMenu();
       closeLightbox();
     }
   });
@@ -3050,9 +3665,13 @@ function wireChatDomEvents() {
     chatInput.addEventListener('keydown', handleKeyDown);
   }
 
-  attachBtn?.addEventListener('click', attachFile);
-  document.getElementById('imageBtn')?.addEventListener('click', attachImage);
-  document.getElementById('imageFileInput')?.addEventListener('change', handleImageFileInput);
+  attachBtn?.addEventListener('click', (event) => {
+    event.stopPropagation();
+    toggleAttachMenu();
+  });
+  attachFileOption?.addEventListener('click', attachFile);
+  attachImageOption?.addEventListener('click', attachImage);
+  imageFileInput?.addEventListener('change', handleImageFileInput);
   mentionBtn?.addEventListener('click', toggleMentionPicker);
   sendBtn?.addEventListener('click', sendMessage);
   stopBtn?.addEventListener('click', cancelRequest);
