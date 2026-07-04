@@ -847,7 +847,17 @@ export class DbObjectService {
 
     const connections = vscode.workspace.getConfiguration().get<any[]>('postgresExplorer.connections') || [];
     const conn = connections.find(c => c.id === obj.connectionId);
-    if (!conn) { return 'Connection not found'; }
+    if (!conn) {
+      debugLog(
+        '[ChatView] getObjectSchema: no configured connection matches connectionId=%s (known ids: %s)',
+        obj.connectionId,
+        connections.map(c => c.id).join(', ') || '<none>'
+      );
+      // P1.5: same structured marker as the catch-block below — this is what triggers the
+      // `schemaError` toast in _composeUserTurnPayload. A bare string here used to fail silently:
+      // it got baked into the schema-context block sent to the model with no user-visible warning.
+      return `<schema unavailable for ${obj.schema}.${obj.name}: connection "${obj.connectionId}" not found>`;
+    }
 
     try {
       const fetched = await this._fetchObjectSchemaWithRetry(conn, obj);

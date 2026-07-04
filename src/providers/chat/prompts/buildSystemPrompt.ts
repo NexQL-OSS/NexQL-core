@@ -64,6 +64,30 @@ export const AGENTIC_SCHEMA_EXPLORATION_RULE =
   `Never claim you lack database or schema access. Use your tools to actively discover the correct identifiers.`;
 
 /**
+ * Tool-loop hygiene: the model must either emit a real tool call or say nothing about it.
+ * Prevents narrated pseudo-invocations (`describe_object('products')` as prose) and the
+ * "Let me run this…" + identical-SQL-block repetition seen when intent leaks into text.
+ */
+export const TOOL_CALL_DISCIPLINE_RULE =
+  `Tool-use discipline: when you decide to use a tool, emit the actual tool call — never write ` +
+  `the invocation as prose, pseudo-code, or a fenced \`\`\`tool_code\`\`\` block (e.g. ` +
+  `\`describe_object('products')\`), and never say "let me run this" or "I'll now execute this ` +
+  `query" without emitting the corresponding tool call in the same turn. Tool names are internal: ` +
+  `the user cannot run them, so do not present them as actions for the user to take. Never repeat ` +
+  `an identical SQL block more than once in a single answer.`;
+
+/**
+ * Fabricated example data must be visibly distinct from real query results, so users never
+ * mistake an illustrative table for rows read from their database.
+ */
+export const ILLUSTRATIVE_DATA_RULE =
+  `Data provenance: only present a result table as real data if it came from tool execution in ` +
+  `this conversation. When you invent rows to illustrate a concept (e.g. explaining JOINs), you ` +
+  `MUST label every such table immediately above it with: ` +
+  `**Example output — illustrative, not from your database.** Never fabricate values and imply ` +
+  `they were read from the user's database.`;
+
+/**
  * P1.7 — shared self-check fragment for every SQL-producing capability. Exported so the
  * notebook-assist prompt (aiAssist.ts) can reuse the identical wording.
  */
@@ -225,8 +249,13 @@ export function buildSystemPrompt(
     }
     sections.push(connInfo);
     sections.push(AGENTIC_SCHEMA_EXPLORATION_RULE);
+    sections.push(TOOL_CALL_DISCIPLINE_RULE);
   } else {
     sections.push(SCHEMA_USAGE_RULE);
+  }
+
+  if (capability === 'chat') {
+    sections.push(ILLUSTRATIVE_DATA_RULE);
   }
 
   if (SQL_FORMATTING_CAPABILITIES.has(capability)) {

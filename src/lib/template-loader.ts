@@ -46,14 +46,14 @@ export async function loadTemplate(
       const shared = await readSharedTemplateCss(extensionUri);
       css = `${shared}\n${css}`;
     }
-    html = html.replace('{{STYLES}}', `<style>\n${css}\n</style>`);
+    html = html.replace('{{STYLES}}', () => `<style>\n${css}\n</style>`);
   }
 
   // Load and inject JS if specified
   if (options.jsFile) {
     const jsUri = vscode.Uri.joinPath(templatesDir, options.jsFile);
     const js = await readFileContent(jsUri);
-    html = html.replace('{{SCRIPTS}}', `<script>\n${js}\n</script>`);
+    html = html.replace('{{SCRIPTS}}', () => `<script>\n${js}\n</script>`);
   }
 
   // Replace variables
@@ -128,10 +128,10 @@ export async function loadPanelTemplate(
     const js = new TextDecoder().decode(jsBuf);
     const inlineStyles = `${MODERN_WEBVIEW_BASE_CSS}\n${sharedCss}\n${panelCss}`;
 
-    html = html.replace(/\{\{CSP\}\}/g, csp);
-    html = html.replace(/\{\{INLINE_STYLES\}\}/g, inlineStyles);
-    html = html.replace(/\{\{NONCE\}\}/g, nonce);
-    html = html.replace(/\{\{INLINE_SCRIPTS\}\}/g, js);
+    html = html.replace(/\{\{CSP\}\}/g, () => csp);
+    html = html.replace(/\{\{INLINE_STYLES\}\}/g, () => inlineStyles);
+    html = html.replace(/\{\{NONCE\}\}/g, () => nonce);
+    html = html.replace(/\{\{INLINE_SCRIPTS\}\}/g, () => js);
     html = substituteVariables(html, variables);
     return html;
   } catch (error) {
@@ -183,7 +183,7 @@ function substituteVariables(template: string, variables: TemplateVariables): st
   let result = template;
   for (const [key, value] of Object.entries(variables)) {
     const regex = new RegExp(`\\{\\{${key}\\}\\}`, 'g');
-    result = result.replace(regex, value);
+    result = result.replace(regex, () => value);
   }
   return result;
 }

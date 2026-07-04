@@ -213,11 +213,11 @@ export class SettingsHubPanel {
 
       const csp = `default-src 'none'; img-src ${cspSource} https:; style-src ${cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';`;
 
-      html = html.replace('{{CSP}}', csp);
+      html = html.replace('{{CSP}}', () => csp);
       html = html.replace('{{INLINE_STYLES}}', () => inlineStyles);
       html = html.replace('{{INLINE_SCRIPTS}}', () => js);
-      html = html.replace(/\{\{NONCE\}\}/g, nonce);
-      html = html.replace('{{LOGO_URI}}', logoUri.toString());
+      html = html.replace(/\{\{NONCE\}\}/g, () => nonce);
+      html = html.replace('{{LOGO_URI}}', () => logoUri.toString());
 
       return html;
     } catch (error) {

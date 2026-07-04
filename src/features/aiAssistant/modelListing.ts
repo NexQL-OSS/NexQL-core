@@ -173,8 +173,12 @@ export async function listGeminiModels(apiKey: string): Promise<string[]> {
   });
 }
 
+const LOCAL_MODEL_LIST_TIMEOUT_MS = 5_000;
+
 export async function listCustomModels(endpoint: string, apiKey: string): Promise<string[]> {
   return new Promise((resolve) => {
+    const finish = (models: string[]) => resolve(models);
+
     try {
       const url = new URL(endpoint);
       const modelsPath = url.pathname.replace(/\/chat\/completions$/, '') + '/models';
@@ -200,20 +204,24 @@ export async function listCustomModels(endpoint: string, apiKey: string): Promis
             try {
               const data = JSON.parse(body);
               const models = data.data?.map((m: { id: string }) => m.id) || [];
-              resolve(models);
+              finish(models);
             } catch {
-              resolve(['custom-model']);
+              finish(['custom-model']);
             }
           } else {
-            resolve(['custom-model']);
+            finish(['custom-model']);
           }
         });
       });
 
-      req.on('error', () => resolve(['custom-model']));
+      req.setTimeout(LOCAL_MODEL_LIST_TIMEOUT_MS, () => {
+        req.destroy();
+        finish(['custom-model']);
+      });
+      req.on('error', () => finish(['custom-model']));
       req.end();
     } catch {
-      resolve(['custom-model']);
+      finish(['custom-model']);
     }
   });
 }

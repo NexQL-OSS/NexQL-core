@@ -35,8 +35,8 @@ export class AnalyzeDataHandler implements IMessageHandler {
   constructor(private chatViewProvider: ChatViewProvider | undefined) { }
 
   async handle(message: any) {
+    // Focus is handled deterministically by AssistantGateway/ChatSurfaceRegistry — no explicit focus here.
     if (this.chatViewProvider) {
-      await vscode.commands.executeCommand('postgresExplorer.chatView.focus');
       await this.chatViewProvider.handleAnalyzeData(message.data, message.query, message.rowCount);
     }
   }
@@ -47,7 +47,6 @@ export class OptimizeQueryHandler implements IMessageHandler {
 
   async handle(message: any) {
     if (this.chatViewProvider) {
-      await vscode.commands.executeCommand('postgresExplorer.chatView.focus');
       await this.chatViewProvider.handleOptimizeQuery(message.query, message.executionTime);
     }
   }
@@ -58,7 +57,6 @@ export class SendToChatHandler implements IMessageHandler {
 
   async handle(message: any) {
     if (this.chatViewProvider) {
-      await vscode.commands.executeCommand('postgresExplorer.chatView.focus');
       await this.chatViewProvider.sendToChat(message.data);
     }
   }

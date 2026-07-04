@@ -10,6 +10,10 @@ import type { DeviceAuthStartResponse, DeviceAuthTokenResponse } from './types';
 const ACCESS_TOKEN_KEY = 'postgresExplorer.sync.accessToken';
 const REFRESH_TOKEN_KEY = 'postgresExplorer.sync.refreshToken';
 const ACCOUNT_EMAIL_KEY = 'postgresExplorer.sync.accountEmail';
+/** Whether the cached bearer was minted from a license key or free OAuth identity. */
+const AUTH_MODE_KEY = 'postgresExplorer.sync.authMode';
+
+export type AiSessionAuthMode = 'license' | 'free';
 
 interface SessionAuthResponse {
   access_token?: string;
@@ -73,6 +77,24 @@ export class AccountService {
     await this.context.secrets.delete(ACCESS_TOKEN_KEY);
     await this.context.secrets.delete(REFRESH_TOKEN_KEY);
     await this.context.secrets.delete(ACCOUNT_EMAIL_KEY);
+    await this.context.secrets.delete(AUTH_MODE_KEY);
+  }
+
+  private async getAuthMode(): Promise<AiSessionAuthMode | undefined> {
+    const mode = await this.context.secrets.get(AUTH_MODE_KEY);
+    return mode === 'license' || mode === 'free' ? mode : undefined;
+  }
+
+  /** Drop a stale free OAuth session when a paid license is active locally. */
+  private async discardFreeSessionIfLicensed(): Promise<boolean> {
+    if (!LicenseService.getInstance().getLicenseKey()) {
+      return false;
+    }
+    if ((await this.getAuthMode()) !== 'free') {
+      return false;
+    }
+    await this.signOut();
+    return true;
   }
 
   /** Fast-path sign-in using the activated license key (no browser). */
@@ -93,7 +115,7 @@ export class AccountService {
       throw new Error(res.error ?? 'Sign-in failed');
     }
 
-    await this.completeSignIn(res as DeviceAuthTokenResponse, res.email ?? undefined);
+    await this.completeSignIn(res as DeviceAuthTokenResponse, res.email ?? undefined, 'license');
     return { email: res.email ?? (await this.getAccountEmail()) };
   }
 
@@ -120,7 +142,7 @@ export class AccountService {
       throw new Error(res.error ?? 'Free sign-in failed');
     }
 
-    await this.completeSignIn(res as DeviceAuthTokenResponse, res.email ?? undefined);
+    await this.completeSignIn(res as DeviceAuthTokenResponse, res.email ?? undefined, 'free');
     return { email: res.email ?? (await this.getAccountEmail()) };
   }
 
@@ -132,7 +154,11 @@ export class AccountService {
   async ensureAiSession(options?: { invalidateAccess?: boolean }): Promise<string> {
     if (options?.invalidateAccess) {
       await this.context.secrets.delete(ACCESS_TOKEN_KEY);
-    } else {
+    }
+
+    await this.discardFreeSessionIfLicensed();
+
+    if (!options?.invalidateAccess) {
       const existing = await this.getAccessToken();
       if (existing) {
         return existing;
@@ -141,7 +167,11 @@ export class AccountService {
 
     const refreshed = await this.refreshAccessToken();
     if (refreshed) {
-      return refreshed;
+      if (await this.discardFreeSessionIfLicensed()) {
+        // Refreshed token was still tied to free OAuth — re-mint from license below.
+      } else {
+        return refreshed;
+      }
     }
 
     if (LicenseService.getInstance().getLicenseKey()) {
@@ -206,7 +236,11 @@ export class AccountService {
     throw new Error('Device authorization timed out');
   }
 
-  async completeSignIn(tokens: DeviceAuthTokenResponse, email?: string): Promise<void> {
+  async completeSignIn(
+    tokens: DeviceAuthTokenResponse,
+    email?: string,
+    authMode?: AiSessionAuthMode,
+  ): Promise<void> {
     if (!tokens.access_token) {
       throw new Error('No access token received');
     }
@@ -216,6 +250,9 @@ export class AccountService {
     }
     if (email) {
       await this.context.secrets.store(ACCOUNT_EMAIL_KEY, email);
+    }
+    if (authMode) {
+      await this.context.secrets.store(AUTH_MODE_KEY, authMode);
     }
   }
 
@@ -291,7 +328,7 @@ export class AccountService {
       onStatus,
     );
 
-    await this.completeSignIn(tokens, tokens.email ?? undefined);
+    await this.completeSignIn(tokens, tokens.email ?? undefined, 'license');
     return { email: tokens.email ?? (await this.getAccountEmail()) };
   }
 

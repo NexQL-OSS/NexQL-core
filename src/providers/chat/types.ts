@@ -26,6 +26,17 @@ export interface ChatMessage {
     toolCall: ToolCall;
     result: string;
   }>;
+  /** Live + persisted trace of pre-response work (RAG, agentic turns). Rendered above assistant reply. */
+  thinkingTrace?: ThinkingStep[];
+  /** UI-only: index into the raw (unfiltered) message array — lets "resend" target the right turn once tool-call messages are filtered out of the displayed list. */
+  _rawIdx?: number;
+}
+
+export interface ThinkingStep {
+  id: string;
+  label: string;
+  status: 'active' | 'done' | 'error';
+  ragContext?: ChatMessage['ragContext'];
 }
 
 export interface FileAttachment {
