@@ -454,7 +454,7 @@ export function getCommandSpecs(
             });
 
             if (input) {
-              vscode.commands.executeCommand('postgres-explorer.chatView.focus');
+              await vscode.commands.executeCommand('postgresExplorer.chatView.focus');
               await chatViewProviderInstance.handleGenerateQuery(input);
             }
             return;
@@ -493,7 +493,7 @@ export function getCommandSpecs(
 
           if (input) {
             // Focus the chat view
-            vscode.commands.executeCommand('postgres-explorer.chatView.focus');
+            await vscode.commands.executeCommand('postgresExplorer.chatView.focus');
 
             // Send to AI with schema context
             const schemaContext = selectedObjects ? selectedObjects.map(item => item.object) : undefined;

@@ -24,11 +24,15 @@ import {
   SessionService,
   getWebviewHtml,
   AiCapability,
-  ToolCall
+  ToolCall,
+  ThinkingStep,
 } from './chat';
 import type { ConnectionConfig, NoticeLogEntry } from '../common/types';
 import { buildBackupToolsSystemPrompt, buildBackupToolsUserMessage } from './chat/backupToolsAssistantPrompt';
 import { ErrorService } from '../services/ErrorService';
+import { ChatSurfaceRegistry } from './chat/ChatSurfaceRegistry';
+import { AssistantGateway, ChatProviderBridge, AttachInvocationPayload } from '../services/assistant/AssistantGateway';
+import type { ContextItem, AssistantIntent } from '../services/assistant/contextItems';
 import {
   parseSelectionId,
   readAiScopeSettings,
@@ -68,16 +72,19 @@ function inferBackupToolFromLog(log: string): string | undefined {
   return undefined;
 }
 
-export class ChatViewProvider implements vscode.WebviewViewProvider {
+export class ChatViewProvider implements vscode.WebviewViewProvider, ChatProviderBridge {
   public static readonly viewType = 'postgresExplorer.chatView';
   public static readonly panelViewType = 'postgresExplorer.chatViewPanel';
 
   private _view?: vscode.WebviewView;
   private _panels = new Set<vscode.WebviewPanel>();
   private _activeWebview?: vscode.Webview;
+  private _surfaces = new ChatSurfaceRegistry();
   private _messages: ChatMessage[] = [];
   private _isProcessing = false;
   private _cancellationTokenSource: vscode.CancellationTokenSource | null = null;
+  /** Accumulates pre-response steps for the in-flight turn; flushed onto the assistant message at end. */
+  private _liveThinkingTrace: ThinkingStep[] = [];
 
   // Phase C: Track current connection/database context for session metadata
   private _currentConnectionId: string | undefined;
@@ -103,6 +110,35 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     this._dbObjectService = new DbObjectService();
     this._aiService = new AiService();
     this._sessionService = new SessionService(_extensionContext);
+    AssistantGateway.getInstance().registerChatProvider(this);
+  }
+
+  // ==================== ChatProviderBridge (AssistantGateway) ====================
+
+  async resolveOrRevealSurface(): Promise<vscode.Webview | undefined> {
+    return this._surfaces.resolveOrReveal('postgresExplorer.chatView.focus');
+  }
+
+  async resolveDbObjectSchema(obj: DbObject): Promise<string> {
+    return this._dbObjectService.getObjectSchema(obj);
+  }
+
+  setInvocationConnectionContext(connectionId?: string, database?: string): void {
+    if (connectionId && database) {
+      this.setConnectionContext(connectionId, database);
+    }
+  }
+
+  postAttachInvocation(webview: vscode.Webview, payload: AttachInvocationPayload): void {
+    webview.postMessage({ type: 'attachInvocation', ...payload });
+  }
+
+  hasVisibleChatSurface(): boolean {
+    return this._surfaces.hasVisibleSurface();
+  }
+
+  broadcastToChatSurfaces(message: unknown): void {
+    this._surfaces.broadcast(message);
   }
 
   /**
@@ -170,9 +206,18 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
     this._panels.add(panel);
     this._activeWebview = panel.webview;
+    this._surfaces.register(panel.webview, 'panel');
+
+    panel.onDidChangeViewState((e) => {
+      this._surfaces.setVisible(panel.webview, e.webviewPanel.visible);
+      if (e.webviewPanel.visible) {
+        this._activeWebview = panel.webview;
+      }
+    });
 
     panel.onDidDispose(() => {
       this._panels.delete(panel);
+      this._surfaces.unregister(panel.webview);
       if (this._activeWebview === panel.webview) {
         this._activeWebview = this._view?.webview;
       }
@@ -180,6 +225,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
     await this._initializeWebview(panel.webview);
     this._registerWebviewMessageHandler(panel.webview);
+    this._surfaces.markReady(panel.webview);
 
     this._sendHistoryToWebview();
     this._updateChatHistory();
@@ -297,6 +343,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         case 'openAiSettings':
           vscode.commands.executeCommand('postgres-explorer.aiSettings');
           break;
+        case 'requestAddConnection':
+          await vscode.commands.executeCommand('postgres-explorer.addConnection');
+          break;
         case 'openIndexPanel':
           await vscode.commands.executeCommand('postgres-explorer.dbindex.openPanel');
           break;
@@ -365,162 +414,76 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
    * Called from the "Chat" CodeLens button or "Send to Chat" result button
    * Does NOT auto-send - waits for user to add their context
    */
+  /**
+   * Send query/results/notices/EXPLAIN context to the SQL Assistant as a prefilled,
+   * editable draft (never auto-sends). Routes through AssistantGateway so context
+   * items get the same framing (row cap, per-intent draft text) as every other
+   * entry point — see promptFraming.ts.
+   */
   public async sendToChat(data: {
     query: string;
     results?: string;
-    message: string;
+    /** JSON `{columns, rows}` — EXPLAIN recommendations table (explainTab "Ask AI"). */
+    explainRecommendations?: string;
+    message?: string;
+    intent?: AssistantIntent;
+    totalRowCount?: number;
     /** PostgreSQL RAISE NOTICE / server messages — attached as a .txt file */
     notices?: Array<string | NoticeLogEntry>;
   }): Promise<void> {
-    const targetWebview = await this._ensureChatWebview();
+    const items: ContextItem[] = [];
 
-    // Wait a bit for the view to be ready after focus
-    await new Promise(resolve => setTimeout(resolve, 300));
-
-    if (!targetWebview) {
-      vscode.window.showWarningMessage('Chat view not available. Please open the SQL Assistant panel first.');
-      return;
+    if (data.query?.trim()) {
+      items.push({ kind: 'query', sql: data.query });
     }
 
-    debugLog('[ChatViewProvider] Sending file attachments to webview');
+    if (data.results) {
+      try {
+        const parsed = JSON.parse(data.results);
+        const rows: Array<Record<string, unknown>> = parsed.rows || [];
+        const totalRowCount = data.totalRowCount ?? rows.length;
+        items.push({
+          kind: 'resultSample',
+          sql: data.query || '',
+          columns: parsed.columns || [],
+          rows,
+          totalRowCount,
+          truncated: totalRowCount > rows.length,
+        });
+      } catch (e) {
+        debugLog('[ChatViewProvider] sendToChat: failed to parse results JSON', e);
+      }
+    }
+
+    if (data.explainRecommendations) {
+      items.push({
+        kind: 'file',
+        attachment: { name: 'EXPLAIN recommendations', content: data.explainRecommendations, type: 'json' },
+      });
+    }
+
+    if (data.notices && data.notices.length > 0) {
+      items.push({
+        kind: 'notices',
+        sql: data.query,
+        notices: data.notices.map((n) =>
+          typeof n === 'string'
+            ? { severity: 'notice', message: n }
+            : { severity: 'notice', message: n.message ?? '', detail: n.receivedAt }
+        ),
+      });
+    }
 
     try {
-      const tempDir = os.tmpdir();
-
-      // Create query file
-      if (data.query) {
-        const queryFileName = `query_${Date.now()}.sql`;
-        const queryFilePath = path.join(tempDir, queryFileName);
-        await fs.promises.writeFile(queryFilePath, data.query, 'utf8');
-
-        targetWebview.postMessage({
-          type: 'fileAttached',
-          file: {
-            name: queryFileName,
-            content: data.query,
-            type: 'sql',
-            path: queryFilePath
-          }
-        });
-      }
-
-      // Optional notices file (numbered, execution order)
-      if (data.notices && data.notices.length > 0) {
-        const noticeLines = data.notices
-          .map((n, i) => {
-            if (typeof n === 'string') {
-              return `${i + 1}. ${n}`;
-            }
-            const msg = n.message ?? '';
-            const iso = n.receivedAt?.trim();
-            if (iso) {
-              return `${i + 1}. [${iso}] ${msg}`;
-            }
-            return `${i + 1}. ${msg}`;
-          })
-          .join('\n\n');
-        const noticeFileName = `notices_${Date.now()}.txt`;
-        const noticeFilePath = path.join(tempDir, noticeFileName);
-        await fs.promises.writeFile(noticeFilePath, noticeLines, 'utf8');
-
-        targetWebview.postMessage({
-          type: 'fileAttached',
-          file: {
-            name: noticeFileName,
-            content: noticeLines,
-            type: 'txt',
-            path: noticeFilePath,
-          },
-        });
-      }
-
-      // Create results file if we have results - convert to CSV like Analyze Data does
-      if (data.results) {
-        try {
-          const resultsData = JSON.parse(data.results);
-          const columns: string[] = resultsData.columns || [];
-          const rows: any[] = resultsData.rows || [];
-
-          // Build CSV content
-          let csvContent = '';
-
-          // Header row
-          if (columns.length > 0) {
-            csvContent = columns.map((col: string) => `"${col}"`).join(',') + '\n';
-          }
-
-          // Data rows
-          for (const row of rows) {
-            const csvRow = columns.map((col: string) => {
-              const val = row[col];
-              if (val === null || val === undefined) return '';
-              if (typeof val === 'string') return `"${val.replace(/"/g, '""')}"`;
-              if (typeof val === 'object') return `"${JSON.stringify(val).replace(/"/g, '""')}"`;
-              return String(val);
-            }).join(',');
-            csvContent += csvRow + '\n';
-          }
-
-          const resultsFileName = `results_${Date.now()}.csv`;
-          const resultsFilePath = path.join(tempDir, resultsFileName);
-          await fs.promises.writeFile(resultsFilePath, csvContent, 'utf8');
-
-          targetWebview.postMessage({
-            type: 'fileAttached',
-            file: {
-              name: resultsFileName,
-              content: csvContent,
-              type: 'csv',
-              path: resultsFilePath
-            }
-          });
-        } catch (parseError) {
-          // Fallback: attach as JSON if parsing fails
-          const resultsFileName = `results_${Date.now()}.json`;
-          const resultsFilePath = path.join(tempDir, resultsFileName);
-          await fs.promises.writeFile(resultsFilePath, data.results, 'utf8');
-
-          targetWebview.postMessage({
-            type: 'fileAttached',
-            file: {
-              name: resultsFileName,
-              content: data.results,
-              type: 'json',
-              path: resultsFilePath
-            }
-          });
-        }
-      }
-
-      const attached: string[] = [];
-      if (data.query?.trim()) {
-        attached.push('query');
-      }
-      if (data.results) {
-        attached.push('results');
-      }
-      if (data.notices?.length) {
-        attached.push('notices');
-      }
-      if (data.message?.trim()) {
-        targetWebview.postMessage({
-          type: 'prefillInput',
-          message: data.message,
-          autoSend: false,
-        });
-      }
-      const summary = attached.length ? attached.join(' & ') : 'Content';
-      const toast =
-        data.message?.trim()
-          ? attached.length > 0
-            ? `${summary} attached to SQL Assistant. Review the prefilled prompt and press Send.`
-            : 'Review the prefilled prompt in SQL Assistant and press Send.'
-          : `${summary} attached to SQL Assistant. Add your question and send!`;
-      vscode.window.showInformationMessage(toast);
-
+      await AssistantGateway.getInstance().invoke({
+        intent: data.intent ?? 'ask',
+        items,
+        draftText: data.message,
+        send: 'draft',
+      });
     } catch (error) {
-      console.error('[ChatViewProvider] Failed to create temp files:', error);
-      ErrorService.getInstance().showError('Failed to attach files to chat');
+      console.error('[ChatViewProvider] sendToChat failed:', error);
+      ErrorService.getInstance().showError('Failed to attach context to chat');
     }
   }
 
@@ -531,6 +494,16 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   ): Promise<void> {
     this._view = webviewView;
     this._activeWebview = webviewView.webview;
+    this._surfaces.register(webviewView.webview, 'sidebar');
+    webviewView.onDidChangeVisibility(() => {
+      this._surfaces.setVisible(webviewView.webview, webviewView.visible);
+      if (webviewView.visible) {
+        this._activeWebview = webviewView.webview;
+      }
+    });
+    webviewView.onDidDispose(() => {
+      this._surfaces.unregister(webviewView.webview);
+    });
 
     if (!isProFeatureEnabled(ProFeature.AiAssistant)) {
       webviewView.webview.options = { enableScripts: true };
@@ -540,6 +513,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
     await this._initializeWebview(webviewView.webview);
     this._registerWebviewMessageHandler(webviewView.webview);
+    this._surfaces.markReady(webviewView.webview);
 
     // Send initial history and model info
     setTimeout(() => {
@@ -569,21 +543,97 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     return c;
   }
 
-  private async _composeUserTurnPayload(
-    message: string,
-    attachments?: FileAttachment[],
-    mentions?: DbMention[]
-  ): Promise<{
-    fullMessage: string;
-    aiMessage: string;
-    ragContext?: {
-      objects: Array<{ ref: string; score: number; detail: 'full' | 'columns' | 'skeleton' }>;
-      joinHints: string[];
-      tokensUsed: number;
-    };
-  }> {
-    console.log(`[ChatView] _composeUserTurnPayload: Received user message. Current context: connectionId="${this._currentConnectionId}", database="${this._currentDatabase}"`);
-    
+  private _buildUserDisplayMessage(message: string, attachments?: FileAttachment[]): string {
+    let fullMessage = message;
+    if (attachments && attachments.length > 0) {
+      const attachmentLinks = attachments.map(att => {
+        if (att.type === 'image') {
+          return `\n\n🖼️ **Image:** ${att.name}`;
+        }
+        if (att.path) {
+          return `\n\n📎 [${att.name}](${vscode.Uri.file(att.path).toString()})`;
+        }
+        return `\n\n📎 **Attached:** ${att.name}`;
+      }).join('');
+      fullMessage = message + attachmentLinks;
+    }
+    return fullMessage;
+  }
+
+  private _startThinking(): void {
+    this._liveThinkingTrace = [];
+    this._getTargetWebview()?.postMessage({ type: 'thinkingStart', steps: [] });
+  }
+
+  /** Compact `key: value, ...` preview of a tool call's arguments for the thinking step label. */
+  private _summarizeToolArgs(args: unknown, maxLen = 60): string {
+    if (!args || typeof args !== 'object') {
+      return '';
+    }
+    const entries = Object.entries(args as Record<string, unknown>).map(
+      ([k, v]) => `${k}: ${String(v)}`
+    );
+    const joined = entries.join(', ');
+    return joined.length > maxLen ? `${joined.slice(0, maxLen - 1)}…` : joined;
+  }
+
+  /** Compact outcome summary (`N rows` / `error: ...` / truncated text) for a tool result. */
+  private _summarizeToolResult(content: string, maxLen = 60): string {
+    try {
+      const parsed = JSON.parse(content);
+      if (Array.isArray(parsed)) {
+        return `${parsed.length} row${parsed.length === 1 ? '' : 's'}`;
+      }
+      if (parsed && typeof parsed === 'object' && typeof parsed.error === 'string') {
+        return `error: ${parsed.error}`.slice(0, maxLen);
+      }
+    } catch {
+      // not JSON — fall through to plain-text preview
+    }
+    const flat = content.replace(/\s+/g, ' ').trim();
+    return flat.length > maxLen ? `${flat.slice(0, maxLen - 1)}…` : flat;
+  }
+
+  private _pushThinkingStep(step: ThinkingStep): void {
+    const idx = this._liveThinkingTrace.findIndex((s) => s.id === step.id);
+    if (idx >= 0) {
+      this._liveThinkingTrace[idx] = step;
+    } else {
+      this._liveThinkingTrace.push(step);
+    }
+    this._getTargetWebview()?.postMessage({
+      type: 'thinkingUpdate',
+      steps: [...this._liveThinkingTrace],
+    });
+  }
+
+  private _endThinking(): void {
+    this._getTargetWebview()?.postMessage({
+      type: 'thinkingEnd',
+      steps: [...this._liveThinkingTrace],
+    });
+  }
+
+  private _attachThinkingTraceToLastAssistant(): void {
+    if (this._liveThinkingTrace.length === 0) {
+      return;
+    }
+    for (let i = this._messages.length - 1; i >= 0; i--) {
+      if (this._messages[i].role === 'assistant') {
+        this._messages[i].thinkingTrace = [...this._liveThinkingTrace];
+        break;
+      }
+    }
+    this._liveThinkingTrace = [];
+  }
+
+  /**
+   * Resolve a usable connection context before composing the AI payload: last-used
+   * defaults from workspace state, else the first configured connection. Extracted from
+   * `_composeUserTurnPayload` so callers can decide agentic mode BEFORE composing
+   * (agentic runs skip RAG — the agent discovers schema through its tools).
+   */
+  private async _ensureConnectionContext(): Promise<void> {
     if (!this._currentConnectionId || !this._currentDatabase) {
       try {
         const { WorkspaceStateService } = await import('../services/WorkspaceStateService');
@@ -622,7 +672,35 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         console.error('[ChatView] Fallback resolution failed:', e);
       }
     }
-    
+  }
+
+  /**
+   * Agentic tool loop is available when a connection context exists (Pro-gated).
+   * Call at most once per user turn — `requirePro` meters usage.
+   */
+  private async _resolveUseAgentic(): Promise<boolean> {
+    if (this._currentConnectionId && this._currentDatabase && this._chatSystemPromptMode !== 'backup_tools') {
+      return await requirePro(ProFeature.AgenticModes);
+    }
+    return false;
+  }
+
+  private async _composeUserTurnPayload(
+    message: string,
+    attachments?: FileAttachment[],
+    mentions?: DbMention[],
+    options?: { onThinkingStep?: (step: ThinkingStep) => void; skipRag?: boolean }
+  ): Promise<{
+    fullMessage: string;
+    aiMessage: string;
+    ragContext?: {
+      objects: Array<{ ref: string; score: number; detail: 'full' | 'columns' | 'skeleton' }>;
+      joinHints: string[];
+      tokensUsed: number;
+    };
+  }> {
+    console.log(`[ChatView] _composeUserTurnPayload: Received user message. Current context: connectionId="${this._currentConnectionId}", database="${this._currentDatabase}"`);
+
     let fullMessage = message;
     if (attachments && attachments.length > 0) {
       const attachmentLinks = attachments.map(att => {
@@ -718,8 +796,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       debugLog('[ChatView] ========== FULL AI MESSAGE ==========');
       debugLog(aiMessage);
       debugLog('[ChatView] ========== END FULL AI MESSAGE ==========');
-    } else if (this._currentConnectionId && this._currentDatabase) {
+    } else if (!options?.skipRag && this._currentConnectionId && this._currentDatabase) {
       try {
+        options?.onThinkingStep?.({
+          id: 'rag',
+          label: 'Retrieving schema context…',
+          status: 'active',
+        });
         console.log(`[ChatView] Attempting local index grounding for database="${this._currentDatabase}"...`);
         const { IndexStore } = await import('../features/dbindex/IndexStore');
         const { IndexQueryService } = await import('../features/dbindex/IndexQueryService');
@@ -741,15 +824,31 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             joinHints: result.joinHints,
             tokensUsed: result.tokensUsed
           };
+          options?.onThinkingStep?.({
+            id: 'rag',
+            label: `Retrieved schema context (${result.objects.length} table${result.objects.length !== 1 ? 's' : ''})`,
+            status: 'done',
+            ragContext,
+          });
           console.log(`[ChatView] Grounded user turn payload with local index context. Pack length: ${result.packMarkdown.length} characters.`);
           debugLog('[ChatView] Grounded user turn payload with local index context.');
         } else {
           console.log(`[ChatView] No matching local index found or retrieval returned null.`);
+          options?.onThinkingStep?.({
+            id: 'rag',
+            label: 'No indexed schema matched — answering without it',
+            status: 'done',
+          });
         }
         return { fullMessage, aiMessage, ragContext };
       } catch (e) {
         console.error('[ChatView] Failed to retrieve local index context:', e);
         debugLog('[ChatView] Failed to retrieve local index context:', e);
+        options?.onThinkingStep?.({
+          id: 'rag',
+          label: 'Schema retrieval failed',
+          status: 'error',
+        });
         return { fullMessage, aiMessage };
       }
     }
@@ -757,7 +856,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     return { fullMessage, aiMessage };
   }
 
-  private async _runAiRequest(aiMessage: string, capability: AiCapability = 'chat'): Promise<void> {
+  private async _runAiRequest(aiMessage: string, capability: AiCapability = 'chat', useAgentic = false): Promise<void> {
     try {
       const config = vscode.workspace.getConfiguration('postgresExplorer');
       const chatSettings = readAiScopeSettings(config, 'chat');
@@ -768,12 +867,6 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       void this._pushModelCatalogToWebview();
 
       vscode.window.setStatusBarMessage(`$(sparkle) AI: ${modelInfo}`, 3000);
-
-      // Check if we should use agentic tool loop
-      let useAgentic = false;
-      if (this._currentConnectionId && this._currentDatabase && this._chatSystemPromptMode !== 'backup_tools') {
-        useAgentic = await requirePro(ProFeature.AgenticModes);
-      }
 
       this._aiService.setConnectionContext({
         environment: this._currentEnvironment,
@@ -798,7 +891,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
       let responseText: string;
       let usageInfo: string | undefined;
+      let toolTurns = 0;
       const aiStartTime = Date.now();
+
+      this._pushThinkingStep({
+        id: 'ai',
+        label: 'Generating response…',
+        status: 'active',
+      });
 
       if (useAgentic) {
         debugLog('[ChatView] Executing agentic tool loop...');
@@ -817,11 +917,64 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           customSystem,
           'chat',
           cancellationToken,
-          async (messages) => {
+          async (messages, turnCount) => {
             this._messages = messages;
-            this._updateChatHistory();
+            toolTurns = turnCount;
+
+            const lastAssistant = [...messages].reverse().find(
+              (m) => m.role === 'assistant' && m.toolCalls && m.toolCalls.length > 0
+            );
+            if (lastAssistant?.toolCalls) {
+              // Surface the model's own interim reasoning text (if any) alongside its
+              // tool calls — previously discarded and replaced by a generic label.
+              if (lastAssistant.content && lastAssistant.content.trim() && lastAssistant.content !== 'Calling database tools...') {
+                this._pushThinkingStep({
+                  id: `turn-${turnCount}-text`,
+                  label: lastAssistant.content.trim(),
+                  status: 'done',
+                });
+              }
+              for (const call of lastAssistant.toolCalls) {
+                const argsSummary = this._summarizeToolArgs(call.arguments);
+                this._pushThinkingStep({
+                  id: `tool-${call.id}`,
+                  label: argsSummary ? `${call.name} · ${argsSummary}` : `Calling ${call.name}…`,
+                  status: 'active',
+                });
+              }
+            }
+
+            for (const tm of messages) {
+              if (tm.role === 'tool' && tm.toolCallId) {
+                const resultSummary = this._summarizeToolResult(tm.content ?? '');
+                this._pushThinkingStep({
+                  id: `tool-${tm.toolCallId}`,
+                  label: `${tm.name ?? 'tool'} · ${resultSummary}`,
+                  status: resultSummary.startsWith('error:') ? 'error' : 'done',
+                });
+              }
+            }
+
+            if (turnCount > 0) {
+              this._pushThinkingStep({
+                id: 'agent',
+                label: `Database agent · turn ${turnCount}`,
+                status: 'active',
+              });
+            }
           }
         );
+
+        toolTurns = result.toolTurns;
+        // Only claim agent activity when the model actually ran tools — a text-only
+        // reply through the agentic path is just a normal response.
+        if (toolTurns > 0) {
+          this._pushThinkingStep({
+            id: 'agent',
+            label: `Database agent completed (${toolTurns} turn${toolTurns !== 1 ? 's' : ''})`,
+            status: 'done',
+          });
+        }
 
         this._messages = result.messages;
         responseText = result.text;
@@ -876,6 +1029,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }
       }
 
+      this._pushThinkingStep({
+        id: 'ai',
+        label: useAgentic && toolTurns > 0 ? 'Database agent finished' : 'Response generated',
+        status: 'done',
+      });
+
       const aiElapsed = ((Date.now() - aiStartTime) / 1000).toFixed(1);
       if (usageInfo) {
         usageInfo = `${usageInfo} · ${aiElapsed}s`;
@@ -891,8 +1050,16 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }
       }
 
+      // Must attach before saving — sessions are persisted here, so a trace attached
+      // by the caller *after* `_runAiRequest` returns would already have missed this save.
+      this._attachThinkingTraceToLastAssistant();
       await this._saveCurrentSession();
     } catch (error) {
+      this._pushThinkingStep({
+        id: 'ai',
+        label: 'Request failed',
+        status: 'error',
+      });
       if (error instanceof AiProviderHttpError && this._isNexqlFreeLimitError(error)) {
         this._handleNexqlFreeLimitError(error);
       } else {
@@ -1005,21 +1172,29 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }
       }
 
+      this._updateChatHistory();
+
       const user = this._messages[this._messages.length - 1];
       if (!user || user.role !== 'user') {
         return;
       }
 
       const plain = this._plainPromptFromUserMessage(user);
-      const { aiMessage, ragContext } = await this._composeUserTurnPayload(plain, user.attachments, user.mentions);
-      user.ragContext = ragContext;
-
-      this._updateChatHistory();
+      this._startThinking();
+      await this._ensureConnectionContext();
+      const useAgentic = await this._resolveUseAgentic();
+      const { aiMessage } = await this._composeUserTurnPayload(
+        plain,
+        user.attachments,
+        user.mentions,
+        { onThinkingStep: (step) => this._pushThinkingStep(step), skipRag: useAgentic }
+      );
 
       this._setTypingIndicator(true);
       try {
-        await this._runAiRequest(aiMessage);
+        await this._runAiRequest(aiMessage, 'chat', useAgentic);
       } finally {
+        this._endThinking();
         this._setTypingIndicator(false);
         this._updateChatHistory();
       }
@@ -1046,17 +1221,24 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     try {
       this._messages = this._messages.slice(0, userIndex);
       this._messages.push(turn);
+      this._updateChatHistory();
 
       const plain = this._plainPromptFromUserMessage(turn);
-      const { aiMessage, ragContext } = await this._composeUserTurnPayload(plain, turn.attachments, turn.mentions);
-      turn.ragContext = ragContext;
-
-      this._updateChatHistory();
+      this._startThinking();
+      await this._ensureConnectionContext();
+      const useAgentic = await this._resolveUseAgentic();
+      const { aiMessage } = await this._composeUserTurnPayload(
+        plain,
+        turn.attachments,
+        turn.mentions,
+        { onThinkingStep: (step) => this._pushThinkingStep(step), skipRag: useAgentic }
+      );
 
       this._setTypingIndicator(true);
       try {
-        await this._runAiRequest(aiMessage);
+        await this._runAiRequest(aiMessage, 'chat', useAgentic);
       } finally {
+        this._endThinking();
         this._setTypingIndicator(false);
         this._updateChatHistory();
       }
@@ -1087,15 +1269,27 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     }
 
     try {
-      const { fullMessage, aiMessage, ragContext } = await this._composeUserTurnPayload(message, attachments, mentions);
+      const fullMessage = this._buildUserDisplayMessage(message, attachments);
 
-      this._messages.push({ role: 'user', content: fullMessage, attachments, mentions, ragContext });
+      // Show user message immediately — do not block on RAG / context retrieval.
+      this._messages.push({ role: 'user', content: fullMessage, attachments, mentions });
       this._updateChatHistory();
+
+      this._startThinking();
+      await this._ensureConnectionContext();
+      const useAgentic = await this._resolveUseAgentic();
+      const { aiMessage } = await this._composeUserTurnPayload(
+        message,
+        attachments,
+        mentions,
+        { onThinkingStep: (step) => this._pushThinkingStep(step), skipRag: useAgentic }
+      );
 
       this._setTypingIndicator(true);
       try {
-        await this._runAiRequest(aiMessage, capability);
+        await this._runAiRequest(aiMessage, capability, useAgentic);
       } finally {
+        this._endThinking();
         this._setTypingIndicator(false);
         this._updateChatHistory();
       }
@@ -1130,6 +1324,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         type: 'connectionsList',
         connections: connections.map(c => ({ id: c.connectionId, name: c.name }))
       });
+      if (connections.length === 0) {
+        this._getTargetWebview()?.postMessage({ type: 'noConnectionsAvailable' });
+      }
     } catch (e) {
       console.error('[ChatView] Failed to get connections for dropdown:', e);
     }
@@ -1417,7 +1614,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }
         uiMessages.push(newMsg);
       } else {
-        uiMessages.push(msg);
+        // User messages: stamp the raw-array index so "resend" can slice the correct
+        // turn — this list has tool-call/tool messages filtered/merged out, so the
+        // filtered index the webview sees no longer matches `_messages`.
+        uiMessages.push(msg.role === 'user' ? { ...msg, _rawIdx: i } : msg);
       }
     }
 
@@ -1436,8 +1636,18 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
     this._getTargetWebview()?.postMessage({
       type: 'updateMessages',
-      messages: uiMessages
+      messages: uiMessages,
+      sessionTitle: this._getActiveSessionTitle(),
     });
+  }
+
+  private _getActiveSessionTitle(): string | undefined {
+    const currentId = this._sessionService.getCurrentSessionId();
+    if (!currentId) {
+      return undefined;
+    }
+    const session = this._sessionService.getChatSessions().find((s) => s.id === currentId);
+    return session?.title;
   }
 
   private _setTypingIndicator(isTyping: boolean): void {
@@ -1447,25 +1657,42 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     });
   }
 
-  private async _pushModelCatalogToWebview(): Promise<void> {
-    const webview = this._getTargetWebview();
-    if (!webview) {
-      return;
-    }
-
-    const payload = await AiModelCatalogService.getInstance(this._extensionContext).buildChatCatalog();
-
+  private _postModelCatalogToWebview(
+    webview: vscode.Webview,
+    payload: { catalog: unknown[]; activeSelectionId: string; activeModelLabel: string },
+    options?: { catalogLoading?: boolean },
+  ): void {
     webview.postMessage({
       type: 'updateModelCatalog',
       catalog: payload.catalog,
       activeSelectionId: payload.activeSelectionId,
       activeModelLabel: payload.activeModelLabel,
+      catalogLoading: options?.catalogLoading === true,
     });
 
     webview.postMessage({
       type: 'updateModelInfo',
       modelName: payload.activeModelLabel,
     });
+  }
+
+  private async _pushModelCatalogToWebview(): Promise<void> {
+    const webview = this._getTargetWebview();
+    if (!webview) {
+      return;
+    }
+
+    const catalogService = AiModelCatalogService.getInstance(this._extensionContext);
+    this._postModelCatalogToWebview(webview, catalogService.buildChatCatalogPreview(), {
+      catalogLoading: true,
+    });
+
+    const payload = await catalogService.buildChatCatalog();
+    const currentWebview = this._getTargetWebview();
+    if (!currentWebview) {
+      return;
+    }
+    this._postModelCatalogToWebview(currentWebview, payload, { catalogLoading: false });
   }
 
   private async _handleSwitchChatModel(selectionId: string): Promise<void> {

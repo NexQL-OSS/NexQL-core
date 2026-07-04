@@ -9,7 +9,7 @@ import * as vscode from 'vscode';
 import { DatabaseTreeItem } from '../providers/DatabaseTreeProvider';
 import { getDatabaseConnection, NotebookBuilder, MarkdownUtils, ErrorHandlers } from './helper';
 import { ConnectionManager } from '../services/ConnectionManager';
-import { getChatViewProvider } from '../extension';
+import { AssistantGateway } from '../services/assistant/AssistantGateway';
 
 // ─── Public command entry point ───────────────────────────────────────────────
 
@@ -194,7 +194,7 @@ export async function cmdMigrationGenerator(
       .show();
 
     // ── Step 6: Send prompt to AI chat panel ─────────────────────────────────
-    await sendPromptToChat(aiPrompt, userDescription);
+    await sendPromptToChat(aiPrompt);
 
   } catch (err) {
     await ErrorHandlers.handleCommandError(err, 'AI Migration Generator');
@@ -203,26 +203,21 @@ export async function cmdMigrationGenerator(
 
 // ─── Send to chat view ────────────────────────────────────────────────────────
 
-async function sendPromptToChat(prompt: string, description: string): Promise<void> {
-  const chatProvider = getChatViewProvider();
-
-  if (chatProvider) {
-    try {
-      // Focus the chat sidebar
-      await vscode.commands.executeCommand('postgresExplorer.chatView.focus');
-      // Small delay to let the webview mount / focus
-      await delay(300);
-      // Use handleExplainError as a generic "send message" pathway —
-      // it calls _handleUserMessage internally.
-      await chatProvider.handleExplainError(prompt, '');
-      vscode.window.setStatusBarMessage(
-        'AI Migration Generator: prompt sent to SQL Assistant chat',
-        5000
-      );
-      return;
-    } catch {
-      // Fall through to fallback
-    }
+async function sendPromptToChat(prompt: string): Promise<void> {
+  try {
+    await AssistantGateway.getInstance().invoke({
+      intent: 'reviewMigration',
+      items: [],
+      draftText: prompt,
+      send: 'draft',
+    });
+    vscode.window.setStatusBarMessage(
+      'AI Migration Generator: prompt attached to SQL Assistant. Review and press Send.',
+      5000
+    );
+    return;
+  } catch {
+    // Fall through to fallback
   }
 
   // Fallback: show the prompt in a VS Code information message with a "Copy" button
@@ -378,8 +373,4 @@ COMMIT;
 
 function truncate(s: string, max: number): string {
   return s.length > max ? s.slice(0, max - 3) + '...' : s;
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
 }

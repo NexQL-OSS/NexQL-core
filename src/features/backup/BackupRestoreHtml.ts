@@ -32,10 +32,10 @@ export async function getBackupRestoreHtml(
     const js = new TextDecoder().decode(jsBuf);
     const inlineStyles = `${MODERN_WEBVIEW_BASE_CSS}\n${sharedCss}\n${backupCss}`;
 
-    html = html.replace(/\{\{CSP\}\}/g, csp);
-    html = html.replace(/\{\{INLINE_STYLES\}\}/g, inlineStyles);
-    html = html.replace(/\{\{NONCE\}\}/g, nonce);
-    html = html.replace(/\{\{INLINE_SCRIPTS\}\}/g, js);
+    html = html.replace(/\{\{CSP\}\}/g, () => csp);
+    html = html.replace(/\{\{INLINE_STYLES\}\}/g, () => inlineStyles);
+    html = html.replace(/\{\{NONCE\}\}/g, () => nonce);
+    html = html.replace(/\{\{INLINE_SCRIPTS\}\}/g, () => js);
     return html;
   } catch (e) {
     console.error('Failed to load backup-restore templates:', e);

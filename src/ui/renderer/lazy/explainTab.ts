@@ -319,9 +319,8 @@ export async function mountExplainTab(
             type: 'sendToChat',
             data: {
               query: queryText || '-- EXPLAIN query not available in this output',
-              results: buildAssistantResultsPayload(recommendations),
-              message:
-                'Please review the attached EXPLAIN report and recommendation dataset, debug the primary bottleneck, and suggest concrete fixes (indexes, query rewrites, join strategy, and config tuning) with a step-by-step verification plan.',
+              explainRecommendations: buildAssistantResultsPayload(recommendations),
+              intent: 'optimizeQuery',
             },
           });
         },

@@ -63,12 +63,10 @@ describe('ExplainHandlers', () => {
     expect(handleOptimizeQuery.calledOnce).to.be.true;
   });
 
-  it('SendToChatHandler focuses chat and sends data', async () => {
+  it('SendToChatHandler delegates to chat provider (focus is handled by AssistantGateway/ChatSurfaceRegistry)', async () => {
     const sendToChat = sandbox.stub().resolves();
     const handler = new SendToChatHandler({ sendToChat } as any);
     await handler.handle({ data: { x: 1 } });
-    expect((vscode.commands.executeCommand as sinon.SinonStub).calledWith('postgresExplorer.chatView.focus')).to
-      .be.true;
     expect(sendToChat.calledWith({ x: 1 })).to.be.true;
   });
 

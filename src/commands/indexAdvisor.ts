@@ -10,6 +10,7 @@ import * as vscode from 'vscode';
 import { DatabaseTreeItem } from '../providers/DatabaseTreeProvider';
 import { getDatabaseConnection, NotebookBuilder, MarkdownUtils } from './helper';
 import { ErrorHandlers } from './helper';
+import { AssistantGateway } from '../services/assistant/AssistantGateway';
 
 // ---------------------------------------------------------------------------
 // Public entry point
@@ -232,19 +233,12 @@ async function _openAdvisorNotebook(
 
 async function _sendToChat(prompt: string): Promise<void> {
   try {
-    // Dynamically resolve the chat view provider to avoid circular imports
-    const extensionModule = require('../extension') as {
-      getChatViewProvider?: () => any;
-    };
-    const chatViewProvider = extensionModule.getChatViewProvider?.();
-    if (chatViewProvider && typeof chatViewProvider.sendToChat === 'function') {
-      // Focus the chat view first
-      await vscode.commands.executeCommand('postgresExplorer.chatView.focus');
-      await chatViewProvider.sendToChat({
-        query: '',
-        message: prompt,
-      });
-    }
+    await AssistantGateway.getInstance().invoke({
+      intent: 'indexAdvice',
+      items: [],
+      draftText: prompt,
+      send: 'draft',
+    });
   } catch {
     // Chat assistant is optional; silently ignore if unavailable
   }

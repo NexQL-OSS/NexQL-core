@@ -714,11 +714,7 @@ export function renderPostgresNotebookResult(
             type: 'sendToChat',
             data: {
               query: json.query || '',
-              ...(resultsJson ? { results: resultsJson } : {}),
-              message:
-                currentRows.length === 0
-                  ? 'I ran this query. There were no rows; please help me interpret or fix it.'
-                  : `I ran this query. The attachment includes at most ${CHAT_SEND_SAMPLE_ROW_CAP} sample rows from the result (not the full grid). Please help me understand the results.`,
+              ...(resultsJson ? { results: resultsJson, totalRowCount: currentRows.length } : {}),
             },
           });
         },
@@ -1597,8 +1593,6 @@ export function renderPostgresNotebookResult(
                   type: 'sendToChat',
                   data: {
                     query: query || '',
-                    message:
-                      'I ran this query and received the following PostgreSQL notices (RAISE NOTICE / server messages). Please help me interpret them or suggest improvements.',
                     notices: noticeItems,
                   },
                 });

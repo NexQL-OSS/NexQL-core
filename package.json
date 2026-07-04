@@ -49,6 +49,12 @@
     "serverless postgres"
   ],
   "contributes": {
+    "mcpServerDefinitionProviders": [
+      {
+        "id": "postgresExplorer.mcpServerProvider",
+        "label": "NexQL"
+      }
+    ],
     "languages": [
       {
         "id": "postgres",
@@ -2047,6 +2053,12 @@
           "default": "https://nexql.astrx.dev/api",
           "scope": "machine",
           "description": "Base URL for the NexQL license validation API."
+        },
+        "postgresExplorer.mcp.enabled": {
+          "type": "boolean",
+          "default": false,
+          "scope": "window",
+          "markdownDescription": "Expose NexQL's read-only database tools (schema search, describe object, run SELECT, EXPLAIN) as an MCP server other agents (e.g. Claude Code, Copilot) can attach to. Off by default."
         },
         "postgresExplorer.connections": {
           "type": "array",
