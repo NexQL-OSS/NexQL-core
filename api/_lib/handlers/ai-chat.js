@@ -116,7 +116,7 @@ function clampMessages(messages) {
   }));
 
   const leadingSystem = [];
-  let rest = clampedw;
+  let rest = clamped;
   while (rest.length && rest[0].role === 'system') {
     leadingSystem.push(rest[0]);
     rest = rest.slice(1);
