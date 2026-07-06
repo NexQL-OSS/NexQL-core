@@ -162,7 +162,7 @@ export class LicenseSectionHandler implements SettingsSectionHandler {
     });
 
     const aiUsage = await fetchAiUsage(this.host.extensionContext);
-    const aiLimit = aiUsage ? aiUsage.limit : (effectiveTier === 'singularity' ? 500 : (effectiveTier === 'sponsor' ? 200 : 50));
+    const aiLimit = aiUsage ? aiUsage.limit : (effectiveTier === 'singularity' ? 10_000_000 : (effectiveTier === 'sponsor' ? 3_000_000 : 600_000));
     const aiUsed = aiUsage ? aiUsage.used : 0;
     const aiRemaining = aiUsage ? aiUsage.remaining : aiLimit;
 

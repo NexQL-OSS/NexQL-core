@@ -58,7 +58,7 @@ export async function fetchAiUsage(context: vscode.ExtensionContext): Promise<Ai
 
     if (res.statusCode === 200) {
       const data = JSON.parse(res.body.toString());
-      const limit = typeof data.limit === 'number' ? data.limit : 5;
+      const limit = typeof data.limit === 'number' ? data.limit : 600_000;
       const usage: AiUsage = {
         used: typeof data.used === 'number' ? data.used : 0,
         limit,

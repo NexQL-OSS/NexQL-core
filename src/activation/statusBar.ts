@@ -458,7 +458,7 @@ export class NotebookStatusBar implements vscode.Disposable {
     // (which re-renders this tooltip when a fresh count lands).
     const aiUsage = getCachedAiUsage();
     if (aiUsage) {
-      md.appendMarkdown(`- AI Chat Assistant: ${aiUsage.remaining}/${aiUsage.limit} left this month\n`);
+      md.appendMarkdown(`- AI Chat Assistant: ${aiUsage.remaining.toLocaleString()}/${aiUsage.limit.toLocaleString()} tokens left this month\n`);
     } else {
       md.appendMarkdown('- AI Chat Assistant: … this month\n');
     }

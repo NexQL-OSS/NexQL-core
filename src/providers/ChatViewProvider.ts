@@ -1117,7 +1117,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, ChatProvide
     if (error.httpStatus === 429 || error.errorCode === 'quota_exceeded') {
       const suffix = this._resetSuffix(error);
       const limit = typeof error.errorData?.limit === 'number' ? error.errorData.limit : undefined;
-      const capNote = limit !== undefined ? ` (${limit}/month)` : '';
+      const capNote = limit !== undefined ? ` (${limit.toLocaleString()} tokens/month)` : '';
       title = 'Free AI limit reached for this month.';
       content =
         `⏳ **Free AI limit reached for this month${capNote}.**${suffix}\n\n` +

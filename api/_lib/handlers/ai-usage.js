@@ -4,7 +4,7 @@
 // hit a 429. Same auth as the chat proxy (free OAuth or paid license session).
 
 const { authenticateBearerRelaxed } = require('../sync-auth');
-const { monthlyLimit, currentPeriod, nextResetIso, readUsage } = require('../ai-db');
+const { monthlyTokenLimit, currentPeriod, nextResetIso, readTokenUsage } = require('../ai-db');
 
 module.exports = async (req, res) => {
   if (req.method !== 'GET' && req.method !== 'POST') {
@@ -23,11 +23,13 @@ module.exports = async (req, res) => {
   }
 
   const tier = auth.tier || 'free';
-  const limit = monthlyLimit(tier);
+  const limit = monthlyTokenLimit(tier);
 
   let used = 0;
   try {
-    used = await readUsage(auth.account_id, currentPeriod());
+    // Include in-flight (reserved) requests so the reported number never under-reports.
+    const { used: settled, reserved } = await readTokenUsage(auth.account_id, currentPeriod());
+    used = settled + reserved;
   } catch (err) {
     console.error('ai/usage read:', err);
     return res.status(500).json({ error: 'Usage lookup failed' });

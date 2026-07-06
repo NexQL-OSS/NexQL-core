@@ -199,6 +199,46 @@ WHERE n.nspname = ANY($1)
   AND t.typtype = 'd'
 `;
 
+// 9. Schema fingerprint — must stay in sync with IndexManifest.schemaFingerprint format.
+// Note: this differs from SchemaPoller's fingerprint (n_live_tup, unfiltered pg_class);
+// staleness checks against a manifest must use THIS query, never the poller's.
+export const SCHEMA_FINGERPRINT_QUERY = `
+SELECT
+  COUNT(*)::text                                    AS object_count,
+  COALESCE(MAX(c.oid)::text, '0')                   AS max_oid,
+  COALESCE(SUM(c.reltuples)::bigint::text, '0')     AS total_rows_estimate,
+  (SELECT COUNT(*)::text FROM pg_namespace
+   WHERE nspname NOT IN ('pg_catalog','information_schema','pg_toast')
+     AND nspname NOT LIKE 'pg_%')                   AS schema_count,
+  COALESCE((SELECT MAX(oid)::text FROM pg_namespace
+            WHERE nspname NOT IN ('pg_catalog','information_schema','pg_toast')
+              AND nspname NOT LIKE 'pg_%'), '0')     AS max_schema_oid
+FROM pg_class c
+JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+  AND c.relkind IN ('r', 'v', 'f', 'm', 'p')
+`;
+
+export async function fetchSchemaFingerprint(client: { query: (sql: string) => Promise<{ rows: any[] }> }): Promise<string> {
+  const result = await client.query(SCHEMA_FINGERPRINT_QUERY);
+  const row = result.rows[0];
+  return `${row.object_count}|${row.max_oid}|${row.total_rows_estimate}|${row.schema_count}|${row.max_schema_oid}`;
+}
+
+// 10. Non-system schemas in a database
+export const NON_SYSTEM_SCHEMAS_QUERY = `
+SELECT nspname
+FROM pg_namespace
+WHERE nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+  AND nspname NOT LIKE 'pg_%'
+ORDER BY nspname
+`;
+
+export async function listNonSystemSchemas(client: { query: (sql: string) => Promise<{ rows: any[] }> }): Promise<string[]> {
+  const result = await client.query(NON_SYSTEM_SCHEMAS_QUERY);
+  return result.rows.map((r: any) => r.nspname);
+}
+
 export function mapRelkindToDbObjectKind(relkind: string): DbObjectKind {
   switch (relkind) {
     case 'r': return 'table';
