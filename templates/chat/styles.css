@@ -782,16 +782,18 @@
         .code-block-actions {
           display: flex;
           align-items: center;
-          gap: 6px;
+          gap: 4px;
+          flex-shrink: 0;
         }
 
-        .code-block-actions button {
+        .code-block-actions .copy-btn,
+        .code-block-actions .notebook-btn {
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          gap: 4px;
-          padding: 3px 8px;
-          min-height: 22px;
+          gap: 3px;
+          padding: 2px 6px;
+          min-height: 20px;
           font-size: 10px;
           line-height: 1;
           font-family: var(--vscode-font-family);
@@ -802,16 +804,19 @@
           cursor: pointer;
           appearance: none;
           -webkit-appearance: none;
-          overflow: visible;
+          white-space: nowrap;
           transition: all 0.15s ease;
         }
 
-        .code-block-actions button svg {
+        .code-block-actions .copy-btn svg,
+        .code-block-actions .notebook-btn svg {
           display: block;
-          flex-shrink: 0;
-          width: 12px;
-          height: 12px;
-          overflow: visible;
+          flex: 0 0 auto;
+          width: 10px;
+          height: 10px;
+          max-width: 10px;
+          max-height: 10px;
+          overflow: hidden;
         }
 
         .copy-btn:hover {

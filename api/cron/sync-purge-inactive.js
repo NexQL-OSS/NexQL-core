@@ -10,11 +10,12 @@ module.exports = async (req, res) => {
   }
 
   const secret = process.env.CRON_SECRET;
-  if (secret) {
-    const auth = req.headers.authorization || '';
-    if (auth !== `Bearer ${secret}`) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
+  if (!secret) {
+    return res.status(503).json({ error: 'Cron not configured' });
+  }
+  const auth = req.headers.authorization || '';
+  if (auth !== `Bearer ${secret}`) {
+    return res.status(401).json({ error: 'Unauthorized' });
   }
 
   try {

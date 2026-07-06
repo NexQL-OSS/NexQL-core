@@ -10,7 +10,7 @@ import {
   writeAiScopeSettings,
   getChatCompletionEndpoint,
 } from '../../aiAssistant/aiConfig';
-import { AiConfigScope, DirectApiKeyProvider, AiProviderId } from '../../aiAssistant/types';
+import { AiConfigScope, DIRECT_API_KEY_PROVIDERS, DirectApiKeyProvider, AiProviderId } from '../../aiAssistant/types';
 import {
   getGitHubSession,
   listAnthropicModels,
@@ -60,6 +60,22 @@ const GITHUB_MODELS_API_VERSION = '2026-03-10';
 const DEFAULT_GITHUB_MODEL = 'openai/gpt-4.1';
 const DEFAULT_OLLAMA_ENDPOINT = 'http://localhost:11434/v1/chat/completions';
 const DEFAULT_LMSTUDIO_ENDPOINT = 'http://localhost:1234/v1/chat/completions';
+const API_TEST_ERROR_BODY_MAX_LEN = 120;
+
+function formatApiTestError(provider: string, statusCode: number | undefined, body: string): string {
+  let detail = (body || '').trim();
+  detail = detail
+    .replace(/Bearer\s+[A-Za-z0-9._\-+/=]+/gi, 'Bearer [REDACTED]')
+    .replace(/\bsk-[A-Za-z0-9_-]{8,}/g, 'sk-[REDACTED]')
+    .replace(/\s+/g, ' ');
+  if (detail.length > API_TEST_ERROR_BODY_MAX_LEN) {
+    detail = detail.slice(0, API_TEST_ERROR_BODY_MAX_LEN) + '…';
+  }
+  const status = statusCode != null ? String(statusCode) : 'unknown';
+  return detail
+    ? `${provider} API error: ${status} — ${detail}`
+    : `${provider} API error: ${status} — request failed`;
+}
 
 /** Webview `getFormData()` sends Cursor keys as `apiKey`; accept both shapes. */
 function cursorApiKeyFromSettings(settings: { cursorApiKey?: string; apiKey?: string }): string {
@@ -76,6 +92,29 @@ function directApiKeyFromSettings(settings: AiSettings, provider: DirectApiKeyPr
     return settings.apiKey;
   }
   return '';
+}
+
+async function resolveDirectApiKey(
+  credentials: AiCredentialsService,
+  settings: AiSettings,
+  provider: DirectApiKeyProvider,
+): Promise<string> {
+  const fromWebview = directApiKeyFromSettings(settings, provider);
+  if (fromWebview) {
+    return fromWebview;
+  }
+  return (await credentials.getApiKey(provider)) || '';
+}
+
+async function resolveCursorApiKey(
+  credentials: AiCredentialsService,
+  settings: { cursorApiKey?: string; apiKey?: string },
+): Promise<string> {
+  const fromWebview = cursorApiKeyFromSettings(settings);
+  if (fromWebview) {
+    return fromWebview;
+  }
+  return (await credentials.getCursorApiKey()) || '';
 }
 
 export class AiSectionHandler implements SettingsSectionHandler {
@@ -113,8 +152,12 @@ export class AiSectionHandler implements SettingsSectionHandler {
   private async sendSettingsLoaded(): Promise<void> {
     const config = vscode.workspace.getConfiguration('postgresExplorer');
     const credentials = AiCredentialsService.getInstance(this.host.extensionContext);
-    const apiKeys = await credentials.getAllApiKeys();
-    const cursorApiKey = (await credentials.getCursorApiKey()) || '';
+    const configuredProviders = await credentials.getAllConfiguredProviders();
+    const apiKeysConfigured: Partial<Record<DirectApiKeyProvider, boolean>> = {};
+    for (const provider of DIRECT_API_KEY_PROVIDERS) {
+      apiKeysConfigured[provider] = configuredProviders.includes(provider);
+    }
+    const cursorApiKeyConfigured = Boolean(await credentials.getCursorApiKey());
     const githubSession = await getGitHubSession();
     
     const notebookScope = readAiScopeSettings(config, 'notebook');
@@ -130,8 +173,8 @@ export class AiSectionHandler implements SettingsSectionHandler {
         chatProvider: chatScope.provider,
         chatModel: chatScope.model,
         lastModels,
-        apiKeys,
-        cursorApiKey,
+        apiKeysConfigured,
+        cursorApiKeyConfigured,
         opencodeCliPath: config.get('opencodeCliPath', ''),
         opencodeServeUrl: config.get('opencodeServeUrl', ''),
         opencodeAutoServe: config.get('opencodeAutoServe', true),
@@ -152,11 +195,21 @@ export class AiSectionHandler implements SettingsSectionHandler {
     try {
       const credentials = AiCredentialsService.getInstance(this.host.extensionContext);
       if (settings.apiKeys) {
-        await credentials.saveAllApiKeys(settings.apiKeys);
+        for (const provider of DIRECT_API_KEY_PROVIDERS) {
+          if (!Object.prototype.hasOwnProperty.call(settings.apiKeys, provider)) {
+            continue;
+          }
+          const value = settings.apiKeys[provider];
+          if (value && value.trim()) {
+            await credentials.setApiKey(provider, value.trim());
+          }
+        }
       }
 
       const ck = cursorApiKeyFromSettings(settings);
-      await credentials.setCursorApiKey(ck || undefined);
+      if (ck) {
+        await credentials.setCursorApiKey(ck);
+      }
 
       const config = vscode.workspace.getConfiguration('postgresExplorer');
       await config.update(
@@ -249,6 +302,7 @@ export class AiSectionHandler implements SettingsSectionHandler {
   private async test(settings: AiSettings): Promise<void> {
     try {
       const config = vscode.workspace.getConfiguration('postgresExplorer');
+      const credentials = AiCredentialsService.getInstance(this.host.extensionContext);
       let testResult = '';
 
       if (settings.provider === 'nexql-free') {
@@ -282,29 +336,30 @@ export class AiSectionHandler implements SettingsSectionHandler {
         }
         testResult = await testGitHubModels(session.accessToken, settings.model || DEFAULT_GITHUB_MODEL);
       } else if (settings.provider === 'cursor') {
-        testResult = await testCursor(cursorApiKeyFromSettings(settings), settings.model || 'auto');
+        const cursorKey = await resolveCursorApiKey(credentials, settings);
+        testResult = await testCursor(cursorKey, settings.model || 'auto');
       } else if (settings.provider === 'opencode') {
         testResult = await testOpencodeConnection(config, settings.model || 'auto');
       } else if (settings.provider === 'openai') {
-        const openaiKey = directApiKeyFromSettings(settings, 'openai');
+        const openaiKey = await resolveDirectApiKey(credentials, settings, 'openai');
         if (!openaiKey) {
           throw new Error('API Key is required for OpenAI');
         }
         testResult = await testOpenAI(openaiKey, settings.model || 'gpt-4.1');
       } else if (settings.provider === 'anthropic') {
-        const anthropicKey = directApiKeyFromSettings(settings, 'anthropic');
+        const anthropicKey = await resolveDirectApiKey(credentials, settings, 'anthropic');
         if (!anthropicKey) {
           throw new Error('API Key is required for Anthropic');
         }
         testResult = await testAnthropic(anthropicKey, settings.model || 'claude-sonnet-4-20250514');
       } else if (settings.provider === 'gemini') {
-        const geminiKey = directApiKeyFromSettings(settings, 'gemini');
+        const geminiKey = await resolveDirectApiKey(credentials, settings, 'gemini');
         if (!geminiKey) {
           throw new Error('API Key is required for Gemini');
         }
         testResult = await testGemini(geminiKey, settings.model || 'gemini-2.5-flash');
       } else if (settings.provider === 'deepseek') {
-        const deepseekKey = directApiKeyFromSettings(settings, 'deepseek');
+        const deepseekKey = await resolveDirectApiKey(credentials, settings, 'deepseek');
         if (!deepseekKey) {
           throw new Error('API Key is required for DeepSeek');
         }
@@ -315,7 +370,7 @@ export class AiSectionHandler implements SettingsSectionHandler {
           'DeepSeek',
         );
       } else if (settings.provider === 'moonshot') {
-        const moonshotKey = directApiKeyFromSettings(settings, 'moonshot');
+        const moonshotKey = await resolveDirectApiKey(credentials, settings, 'moonshot');
         if (!moonshotKey) {
           throw new Error('API Key is required for Moonshot / Kimi');
         }
@@ -326,7 +381,7 @@ export class AiSectionHandler implements SettingsSectionHandler {
           'Moonshot / Kimi',
         );
       } else if (settings.provider === 'mistral') {
-        const mistralKey = directApiKeyFromSettings(settings, 'mistral');
+        const mistralKey = await resolveDirectApiKey(credentials, settings, 'mistral');
         if (!mistralKey) {
           throw new Error('API Key is required for Mistral AI');
         }
@@ -340,7 +395,7 @@ export class AiSectionHandler implements SettingsSectionHandler {
         if (!settings.endpoint) {
           throw new Error('Endpoint is required for custom provider');
         }
-        const customKey = directApiKeyFromSettings(settings, 'custom') || '';
+        const customKey = (await resolveDirectApiKey(credentials, settings, 'custom')) || '';
         testResult = await testCustomEndpoint(
           settings.endpoint,
           customKey,
@@ -363,6 +418,7 @@ export class AiSectionHandler implements SettingsSectionHandler {
 
   private async listModels(settings: AiSettings): Promise<void> {
     try {
+      const credentials = AiCredentialsService.getInstance(this.host.extensionContext);
       let models: Array<string | { id: string; displayName?: string }> = [];
 
       if (settings.provider === 'nexql-free') {
@@ -377,47 +433,48 @@ export class AiSectionHandler implements SettingsSectionHandler {
         }
         models = await listGitHubModels(session.accessToken);
       } else if (settings.provider === 'cursor') {
-        models = await listCursorModels(cursorApiKeyFromSettings(settings));
+        const cursorKey = await resolveCursorApiKey(credentials, settings);
+        models = await listCursorModels(cursorKey);
       } else if (settings.provider === 'opencode') {
         models = await listOpencodeModels(vscode.workspace.getConfiguration('postgresExplorer'));
       } else if (settings.provider === 'openai') {
-        const openaiKey = directApiKeyFromSettings(settings, 'openai');
+        const openaiKey = await resolveDirectApiKey(credentials, settings, 'openai');
         if (!openaiKey) {
           throw new Error('API Key is required to list models');
         }
         models = await listOpenAIModels(openaiKey);
       } else if (settings.provider === 'anthropic') {
-        const anthropicKey = directApiKeyFromSettings(settings, 'anthropic');
+        const anthropicKey = await resolveDirectApiKey(credentials, settings, 'anthropic');
         if (!anthropicKey) {
           throw new Error('API Key is required to list models for Anthropic');
         }
         models = await listAnthropicModels(anthropicKey);
       } else if (settings.provider === 'gemini') {
-        const geminiKey = directApiKeyFromSettings(settings, 'gemini');
+        const geminiKey = await resolveDirectApiKey(credentials, settings, 'gemini');
         if (!geminiKey) {
           throw new Error('API Key is required to list models');
         }
         models = await listGeminiModels(geminiKey);
       } else if (settings.provider === 'deepseek') {
-        const deepseekKey = directApiKeyFromSettings(settings, 'deepseek');
+        const deepseekKey = await resolveDirectApiKey(credentials, settings, 'deepseek');
         if (!deepseekKey) {
           throw new Error('API Key is required to list DeepSeek models');
         }
         models = await listDeepSeekModels(deepseekKey);
       } else if (settings.provider === 'moonshot') {
-        const moonshotKey = directApiKeyFromSettings(settings, 'moonshot');
+        const moonshotKey = await resolveDirectApiKey(credentials, settings, 'moonshot');
         if (!moonshotKey) {
           throw new Error('API Key is required to list Moonshot models');
         }
         models = await listMoonshotModels(moonshotKey);
       } else if (settings.provider === 'mistral') {
-        const mistralKey = directApiKeyFromSettings(settings, 'mistral');
+        const mistralKey = await resolveDirectApiKey(credentials, settings, 'mistral');
         if (!mistralKey) {
           throw new Error('API Key is required to list Mistral models');
         }
         models = await listMistralModels(mistralKey);
       } else if (settings.provider === 'custom') {
-        const customKey = directApiKeyFromSettings(settings, 'custom');
+        const customKey = await resolveDirectApiKey(credentials, settings, 'custom');
         if (settings.endpoint && customKey) {
           models = await listCustomModels(settings.endpoint, customKey);
         } else {
@@ -550,7 +607,7 @@ function testGitHubModels(token: string, model: string): Promise<string> {
         if (res.statusCode === 200) {
           resolve(`GitHub Models connection successful! Model: ${model}`);
         } else {
-          reject(new Error(`GitHub Models API error: ${res.statusCode} - ${body}`));
+          reject(new Error(formatApiTestError('GitHub Models', res.statusCode, body)));
         }
       });
     });
@@ -625,7 +682,7 @@ function testOpenAiCompatible(
         if (res.statusCode === 200) {
           resolve(`${providerLabel} connection successful! Model: ${model}`);
         } else {
-          reject(new Error(`${providerLabel} API error: ${res.statusCode} - ${body}`));
+          reject(new Error(formatApiTestError(providerLabel, res.statusCode, body)));
         }
       });
     });
@@ -662,7 +719,7 @@ function testOpenAI(apiKey: string, model: string): Promise<string> {
         if (res.statusCode === 200) {
           resolve(`OpenAI connection successful! Model: ${model}`);
         } else {
-          reject(new Error(`OpenAI API error: ${res.statusCode} - ${body}`));
+          reject(new Error(formatApiTestError('OpenAI', res.statusCode, body)));
         }
       });
     });
@@ -700,7 +757,7 @@ function testAnthropic(apiKey: string, model: string): Promise<string> {
         if (res.statusCode === 200) {
           resolve(`Anthropic connection successful! Model: ${model}`);
         } else {
-          reject(new Error(`Anthropic API error: ${res.statusCode} - ${body}`));
+          reject(new Error(formatApiTestError('Anthropic', res.statusCode, body)));
         }
       });
     });
@@ -719,10 +776,11 @@ function testGemini(apiKey: string, model: string): Promise<string> {
 
     const options = {
       hostname: 'generativelanguage.googleapis.com',
-      path: `/v1beta/models/${model}:generateContent?key=${apiKey}`,
+      path: `/v1beta/models/${model}:generateContent`,
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'x-goog-api-key': apiKey,
         'Content-Length': data.length,
       },
     };
@@ -734,7 +792,7 @@ function testGemini(apiKey: string, model: string): Promise<string> {
         if (res.statusCode === 200) {
           resolve(`Gemini connection successful! Model: ${model}`);
         } else {
-          reject(new Error(`Gemini API error: ${res.statusCode} - ${body}`));
+          reject(new Error(formatApiTestError('Gemini', res.statusCode, body)));
         }
       });
     });
@@ -812,7 +870,7 @@ function testCustomEndpoint(
           if (res.statusCode === 200) {
             resolve(`Custom endpoint connection successful! Model: ${model}`);
           } else {
-            reject(new Error(`Custom endpoint API error: ${res.statusCode} - ${body}`));
+            reject(new Error(formatApiTestError('Custom endpoint', res.statusCode, body)));
           }
         });
       });

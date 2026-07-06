@@ -1,18 +1,57 @@
 import * as vscode from 'vscode';
 import { IndexStore } from './IndexStore';
-import { IndexManifest, ObjectEntry, TokenIndex, JoinGraph, EmbeddingMetaEntry } from './types';
+import { IndexManifest, ObjectEntry, TokenIndex, JoinGraph } from './types';
 import { tokenize, scoreObject, candidateRefsFromPostings } from './lexical';
 import { findShortestJoinPath } from './joinPath';
 import { ProFeature, isProFeatureEnabled } from '../../services/featureGates';
 import { buildContextPack } from './contextPack';
 import { cosineSimilarity, deserializeEmbedding } from './embeddings';
-import { generateEmbedding } from './embeddings';
 
 export interface RankedHit {
   ref: string;
+  /** Lexical TF-IDF score normally; RRF score (~0.016-0.033) when semantic fusion applied. */
   score: number;
   kind: string;
 }
+
+/** Embedder functions, injectable for tests; defaults lazy-require the real modules. */
+export interface EmbedderDeps {
+  generateLocalEmbedding(text: string, storageUri: vscode.Uri): Promise<number[]>;
+  generateEmbedding(text: string, config: vscode.WorkspaceConfiguration): Promise<{ vector: number[]; model: string }>;
+}
+
+const RRF_K = 60;
+const RRF_MISSING_RANK = 10000;
+
+/**
+ * Reciprocal Rank Fusion of two ranked lists (both sorted descending by score).
+ * The union of both lists is ranked, so semantic-only refs survive fusion.
+ */
+export function fuseRrf(
+  lexical: Array<{ ref: string; score: number }>,
+  semantic: Array<{ ref: string; score: number }>,
+  limit: number
+): Array<{ ref: string; score: number }> {
+  const lexicalRank = new Map(lexical.map((h, idx) => [h.ref, idx]));
+  const semanticRank = new Map(semantic.map((h, idx) => [h.ref, idx]));
+
+  const rrfScores: { ref: string; score: number }[] = [];
+  const mergedRefs = new Set([...lexicalRank.keys(), ...semanticRank.keys()]);
+
+  for (const ref of mergedRefs) {
+    const rL = lexicalRank.has(ref) ? lexicalRank.get(ref)! : RRF_MISSING_RANK;
+    const rS = semanticRank.has(ref) ? semanticRank.get(ref)! : RRF_MISSING_RANK;
+    rrfScores.push({ ref, score: (1 / (RRF_K + rL)) + (1 / (RRF_K + rS)) });
+  }
+
+  return rrfScores.sort((a, b) => b.score - a.score).slice(0, limit);
+}
+
+// Query embedding vectors keyed `${model}::${question}`. Module-level because
+// callers construct a fresh IndexQueryService per call; helps agent turns that
+// repeat similar queries across tool calls.
+const queryVecCache = new Map<string, number[]>();
+const QUERY_VEC_CACHE_MAX = 20;
 
 export interface RankedContext {
   packMarkdown: string;
@@ -26,10 +65,83 @@ export interface RankedContext {
 }
 
 export class IndexQueryService {
-  private lastQuery: string = '';
-  private lastEmbedVector: number[] | null = null;
+  constructor(
+    private readonly store: IndexStore,
+    private readonly embedders?: Partial<EmbedderDeps>
+  ) {}
 
-  constructor(private readonly store: IndexStore) {}
+  /**
+   * Rank all embedded objects against the question by cosine similarity.
+   * Returns null when semantic search is unavailable (config off, no
+   * embeddings built, pro gate closed for provider-built indexes, or any
+   * error) — caller keeps its lexical results.
+   */
+  private async computeSemanticHits(
+    baseDir: vscode.Uri,
+    manifest: IndexManifest,
+    question: string,
+    excludedRefs: Set<string>,
+    config: vscode.WorkspaceConfiguration
+  ): Promise<Array<{ ref: string; score: number }> | null> {
+    if (!config.get<boolean>('postgresExplorer.dbIndex.enableEmbeddings', false)) {
+      return null;
+    }
+    try {
+      const emb = await this.store.readEmbeddings(baseDir, manifest);
+      if (!emb || emb.meta.length === 0) {
+        return null;
+      }
+
+      const model = emb.meta[0].model;
+      const cacheKey = `${model}::${question}`;
+      let queryVec = queryVecCache.get(cacheKey) ?? null;
+      if (queryVec) {
+        // Refresh recency
+        queryVecCache.delete(cacheKey);
+        queryVecCache.set(cacheKey, queryVec);
+      } else {
+        // The query vector must come from the same model the index was built
+        // with, or dimensions won't match. Local model needs no pro gate.
+        if (model === 'Xenova/all-MiniLM-L6-v2') {
+          const generateLocal = this.embedders?.generateLocalEmbedding
+            ?? require('./localEmbedder').generateLocalEmbedding;
+          queryVec = await generateLocal(question, this.store.globalStorageUri);
+        } else if (isProFeatureEnabled(ProFeature.DbIndexEmbed)) {
+          const generate = this.embedders?.generateEmbedding
+            ?? require('./embeddings').generateEmbedding;
+          const res = await generate(question, config);
+          queryVec = res.vector;
+        }
+        if (!queryVec) {
+          return null;
+        }
+        if (queryVecCache.size >= QUERY_VEC_CACHE_MAX) {
+          const oldest = queryVecCache.keys().next().value;
+          if (oldest !== undefined) {
+            queryVecCache.delete(oldest);
+          }
+        }
+        queryVecCache.set(cacheKey, queryVec);
+      }
+
+      const semanticHits: { ref: string; score: number }[] = [];
+      for (let i = 0; i < emb.meta.length; i++) {
+        const meta = emb.meta[i];
+        if (!meta || excludedRefs.has(meta.ref)) {
+          continue;
+        }
+        const docVec = deserializeEmbedding(emb.bin, i, meta.dim);
+        const sim = cosineSimilarity(queryVec, docVec);
+        if (sim > 0) {
+          semanticHits.push({ ref: meta.ref, score: sim });
+        }
+      }
+      return semanticHits.sort((a, b) => b.score - a.score);
+    } catch (err: any) {
+      console.warn('[IndexQueryService] Semantic search failed, falling back to lexical search.', err);
+      return null;
+    }
+  }
 
   /**
    * High-level schema retrieval to ground chat inputs.
@@ -111,83 +223,10 @@ export class IndexQueryService {
     let hits = lexicalHits.slice(0, 10);
 
     // 2. Premium: Semantic search if embeddings exist
-    const isEmbedEnabled = config.get<boolean>('postgresExplorer.dbIndex.enableEmbeddings', false);
-    console.log(`[IndexQueryService] retrieve: Semantic search status: isEmbedEnabled=${isEmbedEnabled}, embeddings=${!!manifest.derived.embeddings}`);
-    if (isEmbedEnabled && manifest.derived.embeddings && manifest.derived.embeddingsMeta) {
-      try {
-        const embeddingsMetaUri = vscode.Uri.joinPath(baseDir, manifest.derived.embeddingsMeta);
-        const embeddingsBinUri = vscode.Uri.joinPath(baseDir, manifest.derived.embeddings);
-
-        const metaData = await vscode.workspace.fs.readFile(embeddingsMetaUri);
-        const metaEntries = JSON.parse(Buffer.from(metaData).toString('utf-8')) as EmbeddingMetaEntry[];
-
-        const binData = await vscode.workspace.fs.readFile(embeddingsBinUri);
-
-        const firstMeta = metaEntries[0];
-        let queryVec: number[] | null = null;
-
-        if (this.lastQuery === question && this.lastEmbedVector) {
-          queryVec = this.lastEmbedVector;
-          console.log(`[IndexQueryService] retrieve: Reusing cached query embedding vector.`);
-        } else {
-          console.log(`[IndexQueryService] retrieve: Generating embedding for model=${firstMeta?.model || 'unknown'}...`);
-          if (firstMeta?.model === 'Xenova/all-MiniLM-L6-v2') {
-            const { generateLocalEmbedding } = require('./localEmbedder');
-            queryVec = await generateLocalEmbedding(question, this.store.globalStorageUri);
-          } else {
-            const allowed = isProFeatureEnabled(ProFeature.DbIndexEmbed);
-            if (allowed) {
-              const { generateEmbedding } = require('./embeddings');
-              const res = await generateEmbedding(question, config);
-              queryVec = res.vector;
-            }
-          }
-          if (queryVec) {
-            this.lastQuery = question;
-            this.lastEmbedVector = queryVec;
-          }
-        }
-
-        if (!queryVec) {
-          throw new Error('No query embedding generated');
-        }
-
-        const semanticHits: { ref: string; score: number }[] = [];
-        for (let i = 0; i < metaEntries.length; i++) {
-          const meta = metaEntries[i];
-          if (meta) {
-            if (excludedRefs.has(meta.ref)) {
-              continue;
-            }
-            const docVec = deserializeEmbedding(binData, i, meta.dim);
-            const sim = cosineSimilarity(queryVec, docVec);
-            if (sim > 0) {
-              semanticHits.push({ ref: meta.ref, score: sim });
-            }
-          }
-        }
-        console.log(`[IndexQueryService] retrieve: Top semantic hits:`, semanticHits.sort((a, b) => b.score - a.score).slice(0, 5));
-
-        // Merge using Reciprocal Rank Fusion (RRF)
-        const lexicalRank = new Map(lexicalHits.map((h, idx) => [h.ref, idx]));
-        const semanticRank = new Map(semanticHits.sort((a, b) => b.score - a.score).map((h, idx) => [h.ref, idx]));
-
-        const rrfScores: { ref: string; score: number }[] = [];
-        const mergedRefs = new Set([...lexicalRank.keys(), ...semanticRank.keys()]);
-
-        for (const ref of mergedRefs) {
-          const rL = lexicalRank.has(ref) ? lexicalRank.get(ref)! : 10000;
-          const rS = semanticRank.has(ref) ? semanticRank.get(ref)! : 10000;
-          const rrf = (1 / (60 + rL)) + (1 / (60 + rS));
-          rrfScores.push({ ref, score: rrf });
-        }
-
-        hits = rrfScores.sort((a, b) => b.score - a.score).slice(0, 10);
-        console.log(`[IndexQueryService] retrieve: RRF merged hits:`, hits.slice(0, 5));
-      } catch (err: any) {
-        console.warn(`[IndexQueryService] retrieve: Semantic search failed, falling back to lexical search.`, err);
-        // Fall back to lexical hits on embedding failures
-      }
+    const semanticHits = await this.computeSemanticHits(baseDir, manifest, question, excludedRefs, config);
+    if (semanticHits) {
+      hits = fuseRrf(lexicalHits, semanticHits, 10);
+      console.log(`[IndexQueryService] retrieve: RRF merged hits:`, hits.slice(0, 5));
     }
 
     const topK = hits.slice(0, 5);
@@ -291,12 +330,17 @@ export class IndexQueryService {
 
   /**
    * Search for objects by matching query token scores. Used by agent search_schema tools.
+   * Pass `opts.semantic` to fuse embeddings-based similarity via RRF when the
+   * index has embeddings (silently stays lexical otherwise). Keystroke-driven
+   * callers (@-mention autocomplete) must NOT pass it — query embedding can
+   * hit the network or load a local model.
    */
   public async search(
     connectionId: string,
     database: string,
     query: string,
-    limit: number = 10
+    limit: number = 10,
+    opts?: { semantic?: boolean }
   ): Promise<RankedHit[]> {
     const baseDir = this.store.getBaseDir(connectionId, database);
     const manifest = await this.store.readManifest(baseDir);
@@ -351,10 +395,19 @@ export class IndexQueryService {
       }
     }
 
-    const sortedCandidates = Object.entries(scoresMap)
+    // Full sorted list (no pre-slice) so RRF ranks match retrieve() semantics.
+    let sortedCandidates = Object.entries(scoresMap)
       .map(([ref, score]) => ({ ref, score }))
-      .sort((a, b) => b.score - a.score)
-      .slice(0, limit);
+      .sort((a, b) => b.score - a.score);
+
+    if (opts?.semantic) {
+      const config = vscode.workspace.getConfiguration();
+      const semanticHits = await this.computeSemanticHits(baseDir, manifest, query, excludedRefs, config);
+      if (semanticHits) {
+        sortedCandidates = fuseRrf(sortedCandidates, semanticHits, limit);
+      }
+    }
+    sortedCandidates = sortedCandidates.slice(0, limit);
 
     const hits: RankedHit[] = [];
     for (const item of sortedCandidates) {

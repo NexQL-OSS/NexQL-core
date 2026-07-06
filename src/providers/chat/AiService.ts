@@ -414,9 +414,9 @@ export class AiService {
     }
   }
 
-  private async _getCursorApiKey(config: vscode.WorkspaceConfiguration): Promise<string> {
+  private async _getCursorApiKey(_config: vscode.WorkspaceConfiguration): Promise<string> {
     const secretApiKey = await SecretStorageService.getInstance().getCursorApiKey();
-    return secretApiKey || process.env.CURSOR_API_KEY || config.get<string>('cursorApiKey') || '';
+    return secretApiKey || process.env.CURSOR_API_KEY || '';
   }
 
   private async _listCursorModels(apiKey: string): Promise<Array<{ id: string; displayName?: string }>> {
@@ -719,6 +719,32 @@ export class AiService {
       }
     }
     return n;
+  }
+
+  /**
+   * Format a provider-native `usage` object (from either a buffered JSON response or a
+   * captured streaming usage chunk/event) into the same display string regardless of
+   * transport. Returns '' when the object is absent or has none of the expected shape,
+   * so callers can fall back to {@link _roughTokenEstimateLabel}.
+   */
+  private static _formatProviderUsage(provider: string, usageObj: Record<string, any> | undefined): string {
+    if (!usageObj) {
+      return '';
+    }
+    if (provider === 'anthropic') {
+      const { input_tokens, output_tokens } = usageObj;
+      if (input_tokens === undefined && output_tokens === undefined) {
+        return '';
+      }
+      return `${input_tokens ?? 0} input, ${output_tokens ?? 0} output`;
+    }
+    if (provider === 'gemini') {
+      return typeof usageObj.totalTokenCount === 'number' ? `${usageObj.totalTokenCount} tokens` : '';
+    }
+    // OpenAI-compatible (openai, custom, ollama, lmstudio, github, nexql-free)
+    return typeof usageObj.total_tokens === 'number'
+      ? `${usageObj.total_tokens} tokens (P:${usageObj.prompt_tokens}, C:${usageObj.completion_tokens})`
+      : '';
   }
 
   /** Rough token hint when the LM host does not report usage (not billing-grade). */
@@ -1592,9 +1618,9 @@ export class AiService {
         }
       }
       const secretApiKey = await SecretStorageService.getInstance().getAiApiKey();
-      return secretApiKey || config.get<string>('aiApiKey') || '';
+      return secretApiKey || '';
     } catch {
-      return config.get<string>('aiApiKey') || '';
+      return '';
     }
   }
 
@@ -1689,6 +1715,14 @@ export class AiService {
         // (arguments arrive as string pieces), Anthropic by content-block index
         // (`content_block_start` carries id/name, `input_json_delta` the JSON pieces).
         const streamToolFragments = new Map<number, { id: string; name: string; args: string }>();
+        // Real provider usage captured from the stream itself (when the upstream sends
+        // it), so the displayed count reflects actual billed tokens instead of always
+        // falling back to a character-based estimate. Anthropic reports it split across
+        // `message_start` (input_tokens) and `message_delta` (running output_tokens);
+        // OpenAI-compatible providers (incl. nexql-free) send it as a trailing chunk
+        // with `choices: []` and a top-level `usage` when `stream_options.include_usage`
+        // is requested.
+        let streamUsageObj: Record<string, any> | undefined;
         res.on('data', (chunk: Buffer | string) => {
           const chunkStr = typeof chunk === 'string' ? chunk : chunk.toString('utf8');
           if (onChunk) {
@@ -1727,6 +1761,10 @@ export class AiService {
                       if (frag) {
                         frag.args += parsed.delta.partial_json || '';
                       }
+                    } else if (parsed.type === 'message_start' && parsed.message?.usage) {
+                      streamUsageObj = { ...streamUsageObj, input_tokens: parsed.message.usage.input_tokens };
+                    } else if (parsed.type === 'message_delta' && parsed.usage) {
+                      streamUsageObj = { ...streamUsageObj, output_tokens: parsed.usage.output_tokens };
                     }
                   } else {
                     // OpenAI-compatible
@@ -1747,6 +1785,11 @@ export class AiService {
                       if (tc.function?.arguments) {
                         frag.args += tc.function.arguments;
                       }
+                    }
+                    // Trailing usage-only chunk (`choices: []`, top-level `usage`) sent
+                    // when the upstream request included `stream_options.include_usage`.
+                    if (parsed.usage) {
+                      streamUsageObj = parsed.usage;
                     }
                   }
                   if (text) {
@@ -1781,7 +1824,7 @@ export class AiService {
             if (toolCalls.length > 0) {
               onChunk({ toolCalls });
             }
-            usage = AiService._roughTokenEstimateLabel(
+            usage = AiService._formatProviderUsage(provider, streamUsageObj) || AiService._roughTokenEstimateLabel(
               AiService.estimateTokens(JSON.stringify(body.messages || '')),
               content.length
             );
@@ -1857,10 +1900,7 @@ export class AiService {
                   content += block.text;
                 }
               }
-              const usageObj = response.usage as { input_tokens?: number; output_tokens?: number } | undefined;
-              if (usageObj) {
-                usage = `${usageObj.input_tokens} input, ${usageObj.output_tokens} output`;
-              }
+              usage = AiService._formatProviderUsage(provider, response.usage as Record<string, any> | undefined);
             } else if (provider === 'gemini') {
               const candidates = response.candidates as Array<{
                 content?: { parts?: Array<{ text?: string; functionCall?: { name?: string; args?: unknown } }> };
@@ -1876,10 +1916,7 @@ export class AiService {
                   content += part.text;
                 }
               }
-              const usageObj = response.usageMetadata as { totalTokenCount?: number } | undefined;
-              if (usageObj) {
-                usage = `${usageObj.totalTokenCount} tokens`;
-              }
+              usage = AiService._formatProviderUsage(provider, response.usageMetadata as Record<string, any> | undefined);
             } else {
               const choices = response.choices as Array<{
                 message?: {
@@ -1897,14 +1934,7 @@ export class AiService {
                   });
                 }
               }
-              const usageObj = response.usage as {
-                total_tokens?: number;
-                prompt_tokens?: number;
-                completion_tokens?: number;
-              } | undefined;
-              if (usageObj) {
-                usage = `${usageObj.total_tokens} tokens (P:${usageObj.prompt_tokens}, C:${usageObj.completion_tokens})`;
-              }
+              usage = AiService._formatProviderUsage(provider, response.usage as Record<string, any> | undefined);
             }
 
             if (!content && provider === 'custom') {

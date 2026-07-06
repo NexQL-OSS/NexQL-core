@@ -237,6 +237,17 @@ export class AutoRefreshService implements vscode.Disposable {
       poller.start(getPollIntervalMs());
       this.pollers.set(connectionId, poller);
     }
+
+    // Ensure the database index exists (first build) or is fresh — covers the
+    // activation scan, newly created connections, and tree reconnects.
+    try {
+      const { isProFeatureEnabled, ProFeature } = require('./featureGates');
+      if (isProFeatureEnabled(ProFeature.DbIndexAuto)) {
+        vscode.commands.executeCommand('postgres-explorer.dbindex.updateBackground', connectionId);
+      }
+    } catch (e) {
+      this.outputChannel.appendLine(`[AutoRefreshService] Failed to trigger auto-index: ${e}`);
+    }
   }
 
   /**

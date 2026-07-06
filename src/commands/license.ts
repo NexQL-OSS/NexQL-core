@@ -108,7 +108,7 @@ export async function cmdLicenseShowUsage(): Promise<void> {
   }
 
   const tier = svc.getTier();
-  const aiLimit = aiUsage ? aiUsage.limit : (tier === 'singularity' ? 500 : (tier === 'sponsor' ? 200 : 50));
+  const aiLimit = aiUsage ? aiUsage.limit : (tier === 'singularity' ? 10_000_000 : (tier === 'sponsor' ? 3_000_000 : 600_000));
   const aiRemaining = aiUsage ? aiUsage.remaining : aiLimit;
   const nextMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
   const daysUntilReset = Math.ceil((nextMonth.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
@@ -118,7 +118,7 @@ export async function cmdLicenseShowUsage(): Promise<void> {
 
   items.push({
     label: 'AI Chat Assistant',
-    description: `${aiRemaining}/${aiLimit} left this month`,
+    description: `${aiRemaining.toLocaleString()}/${aiLimit.toLocaleString()} tokens left this month`,
     detail: aiResetHint,
   });
 

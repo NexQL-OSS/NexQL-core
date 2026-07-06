@@ -166,7 +166,9 @@ export function serializeEmbeddings(vectors: number[][], dim: number): Uint8Arra
  */
 export function deserializeEmbedding(buffer: Uint8Array, index: number, dim: number): number[] {
   const vector: number[] = [];
-  const nodeBuffer = Buffer.from(buffer);
+  // Zero-copy view — Buffer.from(uint8Array) would copy the whole bin file
+  // on every row of the cosine scan.
+  const nodeBuffer = Buffer.from(buffer.buffer, buffer.byteOffset, buffer.byteLength);
   const offset = index * dim * 4;
   for (let j = 0; j < dim; j++) {
     vector.push(nodeBuffer.readFloatLE(offset + j * 4));

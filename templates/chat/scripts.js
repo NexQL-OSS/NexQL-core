@@ -1653,6 +1653,25 @@ function escapeAttribute(str) {
     .replace(/>/g, '&gt;');
 }
 
+// Compact icons for code-block header actions (10×10px, matches 10px label text)
+function codeBlockActionIcon(type) {
+  const paths = {
+    copy: '<path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25v-7.5z"/><path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25v-7.5zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25h-7.5z"/>',
+    check: '<path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0z"/>',
+    notebook: '<path d="M2.5 2A1.5 1.5 0 0 0 1 3.5v9A1.5 1.5 0 0 0 2.5 14h11a1.5 1.5 0 0 0 1.5-1.5v-9A1.5 1.5 0 0 0 13.5 2h-11zM2 3.5a.5.5 0 0 1 .5-.5h11a.5.5 0 0 1 .5.5v9a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5v-9z"/><path d="M8 5.5v2H6v1h2v2h1v-2h2v-1H9v-2H8z"/>',
+    error: '<path d="M8 1a7 7 0 1 1 0 14A7 7 0 0 1 8 1zm0 2.5a.75.75 0 0 0-.75.75v3.5a.75.75 0 0 0 1.5 0v-3.5A.75.75 0 0 0 8 3.5zm0 8a1 1 0 1 0 0-2 1 1 0 0 0 0 2z"/>'
+  };
+  return `<svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">${paths[type] || ''}</svg>`;
+}
+
+function codeBlockCopyButtonHtml() {
+  return `${codeBlockActionIcon('copy')}Copy`;
+}
+
+function codeBlockNotebookButtonHtml() {
+  return `${codeBlockActionIcon('notebook')}Notebook`;
+}
+
 // Copy code to clipboard
 function copyCode(button, codeId) {
   const codeElement = document.getElementById(codeId);
@@ -1665,21 +1684,10 @@ function copyCode(button, codeId) {
 
   navigator.clipboard.writeText(code).then(() => {
     button.classList.add('copied');
-    button.innerHTML = `
-                    <svg viewBox="0 0 16 16" fill="currentColor">
-                        <path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z"/>
-                    </svg>
-                    Copied!
-                `;
+    button.innerHTML = `${codeBlockActionIcon('check')}Copied!`;
     setTimeout(() => {
       button.classList.remove('copied');
-      button.innerHTML = `
-                        <svg viewBox="0 0 16 16" fill="currentColor">
-                            <path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z"/>
-                            <path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z"/>
-                        </svg>
-                        Copy
-                    `;
+      button.innerHTML = codeBlockCopyButtonHtml();
     }, 2000);
   });
 }
@@ -1713,20 +1721,10 @@ function handleNotebookResult(success, error) {
 
   if (success) {
     button.classList.add('added');
-    button.innerHTML = `
-                    <svg viewBox="0 0 16 16" fill="currentColor">
-                        <path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z"/>
-                    </svg>
-                    Added!
-                `;
+    button.innerHTML = `${codeBlockActionIcon('check')}Added!`;
   } else {
     button.classList.add('error');
-    button.innerHTML = `
-                    <svg viewBox="0 0 16 16" fill="currentColor">
-                        <path d="M8 1a7 7 0 110 14A7 7 0 018 1zm0 2.5a.75.75 0 00-.75.75v3.5a.75.75 0 001.5 0v-3.5A.75.75 0 008 3.5zm0 8a1 1 0 100-2 1 1 0 000 2z"/>
-                    </svg>
-                    ${error || 'Error'}
-                `;
+    button.innerHTML = `${codeBlockActionIcon('error')}${error || 'Error'}`;
   }
 
   setTimeout(() => {
@@ -1911,20 +1909,8 @@ function getMarkedRenderer() {
             <div class="code-block-header">
               <span class="code-language">${displayLang}</span>
               <div class="code-block-actions">
-                ${isSQL ? `<button type="button" class="notebook-btn" title="Add to active notebook">
-                  <svg viewBox="-0.5 -0.5 17 17" fill="currentColor" aria-hidden="true">
-                    <path d="M2.5 2A1.5 1.5 0 001 3.5v9A1.5 1.5 0 002.5 14h11a1.5 1.5 0 001.5-1.5v-9A1.5 1.5 0 0013.5 2h-11zM2 3.5a.5.5 0 01.5-.5h11a.5.5 0 01.5.5v9a.5.5 0 01-.5.5h-11a.5.5 0 01-.5-.5v-9z"/>
-                    <path d="M7.5 5.5v2h-2v1h2v2h1v-2h2v-1h-2v-2h-1z"/>
-                  </svg>
-                  Notebook
-                </button>` : ''}
-                <button type="button" class="copy-btn" title="Copy">
-                  <svg viewBox="-0.5 -0.5 17 17" fill="currentColor" aria-hidden="true">
-                    <path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z"/>
-                    <path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z"/>
-                  </svg>
-                  Copy
-                </button>
+                ${isSQL ? `<button type="button" class="notebook-btn" title="Add to active notebook">${codeBlockNotebookButtonHtml()}</button>` : ''}
+                <button type="button" class="copy-btn" title="Copy">${codeBlockCopyButtonHtml()}</button>
               </div>
             </div>
             <pre><code id="${codeId}" class="hljs language-${language}" data-raw="${safeRawCode}">${highlightedCode}</code></pre>
@@ -1973,8 +1959,8 @@ function sanitizeHtml(dirty) {
     // Preserve data-raw and id on code elements so copy/notebook features work
     'code': ['class', 'data-raw', 'id'],
     'pre': ['class'],
-    'button': ['class', 'title', 'aria-label', 'aria-pressed', 'aria-expanded'],
-    'svg': ['viewBox', 'width', 'height', 'fill', 'class'],
+    'button': ['class', 'title', 'type', 'aria-label', 'aria-pressed', 'aria-expanded'],
+    'svg': ['viewBox', 'width', 'height', 'fill', 'class', 'aria-hidden'],
     'path': ['d', 'fill', 'fill-rule', 'clip-rule', 'stroke', 'stroke-width'],
     'span': ['class'],
     'div': ['class'],

@@ -114,6 +114,6 @@ app.listen(PORT, () => {
   console.log(`\n========================================================`);
   console.log(`🚀 NexQL Marketing & Razorpay Checkout Server`);
   console.log(`🌐 Address: http://localhost:${PORT}`);
-  console.log(`🔑 RAZORPAY_KEY_ID: ${process.env.RAZORPAY_KEY_ID || 'Missing!'}`);
+  console.log(`🔑 RAZORPAY_KEY_ID: ${process.env.RAZORPAY_KEY_ID ? 'configured' : 'Missing!'}`);
   console.log(`========================================================\n`);
 });
