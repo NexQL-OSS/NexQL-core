@@ -11,14 +11,21 @@
 const https = require('https');
 const { authenticateBearerRelaxed } = require('../sync-auth');
 const {
-  monthlyLimit,
+  monthlyTokenLimit,
   currentPeriod,
   nextResetIso,
-  reserveUsage,
-  refundUsage,
+  reserveTokens,
+  reconcileTokens,
+  releaseReservedTokens,
   pruneOldUsage,
   touchRate,
 } = require('../ai-db');
+
+// Chars-per-token divisor used for the pre-flight cost estimate. Denser than the
+// client's cosmetic 4 chars/token (AiService.ts ROUGH_CHARS_PER_TOKEN) since
+// SQL/schema/code text tokenizes worse than prose — this side of the estimate must
+// never underestimate the eventual token cost.
+const EST_CHARS_PER_TOKEN = 3;
 
 // ── Cost guards ───────────────────────────────────────────────────────────────
 // The managed key pays for every token, so a "request" must have a bounded cost.
@@ -40,6 +47,32 @@ const MAX_TOOLS_JSON_BYTES = 8192;
 const RATE_WINDOW_SEC = Number(process.env.AI_RATE_WINDOW_SEC || 60);
 const RATE_PER_ACCOUNT = Number(process.env.AI_RATE_PER_ACCOUNT || 20);
 const RATE_PER_IP = Number(process.env.AI_RATE_PER_IP || 40);
+
+function clientIp(req) {
+  if (process.env.VERCEL === '1') {
+    const forwarded = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+    if (forwarded) {
+      return forwarded;
+    }
+  }
+  return req.socket?.remoteAddress || 'unknown';
+}
+
+/** Truncate and redact sensitive patterns before logging upstream error bodies. */
+function sanitizeLogBody(body, maxLen = 300) {
+  if (body == null) {
+    return '';
+  }
+  let text = typeof body === 'string' ? body : JSON.stringify(body);
+  text = text
+    .replace(/Bearer\s+[A-Za-z0-9._\-+/=]+/gi, 'Bearer [REDACTED]')
+    .replace(/Authorization['":\s]+[^'"\s,}]+/gi, 'Authorization [REDACTED]')
+    .replace(/\bsk-[A-Za-z0-9_-]{8,}/g, 'sk-[REDACTED]');
+  if (text.length > maxLen) {
+    return text.slice(0, maxLen) + '…';
+  }
+  return text;
+}
 
 function tierMaxTokens(tier) {
   return TIER_MAX_TOKENS[tier] ?? TIER_MAX_TOKENS.free;
@@ -170,6 +203,9 @@ function modelChain(primaryEnv, primaryDefault, fallbackEnv, fallbackDefaults) {
 // giving up — so free users keep working after Vercel's monthly credit runs out.
 // Both speak the OpenAI-compatible /chat/completions (SSE) protocol, so the response
 // shape is identical regardless of which provider served the request.
+// Kill switch for the Cloudflare failover provider — set true to re-enable it.
+const CLOUDFLARE_FALLBACK_ENABLED = false;
+
 function buildProviders() {
   const providers = [];
 
@@ -190,10 +226,11 @@ function buildProviders() {
 
   // Cloudflare AI Gateway failover: only enabled when account, gateway, and token
   // are all present. The OpenAI-compatible endpoint is path-based per account/gateway.
+  // Temporarily disabled — flip CLOUDFLARE_FALLBACK_ENABLED to re-enable; code kept intact.
   const cfAccount = process.env.CF_ACCOUNT_ID;
   const cfGateway = process.env.CF_GATEWAY_ID;
   const cfToken = process.env.CF_AI_GATEWAY_TOKEN;
-  if (cfAccount && cfGateway && cfToken) {
+  if (CLOUDFLARE_FALLBACK_ENABLED && cfAccount && cfGateway && cfToken) {
     const extraHeaders = {};
     // Authenticated CF gateways additionally require a cf-aig-authorization header.
     if (process.env.CF_AIG_AUTH) {
@@ -299,6 +336,7 @@ function requestGateway(provider, model, messages, temperature, maxTokens, tools
       temperature,
       max_tokens: maxTokens,
       stream: true,
+      stream_options: { include_usage: true },
       ...(tools ? { tools } : {}),
     });
     const req = https.request(
@@ -341,6 +379,7 @@ function collectSseText(res) {
   return new Promise((resolve) => {
     let buffer = '';
     let text = '';
+    let usage = null;
     const toolCallsByIndex = new Map();
 
     res.on('data', (chunk) => {
@@ -367,6 +406,9 @@ function collectSseText(res) {
               if (typeof tc.function?.arguments === 'string') existing.arguments += tc.function.arguments;
               toolCallsByIndex.set(idx, existing);
             }
+            if (parsed.usage) {
+              usage = parsed.usage;
+            }
           } catch {
             // ignore partial/meta lines
           }
@@ -377,11 +419,50 @@ function collectSseText(res) {
       const toolCalls = [...toolCallsByIndex.values()]
         .filter((tc) => tc.name)
         .map((tc) => ({ id: tc.id, type: 'function', function: { name: tc.name, arguments: tc.arguments } }));
-      resolve({ text, toolCalls: toolCalls.length > 0 ? toolCalls : undefined });
+      resolve({ text, toolCalls: toolCalls.length > 0 ? toolCalls : undefined, usage });
     };
     res.on('end', finish);
     res.on('error', finish);
   });
+}
+
+/**
+ * Scan (not consume) SSE bytes for the terminal `usage` object OpenAI-compatible
+ * streams emit when `stream_options.include_usage` is set (a final chunk with
+ * `choices: []` and a top-level `usage`). Used by the streaming pass-through path,
+ * which forwards raw bytes to the client unchanged and only needs the side-channel
+ * token counts for server-side metering.
+ */
+function scanSseUsage(chunkText, state) {
+  state.buffer += chunkText;
+  let lineEnd = state.buffer.indexOf('\n');
+  while (lineEnd !== -1) {
+    const line = state.buffer.slice(0, lineEnd).trim();
+    state.buffer = state.buffer.slice(lineEnd + 1);
+    lineEnd = state.buffer.indexOf('\n');
+    if (line.startsWith('data:')) {
+      const dataVal = line.slice(5).trim();
+      if (dataVal !== '[DONE]') {
+        try {
+          const parsed = JSON.parse(dataVal);
+          if (parsed.usage) {
+            state.usage = parsed.usage;
+          }
+        } catch {
+          // ignore partial/meta lines
+        }
+      }
+    }
+  }
+}
+
+/** Normalize an OpenAI-compatible `usage` object to a total token count; null if absent/malformed. */
+function totalTokensFromUsage(usage) {
+  if (!usage || typeof usage !== 'object') {
+    return null;
+  }
+  const total = usage.total_tokens ?? (usage.prompt_tokens || 0) + (usage.completion_tokens || 0);
+  return Number.isFinite(total) && total > 0 ? Math.round(total) : null;
 }
 
 module.exports = async (req, res) => {
@@ -410,14 +491,13 @@ module.exports = async (req, res) => {
   }
 
   const tier = auth.tier || 'free';
-  const limit = monthlyLimit(tier);
+  const limit = monthlyTokenLimit(tier);
   const period = currentPeriod();
 
   // Burst / Sybil throttle (per account, then per client IP) before we touch the
-  // monthly counter or a provider. Best-effort: a store hiccup must not block chat.
+  // monthly counter or a provider.
   try {
-    const ip = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim()
-      || req.socket?.remoteAddress || 'unknown';
+    const ip = clientIp(req);
     if (RATE_PER_ACCOUNT > 0) {
       const acct = await touchRate(`acct:${auth.account_id}`, RATE_PER_ACCOUNT, RATE_WINDOW_SEC);
       if (!acct.ok) {
@@ -431,7 +511,10 @@ module.exports = async (req, res) => {
       }
     }
   } catch (err) {
-    console.error('ai/chat: rate check failed (allowing)', err);
+    console.error('ai/chat: rate check failed', err);
+    if (process.env.KV_REST_API_URL) {
+      return res.status(503).json({ error: 'rate_limit_unavailable' });
+    }
   }
 
   const alias = resolveAlias((req.body || {}).model);
@@ -444,12 +527,28 @@ module.exports = async (req, res) => {
     });
   }
 
-  // Atomically reserve one request against the monthly cap *before* dispatching, so
-  // concurrent calls can't race past a read-then-increment gate. Refunded below on
-  // any dispatch failure / empty / client-abort so only delivered replies are billed.
+  // Clamp/sanitize the payload *before* estimating cost, so the pre-flight token
+  // estimate reflects what's actually dispatched, not the raw (possibly huge) body.
+  const messages = clampMessages(sanitizeMessages((req.body || {}).messages));
+  const tools = sanitizeTools((req.body || {}).tools);
+  const rawTemp = typeof req.body?.temperature === 'number' ? req.body.temperature : 0.7;
+  const temperature = Math.max(0, Math.min(2, rawTemp));
+  const maxTokens = tierMaxTokens(tier);
+
+  // Conservative pre-flight estimate: clamped input chars (denser divisor than the
+  // client's cosmetic 4 chars/token) + the tier's hard output cap. Output can never
+  // exceed max_tokens, so this side of the estimate never underestimates.
+  const inputChars = messages.reduce((n, m) => n + messageChars(m.content), 0)
+    + (tools ? JSON.stringify(tools).length : 0);
+  const estTokens = Math.ceil(inputChars / EST_CHARS_PER_TOKEN) + maxTokens;
+
+  // Atomically reserve the estimated cost against the monthly cap *before*
+  // dispatching, so concurrent calls can't race past a read-then-increment gate.
+  // Settled below to the real provider-reported usage (or released in full on
+  // failure/abort) so only delivered replies are billed, at their actual cost.
   let reservation;
   try {
-    reservation = await reserveUsage(auth.account_id, period, limit);
+    reservation = await reserveTokens(auth.account_id, period, estTokens, limit);
   } catch (err) {
     console.error('ai/chat: usage reserve failed', err);
     return res.status(500).json({ error: 'Usage lookup failed' });
@@ -463,129 +562,158 @@ module.exports = async (req, res) => {
     });
   }
 
-  let released = false;
-  const release = async (reason) => {
-    if (released) {
+  let settled = false;
+  const releaseReservation = async (reason) => {
+    if (settled) {
       return;
     }
-    released = true;
+    settled = true;
     try {
-      await refundUsage(auth.account_id, period);
+      await releaseReservedTokens(auth.account_id, period, estTokens);
     } catch (err) {
-      console.error(`ai/chat: refund failed (${reason})`, err);
+      console.error(`ai/chat: token release failed (${reason})`, err);
+    }
+  };
+  const reconcileReservation = async (actualTokens, reason) => {
+    if (settled) {
+      return;
+    }
+    settled = true;
+    try {
+      await reconcileTokens(auth.account_id, period, estTokens, actualTokens);
+    } catch (err) {
+      console.error(`ai/chat: token reconcile failed (${reason})`, err);
     }
   };
 
-  const messages = clampMessages(sanitizeMessages((req.body || {}).messages));
-  const tools = sanitizeTools((req.body || {}).tools);
-  const rawTemp = typeof req.body?.temperature === 'number' ? req.body.temperature : 0.7;
-  const temperature = Math.max(0, Math.min(2, rawTemp));
-  const maxTokens = tierMaxTokens(tier);
-
-  // Dispatch: providers in priority order (Vercel → Cloudflare), each with its own
-  // model fallback chain. A 402 exhausts that provider's credit pool, so we stop
-  // trying its remaining models and advance to the next provider.
-  let upstream;
-  let lastErr;
-  outer: for (const provider of PROVIDERS) {
-    for (const model of provider.tiers[alias]) {
-      try {
-        const attempt = await requestGateway(provider, model, messages, temperature, maxTokens, tools);
-        if (attempt.res.statusCode === 200) {
-          upstream = attempt;
-          break outer;
+  try {
+    // Dispatch: providers in priority order (Vercel → Cloudflare), each with its own
+    // model fallback chain. A 402 exhausts that provider's credit pool, so we stop
+    // trying its remaining models and advance to the next provider.
+    let upstream;
+    let lastErr;
+    outer: for (const provider of PROVIDERS) {
+      for (const model of provider.tiers[alias]) {
+        try {
+          const attempt = await requestGateway(provider, model, messages, temperature, maxTokens, tools);
+          if (attempt.res.statusCode === 200) {
+            upstream = attempt;
+            break outer;
+          }
+          const body = await readBody(attempt.res);
+          lastErr = { status: attempt.res.statusCode, body, provider: provider.name };
+          // 402 = this provider's credit pool is spent; skip its remaining models and
+          // fail over to the next provider.
+          if (attempt.res.statusCode === 402) {
+            break;
+          }
+        } catch (err) {
+          lastErr = { status: 0, body: err instanceof Error ? err.message : String(err), provider: provider.name };
         }
-        const body = await readBody(attempt.res);
-        lastErr = { status: attempt.res.statusCode, body, provider: provider.name };
-        // 402 = this provider's credit pool is spent; skip its remaining models and
-        // fail over to the next provider.
-        if (attempt.res.statusCode === 402) {
-          break;
-        }
-      } catch (err) {
-        lastErr = { status: 0, body: err instanceof Error ? err.message : String(err), provider: provider.name };
       }
     }
-  }
 
-  if (!upstream) {
-    await release('gateway_unavailable');
-    console.error('ai/chat: gateway request failed', lastErr);
-    if (lastErr && lastErr.status === 402) {
-      return res.status(402).json({ error: 'pool_exhausted' });
-    }
-    return res.status(502).json({ error: 'gateway_unavailable' });
-  }
-
-  // Opportunistic retention (Neon only; low probability to avoid per-request cost).
-  if (Math.random() < 0.02) {
-    void pruneOldUsage().catch(() => {});
-  }
-
-  const wantStream = (req.body || {}).stream === true;
-
-  if (wantStream) {
-    res.writeHead(200, {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      'Connection': 'keep-alive',
-    });
-
-    let delivered = false;
-    let clientAborted = false;
-    let finished = false;
-    // Client hung up mid-stream: abort the upstream request so the gateway stops
-    // generating (and billing) tokens we can no longer deliver.
-    const onClientClose = () => {
-      if (finished) {
-        return;
+    if (!upstream) {
+      await releaseReservation('gateway_unavailable');
+      const safeErr = lastErr
+        ? { ...lastErr, body: sanitizeLogBody(lastErr.body) }
+        : lastErr;
+      console.error('ai/chat: gateway request failed', safeErr);
+      if (lastErr && lastErr.status === 402) {
+        return res.status(402).json({ error: 'pool_exhausted' });
       }
-      clientAborted = true;
-      try { upstream.req.destroy(); } catch { /* already closed */ }
-      try { upstream.res.destroy(); } catch { /* already closed */ }
-    };
-    res.on('close', onClientClose);
+      return res.status(502).json({ error: 'gateway_unavailable' });
+    }
 
-    await new Promise((resolve) => {
-      upstream.res.on('data', (chunk) => {
-        delivered = true;
-        res.write(chunk);
+    // Opportunistic retention (Neon only; low probability to avoid per-request cost).
+    if (Math.random() < 0.02) {
+      void pruneOldUsage().catch(() => {});
+    }
+
+    const wantStream = (req.body || {}).stream === true;
+
+    if (wantStream) {
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
       });
-      upstream.res.on('end', () => {
-        finished = true;
-        resolve();
-      });
-      upstream.res.on('error', (err) => {
-        if (!clientAborted) {
-          console.error('ai/chat: gateway stream error', err);
+
+      let delivered = false;
+      let clientAborted = false;
+      let finished = false;
+      const usageState = { buffer: '', usage: null };
+      // Client hung up mid-stream: abort the upstream request so the gateway stops
+      // generating (and billing) tokens we can no longer deliver.
+      const onClientClose = () => {
+        if (finished) {
+          return;
         }
-        resolve();
+        clientAborted = true;
+        try { upstream.req.destroy(); } catch { /* already closed */ }
+        try { upstream.res.destroy(); } catch { /* already closed */ }
+      };
+      res.on('close', onClientClose);
+
+      await new Promise((resolve) => {
+        upstream.res.on('data', (chunk) => {
+          delivered = true;
+          res.write(chunk);
+          scanSseUsage(chunk.toString('utf8'), usageState);
+        });
+        upstream.res.on('end', () => {
+          finished = true;
+          resolve();
+        });
+        upstream.res.on('error', (err) => {
+          if (!clientAborted) {
+            console.error('ai/chat: gateway stream error', err);
+          }
+          resolve();
+        });
       });
-    });
-    res.off('close', onClientClose);
-    // Only a delivered, non-aborted reply is billable.
-    if (clientAborted || !delivered) {
-      await release(clientAborted ? 'client_aborted' : 'empty_stream');
+      res.off('close', onClientClose);
+      // Only a delivered, non-aborted reply is billable; settle it at its real
+      // token cost (falling back to the estimate if the upstream never emitted a
+      // usage chunk, so a reservation is never left permanently stranded).
+      if (clientAborted || !delivered) {
+        await releaseReservation(clientAborted ? 'client_aborted' : 'empty_stream');
+      } else {
+        const actual = totalTokensFromUsage(usageState.usage) ?? estTokens;
+        await reconcileReservation(actual, usageState.usage ? 'settled' : 'usage_missing_fallback_to_estimate');
+      }
+      res.end();
+    } else {
+      // Caller didn't request SSE — buffer the upstream stream and reply with a
+      // single OpenAI-compatible JSON object instead (matches how real providers
+      // behave when `stream` is omitted, so AiService's non-streaming JSON.parse
+      // path never sees raw "data: {...}" text). ToolOrchestrator calls without
+      // onChunk today, so agentic requests go through this exact path — tool_calls
+      // must survive it, not just plain text.
+      const { text: content, toolCalls, usage } = await collectSseText(upstream.res);
+      if (!content && !toolCalls) {
+        await releaseReservation('empty_response');
+      } else {
+        const actual = totalTokensFromUsage(usage) ?? estTokens;
+        await reconcileReservation(actual, usage ? 'settled' : 'usage_missing_fallback_to_estimate');
+      }
+      res.status(200).json({
+        choices: [
+          {
+            message: { role: 'assistant', content: content || null, ...(toolCalls ? { tool_calls: toolCalls } : {}) },
+            finish_reason: toolCalls ? 'tool_calls' : 'stop',
+          },
+        ],
+        // Echo the real token usage back to the client (already captured above for
+        // server-side metering) so the chat UI can show actual counts instead of a
+        // client-side character estimate.
+        ...(usage ? { usage } : {}),
+      });
     }
-    res.end();
-  } else {
-    // Caller didn't request SSE — buffer the upstream stream and reply with a
-    // single OpenAI-compatible JSON object instead (matches how real providers
-    // behave when `stream` is omitted, so AiService's non-streaming JSON.parse
-    // path never sees raw "data: {...}" text). ToolOrchestrator calls without
-    // onChunk today, so agentic requests go through this exact path — tool_calls
-    // must survive it, not just plain text.
-    const { text: content, toolCalls } = await collectSseText(upstream.res);
-    if (!content && !toolCalls) {
-      await release('empty_response');
-    }
-    res.status(200).json({
-      choices: [
-        {
-          message: { role: 'assistant', content: content || null, ...(toolCalls ? { tool_calls: toolCalls } : {}) },
-          finish_reason: toolCalls ? 'tool_calls' : 'stop',
-        },
-      ],
-    });
+  } finally {
+    // Safety net: any unhandled exception between reservation and settlement must
+    // not permanently strand tokens in tokens_reserved (a leaked reservation here
+    // is up to estTokens — thousands of tokens — not the old flat "1").
+    await releaseReservation('unhandled_exception');
   }
 };

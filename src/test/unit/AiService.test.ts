@@ -305,14 +305,14 @@ describe('AiService', () => {
       {
         provider: 'openai',
         secretBehavior: () => {
-          getProviderApiKeyStub.withArgs('openai').resolves(undefined);
+          getProviderApiKeyStub.withArgs('openai').resolves('secret-key');
           getAiApiKeyStub.rejects(new Error('missing secret'));
         },
-        config: createConfig({ aiApiKey: 'config-key' }),
+        config: createConfig({}),
         messages: [imageMessage],
         expectedEndpoint: 'https://api.openai.com/v1/chat/completions',
         assert: (headers: any, body: any) => {
-          expect(headers.Authorization).to.equal('Bearer config-key');
+          expect(headers.Authorization).to.equal('Bearer secret-key');
           expect(body.model).to.equal('gpt-4.1');
           expect(body.messages[1].role).to.equal('user');
           expect(Array.isArray(body.messages[1].content)).to.be.true;
@@ -431,16 +431,19 @@ describe('AiService', () => {
     }
   });
 
-  it('falls back to the configured API key when secret storage lookup fails', async () => {
+  it('falls back to legacy secret storage when scoped provider key is missing', async () => {
     const service = new AiService();
     const makeHttpRequestStub = sandbox.stub(service as any, '_makeHttpRequest').resolves({ text: 'ok', usage: undefined });
+    sandbox.stub(AiCredentialsService, 'getInstance').returns({
+      getApiKey: sandbox.stub().resolves(undefined),
+    } as any);
     sandbox.stub(SecretStorageService, 'getInstance').returns({
-      getAiApiKey: sandbox.stub().rejects(new Error('secret unavailable'))
+      getAiApiKey: sandbox.stub().resolves('legacy-secret-key'),
     } as any);
 
-    await service.callDirectApi('openai', 'Current prompt', createConfig({ aiApiKey: 'config-key' }));
+    await service.callDirectApi('openai', 'Current prompt', createConfig({}));
 
     const [, headers] = makeHttpRequestStub.lastCall.args;
-    expect(headers.Authorization).to.equal('Bearer config-key');
+    expect(headers.Authorization).to.equal('Bearer legacy-secret-key');
   });
 });

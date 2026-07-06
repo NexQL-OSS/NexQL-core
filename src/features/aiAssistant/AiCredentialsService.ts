@@ -116,6 +116,16 @@ export async function migrateAiCredentialsAndSettings(
     await context.secrets.delete(LEGACY_AI_API_KEY);
   }
 
+  const config = vscode.workspace.getConfiguration('postgresExplorer');
+  const legacyCursorKey = config.get<string>('cursorApiKey');
+  if (legacyCursorKey && legacyCursorKey.trim()) {
+    const existingCursor = await credentials.getCursorApiKey();
+    if (!existingCursor) {
+      await credentials.setCursorApiKey(legacyCursorKey.trim());
+    }
+    await config.update('cursorApiKey', undefined, vscode.ConfigurationTarget.Global);
+  }
+
   const { migrateAiScopedSettings } = await import('./aiConfig');
   await migrateAiScopedSettings(context);
 

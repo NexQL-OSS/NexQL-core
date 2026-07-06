@@ -71,7 +71,7 @@ export class ToolExecutor {
     console.log(`[ToolExecutor] searchSchema: Querying schema index for "${query}"...`);
     const store = new IndexStore(this.context.globalStorageUri);
     const queryService = new IndexQueryService(store);
-    const hits = await queryService.search(this.connectionId, this.databaseName, query, 10);
+    const hits = await queryService.search(this.connectionId, this.databaseName, query, 10, { semantic: true });
     console.log(`[ToolExecutor] searchSchema: Found ${hits.length} hits. Top hits:`, hits.slice(0, 3));
     return JSON.stringify(hits, null, 2);
   }

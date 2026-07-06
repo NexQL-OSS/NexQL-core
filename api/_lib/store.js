@@ -94,6 +94,33 @@ async function rawSet(key, value, ttlSec) {
   writeDevStore(store);
 }
 
+/** Atomic increment; returns the new count. Dev file store is best-effort read-modify-write. */
+async function rawIncr(key, ttlSec) {
+  if (useKv) {
+    const count = await kv().incr(key);
+    if (ttlSec && ttlSec > 0) {
+      await kv().expire(key, ttlSec);
+    }
+    return count;
+  }
+  const store = readDevStore();
+  const entry = store[key];
+  let current = 0;
+  if (entry && typeof entry === 'object' && 'expiresAt' in entry && 'value' in entry) {
+    if (entry.expiresAt > Date.now()) {
+      current = Number(entry.value) || 0;
+    }
+  } else if (entry != null) {
+    current = Number(entry) || 0;
+  }
+  const next = current + 1;
+  store[key] = ttlSec && ttlSec > 0
+    ? { value: next, expiresAt: Date.now() + ttlSec * 1000 }
+    : next;
+  writeDevStore(store);
+  return next;
+}
+
 async function rawDel(key) {
   if (useKv) {
     await kv().del(key);
@@ -321,6 +348,7 @@ module.exports = {
   usingNeon: useNeon,
   rawGet,
   rawSet,
+  rawIncr,
   rawDel,
   licenseDb,
 };

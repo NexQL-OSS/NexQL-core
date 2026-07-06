@@ -34,6 +34,7 @@ import {
   RawEnumRow,
   RawDomainRow,
   mapRelkindToDbObjectKind,
+  fetchSchemaFingerprint,
 } from './catalogQueries';
 import { computeObjectHash } from './objectHash';
 import { IndexStore } from './IndexStore';
@@ -116,25 +117,8 @@ export class IndexBuilder {
       this.checkCancelled(cancellationToken);
 
       // 3. Get schema fingerprint and pg version
-      const fingerprintResult = await client.query(`
-        SELECT
-          COUNT(*)::text                                    AS object_count,
-          COALESCE(MAX(c.oid)::text, '0')                   AS max_oid,
-          COALESCE(SUM(c.reltuples)::bigint::text, '0')     AS total_rows_estimate,
-          (SELECT COUNT(*)::text FROM pg_namespace
-           WHERE nspname NOT IN ('pg_catalog','information_schema','pg_toast')
-             AND nspname NOT LIKE 'pg_%')                   AS schema_count,
-          COALESCE((SELECT MAX(oid)::text FROM pg_namespace
-                    WHERE nspname NOT IN ('pg_catalog','information_schema','pg_toast')
-                      AND nspname NOT LIKE 'pg_%'), '0')     AS max_schema_oid
-        FROM pg_class c
-        JOIN pg_namespace n ON n.oid = c.relnamespace
-        WHERE n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
-          AND c.relkind IN ('r', 'v', 'f', 'm', 'p')
-      `);
+      schemaFingerprint = await fetchSchemaFingerprint(client);
       queriesRun++;
-      const fpRow = fingerprintResult.rows[0];
-      schemaFingerprint = `${fpRow.object_count}|${fpRow.max_oid}|${fpRow.total_rows_estimate}|${fpRow.schema_count}|${fpRow.max_schema_oid}`;
 
       const versionResult = await client.query("SHOW server_version");
       queriesRun++;

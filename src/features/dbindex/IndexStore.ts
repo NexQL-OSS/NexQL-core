@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { IndexManifest, ObjectEntry, TokenIndex, JoinGraph, IndexOverrides, JoinEdge, ForeignKeyEntry } from './types';
+import { IndexManifest, ObjectEntry, TokenIndex, JoinGraph, IndexOverrides, JoinEdge, ForeignKeyEntry, EmbeddingMetaEntry } from './types';
 import { migrateManifest } from './indexFormat';
 import { tokenize } from './lexical';
 
@@ -11,6 +11,9 @@ export class IndexStore {
   private readonly shardCache = new Map<string, { entries: Record<string, ObjectEntry>; timestamp: number }>();
   private readonly MAX_CACHED_SHARDS = 16;
   private readonly overridesCache = new Map<string, IndexOverrides | null>();
+  // Bin files can be tens of MB (N objects x dim x 4 bytes), so keep the cap low.
+  private readonly embeddingsCache = new Map<string, { meta: EmbeddingMetaEntry[]; bin: Uint8Array; timestamp: number }>();
+  private readonly MAX_CACHED_EMBEDDINGS = 2;
 
   constructor(public readonly globalStorageUri: vscode.Uri) {}
 
@@ -404,6 +407,54 @@ export class IndexStore {
   }
 
   /**
+   * Read the embeddings vectors + metadata for an index, cached per manifest
+   * build (`indexedAt` changes on rebuild, so stale entries are never served).
+   * Returns null when the index has no embeddings or on any read/parse error.
+   */
+  public async readEmbeddings(
+    baseDir: vscode.Uri,
+    manifest: IndexManifest
+  ): Promise<{ meta: EmbeddingMetaEntry[]; bin: Uint8Array } | null> {
+    if (!manifest.derived.embeddings || !manifest.derived.embeddingsMeta) {
+      return null;
+    }
+    const cacheKey = `${baseDir.toString()}#${manifest.indexedAt}`;
+    const cached = this.embeddingsCache.get(cacheKey);
+    if (cached) {
+      cached.timestamp = Date.now();
+      return { meta: cached.meta, bin: cached.bin };
+    }
+
+    try {
+      const metaData = await vscode.workspace.fs.readFile(
+        vscode.Uri.joinPath(baseDir, manifest.derived.embeddingsMeta)
+      );
+      const meta = JSON.parse(Buffer.from(metaData).toString('utf-8')) as EmbeddingMetaEntry[];
+      const bin = await vscode.workspace.fs.readFile(
+        vscode.Uri.joinPath(baseDir, manifest.derived.embeddings)
+      );
+
+      if (this.embeddingsCache.size >= this.MAX_CACHED_EMBEDDINGS) {
+        let oldestKey = '';
+        let oldestTime = Infinity;
+        for (const [k, v] of this.embeddingsCache.entries()) {
+          if (v.timestamp < oldestTime) {
+            oldestTime = v.timestamp;
+            oldestKey = k;
+          }
+        }
+        if (oldestKey) {
+          this.embeddingsCache.delete(oldestKey);
+        }
+      }
+      this.embeddingsCache.set(cacheKey, { meta, bin, timestamp: Date.now() });
+      return { meta, bin };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Delete all index files for a database.
    */
   public async clearIndex(connectionId: string, database: string): Promise<void> {
@@ -415,6 +466,11 @@ export class IndexStore {
       for (const key of this.shardCache.keys()) {
         if (key.startsWith(prefix)) {
           this.shardCache.delete(key);
+        }
+      }
+      for (const key of this.embeddingsCache.keys()) {
+        if (key.startsWith(prefix)) {
+          this.embeddingsCache.delete(key);
         }
       }
       this.overridesCache.delete(baseDir.toString());

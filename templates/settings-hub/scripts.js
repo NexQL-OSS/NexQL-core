@@ -1147,6 +1147,54 @@ const githubStatusText = $('githubAuthStatusText');
 const githubConnectBtn = $('githubConnectBtn');
 const githubDisconnectBtn = $('githubDisconnectBtn');
 let githubAuthState = { connected: false, accountLabel: '' };
+let aiKeysConfiguredState = {};
+let cursorApiKeyConfiguredState = false;
+
+const KEY_REQUIRED_PROVIDERS = ['openai', 'anthropic', 'gemini', 'deepseek', 'moonshot', 'mistral', 'custom'];
+
+function isProviderKeyConfigured(provider) {
+  if (['nexql-free', 'vscode-lm', 'opencode', 'ollama', 'lmstudio'].includes(provider)) {
+    return true;
+  }
+  if (provider === 'github') {
+    return !!githubAuthState.connected;
+  }
+  if (provider === 'cursor') {
+    return cursorApiKeyConfiguredState || !!$('apiKey-cursor')?.value.trim();
+  }
+  if (provider === 'custom') {
+    return !!aiKeysConfiguredState.custom || !!$('apiKey-custom')?.value.trim();
+  }
+  return !!aiKeysConfiguredState[provider] || !!$('apiKey-' + provider)?.value.trim();
+}
+
+function canAutoloadProviderModels(provider) {
+  if (!KEY_REQUIRED_PROVIDERS.includes(provider)) {
+    return true;
+  }
+  return isProviderKeyConfigured(provider);
+}
+
+function getTypedApiKeys() {
+  const apiKeys = {};
+  for (const prov of KEY_REQUIRED_PROVIDERS) {
+    const value = $('apiKey-' + prov)?.value.trim() || '';
+    if (value) {
+      apiKeys[prov] = value;
+    }
+  }
+  return apiKeys;
+}
+
+function apiKeyForMessage(provider) {
+  if (provider === 'cursor') {
+    return $('apiKey-cursor')?.value.trim() || '';
+  }
+  if (KEY_REQUIRED_PROVIDERS.includes(provider)) {
+    return $('apiKey-' + provider)?.value.trim() || '';
+  }
+  return '';
+}
 let activeTestProvider = null;
 let activeTestScope = null;
 
@@ -1181,25 +1229,20 @@ function populateDefaultProviders() {
   notebookSelect.textContent = '';
   chatSelect.textContent = '';
   
-  const keys = {
-    openai: $('apiKey-openai')?.value.trim() || '',
-    anthropic: $('apiKey-anthropic')?.value.trim() || '',
-    gemini: $('apiKey-gemini')?.value.trim() || '',
-    deepseek: $('apiKey-deepseek')?.value.trim() || '',
-    moonshot: $('apiKey-moonshot')?.value.trim() || '',
-    mistral: $('apiKey-mistral')?.value.trim() || '',
-    custom: $('apiKey-custom')?.value.trim() || '',
-  };
+  const keys = getTypedApiKeys();
   const cursorKey = $('apiKey-cursor')?.value.trim() || '';
   
   const isConfigured = (provId) => {
     if (['nexql-free', 'vscode-lm', 'opencode', 'ollama', 'lmstudio', 'cursor'].includes(provId)) {
+      if (provId === 'cursor') {
+        return isProviderKeyConfigured('cursor');
+      }
       return true;
     }
     if (provId === 'github') {
       return !!githubAuthState.connected;
     }
-    return !!keys[provId];
+    return isProviderKeyConfigured(provId);
   };
   
   const configuredNotebookGroup = document.createElement('optgroup');
@@ -1376,31 +1419,21 @@ function updateDefaultTabStatus() {
 }
 
 function updateScopeStatus(scope, provider) {
-  const keys = {
-    openai: $('apiKey-openai')?.value.trim() || '',
-    anthropic: $('apiKey-anthropic')?.value.trim() || '',
-    gemini: $('apiKey-gemini')?.value.trim() || '',
-    deepseek: $('apiKey-deepseek')?.value.trim() || '',
-    moonshot: $('apiKey-moonshot')?.value.trim() || '',
-    mistral: $('apiKey-mistral')?.value.trim() || '',
-    custom: $('apiKey-custom')?.value.trim() || '',
-  };
-  const cursorKey = $('apiKey-cursor')?.value.trim() || '';
   const statusDiv = $('default' + scope + 'KeyStatus');
   if (!statusDiv) return;
   
   statusDiv.textContent = '';
   statusDiv.className = 'scope-key-status';
   
-  const needsKey = ['openai', 'anthropic', 'gemini', 'deepseek', 'moonshot', 'mistral', 'custom'].includes(provider);
+  const needsKey = KEY_REQUIRED_PROVIDERS.includes(provider);
   if (needsKey) {
     let hasKey = false;
     let tabName = 'cloud';
     if (provider === 'custom') {
-      hasKey = !!keys.custom;
+      hasKey = isProviderKeyConfigured('custom');
       tabName = 'local';
     } else {
-      hasKey = !!keys[provider];
+      hasKey = isProviderKeyConfigured(provider);
       tabName = 'cloud';
     }
     
@@ -1425,11 +1458,11 @@ function updateScopeStatus(scope, provider) {
   }
 }
 
-function autoLoadModels(provider, apiKey, endpoint, options = {}) {
+function autoLoadModels(provider, endpoint, options = {}) {
   const allowPrompt = options.allowPrompt !== false;
   const scope = options.scope || '';
   
-  const settings = { provider, apiKey: apiKey || '', endpoint: endpoint || '', scope };
+  const settings = { provider, endpoint: endpoint || '', scope };
   
   if (provider === 'nexql-free') {
     vscode.postMessage({ command: 'ai/listModels', settings });
@@ -1440,15 +1473,19 @@ function autoLoadModels(provider, apiKey, endpoint, options = {}) {
       vscode.postMessage({ command: 'ai/listModels', settings });
     }
   } else if (provider === 'cursor') {
-    vscode.postMessage({ command: 'ai/listModels', settings });
+    if (isProviderKeyConfigured('cursor')) {
+      vscode.postMessage({ command: 'ai/listModels', settings });
+    }
   } else if (provider === 'opencode') {
     vscode.postMessage({ command: 'ai/listModels', settings });
   } else if (provider === 'anthropic') {
-    if (apiKey) {
+    if (isProviderKeyConfigured('anthropic')) {
       vscode.postMessage({ command: 'ai/listModels', settings });
     }
-  } else if (['openai', 'gemini', 'deepseek', 'moonshot', 'mistral'].includes(provider) && apiKey) {
-    vscode.postMessage({ command: 'ai/listModels', settings });
+  } else if (['openai', 'gemini', 'deepseek', 'moonshot', 'mistral'].includes(provider)) {
+    if (isProviderKeyConfigured(provider)) {
+      vscode.postMessage({ command: 'ai/listModels', settings });
+    }
   } else if (provider === 'custom' && endpoint) {
     vscode.postMessage({ command: 'ai/listModels', settings });
   } else if (provider === 'ollama') {
@@ -1468,16 +1505,8 @@ function modelValueFor(provider) {
 }
 
 function getAiFormData() {
-  const apiKeys = {
-    openai: $('apiKey-openai')?.value.trim() || '',
-    anthropic: $('apiKey-anthropic')?.value.trim() || '',
-    gemini: $('apiKey-gemini')?.value.trim() || '',
-    deepseek: $('apiKey-deepseek')?.value.trim() || '',
-    moonshot: $('apiKey-moonshot')?.value.trim() || '',
-    mistral: $('apiKey-mistral')?.value.trim() || '',
-    custom: $('apiKey-custom')?.value.trim() || '',
-  };
-  const cursorApiKey = $('apiKey-cursor')?.value.trim() || '';
+  const apiKeys = getTypedApiKeys();
+  const cursorTyped = $('apiKey-cursor')?.value.trim() || '';
   
   const defaultNotebookProvider = $('defaultNotebookProvider')?.value || 'vscode-lm';
   const defaultChatProvider = $('defaultChatProvider')?.value || 'vscode-lm';
@@ -1498,8 +1527,8 @@ function getAiFormData() {
   }
 
   return {
-    apiKeys,
-    cursorApiKey,
+    ...(Object.keys(apiKeys).length > 0 ? { apiKeys } : {}),
+    ...(cursorTyped ? { cursorApiKey: cursorTyped } : {}),
     defaultNotebookProvider,
     defaultNotebookModel: modelValueForScope('Notebook'),
     defaultChatProvider,
@@ -1516,26 +1545,29 @@ function getAiFormData() {
 }
 
 function setAiFormData(settings) {
-  const keys = settings.apiKeys || {};
+  aiKeysConfiguredState = settings.apiKeysConfigured || {};
+  cursorApiKeyConfiguredState = !!settings.cursorApiKeyConfigured;
+  const configured = settings.apiKeysConfigured || {};
   const setVal = (id, value) => { const el = $(id); if (el) { el.value = value; } };
+  const clearVal = (id) => { const el = $(id); if (el) { el.value = ''; } };
   
-  setVal('apiKey-openai', keys.openai || '');
-  setVal('apiKey-anthropic', keys.anthropic || '');
-  setVal('apiKey-gemini', keys.gemini || '');
-  setVal('apiKey-deepseek', keys.deepseek || '');
-  setVal('apiKey-moonshot', keys.moonshot || '');
-  setVal('apiKey-mistral', keys.mistral || '');
-  setVal('apiKey-cursor', settings.cursorApiKey || '');
-  setVal('apiKey-custom', keys.custom || '');
+  clearVal('apiKey-openai');
+  clearVal('apiKey-anthropic');
+  clearVal('apiKey-gemini');
+  clearVal('apiKey-deepseek');
+  clearVal('apiKey-moonshot');
+  clearVal('apiKey-mistral');
+  clearVal('apiKey-cursor');
+  clearVal('apiKey-custom');
   
-  updateKeyStatusIcon('openai', !!keys.openai);
-  updateKeyStatusIcon('anthropic', !!keys.anthropic);
-  updateKeyStatusIcon('gemini', !!keys.gemini);
-  updateKeyStatusIcon('deepseek', !!keys.deepseek);
-  updateKeyStatusIcon('moonshot', !!keys.moonshot);
-  updateKeyStatusIcon('mistral', !!keys.mistral);
-  updateKeyStatusIcon('cursor', !!settings.cursorApiKey);
-  updateKeyStatusIcon('custom', !!keys.custom);
+  updateKeyStatusIcon('openai', !!configured.openai);
+  updateKeyStatusIcon('anthropic', !!configured.anthropic);
+  updateKeyStatusIcon('gemini', !!configured.gemini);
+  updateKeyStatusIcon('deepseek', !!configured.deepseek);
+  updateKeyStatusIcon('moonshot', !!configured.moonshot);
+  updateKeyStatusIcon('mistral', !!configured.mistral);
+  updateKeyStatusIcon('cursor', !!settings.cursorApiKeyConfigured);
+  updateKeyStatusIcon('custom', !!configured.custom);
   
   setVal('opencodeCliPath', settings.opencodeCliPath || '');
   setVal('opencodeServeUrl', settings.opencodeServeUrl || '');
@@ -1614,15 +1646,9 @@ document.querySelectorAll('.ai-test-btn').forEach(btn => {
     }
     this.disabled = true;
     
-    let apiKey = '';
+    let apiKey = apiKeyForMessage(provider);
     let endpoint = '';
     const model = modelValueFor(provider);
-    
-    if (provider === 'cursor') {
-      apiKey = $('apiKey-cursor')?.value.trim() || '';
-    } else if (['openai', 'anthropic', 'gemini', 'deepseek', 'moonshot', 'mistral', 'custom'].includes(provider)) {
-      apiKey = $('apiKey-' + provider)?.value.trim() || '';
-    }
     
     if (provider === 'custom') {
       endpoint = $('endpoint-custom')?.value.trim() || '';
@@ -1634,7 +1660,7 @@ document.querySelectorAll('.ai-test-btn').forEach(btn => {
     
     const settings = {
       provider,
-      apiKey,
+      ...(apiKey ? { apiKey } : {}),
       endpoint,
       model,
       opencodeCliPath: $('opencodeCliPath')?.value.trim() || '',
@@ -1656,14 +1682,11 @@ document.querySelectorAll('.list-models-btn').forEach(btn => {
     const provider = this.getAttribute('data-provider');
     const statusSpan = $('card-status-' + provider);
     
-    let apiKey = '';
+    let apiKey = apiKeyForMessage(provider);
     let endpoint = '';
     
-    if (provider === 'cursor') {
-      apiKey = $('apiKey-cursor')?.value.trim() || '';
-    } else if (['openai', 'anthropic', 'gemini', 'deepseek', 'moonshot', 'mistral', 'custom'].includes(provider)) {
-      apiKey = $('apiKey-' + provider)?.value.trim() || '';
-      if (!apiKey && provider !== 'custom') {
+    if (['openai', 'anthropic', 'gemini', 'deepseek', 'moonshot', 'mistral'].includes(provider)) {
+      if (!isProviderKeyConfigured(provider)) {
         if (statusSpan) {
           statusSpan.textContent = 'Please enter API key';
           statusSpan.className = 'hub-card-status error';
@@ -1693,7 +1716,7 @@ document.querySelectorAll('.list-models-btn').forEach(btn => {
       statusSpan.className = 'hub-card-status loading';
     }
     
-    autoLoadModels(provider, apiKey, endpoint, { force: true });
+    autoLoadModels(provider, endpoint, { force: true });
   });
 });
 
@@ -1706,14 +1729,11 @@ document.querySelectorAll('.list-default-models-btn').forEach(btn => {
     const provider = providerSelect.value;
     const statusSpan = $('default' + scope + 'Status');
     
-    let apiKey = '';
+    let apiKey = apiKeyForMessage(provider);
     let endpoint = '';
     
-    if (provider === 'cursor') {
-      apiKey = $('apiKey-cursor')?.value.trim() || '';
-    } else if (['openai', 'anthropic', 'gemini', 'deepseek', 'moonshot', 'mistral', 'custom'].includes(provider)) {
-      apiKey = $('apiKey-' + provider)?.value.trim() || '';
-      if (!apiKey && provider !== 'custom') {
+    if (['openai', 'anthropic', 'gemini', 'deepseek', 'moonshot', 'mistral'].includes(provider)) {
+      if (!isProviderKeyConfigured(provider)) {
         if (statusSpan) {
           statusSpan.textContent = 'Please enter API key in config tab';
           statusSpan.className = 'hub-card-status error';
@@ -1744,7 +1764,7 @@ document.querySelectorAll('.list-default-models-btn').forEach(btn => {
       statusSpan.className = 'hub-card-status loading';
     }
     
-    autoLoadModels(provider, apiKey, endpoint, { scope, force: true });
+    autoLoadModels(provider, endpoint, { scope, force: true });
   });
 });
 
@@ -1762,15 +1782,9 @@ document.querySelectorAll('.test-default-btn').forEach(btn => {
     }
     this.disabled = true;
     
-    let apiKey = '';
+    let apiKey = apiKeyForMessage(provider);
     let endpoint = '';
     const model = modelValueForScope(scope);
-    
-    if (provider === 'cursor') {
-      apiKey = $('apiKey-cursor')?.value.trim() || '';
-    } else if (['openai', 'anthropic', 'gemini', 'deepseek', 'moonshot', 'mistral', 'custom'].includes(provider)) {
-      apiKey = $('apiKey-' + provider)?.value.trim() || '';
-    }
     
     if (provider === 'custom') {
       endpoint = $('endpoint-custom')?.value.trim() || '';
@@ -1782,7 +1796,7 @@ document.querySelectorAll('.test-default-btn').forEach(btn => {
     
     const settings = {
       provider,
-      apiKey,
+      ...(apiKey ? { apiKey } : {}),
       endpoint,
       model,
       opencodeCliPath: $('opencodeCliPath')?.value.trim() || '',
@@ -1824,7 +1838,7 @@ document.querySelectorAll('.test-default-btn').forEach(btn => {
   if (apiKeyInput) {
     apiKeyInput.addEventListener('blur', function () {
       if (this.value && this.value.length > 10) {
-        autoLoadModels(provider, this.value, '');
+        autoLoadModels(provider, '');
       }
     });
   }
@@ -1834,7 +1848,7 @@ const customEndpoint = $('endpoint-custom');
 if (customEndpoint) {
   customEndpoint.addEventListener('blur', function () {
     if (this.value) {
-      autoLoadModels('custom', $('apiKey-custom').value, this.value);
+      autoLoadModels('custom', this.value);
     }
   });
 }
@@ -2037,20 +2051,9 @@ $('defaultNotebookProvider')?.addEventListener('change', function() {
   const inputEl = $('defaultNotebookModel');
   
   const prov = this.value;
-  const keys = {
-    openai: $('apiKey-openai')?.value.trim() || '',
-    anthropic: $('apiKey-anthropic')?.value.trim() || '',
-    gemini: $('apiKey-gemini')?.value.trim() || '',
-    deepseek: $('apiKey-deepseek')?.value.trim() || '',
-    moonshot: $('apiKey-moonshot')?.value.trim() || '',
-    mistral: $('apiKey-mistral')?.value.trim() || '',
-    custom: $('apiKey-custom')?.value.trim() || '',
-  };
-  const cursorKey = $('apiKey-cursor')?.value.trim() || '';
-  const key = (prov === 'cursor') ? cursorKey : (prov === 'custom' ? keys.custom : keys[prov]);
   const endpoint = (prov === 'custom') ? ($('endpoint-custom')?.value.trim() || '') : '';
   
-  const canAutoload = key || !['openai', 'anthropic', 'gemini', 'deepseek', 'moonshot', 'mistral', 'custom'].includes(prov);
+  const canAutoload = canAutoloadProviderModels(prov);
   
   if (canAutoload) {
     if (selectEl) {
@@ -2076,7 +2079,7 @@ $('defaultNotebookProvider')?.addEventListener('change', function() {
       statusSpan.className = 'hub-card-status loading';
     }
     
-    autoLoadModels(prov, key || '', endpoint, { scope: 'Notebook' });
+    autoLoadModels(prov, endpoint, { scope: 'Notebook' });
   } else {
     if (selectEl) {
       selectEl.classList.add('hidden');
@@ -2103,20 +2106,9 @@ $('defaultChatProvider')?.addEventListener('change', function() {
   const inputEl = $('defaultChatModel');
   
   const prov = this.value;
-  const keys = {
-    openai: $('apiKey-openai')?.value.trim() || '',
-    anthropic: $('apiKey-anthropic')?.value.trim() || '',
-    gemini: $('apiKey-gemini')?.value.trim() || '',
-    deepseek: $('apiKey-deepseek')?.value.trim() || '',
-    moonshot: $('apiKey-moonshot')?.value.trim() || '',
-    mistral: $('apiKey-mistral')?.value.trim() || '',
-    custom: $('apiKey-custom')?.value.trim() || '',
-  };
-  const cursorKey = $('apiKey-cursor')?.value.trim() || '';
-  const key = (prov === 'cursor') ? cursorKey : (prov === 'custom' ? keys.custom : keys[prov]);
   const endpoint = (prov === 'custom') ? ($('endpoint-custom')?.value.trim() || '') : '';
   
-  const canAutoload = key || !['openai', 'anthropic', 'gemini', 'deepseek', 'moonshot', 'mistral', 'custom'].includes(prov);
+  const canAutoload = canAutoloadProviderModels(prov);
   
   if (canAutoload) {
     if (selectEl) {
@@ -2142,7 +2134,7 @@ $('defaultChatProvider')?.addEventListener('change', function() {
       statusSpan.className = 'hub-card-status loading';
     }
     
-    autoLoadModels(prov, key || '', endpoint, { scope: 'Chat' });
+    autoLoadModels(prov, endpoint, { scope: 'Chat' });
   } else {
     if (selectEl) {
       selectEl.classList.add('hidden');
@@ -2174,12 +2166,10 @@ function handleAiMessage(message) {
       
       const settings = message.settings;
       if (settings) {
-        const keys = settings.apiKeys || {};
         if (settings.notebookProvider) {
           const prov = settings.notebookProvider;
-          const key = prov === 'cursor' ? settings.cursorApiKey : keys[prov];
           const endpoint = settings.endpoint || '';
-          const canAutoload = key || !['openai', 'anthropic', 'gemini', 'deepseek', 'moonshot', 'mistral', 'custom'].includes(prov);
+          const canAutoload = canAutoloadProviderModels(prov);
           
           if (canAutoload) {
             const statusSpan = $('defaultNotebookStatus');
@@ -2206,7 +2196,7 @@ function handleAiMessage(message) {
               inputEl.classList.add('hidden');
             }
             
-            autoLoadModels(prov, key || '', endpoint, {
+            autoLoadModels(prov, endpoint, {
               scope: 'Notebook',
               allowPrompt: !!(settings.githubAuth && settings.githubAuth.connected),
             });
@@ -2214,9 +2204,8 @@ function handleAiMessage(message) {
         }
         if (settings.chatProvider) {
           const prov = settings.chatProvider;
-          const key = prov === 'cursor' ? settings.cursorApiKey : keys[prov];
           const endpoint = settings.endpoint || '';
-          const canAutoload = key || !['openai', 'anthropic', 'gemini', 'deepseek', 'moonshot', 'mistral', 'custom'].includes(prov);
+          const canAutoload = canAutoloadProviderModels(prov);
           
           if (canAutoload) {
             const statusSpan = $('defaultChatStatus');
@@ -2244,7 +2233,7 @@ function handleAiMessage(message) {
             }
             
             if (settings.chatProvider !== settings.notebookProvider) {
-              autoLoadModels(prov, key || '', endpoint, {
+              autoLoadModels(prov, endpoint, {
                 scope: 'Chat',
                 allowPrompt: !!(settings.githubAuth && settings.githubAuth.connected),
               });
@@ -3888,7 +3877,8 @@ function renderQuotas(quotas) {
       } else if (q.period === 'month') {
         periodSuffix = ' this month';
       }
-      label.textContent = q.remaining + '/' + q.limit + periodSuffix;
+      const unitSuffix = q.feature === 'aiAssistant' ? ' tokens' : '';
+      label.textContent = q.remaining.toLocaleString() + '/' + q.limit.toLocaleString() + unitSuffix + periodSuffix;
       remainTd.appendChild(label);
     }
     tr.appendChild(remainTd);

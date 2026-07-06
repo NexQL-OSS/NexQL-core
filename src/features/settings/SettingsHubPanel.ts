@@ -123,7 +123,7 @@ export class SettingsHubPanel {
         localResourceRoots: [extensionUri],
       },
     );
-    panel.iconPath = vscode.Uri.joinPath(extensionUri, 'resources', 'postgres-vsc-icon.png');
+    panel.iconPath = vscode.Uri.joinPath(extensionUri, 'resources', 'NexQL-vsc-icon.png');
 
     SettingsHubPanel.currentPanel = new SettingsHubPanel(
       panel,

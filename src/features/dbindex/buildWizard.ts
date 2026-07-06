@@ -3,6 +3,7 @@ import { ConnectionUtils } from '../../utils/connectionUtils';
 import { ConnectionManager } from '../../services/ConnectionManager';
 import { IndexBuilder } from './IndexBuilder';
 import { IndexScope, BuildDepth, BuildMode } from './types';
+import { listNonSystemSchemas } from './catalogQueries';
 import { QuotaService } from '../../services/QuotaService';
 import { ProFeature, requirePro } from '../../services/featureGates';
 
@@ -60,14 +61,7 @@ export async function runGuidedBuildWizard(
           ...connection,
           database,
         });
-        const res = await client.query(`
-          SELECT nspname
-          FROM pg_namespace
-          WHERE nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
-            AND nspname NOT LIKE 'pg_%'
-          ORDER BY nspname
-        `);
-        schemas = res.rows.map((r: any) => r.nspname);
+        schemas = await listNonSystemSchemas(client);
       } catch (err: any) {
         vscode.window.showErrorMessage(`Failed to connect and query schemas: ${err.message || err}`);
       } finally {

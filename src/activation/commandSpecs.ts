@@ -1840,28 +1840,10 @@ export function getCommandSpecs(
     },
     {
       command: 'postgres-explorer.dbindex.updateBackground',
-      callback: async (connectionId: string, database: string) => {
-        const { IndexBuilder } = await import('../features/dbindex/IndexBuilder');
-        const { IndexStore } = await import('../features/dbindex/IndexStore');
-        const store = new IndexStore(context.globalStorageUri);
-        const baseDir = store.getBaseDir(connectionId, database);
-        const manifest = await store.readManifest(baseDir);
-        if (!manifest) return; // No index configured
-
-        const builder = new IndexBuilder(store);
-        try {
-          await builder.build(
-            connectionId,
-            database,
-            manifest.scope,
-            manifest.buildDepth,
-            'auto',
-            manifest.environment,
-          );
-          outputChannel.appendLine(`[AutoRefresh] Background index rebuild complete for ${database}.`);
-        } catch (err: any) {
-          outputChannel.appendLine(`[AutoRefresh] Background index rebuild failed: ${err.message || err}`);
-        }
+      callback: async (connectionId: string, database?: string) => {
+        const { AutoIndexService } = await import('../features/dbindex/AutoIndexService');
+        AutoIndexService.initialize(context.globalStorageUri, outputChannel)
+          .ensureIndex(connectionId, database);
       }
     }
   ];

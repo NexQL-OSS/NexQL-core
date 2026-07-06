@@ -576,6 +576,20 @@ export async function activate(context: vscode.ExtensionContext) {
   reflectTier();
   context.subscriptions.push(
     license.onDidChangeLicense(() => reflectTier()),
+    // Auto-index scan once the real tier is known (license.initialize() fires
+    // this event), and again on mid-session license activation/upgrade.
+    license.onDidChangeLicense(() => {
+      void import('./features/dbindex/AutoIndexService').then(m =>
+        m.AutoIndexService.initialize(context.globalStorageUri, outputChannel).ensureAll()
+      ).catch(err => outputChannel.appendLine(`[AutoIndex] Activation scan failed: ${err}`));
+    }),
+    {
+      dispose: () => {
+        void import('./features/dbindex/AutoIndexService')
+          .then(m => m.AutoIndexService.getInstance()?.dispose())
+          .catch(() => { /* never loaded */ });
+      },
+    },
     vscode.window.onDidChangeWindowState((e) => {
       if (e.focused) {
         license.onWindowFocused();
