@@ -33,7 +33,7 @@ export const DB_TOOLS: ToolSpec[] = [
   },
   {
     name: 'search_schema',
-    description: 'Search the database schema index using natural language or keywords to find tables, views, materialized views, and functions matching the query.',
+    description: 'Search the live, auto-indexed database schema using natural language or keywords to find tables, views, materialized views, and functions matching the query. Call this FIRST before writing any SQL — do not assume a table exists without finding it here.',
     parameters: {
       type: 'object',
       properties: {
@@ -97,7 +97,7 @@ export const DB_TOOLS: ToolSpec[] = [
   },
   {
     name: 'run_select',
-    description: 'Run a read-only SELECT or WITH query against the database to fetch actual data rows. Modifying queries (INSERT, UPDATE, DELETE, etc.) are strictly prohibited.',
+    description: 'Run a read-only SELECT or WITH query against the database to fetch actual data rows. Modifying queries (INSERT, UPDATE, DELETE, etc.) are strictly prohibited. Only reference tables/columns already confirmed via search_schema, list_objects, or describe_object in this conversation — never guess schema names from assumptions.',
     parameters: {
       type: 'object',
       properties: {
@@ -121,6 +121,205 @@ export const DB_TOOLS: ToolSpec[] = [
         }
       },
       required: ['sql']
+    }
+  },
+  {
+    name: 'list_connections',
+    description: 'List all configured database connections including their name, host, port, database, environment, and ID. No passwords or credentials are returned.',
+    parameters: {
+      type: 'object',
+      properties: {},
+      required: []
+    }
+  },
+  {
+    name: 'list_databases',
+    description: 'List all databases available for a specific connection.',
+    parameters: {
+      type: 'object',
+      properties: {
+        connectionId: {
+          type: 'string',
+          description: 'The unique ID of the connection.'
+        }
+      },
+      required: ['connectionId']
+    }
+  },
+  {
+    name: 'list_schemas',
+    description: 'List all non-system schemas in the currently selected database.',
+    parameters: {
+      type: 'object',
+      properties: {},
+      required: []
+    }
+  },
+  {
+    name: 'list_objects',
+    description: 'List all database objects (tables, views, materialized views, functions, etc.) in a specific schema.',
+    parameters: {
+      type: 'object',
+      properties: {
+        schema: {
+          type: 'string',
+          description: 'The schema name (defaults to "public").'
+        },
+        kind: {
+          type: 'string',
+          description: 'Optional object kind filter.',
+          enum: ['table', 'view', 'matview', 'function', 'enum', 'domain', 'sequence']
+        }
+      },
+      required: []
+    }
+  },
+  {
+    name: 'get_current_context',
+    description: 'Get the connection ID and database name currently targeted by the tool executor.',
+    parameters: {
+      type: 'object',
+      properties: {},
+      required: []
+    }
+  },
+  // ── Monitoring / performance tools (shared by chat + MCP) ──────────────
+  {
+    name: 'table_stats',
+    description: 'Get size, row-count, activity (scans, inserts/updates/deletes, dead tuples, vacuum/analyze times) and per-column statistics for a specific table.',
+    parameters: {
+      type: 'object',
+      properties: {
+        ref: {
+          type: 'string',
+          description: 'Fully qualified table reference in format "schema.table" (e.g., "public.orders").'
+        }
+      },
+      required: ['ref']
+    }
+  },
+  {
+    name: 'index_usage',
+    description: 'Get index usage statistics (scan counts, size, definition, type) for a specific table\'s indexes. Useful for finding unused or missing indexes.',
+    parameters: {
+      type: 'object',
+      properties: {
+        ref: {
+          type: 'string',
+          description: 'Fully qualified table reference in format "schema.table" (e.g., "public.orders").'
+        }
+      },
+      required: ['ref']
+    }
+  },
+  {
+    name: 'list_running_queries',
+    description: 'List currently executing (non-idle) queries in the connected database with pid, user, state, wait events, and duration.',
+    parameters: {
+      type: 'object',
+      properties: {},
+      required: []
+    }
+  },
+  {
+    name: 'find_blocking_locks',
+    description: 'Find lock contention: which queries are blocked waiting on locks and which pids/queries are blocking them.',
+    parameters: {
+      type: 'object',
+      properties: {},
+      required: []
+    }
+  },
+  {
+    name: 'slow_queries',
+    description: 'List the slowest statements by mean execution time from pg_stat_statements (requires the extension; returns a hint if not installed).',
+    parameters: {
+      type: 'object',
+      properties: {
+        limit: {
+          type: 'number',
+          description: 'Maximum number of statements to return (default 10, max 50).'
+        }
+      },
+      required: []
+    }
+  },
+  {
+    name: 'db_health_check',
+    description: 'Run a database health overview: size/connection stats, cache hit ratio, tables with dead tuples needing vacuum, active connections, and blocking-lock count. Sections that fail are reported individually; partial results are still returned.',
+    parameters: {
+      type: 'object',
+      properties: {},
+      required: []
+    }
+  },
+  {
+    name: 'get_ddl',
+    description: 'Get the DDL / definition of a database object. Views, materialized views, functions, and indexes return their CREATE statement; tables return structured DDL (columns, constraints, indexes).',
+    parameters: {
+      type: 'object',
+      properties: {
+        ref: {
+          type: 'string',
+          description: 'Fully qualified reference in format "schema.name" (e.g., "public.orders").'
+        },
+        kind: {
+          type: 'string',
+          description: 'Object kind. Defaults to "table".',
+          enum: ['table', 'view', 'matview', 'function', 'index']
+        }
+      },
+      required: ['ref']
+    }
+  },
+  {
+    name: 'explain_analyze',
+    description: 'Run EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) on a SELECT/WITH query inside a read-only transaction that is always rolled back. WARNING: the query actually executes (volatile functions run), so expect real query runtime.',
+    parameters: {
+      type: 'object',
+      properties: {
+        sql: {
+          type: 'string',
+          description: 'The SQL SELECT or WITH query to execute with EXPLAIN ANALYZE.'
+        }
+      },
+      required: ['sql']
+    }
+  },
+  {
+    name: 'analyze_query_plan',
+    description: 'Run EXPLAIN (FORMAT JSON) on a SELECT/WITH query and return parsed plan metrics (scan counts, bottlenecks, buffer stats) plus performance recommendations. Set analyze=true to also execute the query for actual timings.',
+    parameters: {
+      type: 'object',
+      properties: {
+        sql: {
+          type: 'string',
+          description: 'The SQL SELECT or WITH query to analyze.'
+        },
+        analyze: {
+          type: 'boolean',
+          description: 'If true, use EXPLAIN ANALYZE (query executes) for actual row counts and timings. Default false.'
+        }
+      },
+      required: ['sql']
+    }
+  },
+  {
+    name: 'switch_connection',
+    description: 'Programmatically switch the active connection context to a different connection ID and/or database name.',
+    parameters: {
+      type: 'object',
+      properties: {
+        connectionId: {
+          type: 'string',
+          description: 'The unique ID of the connection to switch to.'
+        },
+        databaseName: {
+          type: 'string',
+          description: 'Optional database name to switch to.'
+        }
+      },
+      required: ['connectionId']
     }
   }
 ];

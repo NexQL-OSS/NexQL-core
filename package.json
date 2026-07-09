@@ -1,6 +1,6 @@
 {
-  "name": "postgres-explorer-nightly",
-  "displayName": "NexQL - Postgres Explorer Nightly",
+  "name": "postgres-explorer",
+  "displayName": "NexQL - Postgres Explorer",
   "version": "2.3.0",
   "description": "PostgreSQL database explorer for VS Code with notebook support [Nightly]",
   "publisher": "ric-v",
@@ -2060,6 +2060,14 @@
           "scope": "window",
           "markdownDescription": "Expose NexQL's read-only database tools (schema search, describe object, run SELECT, EXPLAIN) as an MCP server other agents (e.g. Claude Code, Copilot) can attach to. Off by default."
         },
+        "postgresExplorer.mcp.maxRows": {
+          "type": "number",
+          "default": 500,
+          "minimum": 1,
+          "maximum": 10000,
+          "scope": "window",
+          "markdownDescription": "Maximum number of rows returned by AI tool queries (`run_select`). Results beyond this limit are truncated and flagged. Applies to both the in-chat assistant and MCP clients."
+        },
         "postgresExplorer.connections": {
           "type": "array",
           "default": [],
@@ -4087,15 +4095,11 @@
     "@cursor/sdk": "^1.0.12",
     "@dbml/core": "^7.1.2",
     "@huggingface/transformers": "^4.2.0",
-    "@types/pg-cursor": "^2.7.2",
     "chart.js": "^4.5.1",
     "d3-force": "^3.0.0",
     "d3-selection": "^3.0.0",
-    "esbuild": ">=0.28.0",
-    "express": "^5.2.1",
     "pg": "^8.20.0",
     "pg-cursor": "^2.19.0",
-    "razorpay": "^2.9.6",
     "sql-formatter": "^15.7.3",
     "ssh2": "^1.17.0"
   },
@@ -4108,6 +4112,7 @@
     "@types/module-alias": "^2.0.4",
     "@types/node": "^25.6.0",
     "@types/pg": "^8.20.0",
+    "@types/pg-cursor": "^2.7.2",
     "@types/sinon": "^21.0.1",
     "@types/ssh2": "^1.15.5",
     "@types/vscode": "1.105.0",
@@ -4119,6 +4124,7 @@
     "esbuild": ">=0.28.0",
     "eslint": "^10.3.0",
     "eslint-config-prettier": "^10.1.8",
+    "express": "^5.2.1",
     "fast-check": "^4.7.0",
     "jsdom": "^29.1.1",
     "mocha": "^11.7.5",
@@ -4126,6 +4132,7 @@
     "nyc": "^18.0.0",
     "ovsx": "^0.10.11",
     "prettier": "^3.8.3",
+    "razorpay": "^2.9.6",
     "sinon": "^22.0.0",
     "ts-mocha": "^11.1.0",
     "ts-node": "^10.9.2",

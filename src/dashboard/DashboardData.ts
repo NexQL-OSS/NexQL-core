@@ -131,6 +131,7 @@ export interface WalReplicationStats {
 
 import { Client, PoolClient } from 'pg';
 import { getSettledResult } from './data/resultUtils';
+import { blockingLocks as blockingLocksSql, connectionStates as connectionStatesSql } from '../commands/sql/monitoring';
 
 /** Empty wal receiver row shape when pg_stat_wal_receiver is missing or unreadable. */
 const WAL_RECEIVER_EMPTY_SQL = `
@@ -321,12 +322,7 @@ export async function fetchStats(client: Client | PoolClient, dbName: string): P
         `, [dbName]),
 
     // Connection States (Active, Idle, Waiting)
-    () => client.query(`
-            SELECT state, wait_event_type IS NOT NULL as waiting, count(*) as count
-            FROM pg_stat_activity
-            WHERE datname = $1
-            GROUP BY state, waiting
-        `, [dbName]),
+    () => client.query(connectionStatesSql('$1'), [dbName]),
 
     // Top Tables
     () => client.query(`
@@ -369,36 +365,7 @@ export async function fetchStats(client: Client | PoolClient, dbName: string): P
         `, [dbName]),
 
     // Blocking Locks
-    () => client.query(`
-            SELECT
-                blocked_locks.pid     AS blocked_pid,
-                blocked_activity.usename  AS blocked_user,
-                blocking_locks.pid     AS blocking_pid,
-                blocking_activity.usename AS blocking_user,
-                blocked_activity.query    AS blocked_query,
-                blocking_activity.query   AS blocking_query,
-                blocked_locks.mode        AS lock_mode,
-                COALESCE(c.relname, 'null') AS locked_object
-            FROM  pg_catalog.pg_locks         blocked_locks
-            JOIN pg_catalog.pg_stat_activity blocked_activity  ON blocked_activity.pid = blocked_locks.pid
-            JOIN pg_catalog.pg_locks         blocking_locks 
-                ON blocking_locks.locktype = blocked_locks.locktype
-                AND blocking_locks.database IS NOT DISTINCT FROM blocked_locks.database
-                AND blocking_locks.relation IS NOT DISTINCT FROM blocked_locks.relation
-                AND blocking_locks.page IS NOT DISTINCT FROM blocked_locks.page
-                AND blocking_locks.tuple IS NOT DISTINCT FROM blocked_locks.tuple
-                AND blocking_locks.virtualxid IS NOT DISTINCT FROM blocked_locks.virtualxid
-                AND blocking_locks.transactionid IS NOT DISTINCT FROM blocked_locks.transactionid
-                AND blocking_locks.classid IS NOT DISTINCT FROM blocked_locks.classid
-                AND blocking_locks.objid IS NOT DISTINCT FROM blocked_locks.objid
-                AND blocking_locks.objsubid IS NOT DISTINCT FROM blocked_locks.objsubid
-                AND blocking_locks.pid != blocked_locks.pid
-            JOIN pg_catalog.pg_stat_activity blocking_activity ON blocking_activity.pid = blocking_locks.pid
-            LEFT JOIN pg_catalog.pg_class c ON c.oid = blocked_locks.relation
-            WHERE NOT blocked_locks.granted
-            AND blocked_activity.datname = $1
-            AND blocking_activity.datname = $1
-        `, [dbName]),
+    () => client.query(blockingLocksSql('$1'), [dbName]),
 
     // Database metrics scoped to the selected database.
     () => client.query(`

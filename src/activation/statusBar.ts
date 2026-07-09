@@ -6,7 +6,7 @@ import { getTransactionManager } from '../services/TransactionManager';
 import { ConnectionUtils } from '../utils/connectionUtils';
 import { FREE_QUOTAS, ProFeature, featureLabel } from '../services/featureGates';
 import { QuotaService } from '../services/QuotaService';
-import { getCachedAiUsage, refreshAiUsageInBackground } from '../services/aiUsage';
+import { getCachedAiUsage, refreshAiUsageInBackground, remainingPercentLabel } from '../services/aiUsage';
 import { environmentLabel } from '../features/sentinel/constants';
 import type { SentinelEnvironment } from '../features/sentinel/types';
 import type { SentinelContext, SentinelSettings } from '../features/sentinel/types';
@@ -458,7 +458,7 @@ export class NotebookStatusBar implements vscode.Disposable {
     // (which re-renders this tooltip when a fresh count lands).
     const aiUsage = getCachedAiUsage();
     if (aiUsage) {
-      md.appendMarkdown(`- AI Chat Assistant: ${aiUsage.remaining.toLocaleString()}/${aiUsage.limit.toLocaleString()} tokens left this month\n`);
+      md.appendMarkdown(`- AI Chat Assistant: ${remainingPercentLabel(aiUsage.remaining, aiUsage.limit)} left this month\n`);
     } else {
       md.appendMarkdown('- AI Chat Assistant: … this month\n');
     }

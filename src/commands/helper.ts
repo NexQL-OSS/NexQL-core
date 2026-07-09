@@ -265,9 +265,9 @@ export class NotebookBuilder {
             const { count: totalNotebooks, uris: connectionNotebookUris } = await ConnectionUtils.countNotebooksInConnection(context, connectionNameOrId);
             const isUnlimited = isProFeatureEnabled(ProFeature.UnlimitedNotebooks);
 
-            if (!isUnlimited && totalNotebooks >= 3) {
+            if (!isUnlimited && totalNotebooks >= 2) {
               const choiceLimit = await vscode.window.showWarningMessage(
-                `Free tier is limited to 3 notebooks per connection. Upgrade to Sponsor or Team for unlimited notebooks.`,
+                `Free tier is limited to 2 notebooks per connection. Upgrade to Sponsor or Team for unlimited notebooks.`,
                 'Open Existing Notebook',
                 'Upgrade'
               );

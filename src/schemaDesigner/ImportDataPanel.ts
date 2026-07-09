@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import { DatabaseTreeItem } from '../providers/DatabaseTreeProvider';
 import { ConnectionManager } from '../services/ConnectionManager';
+import { TelemetryService } from '../services/TelemetryService';
 import { SecretStorageService } from '../services/SecretStorageService';
 import { ErrorHandlers } from '../commands/helper';
 import { parseCsv, parseJson, parseData, formatFromExtension, type ParsedTable, type DataFormat } from './importParsers';
@@ -186,6 +187,7 @@ export class ImportDataPanel {
     this._username = username;
     this._password = password;
     this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
+    TelemetryService.getInstance().trackDesignerOpened('import');
   }
 
   // ---------------------------------------------------------------------------

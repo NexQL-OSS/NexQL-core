@@ -2329,6 +2329,34 @@ $('prefHistoryMaxItems').addEventListener('change', (e) => {
   e.target.value = n;
   vscode.postMessage({ command: 'prefs/update', key: 'historyMaxItems', value: n });
 });
+$('prefMcpEnabled').addEventListener('change', (e) => {
+  vscode.postMessage({ command: 'prefs/update', key: 'mcpEnabled', value: e.target.checked });
+});
+
+// Setup click listeners for MCP instructions sub-tabs
+document.querySelectorAll('.mcp-tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const provider = btn.getAttribute('data-provider');
+    
+    // Toggle active tab class
+    btn.closest('.mcp-tabs').querySelectorAll('.mcp-tab-btn').forEach(b => {
+      b.classList.remove('active');
+      b.style.borderBottomColor = 'transparent';
+      b.style.color = 'var(--vscode-descriptionForeground)';
+    });
+    btn.classList.add('active');
+    btn.style.borderBottomColor = 'var(--vscode-focusBorder)';
+    btn.style.color = 'var(--vscode-foreground)';
+    
+    // Toggle guide panel visibility
+    const panelsContainer = btn.closest('.mcp-instructions').querySelector('.mcp-guide-panels');
+    panelsContainer.querySelectorAll('.mcp-guide-panel').forEach(p => p.hidden = true);
+    const targetPanel = panelsContainer.querySelector(`#mcp-guide-${provider}`);
+    if (targetPanel) {
+      targetPanel.hidden = false;
+    }
+  });
+});
 
 function handlePrefsMessage(message) {
   switch (message.type) {
@@ -2338,6 +2366,73 @@ function handlePrefsMessage(message) {
       $('prefDdlEnabled').checked = !!message.prefs.ddlEnabled;
       $('prefDdlOpenOnSelection').checked = !!message.prefs.ddlOpenOnSelection;
       $('prefHistoryMaxItems').value = message.prefs.historyMaxItems ?? 200;
+      
+      const mcpEnabled = !!message.prefs.mcpEnabled;
+      $('prefMcpEnabled').checked = mcpEnabled;
+      
+      if (mcpEnabled) {
+        $('mcpConfigContainer').hidden = false;
+        if (message.prefs.mcpStarted) {
+          $('mcpStatusDot').style.background = 'var(--success)';
+          $('mcpStatusText').textContent = 'Running';
+          $('mcpStatusText').style.color = 'var(--success)';
+          
+          const sseUrl = `http://127.0.0.1:${message.prefs.mcpPort}/mcp`;
+          const token = message.prefs.mcpToken;
+          
+          $('mcpSseUrl').textContent = sseUrl;
+          $('mcpBearerToken').textContent = token;
+          $('mcpSseUrlGeneric').textContent = sseUrl;
+          $('mcpAuthHeaderGeneric').textContent = `Authorization: Bearer ${token}`;
+          
+          // Cursor json guide
+          const cursorJson = JSON.stringify({
+            "name": "NexQL DB Server",
+            "type": "sse",
+            "url": sseUrl,
+            "headers": {
+              "Authorization": `Bearer ${token}`
+            }
+          }, null, 2);
+          $('mcpCodeCursor').textContent = cursorJson;
+          
+          // Antigravity guide
+          const antigravityConfig = `# Antigravity client configuration\nmcp:\n  servers:\n    nexql:\n      url: "${sseUrl}"\n      headers:\n        Authorization: "Bearer ${token}"`;
+          $('mcpCodeAntigravity').textContent = antigravityConfig;
+          
+          // Claude json guide
+          const claudeJson = JSON.stringify({
+            "mcpServers": {
+              "nexql": {
+                "command": "npx",
+                "args": [
+                  "-y",
+                  "@modelcontextprotocol/sdk",
+                  "connect",
+                  sseUrl,
+                  "--header",
+                  `Authorization: Bearer ${token}`
+                ]
+              }
+            }
+          }, null, 2);
+          $('mcpCodeClaude').textContent = claudeJson;
+        } else {
+          $('mcpStatusDot').style.background = 'var(--danger)';
+          $('mcpStatusText').textContent = 'Starting...';
+          $('mcpStatusText').style.color = 'var(--danger)';
+          
+          $('mcpSseUrl').textContent = '-';
+          $('mcpBearerToken').textContent = '-';
+          $('mcpSseUrlGeneric').textContent = '-';
+          $('mcpAuthHeaderGeneric').textContent = '-';
+          $('mcpCodeCursor').textContent = '-';
+          $('mcpCodeAntigravity').textContent = '-';
+          $('mcpCodeClaude').textContent = '-';
+        }
+      } else {
+        $('mcpConfigContainer').hidden = true;
+      }
       break;
     case 'prefs/error':
       $('prefsState').hidden = false;
@@ -3847,6 +3942,17 @@ function renderLicenseHistory(events) {
   });
 }
 
+/** Remaining-quota ratio (0-1) as a display percentage; avoids "0%" reading as fully exhausted. */
+function formatRemainingPercent(ratio) {
+  const pct = ratio * 100;
+  if (pct <= 0) { return '0%'; }
+  if (pct < 0.1) { return '<0.1%'; }
+  if (pct >= 100) { return '100%'; }
+  // 2-decimal precision: at these token volumes (100k-10M), 1 decimal rounds a
+  // barely-used quota (e.g. 99.98% remaining) up to a misleading flat "100%".
+  return (Math.round(pct * 100) / 100) + '%';
+}
+
 function renderQuotas(quotas) {
   const body = $('licenseQuotaBody');
   body.textContent = '';
@@ -3877,8 +3983,14 @@ function renderQuotas(quotas) {
       } else if (q.period === 'month') {
         periodSuffix = ' this month';
       }
-      const unitSuffix = q.feature === 'aiAssistant' ? ' tokens' : '';
-      label.textContent = q.remaining.toLocaleString() + '/' + q.limit.toLocaleString() + unitSuffix + periodSuffix;
+      if (q.feature === 'aiAssistant') {
+        // Raw token counts are huge (hundreds of thousands to millions) — a remaining
+        // percentage reads far easier than "9,998,452/10,000,000 tokens". The server
+        // still tracks/reports the exact raw numbers; this is a display-only choice.
+        label.textContent = formatRemainingPercent(ratio) + periodSuffix;
+      } else {
+        label.textContent = q.remaining.toLocaleString() + '/' + q.limit.toLocaleString() + periodSuffix;
+      }
       remainTd.appendChild(label);
     }
     tr.appendChild(remainTd);

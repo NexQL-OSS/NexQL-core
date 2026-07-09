@@ -758,6 +758,15 @@ export class ListenNotifyPanel {
       }
     }
 
+    function escapeHtml(str) {
+      return String(str || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
     // ---------- Channel list ----------
     function renderChannels(channels) {
       if (!channels || channels.length === 0) {
@@ -766,7 +775,7 @@ export class ListenNotifyPanel {
       }
       channelList.innerHTML = channels.map(ch => {
         const color = colourForChannel(ch);
-        const safeLabel = ch.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const safeLabel = escapeHtml(ch);
         return \`<div class="channel-item">
           <span class="channel-name" style="border-left:3px solid \${color}; padding-left:6px;">\${safeLabel}</span>
           <button class="unsub-btn" data-channel="\${safeLabel}" title="Unsubscribe">&times;</button>
@@ -788,15 +797,14 @@ export class ListenNotifyPanel {
 
     function renderFeedEntry(note) {
       const color = colourForChannel(note.channel);
-      const safeCh = note.channel.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-      const safePayload = (note.payload || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const safeCh = escapeHtml(note.channel);
+      const safePayload = escapeHtml(note.payload || '(no payload)');
       const payloadClass = note.payload ? '' : 'empty';
-      const payloadText = note.payload || '(no payload)';
       return \`<div class="notif-entry">
         <div class="notif-border" style="background:\${color}"></div>
         <span class="notif-time">\${formatTime(note.receivedAt)}</span>
         <span class="notif-channel">\${safeCh}:</span>
-        <span class="notif-payload \${payloadClass}">\${safePayload || payloadText}</span>
+        <span class="notif-payload \${payloadClass}">\${safePayload}</span>
       </div>\`;
     }
 

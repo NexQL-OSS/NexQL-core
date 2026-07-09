@@ -4,6 +4,7 @@ import { createAndShowNotebook } from '../commands/connection';
 import { DatabaseTreeItem } from '../providers/DatabaseTreeProvider';
 import { resolveTreeItemConnection } from './connectionHelper';
 import { AiService } from '../providers/chat/AiService';
+import { TelemetryService } from '../services/TelemetryService';
 import {
   PolicyDefinition,
   PolicyCommand,
@@ -53,6 +54,7 @@ export class RlsPolicyStudioPanel {
     this._state = state;
     this._metadata = metadata;
     this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
+    TelemetryService.getInstance().trackDesignerOpened('rls');
   }
 
   public static async openForTable(item: DatabaseTreeItem, context: vscode.ExtensionContext): Promise<void> {

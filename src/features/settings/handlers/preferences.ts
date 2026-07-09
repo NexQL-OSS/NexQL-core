@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import type { SettingsHubHostContext, SettingsHubMessage, SettingsSectionHandler } from '../types';
+import { NexqlMcpServer } from '../../../mcp/NexqlMcpServer';
 
 const DDL_ENABLED_KEY = 'nexql.ddlViewer.enabled';
 const DDL_OPEN_ON_SELECTION_KEY = 'nexql.ddlViewer.openOnSelection';
@@ -13,7 +14,7 @@ export class PreferencesSectionHandler implements SettingsSectionHandler {
   async handle(action: string, message: SettingsHubMessage): Promise<void> {
     switch (action) {
       case 'load':
-        this.sendState();
+        await this.sendState();
         break;
       case 'update':
         await this.update(String(message.key), message.value as boolean | number);
@@ -21,14 +22,45 @@ export class PreferencesSectionHandler implements SettingsSectionHandler {
     }
   }
 
-  private sendState(): void {
+  private async sendState(): Promise<void> {
     const config = vscode.workspace.getConfiguration();
+    const mcpEnabled = config.get<boolean>('postgresExplorer.mcp.enabled', false);
+
+    let port = 0;
+    let token = '';
+    let mcpStarted = false;
+
+    const server = NexqlMcpServer.getInstance();
+    if (server) {
+      if (mcpEnabled) {
+        try {
+          const info = await server.start();
+          port = info.port;
+          token = info.token;
+          mcpStarted = true;
+        } catch {
+          // ignore start error here
+        }
+      } else {
+        const info = server.info;
+        if (info) {
+          port = info.port;
+          token = info.token;
+          mcpStarted = true;
+        }
+      }
+    }
+
     this.host.post({
       type: 'prefs/state',
       prefs: {
         ddlEnabled: config.get<boolean>(DDL_ENABLED_KEY, true),
         ddlOpenOnSelection: config.get<boolean>(DDL_OPEN_ON_SELECTION_KEY, true),
         historyMaxItems: config.get<number>(HISTORY_MAX_ITEMS_KEY, 200),
+        mcpEnabled,
+        mcpPort: port,
+        mcpToken: token,
+        mcpStarted,
       },
     });
   }
@@ -48,17 +80,21 @@ export class PreferencesSectionHandler implements SettingsSectionHandler {
         await vscode.workspace
           .getConfiguration()
           .update(HISTORY_MAX_ITEMS_KEY, n, vscode.ConfigurationTarget.Global);
+      } else if (key === 'mcpEnabled') {
+        await vscode.workspace
+          .getConfiguration()
+          .update('postgresExplorer.mcp.enabled', value, vscode.ConfigurationTarget.Global);
       } else {
         this.host.post({ type: 'prefs/error', error: `Unknown preference: ${key}` });
         return;
       }
-      this.sendState();
+      await this.sendState();
     } catch (err: unknown) {
       this.host.post({
         type: 'prefs/error',
         error: err instanceof Error ? err.message : String(err),
       });
-      this.sendState();
+      await this.sendState();
     }
   }
 }

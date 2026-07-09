@@ -163,7 +163,7 @@ module.exports = async (req, res) => {
         await sendLicenseEmail(email, licenseKey, tier);
       }
 
-      return res.status(200).json({ ok: true, event, licenseKey });
+      return res.status(200).json({ ok: true, event });
     }
 
     if (STATUS_EVENTS[event]) {

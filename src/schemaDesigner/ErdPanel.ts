@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { DatabaseTreeItem } from '../providers/DatabaseTreeProvider';
 import { resolveTreeItemConnection } from './connectionHelper';
+import { TelemetryService } from '../services/TelemetryService';
 import { ErrorHandlers } from '../commands/helper';
 import { createAndShowNotebook, createMetadata } from '../commands/connection';
 import type { PostgresMetadata } from '../common/types';
@@ -24,6 +25,7 @@ export class ErdPanel {
   private constructor(panel: vscode.WebviewPanel) {
     this._panel = panel;
     this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
+    TelemetryService.getInstance().trackDesignerOpened('erd');
   }
 
   /**

@@ -299,9 +299,9 @@ NexQL integrates advanced AI capabilities directly into your workflow, but keeps
 
 No API keys, no provider accounts, no setup. NexQL Free AI is the **default AI provider**, powered by managed models behind a secure gateway proxy. Three tiered models available:
 
-- 🧠 **Smart** (free) — Daily-use AI for queries, explanations, and schema help. 30 requests/month.
-- 🔧 **Engineer** (sponsor) — Advanced model for tough optimization and migration problems. 500 requests/month.
-- 🏗️ **Architect** (singularity) — The best AI for database engineering. Unlimited requests.
+- 🧠 **Smart** (free) — Daily-use AI for queries, explanations, and schema help. ~600K tokens/month.
+- 🔧 **Engineer** (Sponsor · $2/month) — Advanced model for tough optimization and migration problems. ~3M tokens/month (~5× free).
+- 🏗️ **Architect** (Singularity · $9/month) — The best AI for database engineering. ~10M tokens/month (~16× free).
 
 **Configure your AI provider**: Open VS Code Settings → search `postgresExplorer.ai.chat.provider` or run **NexQL: Open AI Settings** from the Command Palette. [AI Settings documentation →](https://nexql.astrx.dev/#ai)
 
@@ -338,6 +338,16 @@ Click the **Analyze Data** button in result tables.
 When a query fails, get instant help directly in the error cell.
 - **Explain Error**: Translates cryptic Postgres errors into plain English.
 - **Fix Query**: Suggests corrected SQL to resolve the error.
+
+### 🔌 MCP Server — New in v2.2.0
+
+NexQL ships a built-in **Model Context Protocol (MCP) server** that exposes your connected PostgreSQL database as live-indexed tools, consumable by Copilot, Cursor, Claude Desktop, and any other MCP-compatible AI agent.
+
+- **Auto-Discovery** — Registers with VS Code's MCP registry automatically; no manual URL or config needed.
+- **Read-Only DB Tools** — Schema discovery, safe SQL execution, EXPLAIN, join-path traversal, and performance analytics.
+- **Schema Grounding** — Agents are instructed to verify live schema before writing SQL, preventing hallucinated table names.
+- **Session Security** — Per-session bearer token, idle TTL sweep, and 200 req/min rate limit.
+- **Configure** via **NexQL Settings → Preferences** — enable/disable, view port/token, toggle auto-start.
 
 ### 🛡️ Safe Execution Model (Notebook-First)
 We believe AI should assist, not take over. **No query is ever executed automatically.**

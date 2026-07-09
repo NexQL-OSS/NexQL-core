@@ -9,6 +9,7 @@
  */
 import * as vscode from 'vscode';
 import { debugLog } from '../common/logger';
+import { TelemetryService } from '../services/TelemetryService';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -368,7 +369,15 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, ChatProvide
           await this._handleSwitchChatModel(data.selectionId);
           break;
         case 'openInNotebook':
+          try {
+            TelemetryService.getInstance().trackAiChatFeedback('open_in_notebook');
+          } catch {}
           await this._handleOpenInNotebook(data.code);
+          break;
+        case 'copyCode':
+          try {
+            TelemetryService.getInstance().trackAiChatFeedback('copy_code');
+          } catch {}
           break;
         case 'previewFile':
           await this._handlePreviewFile(data.path, data.name);
