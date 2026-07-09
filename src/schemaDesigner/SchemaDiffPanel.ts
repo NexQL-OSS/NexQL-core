@@ -24,6 +24,7 @@ export class SchemaDiffPanel {
   private constructor(panel: vscode.WebviewPanel) {
     this._panel = panel;
     this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
+    TelemetryService.getInstance().trackDesignerOpened('schema_diff');
   }
 
   public static async open(

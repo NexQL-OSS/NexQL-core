@@ -18,7 +18,7 @@ function makeContext(): vscode.ExtensionContext {
   } as any;
 }
 
-describe('Notebook Quota Limit (10 per connection)', () => {
+describe('Notebook Quota Limit (5 per connection)', () => {
   let sandbox: sinon.SinonSandbox;
   let qpMock: any;
 
@@ -64,10 +64,10 @@ describe('Notebook Quota Limit (10 per connection)', () => {
     const context = makeContext();
     const metadata = { connectionId: 'conn-1', databaseName: 'mydb', name: 'local' };
 
-    // Stub countNotebooksInConnection to return 9 notebooks
+    // Stub countNotebooksInConnection to return 4 notebooks
     sandbox.stub(ConnectionUtils, 'countNotebooksInConnection').resolves({
-      count: 9,
-      uris: Array.from({ length: 9 }, (_, i) => vscode.Uri.file(`/global-storage/local/mydb/nb${i + 1}.pgsql`))
+      count: 4,
+      uris: Array.from({ length: 4 }, (_, i) => vscode.Uri.file(`/global-storage/local/mydb/nb${i + 1}.pgsql`))
     });
 
     const showWarning = sandbox.stub(vscode.window, 'showWarningMessage');
@@ -86,19 +86,19 @@ describe('Notebook Quota Limit (10 per connection)', () => {
 
     await openOrCreateNotebookWithPicker(metadata, [], context, 'picker');
 
-    // Should not show warning because count is 9 (< 10)
+    // Should not show warning because count is 4 (< 5)
     expect(showWarning.called).to.be.false;
   });
 
-  it('blocks creation and prompts options when limit of 10 is reached on free tier', async () => {
+  it('blocks creation and prompts options when limit of 5 is reached on free tier', async () => {
     const context = makeContext();
     const metadata = { connectionId: 'conn-1', databaseName: 'mydb', name: 'local' };
 
-    const notebooks = Array.from({ length: 10 }, (_, i) => vscode.Uri.file(`/global-storage/local/mydb/nb${i + 1}.pgsql`));
+    const notebooks = Array.from({ length: 5 }, (_, i) => vscode.Uri.file(`/global-storage/local/mydb/nb${i + 1}.pgsql`));
 
-    // Stub countNotebooksInConnection to return 10 notebooks
+    // Stub countNotebooksInConnection to return 5 notebooks
     sandbox.stub(ConnectionUtils, 'countNotebooksInConnection').resolves({
-      count: 10,
+      count: 5,
       uris: notebooks
     });
 
@@ -119,18 +119,18 @@ describe('Notebook Quota Limit (10 per connection)', () => {
     await openOrCreateNotebookWithPicker(metadata, [], context, 'picker');
 
     expect(showWarning.calledOnce).to.be.true;
-    expect(showWarning.firstCall.args[0]).to.include('limited to 10 notebooks');
+    expect(showWarning.firstCall.args[0]).to.include('limited to 5 notebooks');
     expect(executeCommand.calledWith('postgres-explorer.license.openUpgrade')).to.be.true;
   });
 
-  it('does not limit sponsor tier users even with 10+ notebooks', async () => {
+  it('does not limit sponsor tier users even with 5+ notebooks', async () => {
     const context = makeContext();
     const metadata = { connectionId: 'conn-1', databaseName: 'mydb', name: 'local' };
 
-    const notebooks = Array.from({ length: 10 }, (_, i) => vscode.Uri.file(`/global-storage/local/mydb/nb${i + 1}.pgsql`));
+    const notebooks = Array.from({ length: 5 }, (_, i) => vscode.Uri.file(`/global-storage/local/mydb/nb${i + 1}.pgsql`));
 
     sandbox.stub(ConnectionUtils, 'countNotebooksInConnection').resolves({
-      count: 10,
+      count: 5,
       uris: notebooks
     });
 
@@ -156,11 +156,11 @@ describe('Notebook Quota Limit (10 per connection)', () => {
     const context = makeContext();
     const metadata = { connectionId: 'conn-1', databaseName: 'mydb', name: 'local' };
 
-    const notebooks = Array.from({ length: 10 }, (_, i) => vscode.Uri.file(`/global-storage/local/mydb/nb${i + 1}.pgsql`));
+    const notebooks = Array.from({ length: 5 }, (_, i) => vscode.Uri.file(`/global-storage/local/mydb/nb${i + 1}.pgsql`));
 
-    // Stub countNotebooksInConnection to return 10 notebooks
+    // Stub countNotebooksInConnection to return 5 notebooks
     sandbox.stub(ConnectionUtils, 'countNotebooksInConnection').resolves({
-      count: 10,
+      count: 5,
       uris: notebooks
     });
 

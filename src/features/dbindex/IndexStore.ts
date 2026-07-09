@@ -238,6 +238,50 @@ export class IndexStore {
   }
 
   /**
+   * Load one shard file's entries (keyed by `schema.object_name`) with LRU
+   * caching. Returns null when the shard is missing or unreadable.
+   */
+  public async readShardEntries(
+    baseDir: vscode.Uri,
+    shardFile: string
+  ): Promise<Record<string, ObjectEntry> | null> {
+    const cacheKey = `${baseDir.toString()}#${shardFile}`;
+    let cached = this.shardCache.get(cacheKey);
+
+    if (!cached) {
+      const shardUri = vscode.Uri.joinPath(baseDir, shardFile);
+      try {
+        const data = await vscode.workspace.fs.readFile(shardUri);
+        const entries = JSON.parse(Buffer.from(data).toString('utf-8')) as Record<string, ObjectEntry>;
+        cached = { entries, timestamp: Date.now() };
+
+        // LRU evict if cache is too large
+        if (this.shardCache.size >= this.MAX_CACHED_SHARDS) {
+          let oldestKey = '';
+          let oldestTime = Infinity;
+          for (const [k, v] of this.shardCache.entries()) {
+            if (v.timestamp < oldestTime) {
+              oldestTime = v.timestamp;
+              oldestKey = k;
+            }
+          }
+          if (oldestKey) {
+            this.shardCache.delete(oldestKey);
+          }
+        }
+
+        this.shardCache.set(cacheKey, cached);
+      } catch {
+        return null;
+      }
+    } else {
+      cached.timestamp = Date.now();
+    }
+
+    return cached.entries;
+  }
+
+  /**
    * Lazily loads an object entry from sharded files, with LRU caching.
    * Key is `schema.object_name`.
    */
@@ -253,41 +297,12 @@ export class IndexStore {
       return null;
     }
 
-    const shardFile = shardInfo.file;
-    const cacheKey = `${baseDir.toString()}#${shardFile}`;
-    let cached = this.shardCache.get(cacheKey);
-
-    if (!cached) {
-      const shardUri = vscode.Uri.joinPath(baseDir, shardFile);
-      try {
-        const data = await vscode.workspace.fs.readFile(shardUri);
-        const entries = JSON.parse(Buffer.from(data).toString('utf-8')) as Record<string, ObjectEntry>;
-        cached = { entries, timestamp: Date.now() };
-        
-        // LRU evict if cache is too large
-        if (this.shardCache.size >= this.MAX_CACHED_SHARDS) {
-          let oldestKey = '';
-          let oldestTime = Infinity;
-          for (const [k, v] of this.shardCache.entries()) {
-            if (v.timestamp < oldestTime) {
-              oldestTime = v.timestamp;
-              oldestKey = k;
-            }
-          }
-          if (oldestKey) {
-            this.shardCache.delete(oldestKey);
-          }
-        }
-        
-        this.shardCache.set(cacheKey, cached);
-      } catch {
-        return null;
-      }
-    } else {
-      cached.timestamp = Date.now();
+    const entries = await this.readShardEntries(baseDir, shardInfo.file);
+    if (!entries) {
+      return null;
     }
 
-    const entry = cached.entries[ref];
+    const entry = entries[ref];
     if (!entry) {
       return null;
     }

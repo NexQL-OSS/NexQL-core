@@ -11,6 +11,7 @@ import { DatabaseTreeItem } from '../providers/DatabaseTreeProvider';
 import { getDatabaseConnection, NotebookBuilder, MarkdownUtils } from './helper';
 import { ErrorHandlers } from './helper';
 import { AssistantGateway } from '../services/assistant/AssistantGateway';
+import { slowQueries } from './sql/monitoring';
 
 // ---------------------------------------------------------------------------
 // Public entry point
@@ -92,24 +93,7 @@ interface SlowQuery {
 // SQL
 // ---------------------------------------------------------------------------
 
-const SLOW_QUERIES_SQL = `
-SELECT
-  queryid::text,
-  LEFT(query, 500) AS query,
-  calls,
-  ROUND(mean_exec_time::numeric, 2)   AS mean_ms,
-  ROUND(total_exec_time::numeric, 2)  AS total_ms,
-  ROUND(stddev_exec_time::numeric, 2) AS stddev_ms,
-  rows
-FROM pg_stat_statements
-WHERE query NOT LIKE '%pg_stat_statements%'
-  AND query NOT LIKE 'BEGIN%'
-  AND query NOT LIKE 'COMMIT%'
-  AND query NOT LIKE 'ROLLBACK%'
-  AND calls >= 5
-ORDER BY mean_exec_time DESC
-LIMIT 10
-`.trim();
+const SLOW_QUERIES_SQL = slowQueries(10);
 
 // ---------------------------------------------------------------------------
 // AI Prompt builder

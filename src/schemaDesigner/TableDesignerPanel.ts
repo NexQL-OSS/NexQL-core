@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { ErrorHandlers } from '../commands/helper';
 import { DatabaseTreeItem } from '../providers/DatabaseTreeProvider';
 import { resolveTreeItemConnection } from './connectionHelper';
+import { TelemetryService } from '../services/TelemetryService';
 
 /**
  * Visual Table Designer Panel
@@ -25,6 +26,7 @@ export class TableDesignerPanel {
   ) {
     this._panel = panel;
     this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
+    TelemetryService.getInstance().trackDesignerOpened('table');
   }
 
   /**

@@ -18,6 +18,33 @@ let cached: AiUsage | null = null;
 let lastFetch = 0;
 let inFlight: Promise<AiUsage | null> | null = null;
 
+/**
+ * Remaining-quota ratio as a display percentage — raw token counts run into the
+ * hundreds of thousands to millions, and "99.98% left" reads far easier than
+ * "9,998,452/10,000,000 tokens left". The server (and `/api/ai/usage`) still track
+ * and report the exact raw numbers; this is purely a display-side simplification.
+ * Avoids showing "0%" for a small-but-nonzero remainder, which would misread as
+ * fully exhausted.
+ */
+export function remainingPercentLabel(remaining: number, limit: number): string {
+  if (!limit || limit <= 0) {
+    return '0%';
+  }
+  const pct = (remaining / limit) * 100;
+  if (pct <= 0) {
+    return '0%';
+  }
+  if (pct < 0.1) {
+    return '<0.1%';
+  }
+  if (pct >= 100) {
+    return '100%';
+  }
+  // 2-decimal precision: at these token volumes (100k-10M), 1 decimal rounds a
+  // barely-used quota (e.g. 99.98% remaining) up to a misleading flat "100%".
+  return `${Math.round(pct * 100) / 100}%`;
+}
+
 /** Minimum spacing between background refreshes so tooltip re-renders don't spam the API. */
 const MIN_REFRESH_MS = 15000;
 

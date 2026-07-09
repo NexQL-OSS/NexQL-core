@@ -372,10 +372,18 @@ export async function mountExplainTab(
         const table = document.createElement('table');
         table.style.cssText = 'width:100%; border-collapse:collapse; font-size:12px;';
         table.innerHTML = '<thead><tr><th style="text-align:left;padding:6px;border:1px solid var(--vscode-widget-border);">Node</th><th style="text-align:left;padding:6px;border:1px solid var(--vscode-widget-border);">Change</th><th style="text-align:left;padding:6px;border:1px solid var(--vscode-widget-border);">Cost Δ</th><th style="text-align:left;padding:6px;border:1px solid var(--vscode-widget-border);">Time Δ</th><th style="text-align:left;padding:6px;border:1px solid var(--vscode-widget-border);">Reason</th></tr></thead>';
+        const escHtml = (str: string): string =>
+          str
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+
         const tbody = document.createElement('tbody');
         for (const item of changed) {
           const tr = document.createElement('tr');
-          tr.innerHTML = `<td style="padding:6px;border:1px solid var(--vscode-widget-border);">${item.nodeType}</td><td style="padding:6px;border:1px solid var(--vscode-widget-border);">${item.changeType}</td><td style="padding:6px;border:1px solid var(--vscode-widget-border);">${item.costDelta?.toFixed(2) ?? ''}</td><td style="padding:6px;border:1px solid var(--vscode-widget-border);">${item.timeDelta?.toFixed(2) ?? ''}</td><td style="padding:6px;border:1px solid var(--vscode-widget-border);">${item.reason ?? ''}</td>`;
+          tr.innerHTML = `<td style="padding:6px;border:1px solid var(--vscode-widget-border);">${escHtml(item.nodeType)}</td><td style="padding:6px;border:1px solid var(--vscode-widget-border);">${escHtml(item.changeType)}</td><td style="padding:6px;border:1px solid var(--vscode-widget-border);">${item.costDelta?.toFixed(2) ?? ''}</td><td style="padding:6px;border:1px solid var(--vscode-widget-border);">${item.timeDelta?.toFixed(2) ?? ''}</td><td style="padding:6px;border:1px solid var(--vscode-widget-border);">${escHtml(item.reason ?? '')}</td>`;
           tbody.appendChild(tr);
         }
         table.appendChild(tbody);

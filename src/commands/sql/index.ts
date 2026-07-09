@@ -26,4 +26,5 @@ export { TypeSQL } from './types';
 export { UserRoleSQL, UsersRolesSQL } from './usersRoles';
 export { ViewSQL } from './views';
 export { SQL_TEMPLATES, QueryBuilder, MaintenanceTemplates } from './helper';
+export * as MonitoringSQL from './monitoring';
 
