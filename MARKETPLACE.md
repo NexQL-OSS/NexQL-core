@@ -55,7 +55,8 @@
 | 🔍 **EXPLAIN CodeLens** | One-click EXPLAIN/ANALYZE with results in notebooks |
 | 🛡️ **Auto-LIMIT** | Automatic query protection with configurable row limits (default 1000) |
 | 🌍 **Foreign Data Wrappers** | Manage foreign servers, user mappings, and tables |
-| 🤖 **AI-Powered** | GitHub Copilot, GitHub Models, OpenAI, Anthropic, and Google Gemini integration |
+| 🤖 **NexQL Free AI** | Zero-config AI assistant — Smart/Engineer/Architect tiers, no API keys needed |
+| 🔌 **MCP Server** | Built-in MCP server — expose your database to Copilot, Cursor, Claude Desktop & more |
 | ⌨️ **Developer Tools** | IntelliSense, keyboard shortcuts, PSQL terminal access |
 | 📤 **Export Data** | Export query results to CSV, JSON, or Excel formats |
 | 📉 **Large result streaming** | Optional sliding-window cursor mode for big `SELECT`s — bounded memory, scroll to fetch |
@@ -113,7 +114,8 @@
 <td>
 
 ### 🚀 Developer Friendly
-- 🤖 GitHub Copilot integration
+- 🤖 NexQL Free AI — zero-config, no API key needed
+- 🔌 Built-in MCP server for Copilot, Cursor, Claude Desktop
 - Keyboard shortcuts
 - IntelliSense support
 - PSQL terminal integration
@@ -126,24 +128,29 @@
 
 ## 📋 Feature Matrix
 
-| Area | NexQL v1.2.1 | Notes |
+| Area | NexQL v2.2.0 | Notes |
 |---|---|---|
 | Core PostgreSQL object operations | ✅ | Tables, views, mat views, functions, roles, extensions, FDWs, and more |
 | AI-assisted SQL workflows | ✅ | Generate, optimize, explain, analyze, and notebook handoff |
+| NexQL Free AI (zero-config) | ✅ | Smart / Engineer / Architect tiers, no API keys required |
+| MCP Server | ✅ | Expose DB tools to Copilot, Cursor, Claude Desktop, and more |
 | Production safety controls | ✅ | Read-only mode, query risk scoring, confirmation prompts, Auto-LIMIT |
 | Real-time monitoring dashboard | ✅ | Activity and performance telemetry in VS Code |
 | Interactive SQL notebooks | ✅ | Native `.pgsql` notebook workflow |
-| In-grid editing parity with desktop IDEs | ⚠️ Partial | Planned enhancements in v1.x |
+| Data Import | ✅ Free | No usage cap — unlimited across all tiers |
+| Backup & Restore | ✅ Free | No usage cap — unlimited across all tiers |
+| Database Indexing | ✅ Free | Build, auto-index, semantic index — unlimited across all tiers |
+| In-grid editing parity with desktop IDEs | ⚠️ Partial | Planned enhancements in upcoming releases |
 | ERD/schema visualization parity | ⚠️ Partial | Under active expansion |
-| Advanced replication administration | ⚠️ Partial | Additional publication/subscription workflows planned |
 
 ---
 
-## ⚠️ Known Limitations (v1.2.1)
+## ⚠️ Known Limitations (v2.2.0)
 
 - In-grid editing is currently more limited than full desktop DB IDEs.
 - ERD/schema visualization is available but not yet feature-complete.
-- Some advanced PostgreSQL admin workflows are partial and are scheduled for incremental v1.x updates.
+- Some advanced PostgreSQL admin workflows are partial and are scheduled for incremental updates.
+- NexQL Free AI gateway is in Beta and may be subject to quota adjustments.
 
 ---
 
@@ -198,7 +205,26 @@ Organize, manage, and reuse your most important queries with intelligent tagging
 
 ## 🤖 AI-Powered Assistance
 
-Leverage AI to write, optimize, and debug your queries faster:
+Leverage AI to write, optimize, and debug your queries faster.
+
+### 🚀 NexQL Free AI — Zero-Config (Default, v2.2.0)
+
+No API keys, no provider accounts, no setup. **NexQL Free AI** is the default AI provider, powered by managed models behind a secure gateway proxy:
+
+- 🧠 **Smart** (free) — Daily-use AI for queries, explanations, and schema help. ~600K tokens/month.
+- 🔧 **Engineer** (Sponsor · $2/mo) — Advanced model for complex optimization and migrations. ~3M tokens/month.
+- 🏗️ **Architect** (Singularity · $9/mo) — The best AI for database engineering. ~10M tokens/month.
+
+### 🔌 MCP Server — New in v2.2.0
+
+NexQL now exposes your connected PostgreSQL databases as a **Model Context Protocol (MCP) server**, letting GitHub Copilot, Cursor, Claude Desktop, and any other MCP-compatible AI agent use NexQL's live schema tools:
+
+- Schema discovery (`list_schemas`, `list_objects`, `describe_object`, `search_schema`)
+- Safe SQL execution (`run_select`, `explain_query`)
+- Join-path inference (`get_join_path`)
+- Performance analytics (`get_table_stats`, `get_index_usage`)
+
+Enable via **NexQL Settings → Preferences**. VS Code's Copilot discovers NexQL automatically — no manual config required.
 
 - **Smart Completions** — Context-aware SQL suggestions
 - **Query Explanation** — Understand complex queries in plain English
@@ -212,11 +238,13 @@ NexQL provides a **Safe Execution Model** for AI interactions.
 - **Context Control**: You decide which tables the AI can see.
 
 **Supported AI Providers:**
+- NexQL Free AI (default — no API key required)
 - GitHub Copilot (VS Code LM)
 - GitHub Models (GitHub account sign-in)
-- OpenAI
-- Anthropic Claude
-- Google Gemini
+- OpenAI (GPT-4.1, o4-mini, and more)
+- Anthropic Claude (Sonnet 4, Haiku, and more)
+- Google Gemini (2.5 Flash, 2.5 Pro)
+- Ollama / LM Studio / Custom OpenAI-compatible endpoints
 
 ---
 

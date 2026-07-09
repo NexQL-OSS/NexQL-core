@@ -530,6 +530,13 @@ module.exports = async (req, res) => {
   // Clamp/sanitize the payload *before* estimating cost, so the pre-flight token
   // estimate reflects what's actually dispatched, not the raw (possibly huge) body.
   const messages = clampMessages(sanitizeMessages((req.body || {}).messages));
+  
+  // Enforce database-specific instruction at the gateway to prevent general-purpose API key abuse
+  messages.unshift({
+    role: 'system',
+    content: 'You are NexQL\'s database assistant. You only answer questions related to databases, SQL, schemas, query optimization, and programming code. Refuse to answer any questions unrelated to these domains.'
+  });
+
   const tools = sanitizeTools((req.body || {}).tools);
   const rawTemp = typeof req.body?.temperature === 'number' ? req.body.temperature : 0.7;
   const temperature = Math.max(0, Math.min(2, rawTemp));

@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { LicenseService } from '../services/LicenseService';
 import { FREE_QUOTAS, ProFeature, featureLabel } from '../services/featureGates';
 import { QuotaService } from '../services/QuotaService';
+import { remainingPercentLabel } from '../services/aiUsage';
 
 const PRICING_URL = 'https://nexql.astrx.dev/#pricing';
 // Server-issued keys use the PGST- prefix (api/_lib/license-key.js); NXQL- is
@@ -118,7 +119,7 @@ export async function cmdLicenseShowUsage(): Promise<void> {
 
   items.push({
     label: 'AI Chat Assistant',
-    description: `${aiRemaining.toLocaleString()}/${aiLimit.toLocaleString()} tokens left this month`,
+    description: `${remainingPercentLabel(aiRemaining, aiLimit)} left this month`,
     detail: aiResetHint,
   });
 

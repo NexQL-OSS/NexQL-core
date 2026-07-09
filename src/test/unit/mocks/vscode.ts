@@ -271,7 +271,13 @@ export class CancellationTokenSource {
 export interface LanguageModelChat { id?: string; name?: string; family?: string; sendRequest?(messages: any[], opts?: any, token?: any): Promise<any>; }
 export interface LanguageModelChatSelector { family?: string }
 export interface LanguageModelChatMessage { }
-export const lm = { selectChatModels: async (_opts?: any) => [] as LanguageModelChat[] } as any;
+export const lm = {
+  selectChatModels: async (_opts?: any) => [] as LanguageModelChat[],
+  registerMcpServerDefinitionProvider: (_id: string, _provider: any) => ({ dispose: () => {} })
+} as any;
+export class McpHttpServerDefinition {
+  constructor(public label: string, public uri: Uri, public headers?: Record<string, string>) {}
+}
 export const LanguageModelChatMessage = { User: (s: string) => ({ role: 'user', content: s }), Assistant: (s: string) => ({ role: 'assistant', content: s }) } as any;
 
 export const ViewColumn = { One: 1, Two: 2, Three: 3, Beside: 4 } as const;
@@ -351,6 +357,8 @@ const vscode = {
   ThemeColor,
   ThemeIcon,
   env,
+  lm,
+  McpHttpServerDefinition,
   ViewColumn: Object.assign({}, ViewColumn, { Beside: 4 }),
   Webview,
   WebviewPanel,

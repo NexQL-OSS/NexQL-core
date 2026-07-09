@@ -312,6 +312,14 @@ export class WhatsNewManager {
             <p>Thanks for using NexQL! Here are the latest updates.</p>
           </div>
           <nav class="header-actions" aria-label="Community links">
+            <a href="#" class="icon-btn" data-external-href="https://nexql-themes.astrx.dev" title="NexQL Themes" aria-label="NexQL Themes">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 14.7255 3.09032 17.1962 4.85857 19C5.03442 19.1788 5.25367 19.317 5.4988 19.4045C5.74393 19.4921 6.00624 19.526 6.265 19.504C6.776 19.46 7.18 19.056 7.224 18.545C7.262 18.096 7.643 17.75 8.1 17.75H9.5C10.88 17.75 12 16.63 12 15.25V14.5C12 13.95 12.45 13.5 13 13.5H16.5C18.43 13.5 20 11.93 20 10C20 8.07 18.43 6.5 16.5 6.5H15.5C14.12 6.5 13 5.38 13 4V3C13 2.45 12.55 2 12 2"/>
+                <circle cx="7.5" cy="10.5" r="1.5" fill="currentColor"/>
+                <circle cx="11.5" cy="7.5" r="1.5" fill="currentColor"/>
+                <circle cx="16.5" cy="9.5" r="1.5" fill="currentColor"/>
+              </svg>
+            </a>
             <a href="#" class="icon-btn" data-external-href="${links.issues}" title="GitHub Issues" aria-label="GitHub Issues">
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M12 20v-9"/>

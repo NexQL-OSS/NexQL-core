@@ -1685,6 +1685,9 @@ function copyCode(button, codeId) {
   navigator.clipboard.writeText(code).then(() => {
     button.classList.add('copied');
     button.innerHTML = `${codeBlockActionIcon('check')}Copied!`;
+    try {
+      vscode.postMessage({ type: 'copyCode' });
+    } catch (e) {}
     setTimeout(() => {
       button.classList.remove('copied');
       button.innerHTML = codeBlockCopyButtonHtml();
@@ -2541,34 +2544,149 @@ function showToast(text, type = 'info') {
   }, 5000);
 }
 
+function formatThinkingStepLabel(label) {
+  if (!label) return { isTool: false, text: '' };
+
+  const separatorIdx = label.indexOf(' · ');
+  if (separatorIdx !== -1) {
+    const toolName = label.substring(0, separatorIdx);
+    const toolArgs = label.substring(separatorIdx + 3);
+    const isJsonOrLong = toolArgs.startsWith('{') || toolArgs.startsWith('[') || toolArgs.length > 40;
+    return {
+      isTool: true,
+      toolName: toolName,
+      toolArgs: toolArgs,
+      isToolDetail: isJsonOrLong,
+      text: `Ran ${toolName}`
+    };
+  } else if (label.startsWith('Calling ') && label.endsWith('…')) {
+    const toolName = label.substring(8, label.length - 1);
+    return {
+      isTool: true,
+      toolName: toolName,
+      toolArgs: '',
+      isToolDetail: false,
+      text: `Calling ${toolName}`
+    };
+  }
+
+  const lines = label.split('\n').map(l => l.trim()).filter(Boolean);
+  if (lines.length > 1) {
+    let title = lines[0];
+    title = title.replace(/^(#+\s*|\*+\s*|_\s*)/, '').replace(/(\*+|_)$/, '');
+    const detail = lines.slice(1).join('\n');
+    return {
+      isTool: false,
+      title: title,
+      detail: detail,
+      text: title
+    };
+  }
+
+  return {
+    isTool: false,
+    title: label,
+    detail: '',
+    text: label
+  };
+}
+
 function renderThinkingStepRow(step) {
-  const row = document.createElement('div');
+  const info = formatThinkingStepLabel(step.label);
+  const hasDetail = (!info.isTool && info.detail) || !!step.ragContext || (info.isTool && info.isToolDetail);
+
+  const row = document.createElement(hasDetail ? 'details' : 'div');
   row.className = 'thinking-step thinking-step-' + step.status;
+  if (hasDetail) {
+    row.className += ' thinking-step-collapsible';
+    if (step.status === 'active') {
+      row.open = true;
+    } else {
+      row.open = false;
+    }
+  }
   row.dataset.stepId = step.id;
 
+  const headerContainer = document.createElement(hasDetail ? 'summary' : 'div');
+  headerContainer.className = hasDetail ? 'thinking-step-summary' : 'thinking-step-header-container';
+
   const icon = document.createElement('span');
-  icon.className = 'thinking-step-icon';
-  if (step.status === 'active') {
-    icon.innerHTML = '<span class="thinking-spinner"></span>';
-  } else if (step.status === 'done') {
-    icon.textContent = '✓';
-  } else if (step.status === 'error') {
-    icon.textContent = '✕';
+  if (info.isTool) {
+    icon.className = 'thinking-step-icon tool-call-icon';
+    icon.textContent = '>';
+  } else {
+    icon.className = 'thinking-step-icon';
+    if (step.status === 'active') {
+      icon.innerHTML = '<span class="thinking-spinner"></span>';
+    } else if (step.status === 'error') {
+      icon.className = 'thinking-step-icon thinking-bullet-error';
+      icon.textContent = '✕';
+    } else {
+      icon.innerHTML = '<span class="thinking-bullet-dot"></span>';
+    }
   }
+  headerContainer.appendChild(icon);
+
+  const contentWrap = document.createElement('div');
+  contentWrap.className = 'thinking-step-content';
+
+  const headerRow = document.createElement('div');
+  headerRow.className = 'thinking-step-header-row';
 
   const label = document.createElement('span');
   label.className = 'thinking-step-label';
-  label.textContent = step.label;
+  label.textContent = info.text;
+  headerRow.appendChild(label);
 
-  row.appendChild(icon);
-  row.appendChild(label);
+  if (info.isTool && info.toolArgs && !info.isToolDetail) {
+    const codePill = document.createElement('code');
+    codePill.className = 'thinking-step-code-pill';
+    codePill.textContent = info.toolArgs;
+    headerRow.appendChild(codePill);
+  }
 
-  if (step.ragContext) {
-    const ragCollapsible = buildRagContextCollapsible(step.ragContext);
-    if (ragCollapsible) {
-      ragCollapsible.classList.add('thinking-step-rag');
-      row.appendChild(ragCollapsible);
+  if (hasDetail) {
+    const chevron = document.createElement('span');
+    chevron.className = 'thinking-step-chevron';
+    chevron.innerHTML = `<svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor">
+      <path d="M4.646 5.646a.5.5 0 0 1 .708 0L8 8.293l2.646-2.647a.5.5 0 0 1 .708.708l-3 3a.5.5 0 0 1-.708 0l-3-3a.5.5 0 0 1 0-.708z"/>
+    </svg>`;
+    headerRow.appendChild(chevron);
+  }
+
+  contentWrap.appendChild(headerRow);
+  headerContainer.appendChild(contentWrap);
+  row.appendChild(headerContainer);
+
+  if (hasDetail) {
+    const detailsContent = document.createElement('div');
+    detailsContent.className = 'thinking-step-details-content';
+
+    if (!info.isTool && info.detail) {
+      const detailDiv = document.createElement('div');
+      detailDiv.className = 'thinking-step-detail';
+      detailDiv.innerHTML = parseMarkdown(info.detail);
+      detailsContent.appendChild(detailDiv);
     }
+
+    if (info.isTool && info.isToolDetail && info.toolArgs) {
+      const detailDiv = document.createElement('div');
+      detailDiv.className = 'thinking-step-detail';
+      const codePill = document.createElement('code');
+      codePill.className = 'thinking-step-code-pill block-code-pill';
+      codePill.textContent = info.toolArgs;
+      detailDiv.appendChild(codePill);
+      detailsContent.appendChild(detailDiv);
+    }
+
+    if (step.ragContext) {
+      const ragInline = buildRagContextCollapsible(step.ragContext);
+      if (ragInline) {
+        detailsContent.appendChild(ragInline);
+      }
+    }
+
+    row.appendChild(detailsContent);
   }
 
   return row;
@@ -2730,39 +2848,26 @@ function renderInlineLiveThinking(steps, options = {}) {
     return;
   }
 
-  let details = bubbleDiv.querySelector('#live-thinking-trace');
-  if (!details) {
-    details = document.createElement('details');
-    details.className = 'collapsible-process thinking-trace thinking-trace--live';
-    details.id = 'live-thinking-trace';
-    details.open = true;
-
-    const summary = document.createElement('summary');
-    details.appendChild(summary);
+  let container = bubbleDiv.querySelector('#live-thinking-trace');
+  if (!container) {
+    container = document.createElement('div');
+    container.className = 'thinking-trace-container thinking-trace--live';
+    container.id = 'live-thinking-trace';
 
     const content = document.createElement('div');
-    content.className = 'collapsible-process-content thinking-trace-content';
+    content.className = 'thinking-trace-content';
     content.id = 'live-thinking-trace-content';
-    details.appendChild(content);
+    container.appendChild(content);
 
     const contentDiv = bubbleDiv.querySelector('#streaming-content');
     if (contentDiv) {
-      bubbleDiv.insertBefore(details, contentDiv);
+      bubbleDiv.insertBefore(container, contentDiv);
     } else {
-      bubbleDiv.prepend(details);
+      bubbleDiv.prepend(container);
     }
   }
 
-  const summary = details.querySelector('summary');
-  if (summary) {
-    summary.textContent = formatThinkingSummary(
-      normalizedSteps,
-      liveThinkingStartedAt,
-      options.forceDone === true
-    );
-  }
-
-  const content = details.querySelector('#live-thinking-trace-content');
+  const content = container.querySelector('#live-thinking-trace-content');
   if (content) {
     content.replaceChildren();
     normalizedSteps.forEach((step) => {
@@ -2770,7 +2875,6 @@ function renderInlineLiveThinking(steps, options = {}) {
     });
   }
 
-  details.open = options.forceDone ? false : normalizedSteps.some((step) => step.status === 'active');
   scrollMessagesToEnd('auto');
 }
 
@@ -2804,140 +2908,142 @@ function buildThinkingTraceCollapsible(thinkingTrace) {
     return null;
   }
 
-  const details = document.createElement('details');
-  details.className = 'collapsible-process thinking-trace';
-  details.open = false;
-
-  const summary = document.createElement('summary');
-  summary.textContent = formatThinkingSummary(thinkingTrace, null, true);
-  details.appendChild(summary);
+  const container = document.createElement('div');
+  container.className = 'thinking-trace-container';
 
   const content = document.createElement('div');
-  content.className = 'collapsible-process-content thinking-trace-content';
+  content.className = 'thinking-trace-content';
 
   thinkingTrace.forEach((step) => {
     content.appendChild(renderThinkingStepRow(step));
   });
 
-  details.appendChild(content);
-  return details;
+  container.appendChild(content);
+  return container;
 }
 
 function buildRagContextCollapsible(ragContext) {
   if (!ragContext) return null;
 
-  const ragDetails = document.createElement('details');
-  ragDetails.className = 'collapsible-process';
-  
+  const container = document.createElement('div');
+  container.className = 'inline-context-block';
+
   const objectsCount = ragContext.objects ? ragContext.objects.length : 0;
-  const summary = document.createElement('summary');
-  summary.textContent = `🔍 Retrieved schema context (${objectsCount} table${objectsCount !== 1 ? 's' : ''})`;
-  ragDetails.appendChild(summary);
-  
-  const content = document.createElement('div');
-  content.className = 'collapsible-process-content';
-  
+  const header = document.createElement('div');
+  header.className = 'inline-context-header';
+  header.textContent = `🔍 Retrieved schema context (${objectsCount} table${objectsCount !== 1 ? 's' : ''})`;
+  container.appendChild(header);
+
   if (ragContext.objects && ragContext.objects.length > 0) {
-    const objTitle = document.createElement('div');
-    objTitle.style.fontWeight = '600';
-    objTitle.style.marginBottom = '4px';
-    objTitle.textContent = 'Matched Tables & Schemas:';
-    content.appendChild(objTitle);
-    
+    const chipsContainer = document.createElement('div');
+    chipsContainer.className = 'inline-context-chips';
+
     ragContext.objects.forEach(obj => {
-      const item = document.createElement('div');
-      item.className = 'rag-hit-item';
+      const chip = document.createElement('span');
+      chip.className = 'inline-context-chip';
       
       const refSpan = document.createElement('span');
       refSpan.textContent = obj.ref;
-      
+      chip.appendChild(refSpan);
+
       const detailSpan = document.createElement('span');
-      detailSpan.className = 'rag-hit-detail';
-      detailSpan.textContent = obj.detail;
-      
-      item.appendChild(refSpan);
-      item.appendChild(detailSpan);
-      content.appendChild(item);
+      detailSpan.className = 'inline-context-chip-detail';
+      detailSpan.textContent = `(${obj.detail})`;
+      chip.appendChild(detailSpan);
+
+      chipsContainer.appendChild(chip);
     });
+    container.appendChild(chipsContainer);
   }
-  
+
   if (ragContext.joinHints && ragContext.joinHints.length > 0) {
     const joinTitle = document.createElement('div');
-    joinTitle.style.fontWeight = '600';
-    joinTitle.style.marginTop = '8px';
-    joinTitle.style.marginBottom = '4px';
+    joinTitle.className = 'inline-context-section-title';
     joinTitle.textContent = 'Join Relationships Identified:';
-    content.appendChild(joinTitle);
-    
+    container.appendChild(joinTitle);
+
+    const joinList = document.createElement('div');
+    joinList.className = 'inline-context-joins';
     ragContext.joinHints.forEach(hint => {
       const item = document.createElement('div');
-      item.style.fontSize = '11px';
-      item.style.fontFamily = 'var(--vscode-editor-font-family)';
-      item.style.padding = '5px 8px';
-      item.style.background = 'var(--vscode-textCodeBlock-background)';
-      item.style.borderRadius = '4px';
-      item.style.border = '1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.1))';
+      item.className = 'inline-context-join-item';
       item.textContent = hint;
-      content.appendChild(item);
+      joinList.appendChild(item);
     });
+    container.appendChild(joinList);
   }
-  
+
   if (ragContext.tokensUsed) {
     const tokensInfo = document.createElement('div');
-    tokensInfo.style.fontSize = '10px';
-    tokensInfo.style.opacity = '0.6';
-    tokensInfo.style.marginTop = '6px';
-    tokensInfo.style.textAlign = 'right';
+    tokensInfo.className = 'inline-context-tokens';
     tokensInfo.textContent = `Context budget tokens: ${ragContext.tokensUsed}`;
-    content.appendChild(tokensInfo);
+    container.appendChild(tokensInfo);
   }
-  
-  ragDetails.appendChild(content);
-  return ragDetails;
+
+  return container;
 }
 
 function buildAgenticStepsCollapsible(agenticSteps) {
   if (!agenticSteps || agenticSteps.length === 0) return null;
 
-  const agentDetails = document.createElement('details');
-  agentDetails.className = 'collapsible-process';
-  
+  const container = document.createElement('div');
+  container.className = 'agent-steps-container';
+
   const stepsCount = agenticSteps.length;
-  const summary = document.createElement('summary');
-  summary.textContent = `⚙️ Executed database agent (${stepsCount} step${stepsCount !== 1 ? 's' : ''})`;
-  agentDetails.appendChild(summary);
-  
-  const content = document.createElement('div');
-  content.className = 'collapsible-process-content';
-  
+  const header = document.createElement('div');
+  header.className = 'agent-steps-header';
+  header.textContent = `⚙️ Executed database agent (${stepsCount} step${stepsCount !== 1 ? 's' : ''})`;
+  container.appendChild(header);
+
+  const list = document.createElement('div');
+  list.className = 'agent-steps-list';
+
   agenticSteps.forEach((step, stepIdx) => {
-    const stepDiv = document.createElement('div');
-    stepDiv.className = 'collapsible-step';
-    
-    const header = document.createElement('div');
-    header.className = 'collapsible-step-header';
-    header.textContent = `Step ${stepIdx + 1}: Call tool "${step.toolCall.name}"`;
-    stepDiv.appendChild(header);
-    
+    const stepDiv = document.createElement('details');
+    stepDiv.className = 'agent-step';
+    stepDiv.open = false; // Closed by default, expandable by user
+
+    const stepHeader = document.createElement('summary');
+    stepHeader.className = 'agent-step-header';
+
+    const icon = document.createElement('span');
+    icon.className = 'agent-step-icon tool-call-icon';
+    icon.textContent = '>';
+    stepHeader.appendChild(icon);
+
+    const titleText = document.createElement('span');
+    titleText.className = 'agent-step-title';
+    titleText.textContent = `Step ${stepIdx + 1}: Ran ${step.toolCall.name}`;
+    stepHeader.appendChild(titleText);
+
     if (step.toolCall.arguments) {
-      const argsDiv = document.createElement('div');
-      argsDiv.style.fontSize = '11px';
-      argsDiv.style.opacity = '0.7';
-      argsDiv.style.marginBottom = '4px';
-      argsDiv.textContent = `Arguments: ${JSON.stringify(step.toolCall.arguments)}`;
-      stepDiv.appendChild(argsDiv);
+      const codePill = document.createElement('code');
+      codePill.className = 'thinking-step-code-pill';
+      codePill.textContent = typeof step.toolCall.arguments === 'object'
+        ? JSON.stringify(step.toolCall.arguments)
+        : String(step.toolCall.arguments);
+      stepHeader.appendChild(codePill);
     }
-    
+
+    const chevron = document.createElement('span');
+    chevron.className = 'thinking-step-chevron';
+    chevron.innerHTML = `<svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor">
+      <path d="M4.646 5.646a.5.5 0 0 1 .708 0L8 8.293l2.646-2.647a.5.5 0 0 1 .708.708l-3 3a.5.5 0 0 1-.708 0l-3-3a.5.5 0 0 1 0-.708z"/>
+    </svg>`;
+    stepHeader.appendChild(chevron);
+
+    stepDiv.appendChild(stepHeader);
+
     const body = document.createElement('div');
-    body.className = 'collapsible-step-body';
+    body.className = 'agent-step-body';
     body.textContent = step.result;
     stepDiv.appendChild(body);
-    
-    content.appendChild(stepDiv);
+
+    list.appendChild(stepDiv);
   });
-  
-  agentDetails.appendChild(content);
-  return agentDetails;
+
+  container.appendChild(list);
+  return container;
 }
 
 let lastMessageCount = 0;

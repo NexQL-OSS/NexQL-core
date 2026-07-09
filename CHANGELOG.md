@@ -8,32 +8,56 @@ Quick links:
 
 ---
 
-## [2.2.0] - 2026-07-02
+## [2.2.0] - 2026-07-09
 
-### 🚀 NexQL AI Models— Generally Available
+### 🚀 NexQL AI Models — Generally Available
 
-NexQL Free AI is now **Generally Available** (Beta) — a zero-configuration AI assistant powered by managed models behind a secure gateway proxy. No API keys, no provider accounts, no setup. Just connect a database and start chatting.
+NexQL Free AI is now **Generally Available** — a zero-configuration AI assistant powered by managed models behind a secure gateway proxy. No API keys, no provider accounts, no setup. Just connect a database and start chatting.
 This is a major milestone for NexQL as it allows us to offer a free and open-source AI assistant with a freemium model that allows users to get more work done with no/low cost.
-Note: This is a beta feature and may be subject to change in the future depending on usage patterns and demands.
+
+> **Note:** The NexQL AI gateway is in Beta and may be subject to change in the future depending on usage patterns and demands.
 
 - **Tier-Gated Model Aliases** — Three AI tiers exposed:
-  - 🧠 **Smart** (free tier) — daily-use AI for queries, explanations, and schema help. 50 requests/month.
-  - 🔧 **Engineer** (sponsor tier $2/month plan) — advanced model for tough problems. 200 requests/month.
-  - 🏗️ **Architect** (singularity tier $9/month plan) — the best AI for database engineering. 500 requests/month.
+  - 🧠 **Smart** (free tier) — daily-use AI for queries, explanations, and schema help. ~600K tokens/month.
+  - 🔧 **Engineer** (Sponsor · $2/month) — advanced model for complex optimization and migrations. ~3M tokens/month (~5× free).
+  - 🏗️ **Architect** (Singularity · $9/month) — the best AI for database engineering. ~10M tokens/month (~16× free).
 - **Zero-Config Onboarding** — `nexql-free` autoloads as the default AI provider. Open the SQL Assistant and start asking questions immediately — no API key or account configuration needed.
-- **Accurate Usage Displays** — Real-time usage tracking surfaced in the status bar tooltip, license quick-pick, and Settings → License panel. Cache invalidated after every request so counts stay current.
+- **Accurate Usage Displays** — Real-time token usage tracking surfaced in the status bar tooltip, license quick-pick, and Settings → License panel. Cache is invalidated after every request so counts stay current.
 - **Atomic Monthly Quota** — Server-side atomic quota reservation via `reserveUsage`/`refundUsage` eliminates TOCTOU race conditions. Only delivered, non-empty replies count toward your monthly limit.
 - **Per-Tier Throttling** — Per-account and per-IP fixed-window rate limiting atop the monthly cap prevents abuse while keeping the service responsive for all users.
-- **Client-Disconnect Abort** — Disconnecting mid-stream aborts the upstream gateway request, stopping billed token accumulation immediately.
+- **Client-Disconnect Abort** — Disconnecting mid-stream aborts the upstream gateway request, stopping token accumulation immediately.
+
+### 🔌 MCP Server Integration
+
+NexQL now ships a built-in **Model Context Protocol (MCP) server** that exposes your connected PostgreSQL databases as live-indexed tools — directly consumable by Copilot, Claude Desktop, Cursor, and any other MCP-compatible AI agent.
+
+- **In-Process Streamable HTTP Server** — No SDK dependency; a hand-rolled JSON-RPC-over-HTTP server binds to a random local port on demand, authenticates via a per-session bearer token, and serves all of NexQL's read-only database tools under the MCP protocol.
+- **VS Code Native Registration** — Registers automatically with VS Code's MCP registry (`vscode.lm.registerMcpServerDefinitionProvider`) so Copilot and other VS Code LM clients discover NexQL databases instantly without manual config.
+- **Configurable via Settings Hub** — Enable/disable the MCP server, view the active port and bearer token, and toggle auto-start from the **NexQL Settings → Preferences** panel.
+- **Database Tools Exposed over MCP** — All the same read-only tools the in-chat agentic loop uses are now accessible to external agents:
+  - `list_schemas`, `list_objects`, `describe_object` — schema discovery
+  - `search_schema` — full-text search over table and column names
+  - `run_select` — safe read-only SQL execution (SELECT/EXPLAIN only)
+  - `explain_query` — EXPLAIN ANALYZE plan retrieval
+  - `get_join_path` — automatic foreign-key relationship traversal
+  - `get_table_stats`, `get_index_usage` — performance analytics
+  - `switch_connection` — context switching between connections
+- **Schema Grounding Instructions** — MCP `initialize` response includes instructions that tell external agents to always ground SQL in the live schema before writing any queries — preventing hallucinated table names.
+- **Session Management** — Up to 32 concurrent MCP sessions with a 30-minute idle TTL and automatic sweep.
+- **Rate Limiting** — Built-in 200 requests/minute cap on the MCP server endpoint to prevent runaway agent loops.
+
+### Unlimited Access — Previously Gated Features
+
+The following features are now **100% unlimited and free** across all subscription tiers:
+
+- **Data Import** — Import CSV/JSON data into tables with no usage cap.
+- **Backup & Restore** — Full database backup and restore workflows are now unrestricted.
+- **Database Indexing** — Building, auto-indexing, multi-database indexing, and semantic (local-embedding) indexing are all now free.
 
 ### Added
 
-- **Non-Streaming Request Support** — Gateway and client now honor the `req.body.stream` flag. Non-streaming requests buffer upstream SSE chunks and return a single aggregated, OpenAI-compatible JSON response. Client gracefully detects `data:`-prefixed SSE responses during non-streaming mode.
-- **PostHog NexQL AI Telemetry** — New `nexql_free_request` event tracks model model selection, success/failure, and tier, enabling per-tier usage analytics in the PostHog dashboard.
-
-### Enhanced
-
-- **Gateway Hardening** — Per-tier `max_tokens` and input caps (message count, total & per-message character limits). Temperature clamped to `[0, 2]`. Usage retention with automatic pruning of old records.
+- **Non-Streaming Request Support** — Gateway and client now honor the `req.body.stream` flag. Non-streaming requests buffer upstream SSE chunks and return a single aggregated, OpenAI-compatible JSON response.
+- **Collapsible Inline Thinking Steps** — The SQL Assistant's agentic trace now renders as a clean vertical timeline. Individual steps with detail content (tool call results, reasoning, retrieved context) are collapsible with a rotating chevron.
 
 ---
 

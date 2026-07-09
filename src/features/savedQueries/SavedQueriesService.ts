@@ -5,7 +5,7 @@ import { recordSyncActivity } from '../sync/SyncActivityLog';
 import { triggerInstantSync } from '../sync/syncTriggers';
 import { SyncController } from '../sync/SyncController';
 
-const FREE_SAVED_QUERIES_LIMIT = 5;
+const FREE_SAVED_QUERIES_LIMIT = 2;
 
 /**
  * Saved query with metadata for quick access and reuse

@@ -115,14 +115,11 @@ export function meetsTier(actual: LicenseTier, required: LicenseTier): boolean {
  * imports) have firmer caps.
  */
 export const FREE_QUOTAS: Partial<Record<ProFeature, FeatureQuota>> = {
-  [ProFeature.ExplainStudio]: { limit: 10, period: 'day' },
-  [ProFeature.Dashboard]: { limit: 5, period: 'day' },
-  [ProFeature.SchemaDiff]: { limit: 5, period: 'day' },
-  [ProFeature.SchemaDesigner]: { limit: 5, period: 'day' },
-  [ProFeature.DataImport]: { limit: 3, period: 'week' },
-  [ProFeature.BackupRestore]: { limit: 3, period: 'week' },
-  [ProFeature.SyncDeviceRebind]: { limit: 1, period: 'week' },
-  [ProFeature.DbIndexBuild]: { limit: 2, period: 'week' },
+  [ProFeature.ExplainStudio]: { limit: 5, period: 'day' },
+  [ProFeature.Dashboard]: { limit: 2, period: 'day' },
+  [ProFeature.SchemaDiff]: { limit: 2, period: 'day' },
+  [ProFeature.SchemaDesigner]: { limit: 2, period: 'day' },
+  [ProFeature.SyncDeviceRebind]: { limit: 2, period: 'month' },
 };
 
 /**
@@ -181,7 +178,16 @@ function quotaWord(period: FeatureQuota['period']): string {
  * the action via {@link requirePro}). Features without a quota are paid-only.
  */
 export function isProFeatureEnabled(feature: ProFeature): boolean {
-  if (feature === ProFeature.AiAssistant || feature === ProFeature.AgenticModes) {
+  if (
+    feature === ProFeature.AiAssistant ||
+    feature === ProFeature.AgenticModes ||
+    feature === ProFeature.DataImport ||
+    feature === ProFeature.BackupRestore ||
+    feature === ProFeature.DbIndexBuild ||
+    feature === ProFeature.DbIndexAuto ||
+    feature === ProFeature.DbIndexMulti ||
+    feature === ProFeature.DbIndexEmbed
+  ) {
     return true;
   }
   if (enforcement() === 'off') {
@@ -203,7 +209,16 @@ export function isProFeatureEnabled(feature: ProFeature): boolean {
  * (the feature is rate-limited for the period, not permanently locked).
  */
 export async function requirePro(feature: ProFeature, _context?: vscode.ExtensionContext): Promise<boolean> {
-  if (feature === ProFeature.AiAssistant || feature === ProFeature.AgenticModes) {
+  if (
+    feature === ProFeature.AiAssistant ||
+    feature === ProFeature.AgenticModes ||
+    feature === ProFeature.DataImport ||
+    feature === ProFeature.BackupRestore ||
+    feature === ProFeature.DbIndexBuild ||
+    feature === ProFeature.DbIndexAuto ||
+    feature === ProFeature.DbIndexMulti ||
+    feature === ProFeature.DbIndexEmbed
+  ) {
     return true; // unlimited on all tiers
   }
   const mode = enforcement();

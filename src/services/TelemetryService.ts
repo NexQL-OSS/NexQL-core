@@ -42,6 +42,9 @@ const EVENT_SCHEMA: Record<string, { kind: TelemetryEventKind; allowedProps: Set
   sentinel_gate_open: { kind: 'usage', allowedProps: new Set(['environment']) },
   sentinel_transition: { kind: 'usage', allowedProps: new Set(['fromEnv', 'toEnv']) },
   sentinel_settings_change: { kind: 'usage', allowedProps: new Set(['key']) },
+  designer_opened: { kind: 'usage', allowedProps: new Set(['designer']) },
+  mcp_tool_invoked: { kind: 'usage', allowedProps: new Set(['tool', 'isError']) },
+  ai_chat_feedback: { kind: 'usage', allowedProps: new Set(['action']) },
 };
 
 interface TelemetryEnvelope {
@@ -384,6 +387,27 @@ export class TelemetryService {
    */
   public trackDashboardOpened(): void {
     this.trackEvent('dashboard_opened', {});
+  }
+
+  /**
+   * Track designer panel opened
+   */
+  public trackDesignerOpened(designer: string): void {
+    this.trackEvent('designer_opened', { designer });
+  }
+
+  /**
+   * Track MCP tool call invocation
+   */
+  public trackMcpToolInvoked(tool: string, isError: boolean): void {
+    this.trackEvent('mcp_tool_invoked', { tool, isError });
+  }
+
+  /**
+   * Track AI assistant chat feedback/interactions
+   */
+  public trackAiChatFeedback(action: string): void {
+    this.trackEvent('ai_chat_feedback', { action });
   }
 
   /**

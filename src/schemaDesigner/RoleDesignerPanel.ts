@@ -3,6 +3,7 @@ import { ErrorHandlers } from '../commands/helper';
 import { createAndShowNotebook } from '../commands/connection';
 import { DatabaseTreeItem } from '../providers/DatabaseTreeProvider';
 import { resolveTreeItemConnection } from './connectionHelper';
+import { TelemetryService } from '../services/TelemetryService';
 import {
   buildRoleMigrationMarkdown,
   buildRoleMigrationSql,
@@ -52,6 +53,7 @@ export class RoleDesignerPanel {
   ) {
     this._panel = panel;
     this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
+    TelemetryService.getInstance().trackDesignerOpened('role');
   }
 
   public static async openForRole(item: DatabaseTreeItem, context: vscode.ExtensionContext): Promise<void> {

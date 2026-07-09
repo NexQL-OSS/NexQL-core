@@ -215,7 +215,7 @@
                   <svg viewBox="0 0 16 16" fill="none" class="hub-hero-icon"><path d="M2.5 4A1.5 1.5 0 0 1 4 2.5h8A1.5 1.5 0 0 1 13.5 4v6a1.5 1.5 0 0 1-1.5 1.5H6.5L3 14v-2.5H2.5A1.5 1.5 0 0 1 1 10V4h1.5z" stroke="currentColor" stroke-width="1.2"/><path d="M4.5 5.5h7M4.5 8h4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
                 </div>
                 <div>
-                  <h3 class="hub-hero-card-title">SQL Assistant Chat</h3>
+                  <h3 class="hub-hero-card-title">SQL Assistant Chat <span class="hub-badge" style="margin-left: 6px; vertical-align: middle; background: color-mix(in srgb, var(--vscode-charts-orange, #e57373) 14%, transparent); color: var(--vscode-charts-orange, #e57373);">BETA</span></h3>
                   <p class="hub-hero-card-desc">Interactive chat sidebar, generating code queries, and explanation dialogues.</p>
                 </div>
               </div>
@@ -770,6 +770,95 @@
                 <input type="number" id="prefHistoryMaxItems" min="10" max="1000" style="max-width:100px" class="num-input">
                 <span style="opacity:0.6;font-size:0.85em">entries (10 – 1000)</span>
               </label>
+            </div>
+          </div>
+
+          <div class="hub-setting-card">
+            <div class="hub-setting-card-header">
+              <div>
+                <h2 class="hub-setting-card-title">Model Context Protocol (MCP) <span class="hub-badge" style="margin-left: 8px; vertical-align: middle; background: color-mix(in srgb, var(--vscode-charts-orange, #e57373) 14%, transparent); color: var(--vscode-charts-orange, #e57373);">BETA</span></h2>
+                <p class="hub-setting-card-desc hub-prose">Expose NexQL's read-only database tools (schema search, describe object, run SELECT, EXPLAIN) as a local MCP server that other AI agents can connect to.</p>
+              </div>
+            </div>
+            <div class="hub-setting-card-body">
+              <label class="hub-card-checkbox-row">
+                <input type="checkbox" id="prefMcpEnabled">
+                <span>Enable MCP Server</span>
+              </label>
+
+              <!-- Connection details and setup instructions -->
+              <div id="mcpConfigContainer" style="margin-top: 16px; border-top: 1px solid var(--vscode-widget-border); padding-top: 16px;" hidden>
+                <div class="mcp-status-row" style="margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+                  <span class="mcp-status-dot" id="mcpStatusDot" style="width: 8px; height: 8px; border-radius: 50%; display: inline-block;"></span>
+                  <span id="mcpStatusText" style="font-weight: 500;">Connecting...</span>
+                </div>
+
+                <div class="mcp-details" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px; font-size: 0.9em; opacity: 0.9;">
+                  <div>
+                    <strong style="display: inline-block; width: 120px;">SSE URL:</strong>
+                    <code id="mcpSseUrl" class="mono-cell" style="padding: 2px 6px; background: color-mix(in srgb, var(--pg-ui-surface) 60%, var(--vscode-editor-background)); border-radius: 4px; word-break: break-all;">-</code>
+                  </div>
+                  <div>
+                    <strong style="display: inline-block; width: 120px;">Bearer Token:</strong>
+                    <code id="mcpBearerToken" class="mono-cell" style="padding: 2px 6px; background: color-mix(in srgb, var(--pg-ui-surface) 60%, var(--vscode-editor-background)); border-radius: 4px; word-break: break-all;">-</code>
+                  </div>
+                </div>
+
+                <div class="mcp-instructions">
+                  <h4 style="margin-bottom: 8px; font-weight: 500;">Connection Guides</h4>
+                  
+                  <!-- Provider Selector Tabs -->
+                  <div class="mcp-tabs" style="display: flex; gap: 4px; border-bottom: 1px solid var(--vscode-widget-border); margin-bottom: 12px;">
+                    <button type="button" class="mcp-tab-btn active" data-provider="cursor" style="padding: 6px 12px; background: none; border: none; border-bottom: 2px solid var(--vscode-focusBorder); color: var(--vscode-foreground); cursor: pointer; font-family: inherit; font-size: 0.9em;">Cursor</button>
+                    <button type="button" class="mcp-tab-btn" data-provider="copilot" style="padding: 6px 12px; background: none; border: none; border-bottom: 2px solid transparent; color: var(--vscode-descriptionForeground); cursor: pointer; font-family: inherit; font-size: 0.9em;">GitHub Copilot</button>
+                    <button type="button" class="mcp-tab-btn" data-provider="antigravity" style="padding: 6px 12px; background: none; border: none; border-bottom: 2px solid transparent; color: var(--vscode-descriptionForeground); cursor: pointer; font-family: inherit; font-size: 0.9em;">Antigravity</button>
+                    <button type="button" class="mcp-tab-btn" data-provider="claude" style="padding: 6px 12px; background: none; border: none; border-bottom: 2px solid transparent; color: var(--vscode-descriptionForeground); cursor: pointer; font-family: inherit; font-size: 0.9em;">Claude Desktop</button>
+                    <button type="button" class="mcp-tab-btn" data-provider="codex" style="padding: 6px 12px; background: none; border: none; border-bottom: 2px solid transparent; color: var(--vscode-descriptionForeground); cursor: pointer; font-family: inherit; font-size: 0.9em;">Codex & SSE</button>
+                  </div>
+
+                  <!-- Guide Content Panels -->
+                  <div class="mcp-guide-panels">
+                    <div class="mcp-guide-panel" id="mcp-guide-cursor">
+                      <p style="font-size: 0.9em; color: var(--vscode-descriptionForeground); margin-bottom: 8px;">Add this MCP Server configuration to your Cursor settings (<strong>Settings > Features > MCP</strong>):</p>
+                      <pre style="margin: 0; padding: 12px; background: color-mix(in srgb, var(--pg-ui-surface) 60%, var(--vscode-editor-background)); border-radius: 6px; font-family: var(--vscode-editor-font-family, monospace); font-size: 11.5px; overflow-x: auto; border: 1px solid var(--vscode-widget-border);"><code id="mcpCodeCursor">-</code></pre>
+                    </div>
+
+                    <div class="mcp-guide-panel" id="mcp-guide-copilot" hidden>
+                      <p style="font-size: 0.9em; color: var(--vscode-descriptionForeground); margin-bottom: 8px;">GitHub Copilot integrates natively with VS Code's internal MCP Server registry. No configuration is required. Simply check <strong>Enable MCP Server</strong> above, and Copilot Chat will automatically discover and use NexQL's read-only DB tools context!</p>
+                    </div>
+
+                    <div class="mcp-guide-panel" id="mcp-guide-antigravity" hidden>
+                      <p style="font-size: 0.9em; color: var(--vscode-descriptionForeground); margin-bottom: 8px;">For Google Antigravity or standard agent configurations, connect using standard SSE with the token header:</p>
+                      <pre style="margin: 0; padding: 12px; background: color-mix(in srgb, var(--pg-ui-surface) 60%, var(--vscode-editor-background)); border-radius: 6px; font-family: var(--vscode-editor-font-family, monospace); font-size: 11.5px; overflow-x: auto; border: 1px solid var(--vscode-widget-border);"><code id="mcpCodeAntigravity">-</code></pre>
+                    </div>
+
+                    <div class="mcp-guide-panel" id="mcp-guide-claude" hidden>
+                      <p style="font-size: 0.9em; color: var(--vscode-descriptionForeground); margin-bottom: 8px;">Add this configuration to your Claude Desktop config file (<code>claude_desktop_config.json</code>):</p>
+                      <pre style="margin: 0; padding: 12px; background: color-mix(in srgb, var(--pg-ui-surface) 60%, var(--vscode-editor-background)); border-radius: 6px; font-family: var(--vscode-editor-font-family, monospace); font-size: 11.5px; overflow-x: auto; border: 1px solid var(--vscode-widget-border);"><code id="mcpCodeClaude">-</code></pre>
+                    </div>
+
+                    <div class="mcp-guide-panel" id="mcp-guide-codex" hidden>
+                      <p style="font-size: 0.9em; color: var(--vscode-descriptionForeground); margin-bottom: 8px;">For other MCP clients supporting SSE (Server-Sent Events), use the connection endpoints below:</p>
+                      <table style="width: 100%; border-collapse: collapse; font-size: 0.9em; text-align: left;">
+                        <tbody>
+                          <tr style="border-bottom: 1px solid var(--vscode-widget-border);">
+                            <th style="padding: 8px 0; color: var(--vscode-descriptionForeground); font-weight: 500; width: 140px;">SSE Endpoint</th>
+                            <td style="padding: 8px 0; font-family: var(--vscode-editor-font-family, monospace);" id="mcpSseUrlGeneric">-</td>
+                          </tr>
+                          <tr style="border-bottom: 1px solid var(--vscode-widget-border);">
+                            <th style="padding: 8px 0; color: var(--vscode-descriptionForeground); font-weight: 500;">Auth Header</th>
+                            <td style="padding: 8px 0; font-family: var(--vscode-editor-font-family, monospace);" id="mcpAuthHeaderGeneric">-</td>
+                          </tr>
+                          <tr>
+                            <th style="padding: 8px 0; color: var(--vscode-descriptionForeground); font-weight: 500;">Protocol Version</th>
+                            <td style="padding: 8px 0; font-family: var(--vscode-editor-font-family, monospace);">2025-03-26</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>

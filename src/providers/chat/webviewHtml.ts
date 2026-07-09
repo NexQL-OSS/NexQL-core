@@ -87,7 +87,7 @@ export function getWebviewHtmlSync(
       <div class="pg-panel-body">
         <div class="empty-state-simple">
           <div class="skeleton skeleton-text" style="width: 120px;"></div>
-          <div>Loading SQL Assistant...</div>
+          <div>Loading SQL Assistant (Beta)...</div>
         </div>
       </div>
     </section>

@@ -1539,42 +1539,154 @@
           display: none !important;
         }
 
-        .thinking-step {
+        .thinking-trace-container {
+          margin: 12px 0;
           display: flex;
-          flex-wrap: wrap;
-          align-items: flex-start;
-          gap: 8px;
+          flex-direction: column;
+          gap: 10px;
+        }
+
+        .thinking-trace-header {
+          display: none;
+        }
+
+        .thinking-step {
+          position: relative;
+          display: flex;
+          gap: 12px;
           font-size: 12px;
           line-height: 1.4;
+          padding-left: 20px;
+        }
+
+        /* Timeline vertical line */
+        .thinking-step::before {
+          content: '';
+          position: absolute;
+          left: 6.5px;
+          top: 18px;
+          bottom: -16px;
+          width: 1px;
+          background-color: var(--vscode-widget-border, rgba(128, 128, 128, 0.2));
+          z-index: 1;
+        }
+
+        .thinking-step:last-child::before {
+          display: none;
         }
 
         .thinking-step-icon {
-          flex-shrink: 0;
+          position: absolute;
+          left: 0;
+          top: 2px;
           width: 14px;
-          text-align: center;
-          opacity: 0.85;
+          height: 14px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 2;
         }
 
-        .thinking-step-label {
+        .thinking-bullet-dot {
+          width: 6px;
+          height: 6px;
+          background-color: var(--vscode-descriptionForeground, #888);
+          border-radius: 50%;
+          display: inline-block;
+        }
+
+        .thinking-step-done .thinking-bullet-dot {
+          background-color: var(--chat-ok, #388a34);
+        }
+
+        .thinking-bullet-error {
+          color: var(--chat-danger, #d32f2f);
+          font-size: 11px;
+          font-weight: bold;
+        }
+
+        /* Tool call terminal-style icon */
+        .tool-call-icon {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 14px;
+          height: 14px;
+          border: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.3));
+          border-radius: 3px;
+          background: var(--vscode-textCodeBlock-background, rgba(128, 128, 128, 0.1));
+          font-family: var(--vscode-editor-font-family, monospace);
+          font-size: 8px;
+          color: var(--vscode-descriptionForeground);
+          font-weight: 700;
+          line-height: 1;
+        }
+
+        .thinking-step-active .tool-call-icon {
+          border-color: var(--chat-accent, #007acc);
+          color: var(--chat-accent, #007acc);
+        }
+
+        .thinking-step-content {
+          flex: 1;
+          min-width: 0;
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+
+        .thinking-step-header-row {
+          display: flex;
+          align-items: center;
+          flex-wrap: wrap;
+          gap: 6px;
           flex: 1;
           min-width: 0;
         }
 
-        .thinking-step-active .thinking-step-label {
-          opacity: 0.95;
+        .thinking-step-label {
+          font-weight: 500;
           color: var(--vscode-foreground);
         }
 
         .thinking-step-done .thinking-step-label {
-          opacity: 0.75;
+          color: var(--vscode-descriptionForeground);
         }
 
-        .thinking-step-done .thinking-step-icon {
-          color: var(--chat-ok);
+        .thinking-step-active .thinking-step-label {
+          color: var(--vscode-foreground);
+          font-weight: 600;
         }
 
-        .thinking-step-error .thinking-step-label {
-          color: var(--chat-danger);
+        .thinking-step-code-pill {
+          font-family: var(--vscode-editor-font-family, monospace);
+          font-size: 11px;
+          background: var(--vscode-textCodeBlock-background, rgba(128, 128, 128, 0.15));
+          padding: 1px 5px;
+          border-radius: 4px;
+          border: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.15));
+          color: var(--vscode-textPreformat-foreground, #d7ba7d);
+          word-break: break-all;
+          white-space: pre-wrap;
+          max-width: 100%;
+        }
+
+        .thinking-step-detail {
+          margin-top: 4px;
+          padding: 8px 12px;
+          background: var(--vscode-textCodeBlock-background, rgba(128, 128, 128, 0.05));
+          border-radius: 6px;
+          color: var(--vscode-descriptionForeground);
+          font-size: 11.5px;
+          line-height: 1.5;
+          border-left: 2px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.25));
+        }
+
+        .thinking-step-detail p {
+          margin: 0 0 8px 0;
+        }
+        .thinking-step-detail p:last-child {
+          margin-bottom: 0;
         }
 
         .thinking-spinner {
@@ -1591,53 +1703,69 @@
           to { transform: rotate(360deg); }
         }
 
-        .thinking-step-rag {
-          flex-basis: 100%;
-          margin-left: 22px;
-          margin-top: 2px;
-        }
-
-        .thinking-trace {
-          margin-bottom: 8px;
-        }
-
-        .message-bubble > .thinking-trace:first-child {
-          margin-top: 0;
-        }
-
-        .thinking-trace--live[open] {
-          border: 1px solid color-mix(in srgb, var(--vscode-widget-border) 70%, transparent);
-          border-radius: 8px;
-          background: color-mix(in srgb, var(--vscode-editor-background) 55%, transparent);
-        }
-
-        .thinking-trace--live[open] summary {
-          padding: 8px 12px;
-        }
-
-        .thinking-trace:not([open]) {
-          width: fit-content;
-          border-radius: 100px;
-          background: var(--ui-surface-muted);
-          border: 1px solid color-mix(in srgb, var(--vscode-widget-border) 55%, transparent);
-        }
-
-        .thinking-trace:not([open]) summary {
-          padding: 5px 12px;
-          border-radius: 100px;
-          background: transparent;
-          font-size: 11.5px;
-          color: var(--vscode-descriptionForeground);
-        }
-
-        .thinking-trace summary {
+        /* Summary collapsible styling */
+        summary.thinking-step-summary {
           cursor: pointer;
+          outline: none;
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          width: 100%;
           user-select: none;
-          font-weight: 500;
+          list-style: none;
         }
 
-        .thinking-trace-content .thinking-step {
-          padding: 4px 0;
+        summary.thinking-step-summary::-webkit-details-marker {
+          display: none;
+        }
+
+        .thinking-step-chevron {
+          margin-left: auto;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          opacity: 0.5;
+          transition: transform 0.2s ease, opacity 0.2s ease;
+          cursor: pointer;
+        }
+
+        .thinking-step-chevron:hover {
+          opacity: 0.85;
+        }
+
+        .thinking-step[open] .thinking-step-chevron svg,
+        .agent-step[open] .thinking-step-chevron svg {
+          transform: rotate(180deg);
+        }
+
+        summary.agent-step-header {
+          cursor: pointer;
+          outline: none;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          width: 100%;
+          user-select: none;
+          list-style: none;
+        }
+
+        summary.agent-step-header::-webkit-details-marker {
+          display: none;
+        }
+
+        .thinking-step-code-pill.block-code-pill {
+          display: block;
+          margin-top: 4px;
+          padding: 8px 10px;
+          background: var(--vscode-textCodeBlock-background, rgba(128, 128, 128, 0.08));
+          border: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.15));
+          border-radius: 4px;
+          white-space: pre-wrap;
+          font-size: 11px;
+          font-family: var(--vscode-editor-font-family, monospace);
+          color: var(--vscode-editor-foreground);
+          max-height: 160px;
+          overflow-y: auto;
         }
 
         .typing-indicator {
@@ -2746,110 +2874,155 @@
         /* ── Tooltip affordance: all icon-only buttons must have title ── */
         button[title] { cursor: pointer; }
 
-        /* ── Collapsible Agentic & RAG Process Styles ── */
-        .collapsible-process {
-          margin: 10px 0;
-          border: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.2));
+        /* ── Inline Context & Agentic Process Styles ── */
+        .inline-context-block {
+          margin: 6px 0;
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          padding: 8px 12px;
+          background: rgba(128, 128, 128, 0.03);
+          border: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.15));
           border-radius: 6px;
-          background: color-mix(in srgb, var(--vscode-input-background) 95%, var(--vscode-editor-background) 5%);
-          font-size: 12px;
-          overflow: hidden;
           width: 100%;
         }
 
-        .collapsible-process summary {
-          padding: 8px 12px;
-          cursor: pointer;
-          font-weight: 500;
+        .inline-context-header {
+          font-weight: 600;
+          font-size: 11.5px;
           color: var(--vscode-descriptionForeground);
-          user-select: none;
           display: flex;
           align-items: center;
-          gap: 8px;
-          outline: none;
-          background: rgba(128, 128, 128, 0.04);
-          transition: background var(--transition-fast);
-          list-style: none; /* Hide default list marker in Chrome/Firefox */
+          gap: 6px;
         }
 
-        .collapsible-process summary:hover {
-          background: rgba(128, 128, 128, 0.08);
-          color: var(--vscode-foreground);
-        }
-
-        .collapsible-process summary::-webkit-details-marker {
-          display: none; /* Hide default details triangle */
-        }
-
-        .collapsible-process summary::before {
-          content: '▶';
-          font-size: 8px;
-          display: inline-block;
-          transition: transform 0.15s ease;
-          color: var(--vscode-descriptionForeground);
-          width: 10px;
-          text-align: center;
-        }
-
-        .collapsible-process[open] summary::before {
-          transform: rotate(90deg);
-        }
-
-        .collapsible-process-content {
-          padding: 12px;
-          border-top: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.15));
+        .inline-context-chips {
           display: flex;
-          flex-direction: column;
-          gap: 10px;
-          max-height: 320px;
-          overflow-y: auto;
-          background: var(--vscode-editor-background);
+          flex-wrap: wrap;
+          gap: 6px;
         }
 
-        .collapsible-step {
+        .inline-context-chip {
+          font-family: var(--vscode-editor-font-family, monospace);
+          font-size: 10.5px;
+          background: var(--vscode-textCodeBlock-background, rgba(128, 128, 128, 0.1));
+          border: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.15));
+          border-radius: 4px;
+          padding: 2px 6px;
+          color: var(--vscode-foreground);
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+        }
+
+        .inline-context-chip-detail {
+          opacity: 0.65;
+          font-size: 9.5px;
+        }
+
+        .inline-context-section-title {
+          font-weight: 600;
+          font-size: 11px;
+          color: var(--vscode-descriptionForeground);
+          margin-top: 4px;
+        }
+
+        .inline-context-joins {
           display: flex;
           flex-direction: column;
           gap: 4px;
         }
 
-        .collapsible-step-header {
+        .inline-context-join-item {
+          font-size: 11px;
+          font-family: var(--vscode-editor-font-family, monospace);
+          padding: 4px 8px;
+          background: var(--vscode-textCodeBlock-background, rgba(128, 128, 128, 0.08));
+          border-radius: 4px;
+          border: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.1));
+          color: var(--vscode-foreground);
+        }
+
+        .inline-context-tokens {
+          font-size: 10px;
+          opacity: 0.6;
+          text-align: right;
+        }
+
+        .agent-steps-container {
+          margin: 12px 0;
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          width: 100%;
+        }
+
+        .agent-steps-header {
+          font-size: 11px;
+          font-weight: 600;
+          color: var(--vscode-descriptionForeground);
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+
+        .agent-steps-list {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+        }
+
+        .agent-step {
+          position: relative;
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          padding-left: 20px;
+        }
+
+        .agent-step::before {
+          content: '';
+          position: absolute;
+          left: 6.5px;
+          top: 18px;
+          bottom: -18px;
+          width: 1px;
+          background-color: var(--vscode-widget-border, rgba(128, 128, 128, 0.2));
+          z-index: 1;
+        }
+
+        .agent-step:last-child::before {
+          display: none;
+        }
+
+        .agent-step-header {
+          display: flex;
+          align-items: center;
+          flex-wrap: wrap;
+          gap: 6px;
+        }
+
+        .agent-step-icon {
+          position: absolute;
+          left: 0;
+          top: 2px;
+        }
+
+        .agent-step-title {
           font-weight: 600;
           color: var(--vscode-symbolIcon-functionForeground, #dcdcaa);
         }
 
-        .collapsible-step-body {
-          font-family: var(--vscode-editor-font-family);
+        .agent-step-body {
+          font-family: var(--vscode-editor-font-family, monospace);
           font-size: 11px;
-          background: var(--vscode-textCodeBlock-background);
+          background: var(--vscode-textCodeBlock-background, rgba(128, 128, 128, 0.08));
           padding: 8px 10px;
           border-radius: 4px;
           border: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.15));
-          overflow-x: auto;
+          max-height: 160px;
+          overflow-y: auto;
           white-space: pre-wrap;
           word-break: break-all;
           color: var(--vscode-editor-foreground);
-        }
-
-        .rag-hit-item {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          padding: 5px 8px;
-          background: var(--vscode-textCodeBlock-background);
-          border-radius: 4px;
-          border: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.1));
-          font-family: var(--vscode-editor-font-family);
-          font-size: 11px;
-        }
-
-        .rag-hit-detail {
-          font-size: 9px;
-          text-transform: uppercase;
-          background: rgba(128, 128, 128, 0.15);
-          padding: 2px 5px;
-          border-radius: 3px;
-          opacity: 0.8;
-          font-weight: 600;
-          color: var(--vscode-descriptionForeground);
         }
 

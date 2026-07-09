@@ -232,9 +232,9 @@ export async function openOrCreateNotebookWithPicker(
     const { count: totalNotebooks, uris: connectionNotebookUris } = await ConnectionUtils.countNotebooksInConnection(context, connectionNameOrId);
     const isUnlimited = isProFeatureEnabled(ProFeature.UnlimitedNotebooks);
 
-    if (!isUnlimited && totalNotebooks >= 10) {
+    if (!isUnlimited && totalNotebooks >= 5) {
       const choice = await vscode.window.showWarningMessage(
-        `Free tier is limited to 10 notebooks per connection. Upgrade to Sponsor or Team for unlimited notebooks.`,
+        `Free tier is limited to 5 notebooks per connection. Upgrade to Sponsor or Team for unlimited notebooks.`,
         'Open Existing Notebook',
         'Upgrade'
       );
