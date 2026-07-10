@@ -149,9 +149,8 @@ export async function activate(context: vscode.ExtensionContext) {
   OpencodeServeManager.getInstance().init(context);
   const telemetry = TelemetryService.getInstance();
   telemetry.initialize(context);
-  const version = context.extension.packageJSON.version;
-  telemetry.trackEvent('extension_activated', { version });
-  telemetry.trackDailyActiveUser(version);
+  telemetry.trackEvent('extension_activated', {});
+  telemetry.trackDailyActiveUser();
 
   SecretStorageService.getInstance(context);
   LicenseService.getInstance(context);
