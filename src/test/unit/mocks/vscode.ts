@@ -240,6 +240,22 @@ export type ConfigurationTarget = typeof ConfigurationTarget[keyof typeof Config
 // Range and CodeLens used by providers
 export class Range { constructor(public startLine: number, public startChar: number, public endLine: number, public endChar: number) { } }
 export class CodeLens { constructor(public range: Range, public command?: any) { } }
+export class CodeActionKind {
+  static readonly Empty = new CodeActionKind('empty');
+  static readonly QuickFix = new CodeActionKind('quickfix');
+  static readonly Refactor = new CodeActionKind('refactor');
+  constructor(public readonly value: string) {}
+}
+export class CodeAction {
+  constructor(public title: string, public kind?: CodeActionKind) {}
+  public edit?: any;
+  public command?: any;
+  public diagnostics?: any[];
+  public isPreferred?: boolean;
+}
+export interface CodeActionProvider {
+  provideCodeActions(document: any, range: any, context: any, token: any): any;
+}
 
 export type ProviderResult<T> = T | Thenable<T> | null | undefined;
 export type Event<T> = (listener: (e: T) => any) => { dispose(): void };
@@ -364,6 +380,8 @@ const vscode = {
   WebviewPanel,
   // runtime `extensions` helper
   extensions: { getExtension(id: string) { return undefined; } },
-  QuickPickItemKind
+  QuickPickItemKind,
+  CodeAction,
+  CodeActionKind
 } as any;
 export default vscode;
