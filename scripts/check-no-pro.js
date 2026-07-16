@@ -135,6 +135,31 @@ if (trackedPackages.length > 0) {
 }
 
 // ---------------------------------------------------------------------------
+// Check 3: package.json must not contain a merged pro manifest
+// (make dev-pro / merge-pro-manifest.js mutate it; make dev-free restores it)
+// ---------------------------------------------------------------------------
+const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+const mergedMarkers = [];
+if (pkg.contributes && pkg.contributes.mcpServerDefinitionProviders) {
+  mergedMarkers.push('contributes.mcpServerDefinitionProviders');
+}
+const views = (pkg.contributes && pkg.contributes.views) || {};
+for (const container of Object.keys(views)) {
+  if (views[container].some((v) => v.id === 'postgresExplorer.chatView')) {
+    mergedMarkers.push(`views.${container}: postgresExplorer.chatView`);
+  }
+}
+if ((pkg.activationEvents || []).includes('onView:postgresExplorer.chatView')) {
+  mergedMarkers.push('activationEvents: onView:postgresExplorer.chatView');
+}
+if (mergedMarkers.length > 0) {
+  console.error('\n  ❌ package.json contains merged pro manifest entries:');
+  console.error('  ' + mergedMarkers.join('\n  '));
+  console.error("  → run 'make dev-free' (or restore package.json) before committing.\n");
+  violations++;
+}
+
+// ---------------------------------------------------------------------------
 // Result
 // ---------------------------------------------------------------------------
 if (violations === 0) {

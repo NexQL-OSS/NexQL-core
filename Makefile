@@ -1,4 +1,4 @@
-.PHONY: all clean install build package package-nightly publish publish-nightly publish-ovsx publish-vsx git-tag test test-unit test-integration test-renderer test-all coverage docker-up docker-down
+.PHONY: dev-pro dev-free all clean install build package package-nightly publish publish-nightly publish-ovsx publish-vsx git-tag test test-unit test-integration test-renderer test-all coverage docker-up docker-down
 
 # Variables
 NODE_BIN := node
@@ -38,6 +38,24 @@ package: build
 	if [ -f README.md.bak ]; then mv README.md.bak README.md; fi; \
 	echo "Restored original README.md"; \
 	exit $$EXIT_CODE
+
+# Pro dev mode: merge pro manifest + templates into the working tree and build
+# the pro bundle so F5 runs the full extension. Idempotent (restores from the
+# dev backup before re-merging). Run `make dev-free` before committing.
+dev-pro:
+	@if [ ! -d packages/pro ]; then echo "packages/pro missing — clone NexQL-Pro first"; exit 1; fi
+	@if [ -f package.json.dev-bak ]; then cp package.json.dev-bak package.json; else cp package.json package.json.dev-bak; fi
+	$(NODE_BIN) ./scripts/merge-pro-manifest.js
+	cp -r packages/pro/templates/. templates/
+	$(NPM_BIN) run esbuild:pro
+	@echo "Pro dev mode ON — package.json has merged pro manifest; press F5. Run 'make dev-free' before committing."
+
+# Restore free/OSS dev state (undo dev-pro)
+dev-free:
+	@if [ -f package.json.dev-bak ]; then mv package.json.dev-bak package.json; fi
+	@if [ -d packages/pro/templates ]; then for d in packages/pro/templates/*/; do rm -rf "templates/$$(basename $$d)"; done; fi
+	$(NPM_BIN) run esbuild:free
+	@echo "Free dev mode restored."
 
 # Package the free version
 package-free:

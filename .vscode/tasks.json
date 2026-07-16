@@ -11,6 +11,13 @@
       "problemMatcher": []
     },
     {
+      "label": "dev-pro",
+      "type": "shell",
+      "command": "make dev-pro",
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
       "type": "npm",
       "script": "watch",
       "problemMatcher": "$tsc-watch",
