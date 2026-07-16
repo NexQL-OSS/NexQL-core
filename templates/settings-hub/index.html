@@ -1749,6 +1749,85 @@
     </aside>
   </div>
 
+  <!-- Database indexing wizard modal -->
+  <div id="dbindexWizardBackdrop" class="hub-modal-backdrop" hidden>
+    <aside id="dbindexWizard" class="hub-modal conn-editor" role="dialog" aria-modal="true" aria-labelledby="dbindexWizardTitle" tabindex="-1">
+      <div class="conn-editor-head">
+        <h2 id="dbindexWizardTitle">Setup Database Indexing</h2>
+        <button type="button" id="dbindexWizardCloseBtn" class="conn-modal-close" aria-label="Close wizard">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+
+      <form id="dbindexWizardForm">
+        <div class="form-group full-width">
+          <label for="dbindexWizardConn">Select Connection <span class="required-indicator">*</span></label>
+          <select id="dbindexWizardConn" required></select>
+        </div>
+
+        <div class="form-group full-width" id="dbindexWizardDbGroup" hidden>
+          <label for="dbindexWizardDb">Select Database <span class="required-indicator">*</span></label>
+          <select id="dbindexWizardDb" required></select>
+        </div>
+
+        <div class="form-group full-width" id="dbindexWizardSchemaGroup" hidden>
+          <label>Select Schemas to Index <span class="required-indicator">*</span></label>
+          <span class="label-hint">Choose which schemas you want to catalog.</span>
+          <div id="dbindexWizardSchemaList" class="dbindex-schema-checklist"></div>
+        </div>
+
+        <div class="form-group full-width" id="dbindexWizardDepthGroup" hidden>
+          <label>Indexing Depth</label>
+          <div class="dbindex-depth-options">
+            <label class="dbindex-depth-option">
+              <input type="radio" name="dbindexWizardDepth" value="structure" checked>
+              <div>
+                <strong>Structure only</strong>
+                <span class="desc">Indexes tables, columns, views, constraints, and indexes</span>
+              </div>
+            </label>
+            <label class="dbindex-depth-option">
+              <input type="radio" name="dbindexWizardDepth" value="stats">
+              <div>
+                <strong>Structure + Statistics</strong>
+                <span class="desc">Includes row counts, sizes, and structure</span>
+              </div>
+            </label>
+            <label class="dbindex-depth-option">
+              <input type="radio" name="dbindexWizardDepth" value="profiles">
+              <div>
+                <strong>Structure + Stats + Sampled Profiles</strong>
+                <span class="desc" style="color:var(--vscode-errorForeground, #f48771)">Warning: Includes pg_stats column distributions (sensitive stats)</span>
+              </div>
+            </label>
+          </div>
+          <div id="dbindexWizardProdWarning" class="message warning" hidden>
+            Value profiling on a Production database indexes pg_stats information. Common PII fields are filtered out, but other user data columns could still leak details.
+          </div>
+        </div>
+
+        <div class="form-group full-width" id="dbindexWizardPiiGroup" hidden>
+          <label for="dbindexWizardPii">Custom PII Column Exclusions</label>
+          <span class="label-hint">Optional. Comma-separated column paths (e.g. public.users.age, billing.orders.amount) to exclude.</span>
+          <input type="text" id="dbindexWizardPii" placeholder="schema.table.column, schema.table.column">
+        </div>
+
+        <div id="dbindexWizardMessage" class="message" hidden></div>
+        <div id="dbindexWizardProgress" class="dbindex-wizard-progress" hidden>
+          <div class="dbindex-wizard-progress-bar">
+            <div id="dbindexWizardProgressBarFill" class="dbindex-wizard-progress-bar-fill"></div>
+          </div>
+          <span id="dbindexWizardProgressText" class="dbindex-wizard-progress-text"></span>
+        </div>
+
+        <div class="actions">
+          <button type="button" id="dbindexWizardCancelBtn" class="btn-secondary">Cancel</button>
+          <button type="submit" id="dbindexWizardSubmitBtn" class="btn-primary" disabled>Build Index</button>
+        </div>
+      </form>
+    </aside>
+  </div>
+
   <script nonce="{{NONCE}}">{{INLINE_SCRIPTS}}</script>
 </body>
 

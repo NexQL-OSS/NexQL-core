@@ -1785,17 +1785,12 @@ export function getCommandSpecs(
     },
     {
       command: 'postgres-explorer.dbindex.build',
-      callback: async (item?: DatabaseTreeItem) => {
-        const { IndexBuilder } = await import('../features/dbindex/IndexBuilder');
-        const { IndexStore } = await import('../features/dbindex/IndexStore');
-        const { runGuidedBuildWizard } = await import('../features/dbindex/buildWizard');
-        const store = new IndexStore(context.globalStorageUri);
-        const builder = new IndexBuilder(store);
-        const preselected = item && item.connectionId && item.databaseName ? {
-          connectionId: item.connectionId,
-          databaseName: item.databaseName
-        } : undefined;
-        await runGuidedBuildWizard(context, builder, outputChannel, preselected);
+      callback: async (_item?: DatabaseTreeItem) => {
+        const { SettingsHubPanel } = await import('../features/settings/SettingsHubPanel');
+        SettingsHubPanel.show(context.extensionUri, context, {
+          section: 'dbindex',
+          wizard: 'build',
+        });
       }
     },
     {

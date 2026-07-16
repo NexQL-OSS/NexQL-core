@@ -163,6 +163,56 @@ describe('AutoIndexService', function () {
     expect(client.release.calledOnce).to.be.true;
   });
 
+  it('rebuilds when the manifest fingerprint matches but the index is older than 1 week', async () => {
+    const eightDaysAgo = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString();
+    const store = createStore({
+      manifest: {
+        schemaFingerprint: '1|2|3|4|5',
+        scope: { includedSchemas: ['public'] },
+        buildDepth: 'stats',
+        environment: 'production',
+        indexedAt: eightDaysAgo,
+      },
+    });
+    const builder = createBuilder();
+    const client = createClient({ fingerprint: '1|2|3|4|5' });
+    sandbox.stub(ConnectionManager, 'getInstance').returns({
+      getPooledClient: sandbox.stub().resolves(client),
+    } as any);
+
+    createService(store, builder).ensureIndex('conn-1');
+    await flush();
+
+    expect(builder.build.calledOnce).to.be.true;
+    const [, , scope, depth, , environment] = builder.build.firstCall.args;
+    expect(scope).to.deep.equal({ includedSchemas: ['public'] });
+    expect(depth).to.equal('stats');
+    expect(environment).to.equal('production');
+  });
+
+  it('skips the build when the manifest fingerprint matches and the index is newer than 1 week', async () => {
+    const sixDaysAgo = new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString();
+    const store = createStore({
+      manifest: {
+        schemaFingerprint: '1|2|3|4|5',
+        scope: { includedSchemas: ['public'] },
+        buildDepth: 'stats',
+        environment: 'production',
+        indexedAt: sixDaysAgo,
+      },
+    });
+    const builder = createBuilder();
+    const client = createClient({ fingerprint: '1|2|3|4|5' });
+    sandbox.stub(ConnectionManager, 'getInstance').returns({
+      getPooledClient: sandbox.stub().resolves(client),
+    } as any);
+
+    createService(store, builder).ensureIndex('conn-1');
+    await flush();
+
+    expect(builder.build.called).to.be.false;
+  });
+
   it('rebuilds with the manifest scope and depth when the fingerprint drifted', async () => {
     const manifest = {
       schemaFingerprint: '1|2|3|4|5',

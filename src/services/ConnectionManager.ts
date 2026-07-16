@@ -415,7 +415,7 @@ export class ConnectionManager {
     return `${config.id}:${config.database || 'postgres'}`;
   }
 
-  private async createClientConfig(
+  public async createClientConfig(
     config: ConnectionConfig,
     forceDisableSSL: boolean = false,
   ): Promise<ClientConfig> {

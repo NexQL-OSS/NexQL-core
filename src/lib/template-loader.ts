@@ -125,7 +125,19 @@ export async function loadPanelTemplate(
 
     let html = new TextDecoder().decode(htmlBuf);
     const panelCss = new TextDecoder().decode(cssBuf);
-    const js = new TextDecoder().decode(jsBuf);
+    let js = new TextDecoder().decode(jsBuf);
+
+    if (folder === 'dbindex' || folder === 'settings-hub') {
+      try {
+        const sharedJsUri = vscode.Uri.joinPath(extensionUri, 'templates', 'shared', 'dbindex-shared.js');
+        const sharedJsBuf = await vscode.workspace.fs.readFile(sharedJsUri);
+        const sharedJs = new TextDecoder().decode(sharedJsBuf);
+        js = `${sharedJs}\n${js}`;
+      } catch (err) {
+        console.warn('Shared dbindex script not found:', err);
+      }
+    }
+
     const inlineStyles = `${MODERN_WEBVIEW_BASE_CSS}\n${sharedCss}\n${panelCss}`;
 
     html = html.replace(/\{\{CSP\}\}/g, () => csp);

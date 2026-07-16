@@ -1,14 +1,19 @@
 import * as vscode from 'vscode';
 import { LicenseService } from '../services/LicenseService';
-import { FREE_QUOTAS, ProFeature, featureLabel } from '../services/featureGates';
-import { QuotaService } from '../services/QuotaService';
 import { remainingPercentLabel } from '../services/aiUsage';
+import { SyncController } from '../features/sync/SyncController';
 
 const PRICING_URL = 'https://nexql.astrx.dev/#pricing';
 // Server-issued keys use the PGST- prefix (api/_lib/license-key.js); NXQL- is
 // accepted for forward compatibility with rebranded keys.
 const KEY_HINT = /^(NXQL|PGST)-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/;
 const isWellFormedHint = (v: string): boolean => KEY_HINT.test(v.trim().toUpperCase());
+
+function formatBytesHuman(n: number): string {
+  if (n >= 1073741824) { return (n / 1073741824).toFixed(1) + ' GB'; }
+  if (n >= 1048576) { return (n / 1048576).toFixed(1) + ' MB'; }
+  return Math.round(n / 1024) + ' KB';
+}
 
 /** Prompt for a license key and activate it. */
 export async function cmdLicenseActivate(prefillKey?: string): Promise<void> {
@@ -93,10 +98,9 @@ export async function cmdLicenseOpenUpgrade(): Promise<void> {
   await vscode.env.openExternal(vscode.Uri.parse(PRICING_URL));
 }
 
-/** Quick pick listing remaining free usage for every metered feature. */
+/** Quick pick listing AI usage. All features are unlimited. */
 export async function cmdLicenseShowUsage(): Promise<void> {
   const svc = LicenseService.getInstance();
-  const quotas = QuotaService.getInstance();
   const now = new Date();
 
   let aiUsage: { used: number; limit: number; remaining: number } | null = null;
@@ -123,24 +127,33 @@ export async function cmdLicenseShowUsage(): Promise<void> {
     detail: aiResetHint,
   });
 
-  (Object.keys(FREE_QUOTAS) as ProFeature[]).forEach((feature) => {
-    if (tier === 'free') {
-      const status = quotas.peek(feature, now);
-      if (status) {
-        const word = status.period === 'week' ? 'this week' : 'today';
-        items.push({
-          label: featureLabel(feature),
-          description: `${status.remaining}/${status.limit} left ${word}`,
-          detail: quotas.resetHint(feature, now),
-        });
+  items.push({
+    label: 'All other features',
+    description: 'unlimited',
+  });
+
+  // Cloud storage for paid tiers
+  if (svc.isPaid()) {
+    let storageInfo = '';
+    try {
+      const controller = SyncController.getInstance();
+      const q = await controller.getCloudQuota();
+      if (q) {
+        const usedStr = formatBytesHuman(q.bytesUsed);
+        const limitStr = formatBytesHuman(q.bytesLimit);
+        storageInfo = `${usedStr} / ${limitStr} used`;
       }
-    } else {
+    } catch {
+      // Sync controller may not be available
+    }
+    if (storageInfo) {
       items.push({
-        label: featureLabel(feature),
-        description: 'unlimited',
+        label: 'Cloud Storage',
+        description: storageInfo,
+        detail: tier === 'singularity' ? 'up to 50 MB total' : 'up to 10 MB total',
       });
     }
-  });
+  }
 
   const OPEN_SETTINGS_LABEL = '$(gear) Manage license & usage in Settings';
   items.push(
@@ -154,7 +167,5 @@ export async function cmdLicenseShowUsage(): Promise<void> {
   });
   if (picked?.label === OPEN_SETTINGS_LABEL) {
     await vscode.commands.executeCommand('postgres-explorer.settingsHub', { section: 'license' });
-  } else if (picked && !svc.isPaid()) {
-    await vscode.env.openExternal(vscode.Uri.parse(PRICING_URL));
   }
 }

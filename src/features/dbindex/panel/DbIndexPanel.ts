@@ -4,7 +4,7 @@ import { IndexStore } from '../IndexStore';
 import { IndexBuilder } from '../IndexBuilder';
 import { ObjectEntry, JoinEdge, JoinGraph } from '../types';
 import { getDbIndexesState, handleRebuildIndex, handleClearIndex, handleExportIndex } from './indexActions';
-
+import { SettingsHubPanel } from '../../settings/SettingsHubPanel';
 
 export class DbIndexPanel {
   public static currentPanel: DbIndexPanel | undefined;
@@ -62,8 +62,12 @@ export class DbIndexPanel {
             );
             return;
           case 'buildNew':
-            await vscode.commands.executeCommand('postgres-explorer.dbindex.build');
-            await this._postState();
+            // Open Settings Hub on the dbindex section and immediately open the new wizard modal
+            SettingsHubPanel.show(
+              this._extensionUri,
+              this._context,
+              { section: 'dbindex', wizard: 'build' }
+            );
             return;
           case 'rebuild':
             await this._handleRebuild(message.connectionId, message.database);

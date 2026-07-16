@@ -1,7 +1,6 @@
 import * as vscode from 'vscode';
 import { LicenseService, LicenseTier } from './LicenseService';
 import { TelemetryService } from './TelemetryService';
-import { FeatureQuota, formatReset } from './quotaMath';
 
 /** Fire-and-forget gate telemetry; never let instrumentation break gating. */
 function reportGate(feature: ProFeature, mode: Enforcement, allowed: boolean, paid: boolean): void {
@@ -12,7 +11,7 @@ function reportGate(feature: ProFeature, mode: Enforcement, allowed: boolean, pa
   }
 }
 
-/** Premium features. Free tier gets metered access (see {@link FREE_QUOTAS}); paid is unlimited. */
+/** Premium features. All features are available on free tier except team/singularity-locked capabilities. */
 export enum ProFeature {
   AiAssistant = 'aiAssistant',
   SchemaDiff = 'schemaDiff',
@@ -72,9 +71,8 @@ export const TIER_DISPLAY: Record<LicenseTier, string> = {
 
 /**
  * Minimum tier that fully unlocks a feature. Features absent here unlock at
- * `sponsor` (any paid tier). Free-tier metered access via {@link FREE_QUOTAS}
- * only applies to `sponsor`-level features — `singularity`-level features are
- * team capabilities and are never metered to lower tiers.
+ * `sponsor` (any paid tier). `singularity`-level features are team
+ * capabilities and are locked for lower tiers.
  */
 const FEATURE_MIN_TIER: Partial<Record<ProFeature, LicenseTier>> = {
   [ProFeature.AuditLog]: 'singularity',
@@ -104,23 +102,7 @@ export function meetsTier(actual: LicenseTier, required: LicenseTier): boolean {
   return TIER_RANK[actual] >= TIER_RANK[required];
 }
 
-/**
- * Free-tier allowances (the freemium model). Paid tiers are unlimited. A feature
- * present here grants metered access on the free tier — each action consumes one
- * unit and the counter resets per period. A feature absent here is a paid-only
- * unlock (e.g. {@link ProFeature.UnlimitedSavedQueries}, which is a stock cap
- * enforced by SavedQueriesService rather than a periodic quota).
- *
- * Tuned so casual free use is comfortable; heavy/costly actions (AI, backups,
- * imports) have firmer caps.
- */
-export const FREE_QUOTAS: Partial<Record<ProFeature, FeatureQuota>> = {
-  [ProFeature.ExplainStudio]: { limit: 5, period: 'day' },
-  [ProFeature.Dashboard]: { limit: 2, period: 'day' },
-  [ProFeature.SchemaDiff]: { limit: 2, period: 'day' },
-  [ProFeature.SchemaDesigner]: { limit: 2, period: 'day' },
-  [ProFeature.SyncDeviceRebind]: { limit: 2, period: 'month' },
-};
+
 
 /**
  * Storage backends per tier (cumulative). Free = bring-your-own Postgres,
@@ -168,14 +150,9 @@ function enforcement(): Enforcement {
   return v === 'off' ? 'off' : 'freemium';
 }
 
-function quotaWord(period: FeatureQuota['period']): string {
-  return period === 'week' ? 'weekly' : 'daily';
-}
-
 /**
- * Synchronous unlock check for render-time gating (e.g. webviews). Under freemium,
- * any quota-metered feature is "enabled" (access is granted; usage is metered at
- * the action via {@link requirePro}). Features without a quota are paid-only.
+ * Synchronous unlock check for render-time gating (e.g. webviews). On free tier,
+ * all features except singularity-locked team capabilities are enabled.
  */
 export function isProFeatureEnabled(feature: ProFeature): boolean {
   if (
@@ -197,16 +174,13 @@ export function isProFeatureEnabled(feature: ProFeature): boolean {
   if (meetsTier(tier, minTierFor(feature))) {
     return true;
   }
-  // Below the required tier: free users may still have metered access to
-  // sponsor-level features; singularity-level features stay locked.
-  return tier === 'free' && minTierFor(feature) === 'sponsor' && FREE_QUOTAS[feature] !== undefined;
+  // Free tier: allow all non-team features (anything below singularity).
+  return tier === 'free' && minTierFor(feature) !== 'singularity';
 }
 
 /**
- * Action gate for the freemium model. Returns true if the action may proceed.
- * Paid → always. Free → consumes one unit of the feature's periodic quota; when
- * the quota is exhausted it returns false with a non-blocking "resets …" nudge
- * (the feature is rate-limited for the period, not permanently locked).
+ * Action gate. Returns true if the action may proceed.
+ * Paid → always. Free → allow all non-team features; singularity-locked features are blocked.
  */
 export async function requirePro(feature: ProFeature, _context?: vscode.ExtensionContext): Promise<boolean> {
   if (
@@ -219,7 +193,7 @@ export async function requirePro(feature: ProFeature, _context?: vscode.Extensio
     feature === ProFeature.DbIndexMulti ||
     feature === ProFeature.DbIndexEmbed
   ) {
-    return true; // unlimited on all tiers
+    return true;
   }
   const mode = enforcement();
   if (mode === 'off') {
@@ -235,47 +209,17 @@ export async function requirePro(feature: ProFeature, _context?: vscode.Extensio
     return true;
   }
 
-  // Paid but below the required tier (e.g. Sponsor using a Team feature):
-  // no metering ladder — prompt for the higher plan.
-  if (paid || required !== 'sponsor') {
-    reportGate(feature, mode, false, paid);
-    promptUpgrade(
-      TEAM_UPGRADE_MESSAGES[feature] ??
-        `${FEATURE_LABELS[feature]} requires NexQL ${TIER_DISPLAY[required]}.`,
-    );
-    return false;
-  }
-
-  // Free tier → meter against the periodic quota.
-  const { QuotaService } = await import('./QuotaService');
-  const result = await QuotaService.getInstance().tryConsume(feature);
-
-  // No quota configured → either a paid-only unlock or unmetered: block paid-only, allow otherwise.
-  if (!result) {
-    const unlimitedOnly = FREE_QUOTAS[feature] === undefined;
-    reportGate(feature, mode, !unlimitedOnly, paid);
-    if (unlimitedOnly) {
-      promptUpgrade(`${FEATURE_LABELS[feature]} is a paid feature.`);
-      return false;
-    }
-    return true;
-  }
-
-  if (result.allowed) {
+  // Free tier: allow all non-team features. Only singularity-locked capabilities are paid-only.
+  if (!paid && required !== 'singularity') {
     reportGate(feature, mode, true, paid);
-    if (result.remaining <= 1) {
-      const left = result.remaining;
-      void vscode.window.showInformationMessage(
-        `${FEATURE_LABELS[feature]}: ${left} free ${quotaWord(result.period)} use${left === 1 ? '' : 's'} left (${formatReset(result.resetsAt, new Date())}).`,
-      );
-    }
     return true;
   }
 
-  // Exhausted for this period — rate-limited, not blocked forever.
+  // Paid but below required tier, or free user hitting a team feature.
   reportGate(feature, mode, false, paid);
   promptUpgrade(
-    `Free ${quotaWord(result.period)} limit reached for ${FEATURE_LABELS[feature]} (${result.limit}/${result.period}). ${formatReset(result.resetsAt, new Date())}. Upgrade for unlimited.`,
+    TEAM_UPGRADE_MESSAGES[feature] ??
+      `${FEATURE_LABELS[feature]} requires NexQL ${TIER_DISPLAY[required]}.`,
   );
   return false;
 }

@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { Client } from 'pg';
 import { SecretStorageService } from '../services/SecretStorageService';
+import { ConnectionManager } from '../services/ConnectionManager';
 import { MODERN_WEBVIEW_BASE_CSS } from '../common/htmlStyles';
 import { disposePooledOwner, WebviewPool } from '../utils/WebviewPool';
 
@@ -221,22 +222,13 @@ export class ListenNotifyPanel {
 
     const password = await SecretStorageService.getInstance().getPassword(connectionId);
 
-    // Build a dedicated (non-pooled) pg.Client
-    const clientConfig: any = {
-      host: conn.host,
-      port: conn.port ?? 5432,
-      user: conn.username,
-      password: password ?? undefined,
+    // Build a dedicated (non-pooled) pg.Client config using ConnectionManager
+    const connectionConfig = {
+      ...conn,
       database,
-      // Minimal keepalive / idle settings
-      application_name: 'NexQL-ListenNotify',
+      applicationName: 'NexQL-ListenNotify'
     };
-
-    // Handle SSL if configured on the saved connection
-    if (conn.ssl) {
-      clientConfig.ssl = conn.ssl;
-    }
-
+    const clientConfig = await ConnectionManager.getInstance().createClientConfig(connectionConfig);
     const pgClient = new Client(clientConfig);
 
     // Connect the dedicated client

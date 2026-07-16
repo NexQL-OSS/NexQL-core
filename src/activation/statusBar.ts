@@ -4,8 +4,6 @@ import { extensionContext } from '../extension';
 import { ProfileManager } from '../features/connections/ProfileManager';
 import { getTransactionManager } from '../services/TransactionManager';
 import { ConnectionUtils } from '../utils/connectionUtils';
-import { FREE_QUOTAS, ProFeature, featureLabel } from '../services/featureGates';
-import { QuotaService } from '../services/QuotaService';
 import { getCachedAiUsage, refreshAiUsageInBackground, remainingPercentLabel } from '../services/aiUsage';
 import { environmentLabel } from '../features/sentinel/constants';
 import type { SentinelEnvironment } from '../features/sentinel/types';
@@ -441,21 +439,18 @@ export class NotebookStatusBar implements vscode.Disposable {
       this.tierItem.color = demoteEnvSuffix ? undefined : finalColor;
     } else {
       this.tierItem.text = `${baseIcon} ${tierLabel}${suffix}`;
-      this.tierItem.tooltip = `${tierLabel} — license active. Click to manage.${envTooltip}`;
+      this.tierItem.tooltip = this.buildPaidUsageTooltip(tierLabel, envTooltip);
       this.tierItem.command = 'postgres-explorer.license.manage';
       this.tierItem.backgroundColor = undefined;
       this.tierItem.color = demoteEnvSuffix ? undefined : finalColor;
     }
   }
 
-  /** Free-tier tooltip: remaining metered usage per feature, refreshed on each render. */
+  /** Free-tier tooltip: AI usage only — all features are unlimited. */
   private buildFreeUsageTooltip(envTooltip: string): vscode.MarkdownString {
     const md = new vscode.MarkdownString();
     md.appendMarkdown('**NexQL Free** — click for usage details\n\n');
 
-    // AI Chat Assistant is the headline free feature — list it first. Its monthly count
-    // is metered server-side, so render the cached value and refresh in the background
-    // (which re-renders this tooltip when a fresh count lands).
     const aiUsage = getCachedAiUsage();
     if (aiUsage) {
       md.appendMarkdown(`- AI Chat Assistant: ${remainingPercentLabel(aiUsage.remaining, aiUsage.limit)} left this month\n`);
@@ -464,15 +459,19 @@ export class NotebookStatusBar implements vscode.Disposable {
     }
     refreshAiUsageInBackground(extensionContext, () => this.renderTierItem());
 
-    const quotas = QuotaService.getInstance();
-    const now = new Date();
-    for (const feature of Object.keys(FREE_QUOTAS) as ProFeature[]) {
-      const status = quotas.peek(feature, now);
-      if (!status) { continue; }
-      const word = status.period === 'week' ? 'this week' : 'today';
-      md.appendMarkdown(`- ${featureLabel(feature)}: ${status.remaining}/${status.limit} left ${word}\n`);
-    }
+    md.appendMarkdown('\nAll features are unlimited on the free tier.\n');
     md.appendMarkdown('\nClick for details — full view in Settings → License.\n');
+    if (envTooltip) {
+      md.appendMarkdown(`\n${envTooltip.trim()}`);
+    }
+    return md;
+  }
+
+  /** Paid-tier tooltip: cloud storage usage. */
+  private buildPaidUsageTooltip(tierLabel: string, envTooltip: string): vscode.MarkdownString {
+    const md = new vscode.MarkdownString();
+    md.appendMarkdown(`**NexQL ${tierLabel}** — license active. Click to manage.\n\n`);
+    md.appendMarkdown(`- Cloud Storage: click for details — full view in Settings → License\n`);
     if (envTooltip) {
       md.appendMarkdown(`\n${envTooltip.trim()}`);
     }
