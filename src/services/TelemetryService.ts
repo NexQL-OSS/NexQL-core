@@ -15,7 +15,7 @@ const REDACTED_VALUE = '[redacted]';
 const SENSITIVE_KEY_PATTERN = /(password|secret|token|authorization|cookie|sql|query|database|schema|host|user|email|name|credential|connection)/i;
 
 const EVENT_SCHEMA: Record<string, { kind: TelemetryEventKind; allowedProps: Set<string> }> = {
-  extension_activated: { kind: 'usage', allowedProps: new Set(['version']) },
+  extension_activated: { kind: 'usage', allowedProps: new Set([]) },
   extension_deactivated: { kind: 'usage', allowedProps: new Set(['durationBucket']) },
   command_invoked: { kind: 'usage', allowedProps: new Set(['group']) },
   command_repeat_rate: { kind: 'usage', allowedProps: new Set(['command', 'repeatCountBucket']) },
@@ -34,7 +34,7 @@ const EVENT_SCHEMA: Record<string, { kind: TelemetryEventKind; allowedProps: Set
   schema_diff_generated: { kind: 'usage', allowedProps: new Set(['tableCountBucket', 'diffSizeBucket']) },
   dashboard_opened: { kind: 'usage', allowedProps: new Set([]) },
   gate_decision: { kind: 'usage', allowedProps: new Set(['feature', 'enforcement', 'allowed', 'paid']) },
-  daily_active_user: { kind: 'usage', allowedProps: new Set(['version']) },
+  daily_active_user: { kind: 'usage', allowedProps: new Set([]) },
   span_completed: { kind: 'performance', allowedProps: new Set(['spanName', 'durationBucket', 'success']) },
   sync_setup_completed: { kind: 'usage', allowedProps: new Set(['provider']) },
   sync_run: { kind: 'usage', allowedProps: new Set(['pushed', 'pulled', 'conflicts', 'skipped', 'durationMs', 'provider']) },
@@ -45,6 +45,10 @@ const EVENT_SCHEMA: Record<string, { kind: TelemetryEventKind; allowedProps: Set
   designer_opened: { kind: 'usage', allowedProps: new Set(['designer']) },
   mcp_tool_invoked: { kind: 'usage', allowedProps: new Set(['tool', 'isError']) },
   ai_chat_feedback: { kind: 'usage', allowedProps: new Set(['action']) },
+  platform_preset_selected: { kind: 'usage', allowedProps: new Set(['preset']) },
+  agentic_loop_started: { kind: 'usage', allowedProps: new Set(['provider', 'database']) },
+  agentic_pseudo_tool_call_recovered: { kind: 'usage', allowedProps: new Set(['provider', 'count']) },
+  agentic_loop_completed: { kind: 'usage', allowedProps: new Set(['provider', 'turns', 'database', 'success']) },
 };
 
 interface TelemetryEnvelope {
@@ -150,6 +154,7 @@ export class TelemetryService {
   private flushTimer: NodeJS.Timeout | null = null;
   private sinks: TelemetrySink[] = [];
   private installId = '';
+  private extensionVersion = '';
   private sessionStartMs = Date.now();
   private lastCommand = '';
   private commandRepeatCount = 0;
@@ -178,6 +183,7 @@ export class TelemetryService {
     this.context = context;
     this.sessionStartMs = Date.now();
     this.installId = this.resolveInstallId(context);
+    this.extensionVersion = context.extension.packageJSON.version ?? '';
     this.outputChannel = vscode.window.createOutputChannel('NexQL Telemetry');
     this.loadSettings();
     this.rebuildSinks();
@@ -217,6 +223,7 @@ export class TelemetryService {
       distinctId: this.installId,
       properties: {
         mode: this.config.mode,
+        version: this.extensionVersion,
         ...sanitized,
       },
     };
@@ -422,11 +429,11 @@ export class TelemetryService {
   /**
    * Track daily active user - fires once per calendar day
    */
-  public trackDailyActiveUser(version: string): void {
+  public trackDailyActiveUser(): void {
     const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
     if (today !== this.lastDailyActiveDate) {
       this.lastDailyActiveDate = today;
-      this.trackEvent('daily_active_user', { version });
+      this.trackEvent('daily_active_user', {});
     }
   }
 

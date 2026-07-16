@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
+import { setLastTreeDragPayload } from './chat/dragPayloadStore';
 import { SyncIndex } from '../features/sync/SyncIndex';
 import { SyncController } from '../features/sync/SyncController';
 import {
@@ -268,7 +269,7 @@ export class NotebooksTreeProvider implements vscode.TreeDataProvider<NotebookTr
 }
 
 export class NotebooksDragAndDropController implements vscode.TreeDragAndDropController<NotebookTreeItem | any> {
-  dragMimeTypes = ['application/vnd.code.tree.postgresExplorer.notebooks'];
+  dragMimeTypes = ['application/vnd.code.tree.postgresExplorer.notebooks', 'application/vnd.code.tree.postgresExplorer', 'text/plain'];
   dropMimeTypes = [];
 
   handleDrag(
@@ -282,6 +283,23 @@ export class NotebooksDragAndDropController implements vscode.TreeDragAndDropCon
 
     if (uris.length > 0) {
       dataTransfer.set('application/vnd.code.tree.postgresExplorer.notebooks', new vscode.DataTransferItem(uris));
+      const notebookItems = source
+        .filter(item => (item.itemType === 'notebook-file' || item.itemType === 'shared-notebook-file') && item.uri);
+      dataTransfer.set('text/plain', new vscode.DataTransferItem(notebookItems.map(item => item.label).join(', ')));
+      const items = notebookItems
+        .map(item => ({
+          type: 'notebook',
+          uri: item.uri!.toString(),
+          label: item.label as string,
+          connectionId: '',
+          databaseName: '',
+          schema: '',
+          tableName: '',
+          columnName: '',
+          comment: '',
+        }));
+      dataTransfer.set('application/vnd.code.tree.postgresExplorer', new vscode.DataTransferItem(JSON.stringify(items)));
+      setLastTreeDragPayload(items);
     }
   }
 }

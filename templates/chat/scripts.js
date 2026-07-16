@@ -61,6 +61,9 @@ let liveThinkingStartedAt = null;
 let liveThinkingSteps = [];
 let modelCatalogLoading = false;
 let modelMenuVisible = false;
+let modelSearchInput = null;
+let modelSearchValue = '';
+let modelHighlightedIndex = -1;
 let currentHierarchyPath = {
   connection: null,
   database: null,
@@ -410,6 +413,19 @@ function setComposerControlsDisabled(disabled) {
 
 function closeAiModelMenu() {
   modelMenuVisible = false;
+  modelSearchValue = '';
+  modelHighlightedIndex = -1;
+  if (modelSearchInput) {
+    modelSearchInput.value = '';
+  }
+  if (aiModelMenu) {
+    const noResults = aiModelMenu.querySelector('.ai-model-menu-no-results');
+    if (noResults) noResults.remove();
+    const allGroups = aiModelMenu.querySelectorAll('.ai-model-menu-group');
+    allGroups.forEach(g => { g.style.display = ''; });
+    const allItems = aiModelMenu.querySelectorAll('.ai-model-menu-item');
+    allItems.forEach(i => { i.style.display = ''; i.classList.remove('is-highlighted'); });
+  }
   if (aiModelPicker) {
     aiModelPicker.classList.remove('open');
   }
@@ -427,9 +443,19 @@ function openAiModelMenu() {
   }
   closeAttachMenu();
   modelMenuVisible = true;
+  modelSearchValue = '';
+  modelHighlightedIndex = -1;
+  if (modelSearchInput) {
+    modelSearchInput.value = '';
+  }
   aiModelPicker.classList.add('open');
   aiModelTrigger.setAttribute('aria-expanded', 'true');
   aiModelMenu.setAttribute('aria-hidden', 'false');
+  if (modelSearchInput) {
+    modelSearchInput.focus();
+  }
+  modelHighlightedIndex = 0;
+  highlightModelItem(modelHighlightedIndex);
 }
 
 function toggleAiModelMenu() {
@@ -543,6 +569,126 @@ function renderAiModelMenuSkeleton() {
   return group;
 }
 
+function renderModelSearchInput() {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'ai-model-menu-search';
+
+  modelSearchInput = document.createElement('input');
+  modelSearchInput.type = 'search';
+  modelSearchInput.className = 'ai-model-menu-search-input';
+  modelSearchInput.placeholder = 'Search models…';
+  modelSearchInput.value = modelSearchValue;
+  modelSearchInput.setAttribute('aria-label', 'Search models');
+  modelSearchInput.addEventListener('input', () => {
+    modelSearchValue = modelSearchInput.value;
+    filterModelMenu();
+  });
+  modelSearchInput.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      const items = getVisibleModelItems();
+      if (items.length > 0) {
+        modelHighlightedIndex = Math.min(modelHighlightedIndex + 1, items.length - 1);
+        highlightModelItem(modelHighlightedIndex);
+      }
+      return;
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      const items = getVisibleModelItems();
+      if (items.length > 0) {
+        modelHighlightedIndex = Math.max(modelHighlightedIndex - 1, 0);
+        highlightModelItem(modelHighlightedIndex);
+      }
+      return;
+    }
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      selectHighlightedModelItem();
+      return;
+    }
+    if (e.key === 'Escape') {
+      if (modelSearchValue) {
+        modelSearchValue = '';
+        modelSearchInput.value = '';
+        filterModelMenu();
+        e.stopPropagation();
+      } else {
+        closeAiModelMenu();
+      }
+    }
+  });
+
+  wrapper.appendChild(modelSearchInput);
+  return wrapper;
+}
+
+function getVisibleModelItems() {
+  return Array.from(aiModelMenu.querySelectorAll('.ai-model-menu-group .ai-model-menu-item')).filter(
+    i => i.style.display !== 'none' && i.closest('.ai-model-menu-group')?.style.display !== 'none'
+  );
+}
+
+function highlightModelItem(index) {
+  const items = getVisibleModelItems();
+  items.forEach((item, i) => {
+    if (i === index) {
+      item.classList.add('is-highlighted');
+    } else {
+      item.classList.remove('is-highlighted');
+    }
+  });
+}
+
+function selectHighlightedModelItem() {
+  const items = getVisibleModelItems();
+  if (modelHighlightedIndex >= 0 && modelHighlightedIndex < items.length) {
+    const item = items[modelHighlightedIndex];
+    selectAiModel(item.dataset.selectionId);
+  }
+}
+
+function filterModelMenu() {
+  const query = modelSearchValue.toLowerCase().trim();
+  const groups = aiModelMenu.querySelectorAll('.ai-model-menu-group');
+  let anyVisible = false;
+
+  groups.forEach((group) => {
+    const items = group.querySelectorAll('.ai-model-menu-item');
+    let groupHasVisible = false;
+    items.forEach((item) => {
+      const label = item.querySelector('.ai-model-menu-item-label')?.textContent || '';
+      const matches = !query || label.toLowerCase().includes(query);
+      item.style.display = matches ? '' : 'none';
+      if (matches) groupHasVisible = true;
+    });
+    group.style.display = groupHasVisible ? '' : 'none';
+    if (groupHasVisible) anyVisible = true;
+  });
+
+  const noResults = aiModelMenu.querySelector('.ai-model-menu-no-results');
+  if (!anyVisible && query) {
+    if (!noResults) {
+      const el = document.createElement('div');
+      el.className = 'ai-model-menu-empty ai-model-menu-no-results';
+      el.textContent = 'No matching models';
+      aiModelMenu.insertBefore(el, aiModelMenu.querySelector('.ai-model-menu-divider'));
+    }
+    modelHighlightedIndex = -1;
+  } else if (noResults) {
+    noResults.remove();
+  }
+
+  modelHighlightedIndex = anyVisible ? 0 : -1;
+  if (modelHighlightedIndex >= 0) {
+    const visible = getVisibleModelItems();
+    if (modelHighlightedIndex >= visible.length) {
+      modelHighlightedIndex = visible.length - 1;
+    }
+  }
+  highlightModelItem(modelHighlightedIndex);
+}
+
 function applyModelCatalog(message) {
   if (!aiModelMenu || !Array.isArray(message.catalog)) {
     return;
@@ -554,6 +700,8 @@ function applyModelCatalog(message) {
   modelCatalogLoading = message.catalogLoading === true;
 
   aiModelMenu.innerHTML = '';
+
+  aiModelMenu.appendChild(renderModelSearchInput());
 
   const groups = new Map();
   for (const entry of currentModelCatalog) {
@@ -605,6 +753,10 @@ function applyModelCatalog(message) {
 
   if (!modelMenuVisible) {
     closeAiModelMenu();
+  }
+
+  if (modelSearchValue) {
+    filterModelMenu();
   }
 }
 
@@ -795,7 +947,11 @@ function getDbTypeIcon(type) {
     'type': '🔤',
     'schema': '📁',
     'database': '🗄️',
-    'connection': '🔌'
+    'connection': '🔌',
+    'notebook': '📓',
+    'saved-query': '💾',
+    'notebook-folder': '📓',
+    'query-folder': '💾'
   };
   return icons[type] || '📄';
 }
@@ -1040,6 +1196,22 @@ function selectMention(index) {
     return;
   }
 
+  // Notebook and saved-query: delegate to extension for SQL content loading
+  if (obj.type === 'notebook' && obj.connectionId && obj.connectionId.startsWith('__nb__')) {
+    const uri = obj.connectionId.slice(6); // slice off '__nb__'
+    vscode.postMessage({ type: 'attachNotebook', uri, label: obj.name });
+    hideMentionPicker();
+    chatInput.focus();
+    return;
+  }
+  if (obj.type === 'saved-query' && obj.connectionId && obj.connectionId.startsWith('__sq__')) {
+    const queryId = obj.connectionId.slice(6); // slice off '__sq__'
+    vscode.postMessage({ type: 'attachSavedQuery', queryId, label: obj.name });
+    hideMentionPicker();
+    chatInput.focus();
+    return;
+  }
+
   // Create mention object
   const mention = {
     name: obj.name,
@@ -1153,7 +1325,10 @@ function renderMentionChips() {
 
     const nameSpan = document.createElement('span');
     nameSpan.className = 'mention-name';
-    nameSpan.textContent = '@' + (mention.schema || '') + '.' + (mention.name || '');
+    const label = (mention.type === 'notebook' || mention.type === 'saved-query')
+      ? '@' + mention.name
+      : '@' + (mention.schema || '') + '.' + (mention.name || '');
+    nameSpan.textContent = label;
     contentDiv.appendChild(nameSpan);
 
     const metaParts = [];
@@ -2295,7 +2470,8 @@ window.addEventListener('message', event => {
         }
 
         // Always ensure the text reference exists or append it
-        const mentionText = '@' + mention.schema + '.' + mention.name;
+        const isNonDb = mention.type === 'notebook' || mention.type === 'saved-query';
+        const mentionText = isNonDb ? '@' + mention.name : '@' + mention.schema + '.' + mention.name;
         if (!chatInput.value.includes(mentionText)) {
           const prefix = chatInput.value.length > 0 && !chatInput.value.endsWith(' ') ? ' ' : '';
           chatInput.value += prefix + mentionText;
@@ -2304,8 +2480,6 @@ window.addEventListener('message', event => {
         chatInput.focus();
         // Move cursor to end
         chatInput.selectionStart = chatInput.selectionEnd = chatInput.value.length;
-
-        showToast('✅ Attached ' + mention.schema + '.' + mention.name + ' to chat', 'info');
       }
       break;
     case 'schemaError':
@@ -2360,7 +2534,30 @@ window.addEventListener('message', event => {
     case 'noConnectionsAvailable':
       showNoConnectionCard();
       break;
+
+    case 'authState':
+      updateAuthBanner(!!message.showBanner);
+      break;
   }
+});
+
+// ==================== Sign-in banner (unsigned nexql-free users) ====================
+const authBanner = document.getElementById('authBanner');
+
+function updateAuthBanner(show) {
+  if (!authBanner) return;
+  authBanner.hidden = !show;
+}
+
+document.getElementById('authBannerSignIn')?.addEventListener('click', () => {
+  vscode.postMessage({ type: 'signInNexql' });
+});
+document.getElementById('authBannerProvider')?.addEventListener('click', () => {
+  vscode.postMessage({ type: 'openAiSettings' });
+});
+document.getElementById('authBannerDismiss')?.addEventListener('click', () => {
+  updateAuthBanner(false);
+  vscode.postMessage({ type: 'dismissAuthBanner' });
 });
 
 /** Scroll transcript so newest content sits above the composer (ChatGPT-style when sending). */
@@ -3767,6 +3964,119 @@ function wireChatDomEvents() {
   mentionBtn?.addEventListener('click', toggleMentionPicker);
   sendBtn?.addEventListener('click', sendMessage);
   stopBtn?.addEventListener('click', cancelRequest);
+
+  // Drag-and-drop DB objects from explorer tree.
+  // The VS Code tree → webview drag bridge only forwards the custom mime type declared
+  // in dragMimeTypes (browsers lowercase DataTransfer type strings) — text/plain does NOT
+  // survive the bridge, so read the JSON payload straight off the custom mime.
+  const NEXQL_DRAG_MIME = 'application/vnd.code.tree.postgresexplorer';
+  const NEXQL_DRAG_MIME_CASELESS = 'application/vnd.code.tree.postgresExplorer';
+  const dragDropTargets = [inputWrapper, document.querySelector('.chat-container')].filter(Boolean);
+
+  function maybeParseNexqlDrop(dataTransfer) {
+    const raw = dataTransfer.getData(NEXQL_DRAG_MIME) || dataTransfer.getData(NEXQL_DRAG_MIME_CASELESS);
+    if (!raw) { return null; }
+    try { return JSON.parse(raw); } catch (_) { return null; }
+  }
+
+  // NOTE: dataTransfer.getData() only returns a value during 'dragstart'/'drop'.
+  // During 'dragenter'/'dragover' browsers only expose dataTransfer.types (no payload),
+  // so drop-target eligibility must be judged from types alone, not the parsed payload.
+  function hasNexqlDragType(dataTransfer) {
+    const types = Array.from(dataTransfer.types || []).map(t => String(t).toLowerCase());
+    return types.includes(NEXQL_DRAG_MIME);
+  }
+
+  function maybeParseNexqlDrop(dataTransfer) {
+    const raw = dataTransfer.getData(NEXQL_DRAG_MIME) || dataTransfer.getData(NEXQL_DRAG_MIME_CASELESS);
+    if (!raw) { return null; }
+    try { return JSON.parse(raw); } catch (_) { return null; }
+  }
+
+  // NOTE: dataTransfer.getData() only returns a value during 'dragstart'/'drop'.
+  // During 'dragenter'/'dragover' browsers only expose dataTransfer.types (no payload),
+  // so drop-target eligibility must be judged from types alone, not the parsed payload.
+  function hasNexqlDragType(dataTransfer) {
+    const types = (dataTransfer.types || []).map(t => String(t).toLowerCase());
+    return types.includes(NEXQL_DRAG_MIME);
+  }
+
+  // VS Code disables webviews during workbench-internal drags (security, since 1.90) —
+  // no drag event reaches this webview at all until the user holds Shift, at which point
+  // pointer-events are re-enabled and dragenter fires. So this hint can only ever appear
+  // once Shift is already held (a static tip lives in the @ button's title for
+  // upfront discoverability); this is a same-drag confirmation, not a pre-drag prompt.
+  let dragHintEl = null;
+  let globalDragCounter = 0;
+  function showDragHint() {
+    if (!dragHintEl) {
+      dragHintEl = document.createElement('div');
+      dragHintEl.className = 'drag-hint';
+      dragHintEl.textContent = '⇧ Shift held — drop to attach';
+      document.body.appendChild(dragHintEl);
+    }
+    dragHintEl.classList.add('visible');
+  }
+  function hideDragHint() {
+    dragHintEl?.classList.remove('visible');
+  }
+
+  dragDropTargets.forEach(el => {
+    // Per-element counter — each target tracks its own nested dragenter/dragleave pairs
+    // independently, so moving between overlapping targets (chat-container -> inputWrapper)
+    // doesn't miscount and flicker the other target's 'drag-over' ring off.
+    let elDragCounter = 0;
+    el.addEventListener('dragenter', (e) => {
+      if (!hasNexqlDragType(e.dataTransfer)) { return; }
+      elDragCounter++;
+      globalDragCounter++;
+      e.preventDefault();
+      e.stopPropagation();
+      el.classList.add('drag-over');
+      showDragHint();
+    });
+    el.addEventListener('dragleave', (e) => {
+      if (!hasNexqlDragType(e.dataTransfer)) { return; }
+      elDragCounter = Math.max(0, elDragCounter - 1);
+      globalDragCounter = Math.max(0, globalDragCounter - 1);
+      if (elDragCounter === 0) {
+        el.classList.remove('drag-over');
+      }
+      if (globalDragCounter === 0) {
+        hideDragHint();
+      }
+    });
+    el.addEventListener('dragover', (e) => {
+      if (!hasNexqlDragType(e.dataTransfer)) { return; }
+      // preventDefault required on EVERY dragover tick to keep the element a valid
+      // drop target; skipping one tick can make the 'drop' event never fire.
+      e.preventDefault();
+      e.stopPropagation();
+    });
+    el.addEventListener('drop', (e) => {
+      elDragCounter = 0;
+      globalDragCounter = 0;
+      el.classList.remove('drag-over');
+      hideDragHint();
+
+      console.log('[ChatView] drop event fired, types:', Array.from(e.dataTransfer.types || []));
+
+      if (!hasNexqlDragType(e.dataTransfer)) {
+        console.log('[ChatView] drop skipped: no NexQL MIME in types');
+        return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+
+      // May legitimately parse to null (empty dataTransfer on some platforms) —
+      // the extension host falls back to the payload stashed at drag start.
+      const objects = maybeParseNexqlDrop(e.dataTransfer);
+      console.log('[ChatView] parsed objects from drop:', objects);
+      vscode.postMessage({ type: 'attachObjectFromDrop', objects });
+      el.classList.add('drag-accepted');
+      setTimeout(() => el.classList.remove('drag-accepted'), 600);
+    });
+  });
 
   document.getElementById('imageLightbox')?.addEventListener('click', closeLightbox);
   document.getElementById('closeLightboxBtn')?.addEventListener('click', (e) => {

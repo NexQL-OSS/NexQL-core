@@ -1,6 +1,7 @@
 import { Client, PoolClient } from 'pg';
 import * as vscode from 'vscode';
 import { debugWarn } from '../common/logger';
+import { setLastTreeDragPayload } from './chat/dragPayloadStore';
 import * as path from 'path';
 import { ConnectionManager } from '../services/ConnectionManager';
 import { getSchemaCache, SchemaCache } from '../lib/schema-cache';
@@ -804,13 +805,71 @@ export class DatabaseTreeItem extends vscode.TreeItem {
 }
 
 export class DatabaseDragAndDropController implements vscode.TreeDragAndDropController<DatabaseTreeItem> {
-  dragMimeTypes = [];
+  private static readonly DRAG_MIME = 'application/vnd.code.tree.postgresExplorer';
+  dragMimeTypes = [DatabaseDragAndDropController.DRAG_MIME, 'text/plain'];
   dropMimeTypes = ['application/vnd.code.tree.postgresExplorer.notebooks'];
 
   constructor(
     private readonly provider: DatabaseTreeProvider,
     private readonly context: vscode.ExtensionContext
   ) {}
+
+  private static readonly DRAGGABLE_TYPES = new Set([
+    'connection', 'database', 'schema', 'table', 'partition', 'view', 'function', 'procedure',
+    'materialized-view', 'type', 'foreign-table', 'column', 'sequence', 'domain', 'trigger',
+    'index', 'constraint', 'extension', 'policy', 'rule', 'aggregate', 'foreign-data-wrapper',
+    'foreign-server', 'event-trigger',
+  ]);
+
+  handleDrag(
+    source: readonly DatabaseTreeItem[],
+    dataTransfer: vscode.DataTransfer,
+    _token: vscode.CancellationToken
+  ): void | Thenable<void> {
+    const items = source.filter(item => item.connectionId && DatabaseDragAndDropController.DRAGGABLE_TYPES.has(item.type));
+    if (items.length === 0) {
+      return;
+    }
+
+    const serialized = items.map(item => ({
+      type: item.type,
+      connectionId: item.connectionId!,
+      databaseName: item.databaseName,
+      schema: item.schema,
+      tableName: item.tableName,
+      columnName: item.columnName,
+      label: item.label,
+      comment: item.comment,
+    }));
+
+    setLastTreeDragPayload(serialized);
+
+    dataTransfer.set(
+      DatabaseDragAndDropController.DRAG_MIME,
+      new vscode.DataTransferItem(JSON.stringify(serialized))
+    );
+
+    const textParts = items.map(item => {
+      if (item.type === 'column' && item.tableName && item.columnName) {
+        return `${item.tableName}.${item.columnName}`;
+      }
+      if (item.type === 'connection' || item.type === 'database') {
+        return item.label;
+      }
+      if ((item.type === 'function' || item.type === 'procedure' || item.type === 'aggregate') && item.comment) {
+        return `${item.schema || 'public'}.${item.label}(${item.comment})`;
+      }
+      return `${item.schema || 'public'}.${item.label}`;
+    });
+
+    // text/plain fallback for drops onto plain text targets (e.g. a notebook cell/editor).
+    // The chat webview reads the JSON straight off DRAG_MIME instead — text/plain does NOT
+    // survive the tree → webview drag bridge, only the declared custom mime type does.
+    dataTransfer.set(
+      'text/plain',
+      new vscode.DataTransferItem(textParts.join(' '))
+    );
+  }
 
   async handleDrop(
     target: DatabaseTreeItem | undefined,

@@ -307,7 +307,7 @@ export class AiSectionHandler implements SettingsSectionHandler {
 
       if (settings.provider === 'nexql-free') {
         const account = AccountService.getInstance(this.host.extensionContext);
-        await account.ensureAiSession();
+        await account.ensureAiSession({ interactive: true });
         const email = await account.getAccountEmail();
         testResult = email
           ? `NexQL Free AI ready — signed in as ${email}.`

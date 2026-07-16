@@ -6,6 +6,39 @@ import { AiService } from '../providers/chat/AiService';
 import { SQL_SELF_CHECK_RULE } from '../providers/chat/prompts';
 import { QueryCodeLensProvider } from '../providers/QueryCodeLensProvider';
 
+/**
+ * Pre-flight for the free NexQL model: never auto-prompt for GitHub auth.
+ * Unsigned users get one actionable notice per invocation instead of a raw
+ * failure toast. Returns false when the AI request must abort.
+ */
+export async function ensureNexqlFreeAuthPreflight(
+  provider: string,
+  context: vscode.ExtensionContext,
+): Promise<boolean> {
+  if (provider !== 'nexql-free') {
+    return true;
+  }
+
+  const { AccountService } = await import('../features/sync/AccountService');
+  const account = AccountService.getInstance(context);
+  let token = await account.ensureAiSession().catch(() => undefined);
+  if (token) {
+    return true;
+  }
+
+  const choice = await vscode.window.showWarningMessage(
+    'Sign in to use the NexQL Smart model, or choose another AI provider.',
+    'Sign In',
+    'Choose Provider',
+  );
+  if (choice === 'Sign In') {
+    token = await account.ensureAiSession({ interactive: true }).catch(() => undefined);
+  } else if (choice === 'Choose Provider') {
+    await vscode.commands.executeCommand('postgres-explorer.aiSettings');
+  }
+  return !!token;
+}
+
 interface TableSchemaInfo {
   tableName: string;
   schemaName: string;
@@ -145,6 +178,11 @@ export async function cmdAiAssist(cell: vscode.NotebookCell | undefined, context
     const { readAiScopeSettings } = await import('../features/aiAssistant/aiConfig');
     const notebookSettings = readAiScopeSettings(config, 'notebook');
     const provider = notebookSettings.provider;
+
+    if (!(await ensureNexqlFreeAuthPreflight(provider, context))) {
+      removeDecorations();
+      return;
+    }
 
     const aiService = new AiService();
     const modelInfo = await aiService.getModelInfo(provider, config, 'notebook');

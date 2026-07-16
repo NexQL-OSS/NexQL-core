@@ -2332,6 +2332,11 @@ $('prefHistoryMaxItems').addEventListener('change', (e) => {
 $('prefMcpEnabled').addEventListener('change', (e) => {
   vscode.postMessage({ command: 'prefs/update', key: 'mcpEnabled', value: e.target.checked });
 });
+$('prefMcpPort').addEventListener('change', (e) => {
+  const n = Math.max(0, Math.min(65535, parseInt(e.target.value, 10) || 0));
+  e.target.value = n || '';
+  vscode.postMessage({ command: 'prefs/update', key: 'mcpPort', value: n });
+});
 
 // Setup click listeners for MCP instructions sub-tabs
 document.querySelectorAll('.mcp-tab-btn').forEach(btn => {
@@ -2369,7 +2374,8 @@ function handlePrefsMessage(message) {
       
       const mcpEnabled = !!message.prefs.mcpEnabled;
       $('prefMcpEnabled').checked = mcpEnabled;
-      
+      $('prefMcpPort').value = message.prefs.mcpConfiguredPort || '';
+
       if (mcpEnabled) {
         $('mcpConfigContainer').hidden = false;
         if (message.prefs.mcpStarted) {

@@ -8,6 +8,34 @@ Quick links:
 
 ---
 
+## [2.2.1] - 2026-07-16
+> Nightly releases -  v2.3.1
+
+### 🖱️ Drag & Drop into Chat and Notebooks
+
+- **Drag DB Objects from the Explorer** — Drag tables, views, columns, functions/procedures/aggregates (with argument signatures), and more from the database tree straight into the SQL Assistant composer as `@mentions`, or drop onto a `.pgsql` cell/editor to insert a formatted reference.
+- **Drag Notebooks & Saved Queries** — Drag a `.pgsql` notebook or a saved query from their tree views into chat; the assistant pulls in the notebook's SQL cells or the saved query text as context automatically.
+- **Attach Notebooks/Saved Queries via @mention** — The `@` mention picker now lists your notebooks and saved queries alongside schema objects.
+
+### 🔐 Safer NexQL Free AI Sign-In. Issue #124 | Discussion #123
+> Thnanks to the community for reporting and helping us improve the sign-in experience.
+
+- **Actionable Sign-In Banner** — A dismissible banner appears in the SQL Assistant when the free model is selected and you're not signed in, with **Sign in** and **Choose provider** actions.
+- **Clearer Auth Errors** — Failed NexQL Free AI requests due to a missing/expired session now surface a specific "sign in or switch provider" message instead of a generic failure.
+
+### 🔌 MCP Server — Fixed Port & Token
+
+- **Persistent Bearer Token** — The MCP server's auth token is now stored in VS Code `SecretStorage` and reused across extension host restarts, instead of regenerating randomly every launch.
+- **Configurable Fixed Port** — New `postgresExplorer.mcp.port` setting (also exposed as a **Fixed port** field in **NexQL Settings → Preferences**) lets external clients (Cursor, Antigravity, Codex, etc.) hard-code the MCP endpoint. `0` (default) keeps the previous random-port behavior. Changing the port from the Preferences panel restarts the running server immediately — no window reload needed.
+
+### Fixed
+
+- **Empty Result Tables** — Queries that return columns but zero rows now render the table header with a centered "No data" hint instead of collapsing to a generic empty state.
+- **Cursor Count Query Timeout Scope** — Row-count timeout for windowed cursor fetches now uses session-scoped `statement_timeout` instead of `SET LOCAL`, fixing cases where the timeout silently didn't apply outside an explicit transaction.
+
+
+---
+
 ## [2.2.0] - 2026-07-09
 
 ### 🚀 NexQL AI Models — Generally Available

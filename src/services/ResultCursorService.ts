@@ -194,7 +194,7 @@ export class ResultCursorService {
         debugLog(`[ResultCursorService] COUNT query: ${countSql.substring(0, 120)}...`);
 
         // Apply a tight timeout only for the count query; reset it immediately after.
-        await client.query(`SET LOCAL statement_timeout = ${COUNT_TIMEOUT_MS}`);
+        await client.query(`SET statement_timeout = ${COUNT_TIMEOUT_MS}`);
         try {
           const cres = await client.query(countSql);
           const countDuration = Date.now() - countStartTime;

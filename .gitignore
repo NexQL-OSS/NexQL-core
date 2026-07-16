@@ -45,3 +45,5 @@ docs/plan/
 
 # Local dev entitlement store (KV fallback)
 .kv-dev.json
+.aura/
+.ua/
