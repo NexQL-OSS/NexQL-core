@@ -40,6 +40,10 @@ const SESSION_IDLE_TTL_MS = 30 * 60 * 1000;
 const SESSION_SWEEP_INTERVAL_MS = 5 * 60 * 1000;
 const MAX_SESSIONS = 32;
 
+/** Persisted across extension host restarts so external MCP clients (Cursor, Antigravity)
+ *  don't need reconfiguring every time VS Code restarts the server. */
+const TOKEN_SECRET_KEY = 'postgresExplorer.mcpToken';
+
 /**
  * Surfaced via `initialize.instructions` (MCP spec: clients MAY inject this into the
  * model's system prompt). External clients like VS Code Copilot never see NexQL's
@@ -82,19 +86,30 @@ export class NexqlMcpServer {
     return this._info;
   }
 
+  /** Stops the server (if running) and starts it again, picking up config changes
+   *  (e.g. `postgresExplorer.mcp.port`) that `start()` alone won't re-read. */
+  async restart(): Promise<NexqlMcpServerInfo> {
+    this._stop();
+    return this.start();
+  }
+
   async start(): Promise<NexqlMcpServerInfo> {
     if (this._info) {
       return this._info;
     }
 
-    const token = crypto.randomBytes(32).toString('hex');
+    const token = await this._getOrCreateToken();
     const server = http.createServer((req, res) => {
       void this._handleRequest(req, res, token);
     });
 
+    const configuredPort = vscode.workspace
+      .getConfiguration()
+      .get<number>('postgresExplorer.mcp.port', 0);
+
     const port = await new Promise<number>((resolve, reject) => {
       server.once('error', reject);
-      server.listen(0, '127.0.0.1', () => {
+      server.listen(configuredPort || 0, '127.0.0.1', () => {
         const addr = server.address();
         if (addr && typeof addr === 'object') {
           resolve(addr.port);
@@ -113,7 +128,28 @@ export class NexqlMcpServer {
     return this._info;
   }
 
+  private async _getOrCreateToken(): Promise<string> {
+    const existing = await this._context.secrets.get(TOKEN_SECRET_KEY);
+    if (existing) {
+      return existing;
+    }
+    const token = crypto.randomBytes(32).toString('hex');
+    await this._context.secrets.store(TOKEN_SECRET_KEY, token);
+    return token;
+  }
+
+  /** Rotates the auth token; callers must restart the server for it to take effect. */
+  async regenerateToken(): Promise<string> {
+    const token = crypto.randomBytes(32).toString('hex');
+    await this._context.secrets.store(TOKEN_SECRET_KEY, token);
+    return token;
+  }
+
   dispose(): void {
+    this._stop();
+  }
+
+  private _stop(): void {
     if (this._sweepTimer) {
       clearInterval(this._sweepTimer);
       this._sweepTimer = undefined;

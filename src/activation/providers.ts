@@ -1,10 +1,11 @@
 import * as vscode from 'vscode';
 import { ChatViewProvider } from '../providers/ChatViewProvider';
 import { DatabaseTreeProvider, DatabaseDragAndDropController } from '../providers/DatabaseTreeProvider';
+import { DatabaseTreeDocumentDropProvider } from '../providers/DatabaseTreeDocumentDropProvider';
 import { PostgresNotebookProvider } from '../features/notebook/notebookProvider';
 import { PostgresNotebookSerializer } from '../features/notebook/postgresNotebook';
 
-import { ProfilesTreeProvider, SavedQueriesTreeProvider } from '../providers/Phase7TreeProviders';
+import { ProfilesTreeProvider, SavedQueriesTreeProvider, SavedQueriesDragAndDropController } from '../providers/Phase7TreeProviders';
 import { NotebooksTreeProvider, NotebooksDragAndDropController } from '../providers/NotebooksTreeProvider';
 import { AutoRefreshService } from '../services/AutoRefreshService';
 import { DdlViewerService } from '../services/DdlViewerService';
@@ -111,6 +112,19 @@ export function registerProviders(context: vscode.ExtensionContext, outputChanne
     vscode.workspace.registerNotebookSerializer('postgres-query', new PostgresNotebookSerializer())
   );
 
+  // Intercept drops from the DB explorer tree into notebook cell editors.
+  const documentDropProvider = new DatabaseTreeDocumentDropProvider();
+  context.subscriptions.push(
+    vscode.languages.registerDocumentDropEditProvider(
+      { scheme: 'vscode-notebook-cell', language: 'sql' },
+      documentDropProvider
+    ),
+    vscode.languages.registerDocumentDropEditProvider(
+      { scheme: 'vscode-notebook-cell', language: 'postgres' },
+      documentDropProvider
+    )
+  );
+
   // Register SQL completion provider, CodeLens, and query history lazily.
   runDeferredProviderTask(outputChannel, 'registerSqlCompletionProvider', async () => {
     const sqlCompletionModule = await import('../providers/SqlCompletionProvider');
@@ -185,9 +199,12 @@ export function registerProviders(context: vscode.ExtensionContext, outputChanne
 
   // Phase 7: Register Saved Queries Tree Provider
   const savedQueriesTreeProvider = new SavedQueriesTreeProvider();
-  context.subscriptions.push(
-    vscode.window.registerTreeDataProvider('postgresExplorer.savedQueries', savedQueriesTreeProvider)
-  );
+  const savedQueriesDragAndDropController = new SavedQueriesDragAndDropController();
+  const savedQueriesTreeView = vscode.window.createTreeView('postgresExplorer.savedQueries', {
+    treeDataProvider: savedQueriesTreeProvider,
+    dragAndDropController: savedQueriesDragAndDropController
+  });
+  context.subscriptions.push(savedQueriesTreeView);
 
   // Notebooks panel — browse all notebooks in globalStorage
   const notebooksTreeProvider = new NotebooksTreeProvider(context.globalStorageUri, context);

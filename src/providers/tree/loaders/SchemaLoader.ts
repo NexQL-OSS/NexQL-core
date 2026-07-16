@@ -199,7 +199,11 @@ export class SchemaLoader extends BaseLoader {
 
           case 'Functions': {
             const functionResult = await client.query(
-              "SELECT routine_name FROM information_schema.routines WHERE routine_schema = $1 AND routine_type = 'FUNCTION' ORDER BY routine_name",
+              `SELECT p.proname AS routine_name, pg_get_function_arguments(p.oid) AS func_args
+               FROM pg_proc p
+               JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = $1 AND p.prokind = 'f'
+               ORDER BY p.proname`,
               [element.schema]
             );
             return functionResult.rows.map(row => {
@@ -211,7 +215,9 @@ export class SchemaLoader extends BaseLoader {
                 element.connectionId,
                 element.databaseName,
                 element.schema,
-                undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+                undefined, undefined,
+                row.func_args || undefined,
+                undefined, undefined, undefined, undefined,
                 isFav
               );
             });
@@ -222,7 +228,7 @@ export class SchemaLoader extends BaseLoader {
               return [];
             }
             const procedureResult = await client.query(
-              `SELECT p.proname AS procedure_name
+              `SELECT p.proname AS procedure_name, pg_get_function_arguments(p.oid) AS proc_args
                FROM pg_proc p
                JOIN pg_namespace n ON n.oid = p.pronamespace
                WHERE n.nspname = $1 AND p.prokind = 'p'
@@ -238,7 +244,9 @@ export class SchemaLoader extends BaseLoader {
                 element.connectionId,
                 element.databaseName,
                 element.schema,
-                undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+                undefined, undefined,
+                row.proc_args || undefined,
+                undefined, undefined, undefined, undefined,
                 isFav
               );
             });
@@ -372,16 +380,19 @@ export class SchemaLoader extends BaseLoader {
           case 'Aggregates': {
             const aggListSql =
               pgVer >= PG_VERSION_11
-                ? `SELECT DISTINCT p.proname FROM pg_proc p JOIN pg_namespace n ON p.pronamespace = n.oid WHERE p.prokind = 'a' AND n.nspname = $1 ORDER BY p.proname`
-                : `SELECT DISTINCT p.proname FROM pg_proc p JOIN pg_namespace n ON p.pronamespace = n.oid WHERE p.proisagg AND n.nspname = $1 ORDER BY p.proname`;
-            const aggResult = await client.query(aggListSql, [element.schema]);
+                ? `SELECT DISTINCT p.proname, pg_get_function_arguments(p.oid) AS agg_args FROM pg_proc p JOIN pg_namespace n ON p.pronamespace = n.oid WHERE p.prokind = 'a' AND n.nspname = $1`
+                : `SELECT DISTINCT p.proname, pg_get_function_arguments(p.oid) AS agg_args FROM pg_proc p JOIN pg_namespace n ON p.pronamespace = n.oid WHERE p.proisagg AND n.nspname = $1`;
+            const aggListSqlOrdered = `${aggListSql} ORDER BY p.proname`;
+            const aggResult = await client.query(aggListSqlOrdered, [element.schema]);
             return aggResult.rows.map((row: any) => new DatabaseTreeItem(
               row.proname,
               vscode.TreeItemCollapsibleState.None,
               'aggregate',
               element.connectionId,
               element.databaseName,
-              element.schema
+              element.schema,
+              undefined, undefined,
+              row.agg_args || undefined
             ));
           }
 

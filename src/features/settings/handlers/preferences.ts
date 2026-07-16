@@ -25,6 +25,7 @@ export class PreferencesSectionHandler implements SettingsSectionHandler {
   private async sendState(): Promise<void> {
     const config = vscode.workspace.getConfiguration();
     const mcpEnabled = config.get<boolean>('postgresExplorer.mcp.enabled', false);
+    const mcpConfiguredPort = config.get<number>('postgresExplorer.mcp.port', 0);
 
     let port = 0;
     let token = '';
@@ -59,6 +60,7 @@ export class PreferencesSectionHandler implements SettingsSectionHandler {
         historyMaxItems: config.get<number>(HISTORY_MAX_ITEMS_KEY, 200),
         mcpEnabled,
         mcpPort: port,
+        mcpConfiguredPort,
         mcpToken: token,
         mcpStarted,
       },
@@ -84,6 +86,24 @@ export class PreferencesSectionHandler implements SettingsSectionHandler {
         await vscode.workspace
           .getConfiguration()
           .update('postgresExplorer.mcp.enabled', value, vscode.ConfigurationTarget.Global);
+      } else if (key === 'mcpPort') {
+        const n = Math.max(0, Math.min(65535, Math.trunc(Number(value)) || 0));
+        await vscode.workspace
+          .getConfiguration()
+          .update('postgresExplorer.mcp.port', n, vscode.ConfigurationTarget.Global);
+        // Server already binds the old port; restart so the new one takes effect now
+        // instead of requiring a full window reload.
+        const server = NexqlMcpServer.getInstance();
+        if (server?.info) {
+          try {
+            await server.restart();
+          } catch (err) {
+            this.host.post({
+              type: 'prefs/error',
+              error: `Failed to bind port ${n}: ${err instanceof Error ? err.message : String(err)}`,
+            });
+          }
+        }
       } else {
         this.host.post({ type: 'prefs/error', error: `Unknown preference: ${key}` });
         return;

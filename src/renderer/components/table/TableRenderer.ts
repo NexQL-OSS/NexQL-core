@@ -202,7 +202,12 @@ export class TableRenderer {
     this.mainContainer.insertBefore(this.filterBar.getElement(), this.tableContainer);
 
     if (this.displayRows.length === 0 && this.rows.length === 0) {
-      this.renderEmptyState(this.columns.length === 0 ? 'no-columns' : 'no-rows');
+      if (this.columns.length === 0) {
+        this.renderEmptyState('no-columns');
+        return;
+      }
+      this.createTableStructure();
+      this.renderEmptyDataHint();
       return;
     }
 
@@ -382,6 +387,19 @@ export class TableRenderer {
     wrap.appendChild(title);
     wrap.appendChild(sub);
     this.tableContainer.appendChild(wrap);
+  }
+
+  /** When table has columns but zero rows, show "No data" hint row so headers stay visible. */
+  private renderEmptyDataHint() {
+    if (!this.tableBody) return;
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = Math.max(1, this.columns.length + 1);
+    td.style.cssText =
+      'padding:28px 16px;text-align:center;color:var(--vscode-descriptionForeground);font-size:12px;';
+    td.textContent = 'No data';
+    tr.appendChild(td);
+    this.tableBody.appendChild(tr);
   }
 
   /** When filters hide every row but data exists, show a single hint row (headers stay visible). */

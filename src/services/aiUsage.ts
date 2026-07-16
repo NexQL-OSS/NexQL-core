@@ -69,7 +69,12 @@ export async function fetchAiUsage(context: vscode.ExtensionContext): Promise<Ai
     const { httpRequest } = await import('../features/sync/providers/httpUtils');
     const { DEFAULT_SYNC_API_ENDPOINT } = await import('../features/sync/constants');
 
-    const token = await AccountService.getInstance(context).ensureAiSession().catch(() => undefined);
+    const account = AccountService.getInstance(context);
+    if (!(await account.isSignedIn())) {
+      return null;
+    }
+
+    const token = await account.ensureAiSession().catch(() => undefined);
     if (!token) {
       return null;
     }

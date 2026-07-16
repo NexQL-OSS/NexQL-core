@@ -37,6 +37,18 @@ export interface DbSearchScope {
   schema?: string;
 }
 
+/** Serialized tree item metadata from drag-and-drop (DatabaseDragAndDropController serialization). */
+export interface SerializedTreeItem {
+  type: string;
+  connectionId: string;
+  databaseName?: string;
+  schema?: string;
+  tableName?: string;
+  columnName?: string;
+  label: string;
+  comment?: string;
+}
+
 export class DbObjectService {
   private _cache: DbObject[] = [];
   private _dbListCache: SchemaCache = getSchemaCache();
@@ -904,12 +916,16 @@ export class DbObjectService {
             return await this._getViewSchema(client, obj.schema, obj.name);
           case 'function':
             return await this._getFunctionSchema(client, obj.schema, obj.name);
+          case 'procedure':
+            return await this._getProcedureSchema(client, obj.schema, obj.name);
           case 'materialized-view':
             return await this._getMaterializedViewSchema(client, obj.schema, obj.name);
           case 'type':
             return await this._getTypeSchema(client, obj.schema, obj.name);
           case 'schema':
             return await this._getSchemaInfo(client, obj.schema);
+          case 'aggregate':
+            return await this._getAggregateSchema(client, obj.schema, obj.name);
           default:
             return 'Unknown object type';
         }
@@ -930,6 +946,40 @@ export class DbObjectService {
     this._objectSchemaCache.clear();
     this._dbListCache.clear();
     debugLog('[ChatView] Schema caches cleared');
+  }
+
+  /** Convert serialized tree item from drag-and-drop into a DbObject. */
+  static buildDbObjectFromTreeItem(item: SerializedTreeItem): DbObject {
+    const connections = vscode.workspace.getConfiguration().get<any[]>('postgresExplorer.connections') || [];
+    const conn = connections.find(c => c.id === item.connectionId);
+    const connectionName = conn?.name || conn?.host || 'Unknown';
+    const schema = item.schema || '';
+
+    const database = item.databaseName || '';
+
+    if (item.type === 'column') {
+      const tableRef = item.tableName || '';
+      return {
+        name: `${tableRef}.${item.label}`,
+        type: 'column',
+        schema,
+        database,
+        connectionId: item.connectionId,
+        connectionName,
+        breadcrumb: [connectionName, database, schema, tableRef, item.label].filter(Boolean).join(' > '),
+      };
+    }
+
+    const breadcrumbParts = [connectionName, database, schema, item.label].filter(Boolean);
+    return {
+      name: item.label,
+      type: item.type as DbObject['type'],
+      schema,
+      database,
+      connectionId: item.connectionId,
+      connectionName,
+      breadcrumb: breadcrumbParts.join(' > '),
+    };
   }
 
   /**
@@ -1045,6 +1095,49 @@ export class DbObjectService {
     info += `- Volatility: ${volatility}\n`;
     info += `- Strict: ${fn.proisstrict ? 'Yes' : 'No'}\n\n`;
     info += `### Definition\n\`\`\`sql\n${fn.definition}\`\`\`\n`;
+
+    return info;
+  }
+
+  private async _getProcedureSchema(client: any, schema: string, proc: string): Promise<string> {
+    const result = await client.query(
+      `SELECT p.proname, pg_get_function_arguments(p.oid) as arguments, l.lanname as language,
+              pg_get_functiondef(p.oid) as definition
+       FROM pg_proc p
+       JOIN pg_namespace n ON p.pronamespace = n.oid
+       JOIN pg_language l ON p.prolang = l.oid
+       WHERE n.nspname = $1 AND p.proname = $2 AND p.prokind = 'p'`,
+      [schema, proc]
+    );
+
+    if (result.rows.length === 0) { return `Procedure ${schema}.${proc} not found`; }
+
+    const p = result.rows[0];
+    let info = `## Procedure: ${schema}.${p.proname}\n\n`;
+    info += `### Signature\n\`CALL ${p.proname}(${p.arguments})\`\n\n`;
+    info += `### Properties\n- Language: ${p.language}\n\n`;
+    info += `### Definition\n\`\`\`sql\n${p.definition}\`\`\`\n`;
+
+    return info;
+  }
+
+  private async _getAggregateSchema(client: any, schema: string, agg: string): Promise<string> {
+    const result = await client.query(
+      `SELECT p.proname, pg_get_function_arguments(p.oid) as arguments,
+              pg_get_function_result(p.oid) as return_type,
+              format_type(p.prorettype, NULL) as return_type_raw,
+              obj_description(p.oid, 'pg_proc') as description
+       FROM pg_proc p
+       JOIN pg_namespace n ON p.pronamespace = n.oid
+       WHERE n.nspname = $1 AND p.proname = $2 AND p.prokind = 'a'`,
+      [schema, agg]
+    );
+
+    if (result.rows.length === 0) { return `Aggregate ${schema}.${agg} not found`; }
+
+    const a = result.rows[0];
+    let info = `## Aggregate: ${schema}.${a.proname}\n\n`;
+    info += `### Signature\n\`${a.proname}(${a.arguments}) → ${a.return_type || a.return_type_raw}\`\n`;
 
     return info;
   }

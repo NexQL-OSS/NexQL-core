@@ -7,11 +7,11 @@
 [![Version](https://img.shields.io/visual-studio-marketplace/v/ric-v.postgres-explorer?style=for-the-badge&logo=visual-studio-code&logoColor=white&color=0066CC)](https://marketplace.visualstudio.com/items?itemName=ric-v.postgres-explorer)
 [![Downloads](https://img.shields.io/visual-studio-marketplace/d/ric-v.postgres-explorer?style=for-the-badge&logo=visual-studio-code&logoColor=white&color=2ECC71)](https://marketplace.visualstudio.com/items?itemName=ric-v.postgres-explorer)
 [![Rating](https://img.shields.io/visual-studio-marketplace/r/ric-v.postgres-explorer?style=for-the-badge&logo=visual-studio-code&logoColor=white&color=F39C12)](https://marketplace.visualstudio.com/items?itemName=ric-v.postgres-explorer)
-[![Status](https://img.shields.io/badge/status-stable%20v2.2.0%20%2B%20nightly-blue?style=for-the-badge&logo=git&logoColor=white)](https://github.com/dev-asterix/NexQL/releases)
+[![Status](https://img.shields.io/badge/status-stable%20v2.2.1%20%2B%20nightly-blue?style=for-the-badge&logo=git&logoColor=white)](https://github.com/dev-asterix/NexQL/releases)
 
 **NexQL** (formerly YAPE) is a comprehensive PostgreSQL database management extension featuring interactive SQL notebooks, real-time monitoring dashboard, AI-powered assistance, and advanced database operations—all within VS Code.
 
-[📖 **Documentation**](https://nexql.astrx.dev/) • [🛒 **Marketplace**](https://marketplace.visualstudio.com/items?itemName=ric-v.postgres-explorer) • [🤝 **Contributing**](#-contributing) • [📝 **v2.2.0 Release Notes**](CHANGELOG.md) • [📋 **Full Changelog**](CHANGELOG.md)
+[📖 **Documentation**](https://nexql.astrx.dev/) • [🛒 **Marketplace**](https://marketplace.visualstudio.com/items?itemName=ric-v.postgres-explorer) • [🤝 **Contributing**](#-contributing) • [📝 **v2.2.1 Release Notes**](CHANGELOG.md) • [📋 **Full Changelog**](CHANGELOG.md)
 
 </div>
 
@@ -69,9 +69,11 @@
 - 🌍 **Foreign Data Wrappers** — Manage foreign servers, user mappings & tables
 - 🤖 **AI-Powered** — Zero-configuration NexQL Free AI (Smart/Engineer/Architect tiers), plus GitHub Models, OpenAI, Anthropic, Gemini, and VS Code LM. Generate, optimize, explain & analyze with guided follow-ups.
 - 🧩 **Flexible SQL Assistant Layout** — Open SQL Assistant in editor tabs and keep multiple assistant tabs open simultaneously
+- 🖱️ **Drag & Drop Context** — Drag tables, columns, functions, notebooks, or saved queries from the tree straight into the SQL Assistant as `@mentions`, or drop onto a notebook cell to insert a formatted reference
 - 🖼️ **Vision AI** — Paste or upload images directly in the SQL Assistant; sent to vision-capable AI providers
 - 📎 **File Preview** — Click attached file chips to open them as preview tabs in the editor
 - 📤 **Export Data** — Export results to CSV, JSON, or Excel
+- 🔌 **MCP Server** — Expose your database as read-only tools to Copilot, Cursor, Claude Desktop, and other MCP agents, with a fixed local port/token option for external clients
 
 ---
 
@@ -128,7 +130,7 @@
 
 ## 📋 Feature Matrix
 
-| Area | NexQL v2.2.0+ | Notes |
+| Area | NexQL v2.2.1+ | Notes |
 |---|---|---|
 | Core PostgreSQL object operations | ✅ | Tables, views, mat views, functions, roles, extensions, FDWs, and more |
 | AI-assisted SQL workflows | ✅ | Generate, optimize, explain, and analyze with notebook-first execution |
@@ -223,7 +225,7 @@ If `posthogApiKey` is empty, telemetry stays local (debug sink only).
 - `SECURITY.md` - Security policy and vulnerability reporting guidance
 - `CHANGELOG.md` - Release notes and what changed across versions
 
-**Stable: v2.2.0 | Nightly: v2.2.0+ —** NexQL Free AI is now **Generally Available** as the default zero-configuration AI assistant. See [CHANGELOG.md](CHANGELOG.md); v2.0 launch materials remain in [Release Notes](docs/RELEASE_NOTES_v2.0.0.md) and older v1.0 details in [v1.0.0 Release Notes](docs/RELEASE_NOTES_v1.0.0.md).
+**Stable: v2.2.1 | Nightly: v2.2.1+ —** Drag-and-drop context from the explorer into chat/notebooks, a safer silent sign-in flow for NexQL Free AI, and a fixed MCP port/token option for external agent clients. See [CHANGELOG.md](CHANGELOG.md); v2.0 launch materials remain in [Release Notes](docs/RELEASE_NOTES_v2.0.0.md) and older v1.0 details in [v1.0.0 Release Notes](docs/RELEASE_NOTES_v1.0.0.md).
 
 ---
 
@@ -347,7 +349,8 @@ NexQL ships a built-in **Model Context Protocol (MCP) server** that exposes your
 - **Read-Only DB Tools** — Schema discovery, safe SQL execution, EXPLAIN, join-path traversal, and performance analytics.
 - **Schema Grounding** — Agents are instructed to verify live schema before writing SQL, preventing hallucinated table names.
 - **Session Security** — Per-session bearer token, idle TTL sweep, and 200 req/min rate limit.
-- **Configure** via **NexQL Settings → Preferences** — enable/disable, view port/token, toggle auto-start.
+- **Persistent Token, Fixed Port (v2.2.1+)** — The bearer token survives extension host restarts (stored in `SecretStorage`), and `postgresExplorer.mcp.port` lets you pin a fixed local port instead of a new random one every restart — handy for external clients like Cursor/Antigravity that need a stable endpoint to hard-code.
+- **Configure** via **NexQL Settings → Preferences** — enable/disable, set a fixed port, view port/token, toggle auto-start.
 
 ### 🛡️ Safe Execution Model (Notebook-First)
 We believe AI should assist, not take over. **No query is ever executed automatically.**

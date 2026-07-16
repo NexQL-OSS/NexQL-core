@@ -8,7 +8,7 @@
  * - webviewHtml: Provides the webview HTML template
  */
 import * as vscode from 'vscode';
-import { debugLog } from '../common/logger';
+import { debugLog, debugWarn } from '../common/logger';
 import { TelemetryService } from '../services/TelemetryService';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -22,6 +22,7 @@ import {
   DbSearchScope,
   AiService,
   AiProviderHttpError,
+  NexqlAuthRequiredError,
   SessionService,
   getWebviewHtml,
   AiCapability,
@@ -42,10 +43,15 @@ import {
 } from '../features/aiAssistant/aiConfig';
 import { AiModelCatalogService } from '../features/aiAssistant/AiModelCatalogService';
 import { isProFeatureEnabled, getUpgradeHtml, ProFeature, requirePro } from '../services/featureGates';
+import { AccountService } from '../features/sync/AccountService';
+import { shouldShowNexqlSignInBanner } from '../features/aiAssistant/authBanner';
 import type { SentinelContext } from '../features/sentinel/types';
 
 /** P1.4 — max rows sampled into the AI prompt for "Analyze Data" on large result sets. */
 const AI_ANALYZE_MAX_SAMPLE_ROWS = 200;
+
+/** Permanent dismissal flag for the unsigned nexql-free sign-in banner. */
+const NEXQL_SIGNIN_BANNER_DISMISSED_KEY = 'postgresExplorer.chat.nexqlSignInBannerDismissed';
 
 /** Params for {@link ChatViewProvider.openBackupToolsAssistant} (Backup & Restore panel). */
 export interface OpenBackupToolsAssistantParams {
@@ -368,6 +374,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, ChatProvide
         case 'switchChatModel':
           await this._handleSwitchChatModel(data.selectionId);
           break;
+        case 'signInNexql':
+          await this._handleSignInNexql();
+          break;
+        case 'dismissAuthBanner':
+          await this._extensionContext.globalState.update(NEXQL_SIGNIN_BANNER_DISMISSED_KEY, true);
+          await this._pushAuthStateToWebview();
+          break;
         case 'openInNotebook':
           try {
             TelemetryService.getInstance().trackAiChatFeedback('open_in_notebook');
@@ -381,6 +394,21 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, ChatProvide
           break;
         case 'previewFile':
           await this._handlePreviewFile(data.path, data.name);
+          break;
+        case 'attachObjectFromDrop':
+          await this._handleAttachObjectFromDrop(data.objects);
+          break;
+        case 'attachNotebook':
+          await this._handleAttachNotebook(data.uri, data.label);
+          break;
+        case 'attachSavedQuery':
+          await this._handleAttachSavedQuery(data.queryId, data.label);
+          break;
+        case 'getNotebooks':
+          await this._handleGetNotebooks();
+          break;
+        case 'getSavedQueries':
+          await this._handleGetSavedQueries();
           break;
       }
     });
@@ -770,18 +798,24 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, ChatProvide
 
       for (const mention of mentions) {
         debugLog('[ChatView] Fetching schema for:', mention.schema + '.' + mention.name, 'type:', mention.type, 'connectionId:', mention.connectionId);
-        const obj: DbObject = {
-          name: mention.name,
-          type: mention.type,
-          schema: mention.schema,
-          database: mention.database,
-          connectionId: mention.connectionId,
-          connectionName: '',
-          breadcrumb: mention.breadcrumb
-        };
 
-        // P1.2: rank schema columns/indexes against the live user message.
-        const schemaInfo = await this._dbObjectService.getObjectSchema(obj, { userMessage: message });
+        const isInlineContent = mention.type === 'notebook' || mention.type === 'saved-query';
+        let schemaInfo: string;
+        if (isInlineContent && mention.schemaInfo) {
+          schemaInfo = mention.schemaInfo;
+        } else {
+          const obj: DbObject = {
+            name: mention.name,
+            type: mention.type,
+            schema: mention.schema,
+            database: mention.database,
+            connectionId: mention.connectionId,
+            connectionName: '',
+            breadcrumb: mention.breadcrumb
+          };
+          schemaInfo = await this._dbObjectService.getObjectSchema(obj, { userMessage: message });
+        }
+
         mention.schemaInfo = schemaInfo;
         schemaContext += `\n### ${mention.type.toUpperCase()}: ${mention.schema}.${mention.name}\n`;
         schemaContext += schemaInfo;
@@ -1069,7 +1103,15 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, ChatProvide
         label: 'Request failed',
         status: 'error',
       });
-      if (error instanceof AiProviderHttpError && this._isNexqlFreeLimitError(error)) {
+      if (error instanceof NexqlAuthRequiredError) {
+        this._messages.push({
+          role: 'assistant',
+          content:
+            '🔐 **Sign in required for the NexQL free model.**\n\n' +
+            'Sign in from AI Settings, or pick another AI provider (OpenAI, Anthropic, Gemini, Copilot, …) from the model picker — no account needed with your own API key.',
+        });
+        void this._pushAuthStateToWebview();
+      } else if (error instanceof AiProviderHttpError && this._isNexqlFreeLimitError(error)) {
         this._handleNexqlFreeLimitError(error);
       } else {
         const errorMessage = error instanceof Error ? error.message : String(error);
@@ -1407,6 +1449,38 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, ChatProvide
 
       if (!path || !path.connectionId) {
         items = await this._dbObjectService.getConnections();
+        // Add notebook and saved query folders at root
+        try {
+          const notebookDir = this._extensionContext.globalStorageUri;
+          let dirStat: vscode.FileStat | null = null;
+          try { dirStat = await vscode.workspace.fs.stat(notebookDir); } catch { /* skip */ }
+          if (dirStat) {
+            const entries = await vscode.workspace.fs.readDirectory(notebookDir);
+            const hasNotebooks = entries.some(([name]) => name.endsWith('.pgsql'));
+            if (hasNotebooks) {
+              items.unshift({
+                name: 'Notebooks', type: 'connection', schema: '', database: '',
+                connectionId: '__notebooks__', connectionName: '📓 Notebooks', breadcrumb: '', isContainer: true,
+              } as DbObject);
+            }
+          }
+        } catch { /* skip */ }
+        try {
+          const { SavedQueriesService } = await import('../features/savedQueries/SavedQueriesService');
+          const queries = SavedQueriesService.getInstance().getQueries();
+          if (queries.length > 0) {
+            items.unshift({
+              name: 'Saved Queries', type: 'connection', schema: '', database: '',
+              connectionId: '__queries__', connectionName: '📋 Saved Queries', breadcrumb: '', isContainer: true,
+            } as DbObject);
+          }
+        } catch { /* skip */ }
+      } else if (path.connectionId === '__notebooks__') {
+        await this._handleGetNotebooks();
+        return;
+      } else if (path.connectionId === '__queries__') {
+        await this._handleGetSavedQueries();
+        return;
       } else if (!path.database) {
         items = await this._dbObjectService.getDatabases(path.connectionId);
       } else if (!path.schema) {
@@ -1534,6 +1608,148 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, ChatProvide
         error: errorMessage
       });
     }
+  }
+
+  // ==================== Database Object Drag & Attach ====================
+
+  private async _handleAttachObjectFromDrop(rawObjects: any[] | null): Promise<void> {
+    const { DbObjectService } = await import('./chat/DbObjectService');
+    const { getLastTreeDragPayload } = await import('./chat/dragPayloadStore');
+    const webview = this._getTargetWebview();
+    if (!webview) { debugWarn('[DragDrop] No target webview'); return; }
+
+    let objects = (Array.isArray(rawObjects) && rawObjects.length > 0)
+      ? rawObjects
+      : getLastTreeDragPayload();
+
+    debugLog('[DragDrop] attachObjectFromDrop called, rawObjects:', JSON.stringify(rawObjects).slice(0, 500), 'fallback:', objects === rawObjects ? 'none (used raw)' : 'used fallback');
+
+    if (!objects || objects.length === 0) { debugWarn('[DragDrop] No objects to attach'); return; }
+
+    for (const raw of objects) {
+      try {
+        if (raw.type === 'notebook' && raw.uri) {
+          await this._handleAttachNotebook(raw.uri, raw.label);
+          continue;
+        }
+        if (raw.type === 'saved-query' && raw.queryId) {
+          await this._handleAttachSavedQuery(raw.queryId, raw.label);
+          continue;
+        }
+        const obj = DbObjectService.buildDbObjectFromTreeItem(raw);
+        const details = await this._dbObjectService.getObjectSchema(obj);
+        webview.postMessage({ type: 'addMentionFromTree', object: { ...obj, details } });
+      } catch (err) {
+        debugWarn('[DragDrop] Failed to attach dropped object:', err instanceof Error ? err.message : String(err));
+      }
+    }
+  }
+
+  private async _handleAttachNotebook(uriStr: string, label: string): Promise<void> {
+    const webview = this._getTargetWebview();
+    if (!webview) { return; }
+    try {
+      const uri = vscode.Uri.parse(uriStr);
+      const sql = await this._readNotebookSql(uri);
+      webview.postMessage({
+        type: 'addMentionFromTree',
+        object: {
+          name: label,
+          type: 'notebook',
+          schema: '',
+          database: '',
+          connectionId: '',
+          connectionName: '',
+          breadcrumb: `Notebook: ${label}`,
+          details: sql,
+        },
+      });
+    } catch (err) {
+      debugWarn('[ChatView] Failed to attach notebook:', err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  private async _handleAttachSavedQuery(queryId: string, label: string): Promise<void> {
+    const webview = this._getTargetWebview();
+    if (!webview) { return; }
+    try {
+      const { SavedQueriesService } = await import('../features/savedQueries/SavedQueriesService');
+      const query = SavedQueriesService.getInstance().getQuery(queryId);
+      if (!query) { throw new Error('Query not found'); }
+      webview.postMessage({
+        type: 'addMentionFromTree',
+        object: {
+          name: label,
+          type: 'saved-query',
+          schema: query.schemaName || '',
+          database: query.databaseName || '',
+          connectionId: query.connectionId || '',
+          connectionName: '',
+          breadcrumb: `Query: ${label}`,
+          details: query.query,
+        },
+      });
+    } catch (err) {
+      debugWarn('[ChatView] Failed to attach saved query:', err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  private async _handleGetNotebooks(): Promise<void> {
+    const webview = this._getTargetWebview();
+    if (!webview) { return; }
+    try {
+      const notebookDir = this._extensionContext.globalStorageUri;
+      const items: DbObject[] = [];
+      const entries = await vscode.workspace.fs.readDirectory(notebookDir);
+      for (const [name, fileType] of entries) {
+        if (fileType === vscode.FileType.File && name.endsWith('.pgsql')) {
+          const uri = vscode.Uri.joinPath(notebookDir, name);
+          items.push({
+            name,
+            type: 'notebook' as any,
+            schema: '',
+            database: '',
+            connectionId: `__nb__${uri.toString()}`,
+            connectionName: '',
+            breadcrumb: `Notebook: ${name}`,
+          });
+        }
+      }
+      webview.postMessage({ type: 'dbHierarchyData', path: { connectionId: '__notebooks__' }, items });
+    } catch {
+      webview.postMessage({ type: 'dbHierarchyData', path: { connectionId: '__notebooks__' }, items: [] });
+    }
+  }
+
+  private async _handleGetSavedQueries(): Promise<void> {
+    const webview = this._getTargetWebview();
+    if (!webview) { return; }
+    try {
+      const { SavedQueriesService } = await import('../features/savedQueries/SavedQueriesService');
+      const queries = SavedQueriesService.getInstance().getQueries();
+      const items: DbObject[] = queries.map(q => ({
+        name: q.title,
+        type: 'saved-query' as any,
+        schema: q.schemaName || '',
+        database: q.databaseName || '',
+        connectionId: `__sq__${q.id}`,
+        connectionName: '',
+        breadcrumb: `Query: ${q.title}`,
+      }));
+      webview.postMessage({ type: 'dbHierarchyData', path: { connectionId: '__queries__' }, items });
+    } catch {
+      webview.postMessage({ type: 'dbHierarchyData', path: { connectionId: '__queries__' }, items: [] });
+    }
+  }
+
+  private async _readNotebookSql(uri: vscode.Uri): Promise<string> {
+    const content = await vscode.workspace.fs.readFile(uri);
+    const raw = new TextDecoder().decode(content);
+    const nb = JSON.parse(raw);
+    const sqlCells = (nb.cells || []).filter((c: any) =>
+      (c.kind === 'sql' || c.kind === 1 || c.language === 'sql') && c.value
+    );
+    return sqlCells.map((c: any) => c.value.trim()).filter(Boolean).join('\n;\n');
   }
 
   // ==================== Session Management ====================
@@ -1702,6 +1918,48 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, ChatProvide
       return;
     }
     this._postModelCatalogToWebview(currentWebview, payload, { catalogLoading: false });
+    await this._pushAuthStateToWebview();
+  }
+
+  /**
+   * Tell the webview whether to show the unsigned nexql-free sign-in banner.
+   * Shown only when the chat provider is nexql-free, the user is not signed in,
+   * and the banner was never dismissed. Never triggers an auth prompt itself.
+   */
+  private async _pushAuthStateToWebview(): Promise<void> {
+    const webview = this._getTargetWebview();
+    if (!webview) {
+      return;
+    }
+
+    const config = vscode.workspace.getConfiguration('postgresExplorer');
+    const provider = readAiScopeSettings(config, 'chat').provider;
+    const dismissed = this._extensionContext.globalState.get<boolean>(
+      NEXQL_SIGNIN_BANNER_DISMISSED_KEY,
+      false,
+    );
+    const signedIn = await AccountService.getInstance(this._extensionContext).isSignedIn();
+
+    webview.postMessage({
+      type: 'authState',
+      showBanner: shouldShowNexqlSignInBanner(provider, signedIn, dismissed),
+    });
+  }
+
+  /** Explicit sign-in from the banner — the only chat-panel path allowed to prompt. */
+  private async _handleSignInNexql(): Promise<void> {
+    try {
+      const account = AccountService.getInstance(this._extensionContext);
+      await account.ensureAiSession({ interactive: true });
+      const email = await account.getAccountEmail();
+      vscode.window.showInformationMessage(
+        email ? `Signed in to NexQL as ${email}.` : 'Signed in to NexQL.',
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      vscode.window.showWarningMessage(`NexQL sign-in failed: ${message}`);
+    }
+    await this._pushAuthStateToWebview();
   }
 
   private async _handleSwitchChatModel(selectionId: string): Promise<void> {

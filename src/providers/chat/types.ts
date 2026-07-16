@@ -59,7 +59,7 @@ export interface DbMention {
   schemaInfo?: string;
 }
 
-export type DbObjectType = 'table' | 'view' | 'function' | 'materialized-view' | 'type' | 'schema' | 'database' | 'connection';
+export type DbObjectType = 'table' | 'view' | 'function' | 'procedure' | 'materialized-view' | 'type' | 'schema' | 'database' | 'connection' | 'column' | 'index' | 'constraint' | 'partition' | 'sequence' | 'domain' | 'trigger' | 'aggregate' | 'foreign-table' | 'foreign-data-wrapper' | 'foreign-server' | 'notebook' | 'saved-query';
 
 export interface DbObject {
   name: string;

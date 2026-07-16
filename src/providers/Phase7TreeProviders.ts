@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { setLastTreeDragPayload } from './chat/dragPayloadStore';
 import { ProfileManager } from '../features/connections/ProfileManager';
 import { SavedQueriesService } from '../features/savedQueries/SavedQueriesService';
 import { extensionContext } from '../extension';
@@ -322,5 +323,32 @@ export class SavedQueriesTreeProvider
     }
 
     return items;
+  }
+}
+
+export class SavedQueriesDragAndDropController implements vscode.TreeDragAndDropController<SavedQueryTreeItem> {
+  dragMimeTypes = ['application/vnd.code.tree.postgresExplorer', 'text/plain'];
+  dropMimeTypes = [];
+
+  handleDrag(
+    source: readonly SavedQueryTreeItem[],
+    dataTransfer: vscode.DataTransfer,
+    _token: vscode.CancellationToken
+  ): void {
+    if (source.length === 0) { return; }
+    const items = source.map(item => ({
+      type: 'saved-query',
+      queryId: item.query.id,
+      label: item.query.title,
+      connectionId: item.query.connectionId || '',
+      databaseName: item.query.databaseName || '',
+      schema: item.query.schemaName || '',
+      tableName: '',
+      columnName: '',
+      comment: '',
+    }));
+    dataTransfer.set('application/vnd.code.tree.postgresExplorer', new vscode.DataTransferItem(JSON.stringify(items)));
+    dataTransfer.set('text/plain', new vscode.DataTransferItem(items.map(i => i.label).join(', ')));
+    setLastTreeDragPayload(items as any);
   }
 }

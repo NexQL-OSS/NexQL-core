@@ -124,10 +124,22 @@ export class AccountService {
     return this.postJson<DeviceAuthStartResponse>('/auth/device', {});
   }
 
-  /** Free-tier lite sign-in via the editor's GitHub session — no license required. */
-  async signInFree(): Promise<{ email?: string }> {
-    const session = await vscode.authentication.getSession('github', [], { createIfNone: true });
+  /**
+   * Free-tier lite sign-in via the editor's GitHub session — no license required.
+   * Silent by default: returns undefined instead of prompting when the user has
+   * not already granted GitHub access. Pass `interactive: true` only from an
+   * explicit user gesture (sign-in button, settings Test).
+   */
+  async signInFree(options?: { interactive?: boolean }): Promise<{ email?: string } | undefined> {
+    const session = await vscode.authentication.getSession(
+      'github',
+      [],
+      options?.interactive ? { createIfNone: true } : { silent: true },
+    );
     if (!session) {
+      if (!options?.interactive) {
+        return undefined;
+      }
       throw new Error('GitHub sign-in is required to use NexQL free AI.');
     }
 
@@ -149,9 +161,11 @@ export class AccountService {
   /**
    * Resolve a bearer token for the AI Gateway proxy: reuse an existing (free or
    * paid) session, refresh it, sign in with a stored license (paid), or fall
-   * back to free GitHub lite sign-in.
+   * back to free GitHub lite sign-in. Silent by default — returns undefined
+   * when signing in would require an interactive prompt; pass
+   * `interactive: true` only from an explicit user gesture.
    */
-  async ensureAiSession(options?: { invalidateAccess?: boolean }): Promise<string> {
+  async ensureAiSession(options?: { invalidateAccess?: boolean; interactive?: boolean }): Promise<string | undefined> {
     if (options?.invalidateAccess) {
       await this.context.secrets.delete(ACCESS_TOKEN_KEY);
     }
@@ -176,8 +190,8 @@ export class AccountService {
 
     if (LicenseService.getInstance().getLicenseKey()) {
       await this.signInWithLicense();
-    } else {
-      await this.signInFree();
+    } else if (!(await this.signInFree({ interactive: options?.interactive }))) {
+      return undefined;
     }
 
     const token = await this.getAccessToken();

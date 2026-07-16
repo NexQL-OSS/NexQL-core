@@ -74,6 +74,14 @@ const HTTP_RETRY_MAX_ATTEMPTS = 3;
 const HTTP_RETRY_BASE_MS = 400;
 const HTTP_RETRY_CAP_MS = 8000;
 
+/** Thrown when the NexQL free provider needs a sign-in; callers surface an actionable notice instead of a raw failure. */
+export class NexqlAuthRequiredError extends Error {
+  constructor(message = 'Sign in to NexQL (free) or choose another AI provider in AI Settings.') {
+    super(message);
+    this.name = 'NexqlAuthRequiredError';
+  }
+}
+
 /** Carries HTTP status for non-200 / parse failures so retries can target 5xx and 429. */
 export class AiProviderHttpError extends Error {
   constructor(
@@ -1323,7 +1331,7 @@ export class AiService {
         };
       } else if (provider === 'nexql-free') {
         if (!nexqlFreeToken) {
-          throw new Error('Sign in to NexQL to use the free AI model.');
+          throw new NexqlAuthRequiredError();
         }
         endpoint = NEXQL_AI_CHAT_ENDPOINT;
         model = model || DEFAULT_NEXQL_FREE_MODEL;
@@ -1504,6 +1512,9 @@ export class AiService {
           const refreshedToken = await AccountService.getInstance(extensionContext).ensureAiSession({
             invalidateAccess: true,
           });
+          if (!refreshedToken) {
+            throw new NexqlAuthRequiredError();
+          }
           headers['Authorization'] = `Bearer ${refreshedToken}`;
           const response = await this._makeHttpRequestWithRetry(endpoint, headers, body, provider, onChunk);
           telemetry.trackEvent('ai_request', { provider, success: true });
@@ -1624,7 +1635,7 @@ export class AiService {
     }
   }
 
-  /** Resolves (and lazily mints, via device-lite sign-in) the NexQL bearer used by the free AI proxy. */
+  /** Resolves the NexQL bearer used by the free AI proxy. Silent — never prompts; undefined when not signed in. */
   private async _getNexqlFreeToken(): Promise<string | undefined> {
     try {
       return await AccountService.getInstance(extensionContext).ensureAiSession();

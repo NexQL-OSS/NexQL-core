@@ -2060,6 +2060,14 @@
           "scope": "window",
           "markdownDescription": "Expose NexQL's read-only database tools (schema search, describe object, run SELECT, EXPLAIN) as an MCP server other agents (e.g. Claude Code, Copilot) can attach to. Off by default."
         },
+        "postgresExplorer.mcp.port": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0,
+          "maximum": 65535,
+          "scope": "window",
+          "markdownDescription": "Fixed local port for the NexQL MCP server, so external clients (Cursor, Antigravity, etc.) can hard-code the endpoint instead of re-reading a random port each time VS Code restarts. `0` picks a random free port (VS Code's own MCP integration doesn't need this — it re-resolves the URI automatically). Takes effect on next server start; if the port is already in use, start will fail."
+        },
         "postgresExplorer.mcp.maxRows": {
           "type": "number",
           "default": 500,

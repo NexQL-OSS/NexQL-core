@@ -786,6 +786,12 @@
                 <span>Enable MCP Server</span>
               </label>
 
+              <label class="hub-card-checkbox-row" style="margin-top: 8px; gap: 8px;">
+                <span style="min-width: fit-content;">Fixed port</span>
+                <input type="number" id="prefMcpPort" min="0" max="65535" placeholder="0" style="max-width:100px" class="num-input">
+                <span style="opacity:0.6;font-size:0.85em">0 = random each restart</span>
+              </label>
+
               <!-- Connection details and setup instructions -->
               <div id="mcpConfigContainer" style="margin-top: 16px; border-top: 1px solid var(--vscode-widget-border); padding-top: 16px;" hidden>
                 <div class="mcp-status-row" style="margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
