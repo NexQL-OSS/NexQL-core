@@ -32,11 +32,13 @@ package: build
 	@echo "Replacing README.md with MARKETPLACE.md for packaging..."
 	@if [ -f README.md ]; then cp README.md README.md.bak; fi
 	@cp MARKETPLACE.md README.md
-	@trap 'if [ -f README.md.bak ]; then mv README.md.bak README.md; fi' EXIT INT TERM; \
+	@if [ -d node_modules/vscode ]; then mv node_modules/vscode /tmp/vscode-pkg-temp; fi
+	@trap 'if [ -f README.md.bak ]; then mv README.md.bak README.md; fi; if [ -d /tmp/vscode-pkg-temp ]; then mv /tmp/vscode-pkg-temp node_modules/vscode; fi' EXIT INT TERM; \
 	$(VSCE_CMD) package; \
 	EXIT_CODE=$$?; \
 	if [ -f README.md.bak ]; then mv README.md.bak README.md; fi; \
-	echo "Restored original README.md"; \
+	if [ -d /tmp/vscode-pkg-temp ]; then mv /tmp/vscode-pkg-temp node_modules/vscode; fi; \
+	echo "Restored original README.md and vscode mock"; \
 	exit $$EXIT_CODE
 
 # Pro dev mode: merge pro manifest + templates into the working tree and build
@@ -94,16 +96,19 @@ package-nightly: build
 	@NIGHTLY_VERSION=$$($(NODE_BIN) ./scripts/compute-nightly-version.js); \
 	echo "Using nightly version: $$NIGHTLY_VERSION"; \
 	NIGHTLY_VERSION=$$NIGHTLY_VERSION OPENVSX_NIGHTLY_NAME=$(OPENVSX_NIGHTLY_NAME) $(NODE_BIN) ./scripts/prepare-nightly-manifests.js
-	@echo "Packaging VS Code Marketplace nightly (pre-release)..."
-	@cp package.json package.json.bak
-	@cp .nightly/package.marketplace.json package.json
-	@$(VSCE_CMD) package --pre-release
-	@mv package.json.bak package.json
-	@echo "Packaging Open VSX nightly companion..."
-	@cp package.json package.json.bak
-	@cp .nightly/package.openvsx.json package.json
-	@$(VSCE_CMD) package
-	@mv package.json.bak package.json
+	@if [ -d node_modules/vscode ]; then mv node_modules/vscode /tmp/vscode-pkg-temp; fi
+	@trap 'if [ -d /tmp/vscode-pkg-temp ]; then mv /tmp/vscode-pkg-temp node_modules/vscode; fi' EXIT INT TERM; \
+	echo "Packaging VS Code Marketplace nightly (pre-release)..."; \
+	cp package.json package.json.bak; \
+	cp .nightly/package.marketplace.json package.json; \
+	$(VSCE_CMD) package --pre-release; \
+	mv package.json.bak package.json; \
+	echo "Packaging Open VSX nightly companion..."; \
+	cp package.json package.json.bak; \
+	cp .nightly/package.openvsx.json package.json; \
+	$(VSCE_CMD) package; \
+	mv package.json.bak package.json; \
+	if [ -d /tmp/vscode-pkg-temp ]; then mv /tmp/vscode-pkg-temp node_modules/vscode; fi
 	@echo "Nightly packages created:"
 	@ls -1 *.vsix
 
