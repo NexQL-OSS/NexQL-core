@@ -1,6 +1,6 @@
 # Changelog
 
-<a href="https://www.producthunt.com/products/nexql?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-nexql" target="_blank" rel="noopener noreferrer"><img alt="NexQL - AI-native Postgres tooling, All in VS Code | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1198080&amp;theme=neutral&amp;t=1784198674691"></a>
+<a href="https://www.producthunt.com/products/nexql?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-nexql" target="_blank" rel="noopener noreferrer"><img alt="NexQL - AI-native Postgres tooling, All in VS Code | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.png?post_id=1198080&amp;theme=neutral&amp;t=1784198674691"></a>
 
 Quick links:
 - [NexQL Homepage](https://nexql.astrx.dev/)
