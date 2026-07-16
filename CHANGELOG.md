@@ -1,5 +1,7 @@
 # Changelog
 
+<a href="https://www.producthunt.com/products/nexql?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-nexql" target="_blank" rel="noopener noreferrer"><img alt="NexQL - AI-native Postgres tooling, All in VS Code | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.png?post_id=1198080&amp;theme=neutral&amp;t=1784198674691"></a>
+
 Quick links:
 - [NexQL Homepage](https://nexql.astrx.dev/)
 - [Github](https://github.com/dev-asterix/NexQL) 
@@ -9,7 +11,7 @@ Quick links:
 ---
 
 ## [2.2.1] - 2026-07-16
-> Nightly releases -  v2.3.1
+> Nightly releases -  v2.3.1 • v2.3.2
 
 ### 🖱️ Drag & Drop into Chat and Notebooks
 
@@ -18,7 +20,7 @@ Quick links:
 - **Attach Notebooks/Saved Queries via @mention** — The `@` mention picker now lists your notebooks and saved queries alongside schema objects.
 
 ### 🔐 Safer NexQL Free AI Sign-In. Issue #124 | Discussion #123
-> Thnanks to the community for reporting and helping us improve the sign-in experience.
+> Thanks to the community for reporting and helping us improve the sign-in experience.
 
 - **Actionable Sign-In Banner** — A dismissible banner appears in the SQL Assistant when the free model is selected and you're not signed in, with **Sign in** and **Choose provider** actions.
 - **Clearer Auth Errors** — Failed NexQL Free AI requests due to a missing/expired session now surface a specific "sign in or switch provider" message instead of a generic failure.
@@ -27,6 +29,12 @@ Quick links:
 
 - **Persistent Bearer Token** — The MCP server's auth token is now stored in VS Code `SecretStorage` and reused across extension host restarts, instead of regenerating randomly every launch.
 - **Configurable Fixed Port** — New `postgresExplorer.mcp.port` setting (also exposed as a **Fixed port** field in **NexQL Settings → Preferences**) lets external clients (Cursor, Antigravity, Codex, etc.) hard-code the MCP endpoint. `0` (default) keeps the previous random-port behavior. Changing the port from the Preferences panel restarts the running server immediately — no window reload needed.
+
+### 🗄️ Database Indexing Enhancements & Redesign
+
+- **In-Webview Indexing Wizard Modal** — Replaced the multi-step VS Code QuickPick setup wizard with a beautiful, fully integrated modal dialog matching the connection editor's styling. 
+- **Auto-Rebuild of Stale Indexes** — Silent background auto-rebuild of database indexes that are more than 1 week (7 days) old to prevent metadata staleness.
+- **Connection-Grouped Compact View** — Redesigned the index status dashboard in both the Settings Hub and the dedicated Database Index Grounding panels. Active indexes are now neatly grouped under their parent connections.
 
 ### Fixed
 

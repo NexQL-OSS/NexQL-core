@@ -10,6 +10,7 @@ import { PostgresMetadata } from '../../common/types';
 import { PlanStoreWorkspace } from '../../features/planStudio/PlanStoreWorkspace';
 import { PlanStudioPanel } from '../../features/planStudio/PlanStudioPanel';
 import { requirePro, ProFeature } from '../../services/featureGates';
+import { ConnectionManager } from '../../services/ConnectionManager';
 
 export class ExplainErrorHandler implements IMessageHandler {
   constructor(private chatViewProvider: ChatViewProvider | undefined) { }
@@ -217,14 +218,11 @@ export class ConvertExplainHandler implements IMessageHandler {
         title: 'Converting EXPLAIN to JSON format...',
         cancellable: false
       }, async () => {
-        const client = this.createPool({
-          host: connection.host,
-          port: connection.port,
-          user: connection.username,
-          password: password || undefined,
-          database: metadata.databaseName,
-          ssl: connection.ssl ? { rejectUnauthorized: false } : false
-        });
+        const connectionConfig = {
+          ...connection,
+          database: metadata.databaseName || connection.database
+        };
+        const client = await ConnectionManager.getInstance().getPooledClient(connectionConfig);
 
         try {
           const result = await client.query(jsonQuery);
@@ -269,7 +267,7 @@ export class ConvertExplainHandler implements IMessageHandler {
             vscode.window.showErrorMessage('No results returned from EXPLAIN query');
           }
         } finally {
-          await client.end();
+          client.release();
         }
       });
     } catch (error: any) {

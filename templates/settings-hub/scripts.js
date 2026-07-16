@@ -592,8 +592,13 @@ connModalBackdrop.addEventListener('click', (event) => {
 });
 
 document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape' && connModalBackdrop && !connModalBackdrop.hidden) {
-    closeConnEditor();
+  if (event.key === 'Escape') {
+    if (connModalBackdrop && !connModalBackdrop.hidden) {
+      closeConnEditor();
+    }
+    if ($('dbindexWizardBackdrop') && !$('dbindexWizardBackdrop').hidden) {
+      closeDbindexWizard();
+    }
   }
 });
 
@@ -3994,6 +3999,8 @@ function renderQuotas(quotas) {
         // percentage reads far easier than "9,998,452/10,000,000 tokens". The server
         // still tracks/reports the exact raw numbers; this is a display-only choice.
         label.textContent = formatRemainingPercent(ratio) + periodSuffix;
+      } else if (q.feature === 'cloudStorage') {
+        label.textContent = formatBytes(q.remaining) + ' / ' + formatBytes(q.limit) + ' used';
       } else {
         label.textContent = q.remaining.toLocaleString() + '/' + q.limit.toLocaleString() + periodSuffix;
       }
@@ -4085,9 +4092,7 @@ function handleLicenseMessage(message) {
 
       $('licenseQuotaBox').hidden = !(lic.quotas && lic.quotas.length);
       if (lic.quotas && lic.quotas.length) {
-        $('licenseQuotaTitle').textContent = isPaid
-          ? 'Usage — unlimited on your plan'
-          : 'Free usage remaining';
+        $('licenseQuotaTitle').textContent = 'Usage';
         renderQuotas(lic.quotas);
       }
       break;
@@ -4139,6 +4144,121 @@ function escapeHtml(str) {
     .replace(/'/g, '&#039;');
 }
 
+let dbindexWizardConnections = [];
+let dbindexWizardIsBuilding = false;
+
+function openDbindexWizard() {
+  try {
+    $('dbindexWizardBackdrop').hidden = false;
+    dbindexWizardIsBuilding = false;
+    setDbindexWizardFormDisabled(false);
+    
+    // Reset form elements
+    $('dbindexWizardForm').reset();
+    dbindexWizardHideMessage();
+    $('dbindexWizardProgress').hidden = true;
+    $('dbindexWizardProgressBarFill').style.width = '0%';
+    $('dbindexWizardProgressText').textContent = '';
+    
+    $('dbindexWizardDbGroup').hidden = true;
+    $('dbindexWizardSchemaGroup').hidden = true;
+    $('dbindexWizardDepthGroup').hidden = true;
+    $('dbindexWizardPiiGroup').hidden = true;
+    $('dbindexWizardProdWarning').hidden = true;
+    
+    // Clear select options and trigger custom dropdown refresh
+    $('dbindexWizardConn').textContent = '';
+    $('dbindexWizardDb').textContent = '';
+    $('dbindexWizardSchemaList').textContent = '';
+    
+    enhanceSelect($('dbindexWizardConn'));
+    enhanceSelect($('dbindexWizardDb'));
+    
+    // Set default radio value
+    const depthRadios = document.getElementsByName('dbindexWizardDepth');
+    if (depthRadios.length > 0) {
+      depthRadios[0].checked = true;
+    }
+    
+    $('dbindexWizardSubmitBtn').disabled = true;
+    
+    // Request connections
+    vscode.postMessage({ command: 'dbindex/listConnections' });
+  } catch (err) {
+    alert("openDbindexWizard Error: " + err.message + "\nStack: " + err.stack);
+  }
+}
+
+function closeDbindexWizard() {
+  if (dbindexWizardIsBuilding) {
+    vscode.postMessage({ command: 'dbindex/cancelBuild' });
+  }
+  $('dbindexWizardBackdrop').hidden = true;
+  dbindexWizardIsBuilding = false;
+}
+
+function setDbindexWizardFormDisabled(disabled) {
+  const form = $('dbindexWizardForm');
+  form.querySelectorAll('input, select, button').forEach(el => {
+    if (el.id !== 'dbindexWizardCloseBtn' && el.id !== 'dbindexWizardCancelBtn') {
+      el.disabled = disabled;
+    }
+  });
+  
+  // Sync select displays
+  const connSelect = $('dbindexWizardConn');
+  const connState = pgSelectRegistry.get(connSelect);
+  if (connState) { connState.syncDisplay(); }
+  
+  const dbSelect = $('dbindexWizardDb');
+  const dbState = pgSelectRegistry.get(dbSelect);
+  if (dbState) { dbState.syncDisplay(); }
+}
+
+function dbindexWizardShowMessage(text, type) {
+  const msgEl = $('dbindexWizardMessage');
+  msgEl.className = 'message ' + (type || 'info');
+  msgEl.textContent = text;
+  msgEl.hidden = false;
+}
+
+function dbindexWizardHideMessage() {
+  $('dbindexWizardMessage').hidden = true;
+}
+
+function updateDbindexWizardSubmitState() {
+  const checkboxes = $('dbindexWizardSchemaList').querySelectorAll('input[type="checkbox"]');
+  let checkedCount = 0;
+  checkboxes.forEach(cb => {
+    if (cb.checked) {
+      checkedCount++;
+    }
+  });
+  
+  const hasSchemas = checkedCount > 0;
+  $('dbindexWizardDepthGroup').hidden = !hasSchemas;
+  $('dbindexWizardPiiGroup').hidden = !hasSchemas;
+  
+  // Update submit button disabled status
+  $('dbindexWizardSubmitBtn').disabled = !hasSchemas || dbindexWizardIsBuilding;
+  
+  // Trigger depth warning check
+  checkDbindexWizardDepthWarning();
+}
+
+function checkDbindexWizardDepthWarning() {
+  const selectedDepth = document.querySelector('input[name="dbindexWizardDepth"]:checked')?.value;
+  const connId = $('dbindexWizardConn').value;
+  const conn = dbindexWizardConnections.find(c => c.id === connId);
+  const isProd = conn && conn.environment === 'production';
+  
+  if (selectedDepth === 'profiles' && isProd) {
+    $('dbindexWizardProdWarning').hidden = false;
+  } else {
+    $('dbindexWizardProdWarning').hidden = true;
+  }
+}
+
 function handleDbIndexMessage(message) {
   switch (message.type) {
     case 'dbindex/state':
@@ -4152,103 +4272,195 @@ function handleDbIndexMessage(message) {
       $('dbindexState').classList.add('error');
       $('dbindexState').textContent = message.error || 'Failed to update index';
       break;
+    case 'dbindex/connections': {
+      const select = $('dbindexWizardConn');
+      select.textContent = '';
+      const optDefault = document.createElement('option');
+      optDefault.value = '';
+      optDefault.textContent = '-- Select Connection --';
+      select.appendChild(optDefault);
+      dbindexWizardConnections = message.connections || [];
+      dbindexWizardConnections.forEach(conn => {
+        const opt = document.createElement('option');
+        opt.value = conn.id;
+        opt.textContent = conn.name + (conn.environment ? ` (${conn.environment})` : '');
+        select.appendChild(opt);
+      });
+      setSelectValue(select, '');
+      break;
+    }
+    case 'dbindex/databases': {
+      const select = $('dbindexWizardDb');
+      select.textContent = '';
+      const optDefault = document.createElement('option');
+      optDefault.value = '';
+      optDefault.textContent = '-- Select Database --';
+      select.appendChild(optDefault);
+      (message.databases || []).forEach(db => {
+        const opt = document.createElement('option');
+        opt.value = db;
+        opt.textContent = db;
+        select.appendChild(opt);
+      });
+      setSelectValue(select, '');
+      $('dbindexWizardDbGroup').hidden = false;
+      break;
+    }
+    case 'dbindex/schemas': {
+      const listContainer = $('dbindexWizardSchemaList');
+      listContainer.textContent = '';
+      const schemas = message.schemas || [];
+      if (schemas.length === 0) {
+        listContainer.textContent = 'No non-system schemas found.';
+        $('dbindexWizardSchemaGroup').hidden = false;
+        return;
+      }
+      schemas.forEach(schema => {
+        const lbl = document.createElement('label');
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.value = schema;
+        cb.checked = schema === 'public';
+        cb.addEventListener('change', updateDbindexWizardSubmitState);
+        lbl.appendChild(cb);
+        lbl.appendChild(document.createTextNode(' ' + schema));
+        listContainer.appendChild(lbl);
+      });
+      $('dbindexWizardSchemaGroup').hidden = false;
+      updateDbindexWizardSubmitState();
+      break;
+    }
+    case 'dbindex/buildProgress': {
+      $('dbindexWizardProgress').hidden = false;
+      $('dbindexWizardProgressBarFill').style.width = `${message.percent || 0}%`;
+      $('dbindexWizardProgressText').textContent = message.text || '';
+      break;
+    }
+    case 'dbindex/buildComplete': {
+      $('dbindexWizardProgress').hidden = true;
+      dbindexWizardShowMessage(message.text || 'Index built successfully!', 'info');
+      vscode.postMessage({ command: 'dbindex/load' });
+      setTimeout(() => {
+        closeDbindexWizard();
+      }, 1500);
+      break;
+    }
+    case 'dbindex/buildError': {
+      $('dbindexWizardProgress').hidden = true;
+      dbindexWizardShowMessage(message.error || 'Failed to build index.', 'error');
+      setDbindexWizardFormDisabled(false);
+      break;
+    }
   }
 }
 
 function renderDbIndexes(indexes) {
-  const cardsContainer = $('dbindexCards');
-  if (!cardsContainer) return;
-
-  if (!indexes || indexes.length === 0) {
-    cardsContainer.innerHTML = `
-      <div class="empty-state">
-        <div class="empty-icon" aria-hidden="true">
-          <svg viewBox="0 0 48 48" fill="none"><rect x="8" y="14" width="32" height="22" rx="4" stroke="currentColor" stroke-width="2"/><path d="M16 24h16M24 20v8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-        </div>
-        <h2>No active database indexes</h2>
-        <p>Build a local index to enable conceptual search and offline grounding for AI tools.</p>
-        <button type="button" class="btn-primary" id="dbindexEmptyBuildBtn">⚡ Index Your First Database</button>
-      </div>
-    `;
-    $('dbindexEmptyBuildBtn')?.addEventListener('click', () => {
-      vscode.postMessage({ command: 'dbindex/build' });
-    });
-    return;
-  }
-
-  cardsContainer.textContent = '';
-  indexes.forEach(idx => {
-    const card = document.createElement('div');
-    card.className = 'hub-setting-card db-index-card';
-
-    const dateStr = idx.indexedAt ? new Date(idx.indexedAt).toLocaleString() : 'N/A';
-    const statusClass = idx.drift ? 'drift' : (idx.indexedAt ? 'fresh' : 'none');
-    const statusLabel = idx.drift ? 'Drifted' : (idx.indexedAt ? 'Fresh' : 'Not Indexed');
-
-    card.innerHTML = `
-      <div class="card-header">
-        <div class="card-title">
-          <span>💾</span>
-          <strong>${escapeHtml(idx.database)}</strong>
-          <span class="pg-text-meta">(${escapeHtml(idx.connectionName)})</span>
-        </div>
-        <span class="status-badge ${statusClass}">${statusLabel}</span>
-      </div>
-
-      <div class="stats-row">
-        <div class="stat-item">
-          <span class="pg-text-meta">Indexed Objects</span>
-          <span class="val">${idx.tables || 0} tables · ${idx.views || 0} views · ${idx.functions || 0} fns</span>
-        </div>
-        <div class="stat-item">
-          <span class="pg-text-meta">Last Updated</span>
-          <span class="val">${dateStr}</span>
-        </div>
-        <div class="stat-item">
-          <span class="pg-text-meta">Depth</span>
-          <span class="val">${idx.depth || 'N/A'}</span>
-        </div>
-      </div>
-
-      <div class="scope-details">
-        <strong>Scope:</strong> Schemas: <code>${escapeHtml(idx.schemas ? idx.schemas.join(', ') : 'none')}</code>
-        ${idx.piiCount > 0 ? ` · <span style="color:var(--danger, #f44336)">${idx.piiCount} PII columns excluded</span>` : ''}
-      </div>
-
-      <div class="card-actions">
-        <button type="button" class="btn-primary btn-curate" data-conn="${idx.connectionId}" data-db="${idx.database}">🔧 Curate</button>
-        <button type="button" class="btn-secondary btn-rebuild" data-conn="${idx.connectionId}" data-db="${idx.database}">Rebuild</button>
-        <button type="button" class="btn-secondary btn-export" data-conn="${idx.connectionId}" data-db="${idx.database}">Export Schema</button>
-        <button type="button" class="btn-secondary btn-danger-text btn-clear" data-conn="${idx.connectionId}" data-db="${idx.database}">Delete Index</button>
-      </div>
-    `;
-
-    card.querySelector('.btn-curate').addEventListener('click', () => {
-      vscode.postMessage({ command: 'dbindex/curate', connectionId: idx.connectionId, database: idx.database });
-    });
-
-    card.querySelector('.btn-rebuild').addEventListener('click', () => {
-      vscode.postMessage({ command: 'dbindex/rebuild', connectionId: idx.connectionId, database: idx.database });
-    });
-
-    card.querySelector('.btn-export').addEventListener('click', () => {
-      vscode.postMessage({ command: 'dbindex/export', connectionId: idx.connectionId, database: idx.database });
-    });
-
-    card.querySelector('.btn-clear').addEventListener('click', () => {
-      vscode.postMessage({ command: 'dbindex/clear', connectionId: idx.connectionId, database: idx.database });
-    });
-
-    cardsContainer.appendChild(card);
+  renderDbIndexesShared(indexes, $('dbindexCards'), (action, connId, db) => {
+    if (action === 'buildNew') {
+      openDbindexWizard();
+      return;
+    }
+    const commandMap = {
+      curate: 'dbindex/curate',
+      rebuild: 'dbindex/rebuild',
+      export: 'dbindex/export',
+      clear: 'dbindex/clear'
+    };
+    vscode.postMessage({ command: commandMap[action], connectionId: connId, database: db });
   });
 }
 
 $('dbindexBuildBtn').addEventListener('click', () => {
-  vscode.postMessage({ command: 'dbindex/build' });
+  openDbindexWizard();
 });
 
 $('dbindexEnableEmbeddings').addEventListener('change', (e) => {
   vscode.postMessage({ command: 'dbindex/setEmbeddings', enableEmbeddings: e.target.checked });
+});
+
+// Init event listeners for dbindex wizard modal
+$('dbindexWizardConn').addEventListener('change', () => {
+  const connId = $('dbindexWizardConn').value;
+  if (!connId) {
+    $('dbindexWizardDbGroup').hidden = true;
+    $('dbindexWizardSchemaGroup').hidden = true;
+    $('dbindexWizardDepthGroup').hidden = true;
+    $('dbindexWizardPiiGroup').hidden = true;
+    $('dbindexWizardSubmitBtn').disabled = true;
+    return;
+  }
+  
+  $('dbindexWizardDbGroup').hidden = true;
+  $('dbindexWizardSchemaGroup').hidden = true;
+  $('dbindexWizardDepthGroup').hidden = true;
+  $('dbindexWizardPiiGroup').hidden = true;
+  $('dbindexWizardSubmitBtn').disabled = true;
+  
+  vscode.postMessage({ command: 'dbindex/listDatabases', connectionId: connId });
+});
+
+$('dbindexWizardDb').addEventListener('change', () => {
+  const connId = $('dbindexWizardConn').value;
+  const db = $('dbindexWizardDb').value;
+  if (!connId || !db) {
+    $('dbindexWizardSchemaGroup').hidden = true;
+    $('dbindexWizardDepthGroup').hidden = true;
+    $('dbindexWizardPiiGroup').hidden = true;
+    $('dbindexWizardSubmitBtn').disabled = true;
+    return;
+  }
+  
+  $('dbindexWizardSchemaGroup').hidden = true;
+  $('dbindexWizardDepthGroup').hidden = true;
+  $('dbindexWizardPiiGroup').hidden = true;
+  $('dbindexWizardSubmitBtn').disabled = true;
+  
+  vscode.postMessage({ command: 'dbindex/listSchemas', connectionId: connId, database: db });
+});
+
+document.getElementsByName('dbindexWizardDepth').forEach(radio => {
+  radio.addEventListener('change', checkDbindexWizardDepthWarning);
+});
+
+$('dbindexWizardForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  
+  const connId = $('dbindexWizardConn').value;
+  const db = $('dbindexWizardDb').value;
+  const depth = document.querySelector('input[name="dbindexWizardDepth"]:checked')?.value;
+  const piiInput = $('dbindexWizardPii').value.trim();
+  const piiColumns = piiInput ? piiInput.split(',').map(s => s.trim()).filter(s => s.length > 0) : [];
+  
+  const checkboxes = $('dbindexWizardSchemaList').querySelectorAll('input[type="checkbox"]:checked');
+  const schemas = Array.from(checkboxes).map(cb => cb.value);
+  
+  if (!connId || !db || schemas.length === 0 || !depth) {
+    return;
+  }
+  
+  dbindexWizardIsBuilding = true;
+  setDbindexWizardFormDisabled(true);
+  dbindexWizardHideMessage();
+  
+  $('dbindexWizardProgress').hidden = false;
+  $('dbindexWizardProgressBarFill').style.width = '0%';
+  $('dbindexWizardProgressText').textContent = 'Starting build...';
+  
+  vscode.postMessage({
+    command: 'dbindex/startBuild',
+    connectionId: connId,
+    database: db,
+    schemas,
+    depth,
+    piiExcludedColumns: piiColumns
+  });
+});
+
+$('dbindexWizardCloseBtn').addEventListener('click', closeDbindexWizard);
+$('dbindexWizardCancelBtn').addEventListener('click', closeDbindexWizard);
+
+$('dbindexWizardBackdrop').addEventListener('click', (event) => {
+  if (event.target === $('dbindexWizardBackdrop')) { closeDbindexWizard(); }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -4268,6 +4480,9 @@ window.addEventListener('message', (event) => {
     }
     if (message.tab && message.section === 'sync') {
       showSyncTab(message.tab);
+    }
+    if (message.wizard === 'build' && message.section === 'dbindex') {
+      openDbindexWizard();
     }
     return;
   }
@@ -4302,3 +4517,5 @@ if (initialState.addConnection) { connState.pendingAdd = true; }
 showSection(initialState.section || 'connections');
 if (initialState.wizard && initialState.section === 'sync') { openSyncWizard(initialState.wizard); }
 if (initialState.tab && initialState.section === 'sync') { showSyncTab(initialState.tab); }
+if (initialState.wizard === 'build' && initialState.section === 'dbindex') { openDbindexWizard(); }
+

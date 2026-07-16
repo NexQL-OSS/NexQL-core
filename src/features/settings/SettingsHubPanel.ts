@@ -21,8 +21,9 @@ export interface SettingsHubShowOptions {
   editConnectionId?: string;
   /** Open the inline form in add mode. */
   addConnection?: boolean;
-  /** Launch sync onboarding wizard (`cloud` default path or `advanced`). */
-  wizard?: 'cloud' | 'advanced';
+  /** Launch sync onboarding wizard (`cloud` default path or `advanced`), or
+   *  the DB-indexing build wizard (`build`). */
+  wizard?: 'cloud' | 'advanced' | 'build';
   /** Prefill the connection editor from a postgres:// URL. */
   prefillConnectionUrl?: string;
   /** Deep-link sync hub sub-tab. */
@@ -181,6 +182,16 @@ export class SettingsHubPanel {
       const css = new TextDecoder().decode(cssBuffer);
       const inlineStyles = `${MODERN_WEBVIEW_BASE_CSS}\n${sharedCss}\n${css}`;
       let js = new TextDecoder().decode(jsBuffer);
+
+      try {
+        const sharedJsUri = vscode.Uri.joinPath(this._extensionUri, 'templates', 'shared', 'dbindex-shared.js');
+        const sharedJsBuf = await vscode.workspace.fs.readFile(sharedJsUri);
+        const sharedJs = new TextDecoder().decode(sharedJsBuf);
+        js = `${sharedJs}\n${js}`;
+      } catch (err) {
+        console.warn('Shared dbindex script not found:', err);
+      }
+
 
       const platformPresets = CONNECTION_PLATFORM_PRESETS.map((preset) => ({
         id: preset.id,

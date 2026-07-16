@@ -1,11 +1,8 @@
 import * as vscode from 'vscode';
 import { TelemetryService } from '../../services/TelemetryService';
-import { isProFeatureEnabled, ProFeature } from '../../services/featureGates';
 import { recordSyncActivity } from '../sync/SyncActivityLog';
 import { triggerInstantSync } from '../sync/syncTriggers';
 import { SyncController } from '../sync/SyncController';
-
-const FREE_SAVED_QUERIES_LIMIT = 2;
 
 /**
  * Saved query with metadata for quick access and reuse
@@ -154,22 +151,7 @@ export class SavedQueriesService {
    * Save a new query or update existing one.
    */
   async saveQuery(query: SavedQuery): Promise<void> {
-    // Soft cap: free tier limited to FREE_SAVED_QUERIES_LIMIT (no-op while enforcement=off).
     const isNew = !query.id || !this.queries.has(query.id);
-    if (
-      isNew &&
-      this.queries.size >= FREE_SAVED_QUERIES_LIMIT &&
-      !isProFeatureEnabled(ProFeature.UnlimitedSavedQueries)
-    ) {
-      const choice = await vscode.window.showWarningMessage(
-        `Free tier is limited to ${FREE_SAVED_QUERIES_LIMIT} saved queries. Upgrade for unlimited.`,
-        'View Plans',
-      );
-      if (choice === 'View Plans') {
-        await vscode.commands.executeCommand('postgres-explorer.license.openUpgrade');
-      }
-      return;
-    }
     if (!query.id) {
       query.id = this.generateId();
     }

@@ -765,6 +765,21 @@ body.editor-minimized .site-footer.landing-site-footer {
   max-width: 320px;
 }
 
+.footer-ph-badge {
+  margin-top: 16px;
+  margin-bottom: 8px;
+}
+
+.footer-ph-badge a {
+  display: inline-block;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), filter 0.2s ease;
+}
+
+.footer-ph-badge a:hover {
+  transform: translateY(-1.5px) scale(1.02);
+  filter: brightness(1.1);
+}
+
 .footer-social {
   display: flex;
   gap: 10px;

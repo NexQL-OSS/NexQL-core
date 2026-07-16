@@ -462,7 +462,12 @@ export class QueryAnalyzer {
       return true;
     }
     // Whitelist approach: only allow SELECT, WITH, EXPLAIN, SHOW, VALUES
-    return /^\s*(SELECT|WITH|EXPLAIN|SHOW|VALUES)\b/i.test(clean);
+    if (!/^\s*(SELECT|WITH|EXPLAIN|SHOW|VALUES)\b/i.test(clean)) {
+      return false;
+    }
+    // Check for any write/mutation patterns to catch queries like WITH d AS (DELETE ...)
+    const writePatterns = /\b(INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|TRUNCATE|GRANT|REVOKE)\b/i;
+    return !writePatterns.test(clean);
   }
 
   /**
@@ -567,7 +572,7 @@ export class QueryAnalyzer {
       }
     }
 
-    if (nodeType.includes('Bitmap Heap Scan') && typeof node['Lossy Heap Blocks'] === 'number' && node['Lossy Heap Blocks'] > 0) {
+    if (typeof node['Lossy Heap Blocks'] === 'number' && node['Lossy Heap Blocks'] > 0) {
       metrics.lossyBitmapScans = (metrics.lossyBitmapScans || 0) + 1;
       metrics.bottlenecks.push(`Lossy bitmap heap scan detected (${node['Lossy Heap Blocks']} lossy blocks)`);
     }

@@ -146,7 +146,7 @@ describe('QueryAnalyzer', () => {
           'Node Type': 'Seq Scan',
           'Total Cost': 20000,
           'Plan Rows': 100,
-          'Actual Rows': 20,
+          'Actual Rows': 5,
           'Actual Total Time': 1500,
           'Lossy Heap Blocks': 3,
           'Temp Written Blocks': 12,

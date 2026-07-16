@@ -445,3 +445,188 @@
 @keyframes pg-spin {
   to { transform: rotate(360deg); }
 }
+
+/* ── Database Indexing Shared Components ── */
+.connection-index-group {
+  margin-bottom: 16px;
+  border: 1px solid var(--pg-ui-border);
+  border-radius: var(--pg-radius-md);
+  background: var(--pg-ui-surface-raised, var(--pg-ui-surface));
+  overflow: hidden;
+  box-shadow: var(--pg-elevation-1);
+}
+
+.connection-group-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 16px;
+  background: color-mix(in srgb, var(--pg-ui-border) 25%, var(--pg-ui-surface-raised, var(--pg-ui-surface)));
+  border-bottom: 1px solid var(--pg-ui-border);
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.15s ease;
+}
+
+.connection-group-header:hover {
+  background: color-mix(in srgb, var(--pg-ui-hover) 15%, var(--pg-ui-surface-raised, var(--pg-ui-surface)));
+}
+
+.connection-group-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.connection-group-title .chevron {
+  display: inline-block;
+  font-size: 8px;
+  transition: transform 0.2s ease;
+  color: var(--pg-text-muted);
+}
+
+.connection-index-group.collapsed .chevron {
+  transform: rotate(-90deg);
+}
+
+.connection-group-title .icon {
+  font-size: 14px;
+}
+
+.connection-group-title .title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--vscode-foreground);
+}
+
+.index-count-badge {
+  font-size: 11px;
+  color: var(--pg-text-muted, #858585);
+  background: var(--pg-ui-surface-muted, #2d2d2d);
+  padding: 2px 8px;
+  border-radius: var(--pg-radius-sm, 4px);
+  border: 1px solid var(--pg-ui-border);
+}
+
+.connection-group-body {
+  padding: 0;
+}
+
+.connection-index-group.collapsed .connection-group-body {
+  display: none;
+}
+
+.db-index-row {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--pg-ui-border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: background-color 0.15s ease;
+}
+
+.db-index-row:last-child {
+  border-bottom: none;
+}
+
+.db-index-row:hover {
+  background: color-mix(in srgb, var(--pg-ui-hover) 40%, transparent);
+}
+
+.db-index-row-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.db-name-section {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 180px;
+}
+
+.db-icon {
+  font-size: 13px;
+  opacity: 0.85;
+}
+
+.db-name {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.db-stats-section {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  flex-grow: 1;
+}
+
+.stat-bubble {
+  font-size: 11px;
+  color: var(--pg-text-muted);
+  white-space: nowrap;
+}
+
+.stat-bubble strong {
+  font-family: var(--vscode-editor-font-family, monospace);
+  color: var(--vscode-foreground);
+}
+
+.db-actions-section {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.db-index-row-sub {
+  font-size: 11px;
+  color: var(--pg-text-muted);
+  padding-left: 21px;
+}
+
+.db-index-row-sub code {
+  background: var(--pg-ui-surface-muted, #2d2d2d);
+  padding: 1px 4px;
+  border-radius: var(--pg-radius-sm, 3px);
+  border: 1px solid var(--pg-ui-border);
+  color: var(--vscode-textPreformat-foreground, #d7ba7d);
+}
+
+.pii-warning {
+  color: var(--vscode-errorForeground, #f44336);
+  font-weight: 500;
+}
+
+.status-badge {
+  font-size: 9px;
+  padding: 1.5px 5px;
+  border-radius: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.status-badge.fresh {
+  background: var(--pg-semantic-info-bg);
+  border: 1px solid var(--pg-semantic-info-border);
+  color: var(--vscode-textLink-foreground);
+}
+
+.status-badge.drift {
+  background: var(--pg-semantic-warn-bg);
+  border: 1px solid var(--pg-semantic-warn-border);
+  color: var(--vscode-errorForeground, #f59e0b);
+}
+
+.status-badge.none {
+  background: var(--pg-ui-surface-muted);
+  border: 1px solid var(--pg-ui-border);
+  color: var(--pg-text-muted);
+}
+

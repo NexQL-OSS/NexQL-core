@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { Client } from 'pg';
 import { SecretStorageService } from '../services/SecretStorageService';
+import { ConnectionManager } from '../services/ConnectionManager';
 
 /**
  * Utility functions for connection and database switching in notebooks.
@@ -113,17 +114,13 @@ export class ConnectionUtils {
 
   /** List all databases for a connection */
   static async listDatabases(connection: any): Promise<string[]> {
-    const password = await SecretStorageService.getInstance().getPassword(connection.id);
-    const client = new Client({
-      host: connection.host,
-      port: connection.port,
+    const connectionConfig = {
+      ...connection,
       database: 'postgres',
-      user: connection.username,
-      password: password || connection.password || undefined,
-    });
+    };
+    const client = await ConnectionManager.getInstance().getPooledClient(connectionConfig);
 
     try {
-      await client.connect();
       const result = await client.query(`
         SELECT datname FROM pg_database 
         WHERE datistemplate = false 
@@ -131,7 +128,7 @@ export class ConnectionUtils {
       `);
       return result.rows.map(row => row.datname);
     } finally {
-      await client.end();
+      client.release();
     }
   }
 

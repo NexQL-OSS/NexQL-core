@@ -14,7 +14,7 @@ import {
   IndexInfo,
   TableSchema,
   renderTableSchema,
-} from './schemaRender';
+} from '../../common/schemaRender';
 
 /** P1.5 — schema-fetch retry policy. */
 const SCHEMA_FETCH_MAX_ATTEMPTS = 3;

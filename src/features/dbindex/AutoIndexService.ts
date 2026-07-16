@@ -181,9 +181,16 @@ export class AutoIndexService implements vscode.Disposable {
       } as any);
       if (manifest) {
         const liveFingerprint = await fetchSchemaFingerprint(client);
-        if (liveFingerprint === manifest.schemaFingerprint) {
+        const indexAge = Date.now() - new Date(manifest.indexedAt).getTime();
+        const isStale = indexAge > 7 * 24 * 60 * 60 * 1000; // 1 week
+        if (liveFingerprint === manifest.schemaFingerprint && !isStale) {
           this.outputChannel.appendLine(`[AutoIndex] Index up to date for ${database}.`);
           return;
+        }
+        if (isStale) {
+          this.outputChannel.appendLine(
+            `[AutoIndex] Index for ${database} is stale (${Math.floor(indexAge / (24 * 60 * 60 * 1000))} days old) - rebuilding silently.`
+          );
         }
         scope = manifest.scope;
       } else {

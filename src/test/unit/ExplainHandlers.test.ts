@@ -13,9 +13,16 @@ import {
   ShowExplainPlanHandler
 } from '../../services/handlers/ExplainHandlers';
 import { SecretStorageService } from '../../services/SecretStorageService';
+import { ConnectionManager } from '../../services/ConnectionManager';
+import { PlanStudioPanel } from '../../features/planStudio/PlanStudioPanel';
+import { LicenseService } from '../../services/LicenseService';
 
 describe('ExplainHandlers', () => {
   let sandbox: sinon.SinonSandbox;
+  let mockPlanStore: any;
+  let poolQuery: sinon.SinonStub;
+  let clientMock: any;
+  let getPooledClientStub: sinon.SinonStub;
 
   beforeEach(() => {
     sandbox = sinon.createSandbox();
@@ -23,6 +30,23 @@ describe('ExplainHandlers', () => {
     sandbox.stub(vscode.window, 'showInformationMessage').resolves(undefined);
     sandbox.stub(vscode.commands, 'executeCommand').resolves(undefined);
     sandbox.stub(console, 'error');
+    sandbox.stub(LicenseService, 'getInstance').returns({
+      getTier: () => 'singularity'
+    } as any);
+    sandbox.stub(PlanStudioPanel, 'show').resolves(undefined);
+
+    mockPlanStore = {
+      savePlan: sandbox.stub().returns({ id: 'saved-plan-id' }),
+      linkPlanToNotebook: sandbox.stub(),
+    } as any;
+
+    poolQuery = sandbox.stub();
+    clientMock = {
+      query: poolQuery,
+      release: sandbox.stub(),
+    };
+
+    getPooledClientStub = sandbox.stub(ConnectionManager.getInstance(), 'getPooledClient').resolves(clientMock as any);
   });
 
   afterEach(() => {
@@ -70,23 +94,24 @@ describe('ExplainHandlers', () => {
     expect(sendToChat.calledWith({ x: 1 })).to.be.true;
   });
 
-  it('ShowExplainPlanHandler calls ExplainProvider.show', async () => {
-    const show = sandbox.stub(ExplainProvider, 'show');
+  it('ShowExplainPlanHandler calls PlanStudioPanel.show', async () => {
+    const show = PlanStudioPanel.show as sinon.SinonStub;
     const uri = vscode.Uri.file('/ext');
-    const handler = new ShowExplainPlanHandler(uri);
+    const mockPlanStore = {} as any;
+    const handler = new ShowExplainPlanHandler(uri, mockPlanStore);
     await handler.handle({ plan: { Plan: {} }, query: 'SELECT 1' });
     expect(show.calledOnce).to.be.true;
   });
 
   it('ConvertExplainHandler shows error when query missing', async () => {
-    const handler = new ConvertExplainHandler({ extensionUri: vscode.Uri.file('/e') } as vscode.ExtensionContext);
+    const handler = new ConvertExplainHandler({ extensionUri: vscode.Uri.file('/e') } as vscode.ExtensionContext, mockPlanStore);
     await handler.handle({ query: '' }, { editor: {} as vscode.NotebookEditor });
     expect((vscode.window.showErrorMessage as sinon.SinonStub).calledWith('No query available to convert')).to.be
       .true;
   });
 
   it('ConvertExplainHandler shows error when connection not in settings', async () => {
-    const handler = new ConvertExplainHandler({ extensionUri: vscode.Uri.file('/e') } as vscode.ExtensionContext);
+    const handler = new ConvertExplainHandler({ extensionUri: vscode.Uri.file('/e') } as vscode.ExtensionContext, mockPlanStore);
     sandbox.stub(vscode.workspace, 'getConfiguration').returns({
       get: (k: string) => (k === 'postgresExplorer.connections' ? [] : undefined)
     });
@@ -105,12 +130,12 @@ describe('ExplainHandlers', () => {
   });
 
   it('ConvertExplainHandler shows error when password missing for password auth', async () => {
-    const handler = new ConvertExplainHandler({ extensionUri: vscode.Uri.file('/e') } as vscode.ExtensionContext);
+    const handler = new ConvertExplainHandler({ extensionUri: vscode.Uri.file('/e') } as vscode.ExtensionContext, mockPlanStore);
     sandbox.stub(vscode.workspace, 'getConfiguration').returns({
       get: (k: string) =>
-        k === 'postgresExplorer.connections'
-          ? [{ id: 'c1', host: 'h', port: 5432, username: 'u', authMode: 'password' }]
-          : undefined
+          k === 'postgresExplorer.connections'
+            ? [{ id: 'c1', host: 'h', port: 5432, username: 'u', authMode: 'password' }]
+            : undefined
     });
     sandbox.stub(SecretStorageService, 'getInstance').returns({
       getPassword: sandbox.stub().resolves(undefined)
@@ -130,7 +155,7 @@ describe('ExplainHandlers', () => {
   });
 
   it('ConvertExplainHandler returns early when editor is missing', async () => {
-    const handler = new ConvertExplainHandler({ extensionUri: vscode.Uri.file('/e') } as vscode.ExtensionContext);
+    const handler = new ConvertExplainHandler({ extensionUri: vscode.Uri.file('/e') } as vscode.ExtensionContext, mockPlanStore);
     await handler.handle({ query: 'EXPLAIN SELECT 1' }, { editor: undefined } as any);
     expect((vscode.window.showErrorMessage as sinon.SinonStub).callCount).to.equal(0);
   });
@@ -147,16 +172,13 @@ describe('ExplainHandlers', () => {
     } as unknown as SecretStorageService);
 
     const planJson = [{ Plan: { 'Node Type': 'Result' } }];
-    const poolQuery = sandbox.stub().resolves({
+    poolQuery.resolves({
       rows: [{ 'QUERY PLAN': JSON.stringify(planJson) }]
     });
-    const poolEnd = sandbox.stub().resolves();
     const handler = new ConvertExplainHandler(
       { extensionUri: vscode.Uri.file('/e') } as vscode.ExtensionContext,
-      () => ({ query: poolQuery, end: poolEnd } as unknown as Pool)
+      mockPlanStore
     );
-
-    const show = sandbox.stub(ExplainProvider, 'show');
 
     await handler.handle(
       { query: 'EXPLAIN SELECT 1' },
@@ -168,7 +190,6 @@ describe('ExplainHandlers', () => {
     );
 
     expect(poolQuery.calledOnce).to.be.true;
-    expect(show.calledOnce).to.be.true;
   });
 
   it('ConvertExplainHandler uses object plan cell without JSON.parse', async () => {
@@ -182,15 +203,13 @@ describe('ExplainHandlers', () => {
       getPassword: sandbox.stub().resolves('x')
     } as unknown as SecretStorageService);
     const planObj = [{ Plan: { 'Node Type': 'Seq Scan' } }];
-    const poolQuery = sandbox.stub().resolves({
+    poolQuery.resolves({
       rows: [{ query_plan: planObj }]
     });
-    const poolEnd = sandbox.stub().resolves();
     const handler = new ConvertExplainHandler(
       { extensionUri: vscode.Uri.file('/e') } as vscode.ExtensionContext,
-      () => ({ query: poolQuery, end: poolEnd } as unknown as Pool)
+      mockPlanStore
     );
-    const show = sandbox.stub(ExplainProvider, 'show');
 
     await handler.handle(
       { query: 'EXPLAIN SELECT 1' },
@@ -201,7 +220,7 @@ describe('ExplainHandlers', () => {
       }
     );
 
-    expect(show.calledOnce).to.be.true;
+    expect(poolQuery.calledOnce).to.be.true;
   });
 
   it('ConvertExplainHandler strips EXPLAIN ANALYZE prefix before JSON conversion', async () => {
@@ -215,13 +234,12 @@ describe('ExplainHandlers', () => {
       getPassword: sandbox.stub().resolves('secret')
     } as unknown as SecretStorageService);
 
-    const poolQuery = sandbox.stub().resolves({
+    poolQuery.resolves({
       rows: [{ 'QUERY PLAN': JSON.stringify([{ Plan: { 'Node Type': 'Result' } }]) }]
     });
-    const poolEnd = sandbox.stub().resolves();
     const handler = new ConvertExplainHandler(
       { extensionUri: vscode.Uri.file('/e') } as vscode.ExtensionContext,
-      () => ({ query: poolQuery, end: poolEnd } as unknown as Pool)
+      mockPlanStore
     );
 
     await handler.handle(
@@ -250,11 +268,10 @@ describe('ExplainHandlers', () => {
     sandbox.stub(SecretStorageService, 'getInstance').returns({
       getPassword: sandbox.stub().resolves(undefined)
     } as unknown as SecretStorageService);
-    const poolQueryEmpty = sandbox.stub().resolves({ rows: [] });
-    const poolEndEmpty = sandbox.stub().resolves();
+    poolQuery.resolves({ rows: [] });
     const handler = new ConvertExplainHandler(
       { extensionUri: vscode.Uri.file('/e') } as vscode.ExtensionContext,
-      () => ({ query: poolQueryEmpty, end: poolEndEmpty } as unknown as Pool)
+      mockPlanStore
     );
 
     await handler.handle(
@@ -280,11 +297,10 @@ describe('ExplainHandlers', () => {
     sandbox.stub(SecretStorageService, 'getInstance').returns({
       getPassword: sandbox.stub().resolves(undefined)
     } as unknown as SecretStorageService);
-    const poolQueryNoPlan = sandbox.stub().resolves({ rows: [{ other: 1 }] });
-    const poolEndNoPlan = sandbox.stub().resolves();
+    poolQuery.resolves({ rows: [{ other: 1 }] });
     const handler = new ConvertExplainHandler(
       { extensionUri: vscode.Uri.file('/e') } as vscode.ExtensionContext,
-      () => ({ query: poolQueryNoPlan, end: poolEndNoPlan } as unknown as Pool)
+      mockPlanStore
     );
 
     await handler.handle(
@@ -296,7 +312,7 @@ describe('ExplainHandlers', () => {
       }
     );
 
-    expect(poolQueryNoPlan.calledOnce).to.be.true;
+    expect(poolQuery.calledOnce).to.be.true;
     expect((vscode.window.showErrorMessage as sinon.SinonStub).calledWith('No plan data returned from query')).to.be.true;
   });
 
@@ -310,11 +326,10 @@ describe('ExplainHandlers', () => {
     sandbox.stub(SecretStorageService, 'getInstance').returns({
       getPassword: sandbox.stub().resolves(undefined)
     } as unknown as SecretStorageService);
-    const poolQueryFail = sandbox.stub().rejects(new Error('connection refused'));
-    const poolEndFail = sandbox.stub().resolves();
+    poolQuery.rejects(new Error('connection refused'));
     const handler = new ConvertExplainHandler(
       { extensionUri: vscode.Uri.file('/e') } as vscode.ExtensionContext,
-      () => ({ query: poolQueryFail, end: poolEndFail } as unknown as Pool)
+      mockPlanStore
     );
 
     await handler.handle(

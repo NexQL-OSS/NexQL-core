@@ -4,6 +4,7 @@ import * as pg from 'pg';
 import * as vscode from 'vscode';
 import { ConnectionUtils } from '../../utils/connectionUtils';
 import { SecretStorageService } from '../../services/SecretStorageService';
+import { ConnectionManager } from '../../services/ConnectionManager';
 
 describe('ConnectionUtils', () => {
   let sandbox: sinon.SinonSandbox;
@@ -75,15 +76,13 @@ describe('ConnectionUtils', () => {
 
   describe('listDatabases', () => {
     it('queries pg_database and closes client', async () => {
-      sandbox.stub(SecretStorageService, 'getInstance').returns({
-        getPassword: sandbox.stub().resolves('pw')
-      } as unknown as SecretStorageService);
-
-      const connect = sandbox.stub(pg.Client.prototype, 'connect').resolves();
-      const query = sandbox.stub(pg.Client.prototype, 'query').resolves({
-        rows: [{ datname: 'postgres' }, { datname: 'app' }]
-      });
-      const end = sandbox.stub(pg.Client.prototype, 'end').resolves();
+      const mockClient = {
+        query: sandbox.stub().resolves({
+          rows: [{ datname: 'postgres' }, { datname: 'app' }]
+        }),
+        release: sandbox.stub()
+      };
+      sandbox.stub(ConnectionManager.getInstance(), 'getPooledClient').resolves(mockClient as any);
 
       const dbs = await ConnectionUtils.listDatabases({
         id: 'id1',
@@ -94,9 +93,8 @@ describe('ConnectionUtils', () => {
       });
 
       expect(dbs).to.deep.equal(['postgres', 'app']);
-      expect(connect.calledOnce).to.be.true;
-      expect(query.calledOnce).to.be.true;
-      expect(end.calledOnce).to.be.true;
+      expect(mockClient.query.calledOnce).to.be.true;
+      expect(mockClient.release.calledOnce).to.be.true;
     });
   });
 

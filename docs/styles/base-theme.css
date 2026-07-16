@@ -1513,6 +1513,20 @@ body.editor-minimized .min-cta:hover {
   transform: translateY(-1px);
 }
 
+.hero-ph-badge {
+  margin-bottom: 28px;
+}
+
+.hero-ph-badge a {
+  display: inline-block;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), filter 0.2s ease;
+}
+
+.hero-ph-badge a:hover {
+  transform: translateY(-2px) scale(1.02);
+  filter: brightness(1.1);
+}
+
 /* ── KPI strip (trust row): horizontal + vertical dividers ─ */
 .hero-kpi-strip {
   align-items: stretch;

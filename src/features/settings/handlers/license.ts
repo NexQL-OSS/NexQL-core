@@ -2,16 +2,15 @@ import * as vscode from 'vscode';
 import { LicenseService } from '../../../services/LicenseService';
 import { defaultDeviceName, getDeviceName, getOrCreateDeviceId } from '../../sync/deviceId';
 import { saveDeviceDisplayName } from '../../sync/deviceRename';
-import { QuotaService } from '../../../services/QuotaService';
 import { SecretStorageService } from '../../../services/SecretStorageService';
 import { fetchAiUsage } from '../../../services/aiUsage';
 import {
-  FREE_QUOTAS,
   ProFeature,
   TIER_DISPLAY,
-  featureLabel,
 } from '../../../services/featureGates';
+import { SyncController } from '../../sync/SyncController';
 import type { SettingsHubHostContext, SettingsHubMessage, SettingsSectionHandler } from '../types';
+import type { LicenseTier } from '../../../services/LicenseService';
 
 const PRICING_URL = 'https://nexql.astrx.dev/#pricing';
 const KEY_HINT = /^(NXQL|PGST)-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/;
@@ -135,37 +134,22 @@ export class LicenseSectionHandler implements SettingsSectionHandler {
       }));
     }
 
-    const quotas = QuotaService.getInstance();
-    const now = new Date();
-    const quotaRows = (Object.keys(FREE_QUOTAS) as ProFeature[]).map((feature) => {
-      if (effectiveTier !== 'free') {
-        return {
-          feature,
-          label: featureLabel(feature),
-          used: 0,
-          remaining: null,
-          limit: null,
-          period: null,
-          resetHint: '',
-        };
-      }
-      const peek = quotas.peek(feature, now);
-      return {
-        feature,
-        label: featureLabel(feature),
-        used: peek?.used ?? 0,
-        remaining: peek?.remaining ?? null,
-        limit: peek?.limit ?? null,
-        period: peek?.period ?? null,
-        resetHint: quotas.resetHint(feature, now),
-      };
-    });
+    const quotaRows: Array<{
+      feature: string;
+      label: string;
+      used: number;
+      remaining: number | null;
+      limit: number | null;
+      period: string | null;
+      resetHint: string;
+    }> = [];
 
     const aiUsage = await fetchAiUsage(this.host.extensionContext);
     const aiLimit = aiUsage ? aiUsage.limit : (effectiveTier === 'singularity' ? 10_000_000 : (effectiveTier === 'sponsor' ? 3_000_000 : 600_000));
     const aiUsed = aiUsage ? aiUsage.used : 0;
     const aiRemaining = aiUsage ? aiUsage.remaining : aiLimit;
 
+    const now = new Date();
     const nextMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
     const daysUntilReset = Math.ceil((nextMonth.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
     const aiResetHint = `resets in ${daysUntilReset}d`;
@@ -181,6 +165,40 @@ export class LicenseSectionHandler implements SettingsSectionHandler {
       resetHint: aiResetHint,
     });
 
+    // Cloud storage: 10 MB sponsor, 50 MB singularity. Free tier has no cloud sync.
+    const STORAGE_LIMITS: Record<string, number> = { sponsor: 10, singularity: 50 };
+    const storageMb = effectiveTier !== 'free' ? (STORAGE_LIMITS[effectiveTier] ?? 10) : 0;
+    const BYTES_PER_MB = 1024 * 1024;
+
+    let storageUsed = 0;
+    let storageUsedBytes = 0;
+    let storageLimitBytes = storageMb * BYTES_PER_MB;
+
+    let cloudQuota: { bytesUsed: number; bytesLimit: number } | undefined;
+    try {
+      const controller = SyncController.getInstance();
+      const q = await controller.getCloudQuota();
+      if (q) {
+        cloudQuota = { bytesUsed: q.bytesUsed, bytesLimit: q.bytesLimit };
+        storageUsedBytes = q.bytesUsed;
+        storageLimitBytes = q.bytesLimit;
+      }
+    } catch {
+      // Sync controller may not be initialized
+    }
+
+    if (effectiveTier !== 'free') {
+      quotaRows.push({
+        feature: 'cloudStorage',
+        label: 'Cloud Storage',
+        used: storageUsedBytes,
+        remaining: Math.max(0, storageLimitBytes - storageUsedBytes),
+        limit: storageLimitBytes,
+        period: null,
+        resetHint: effectiveTier === 'singularity' ? 'up to 50 MB total' : 'up to 10 MB total',
+      });
+    }
+
     this.host.post({
       type: 'license/state',
       license: {
@@ -193,6 +211,11 @@ export class LicenseSectionHandler implements SettingsSectionHandler {
         cachedStatus: effectiveStatus,
         pricingUrl: PRICING_URL,
         quotas: quotaRows,
+        cloudStorage: effectiveTier !== 'free' ? {
+          bytesUsed: storageUsedBytes,
+          bytesLimit: storageLimitBytes,
+          tier: effectiveTier,
+        } : null,
         serverFound,
         period: server?.period ?? null,
         maskedEmail: server?.email ?? null,
