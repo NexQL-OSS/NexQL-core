@@ -1,0 +1,8 @@
+{
+  "name": "vscode",
+  "version": "1.0.0",
+  "description": "Test-only stub: bundled src/test/unit/mocks/vscode.ts so require(\"vscode\")/import(\"vscode\") resolves outside the extension host. Regenerate with npm run build:vscode-stub.",
+  "main": "index.js",
+  "type": "commonjs",
+  "private": true
+}

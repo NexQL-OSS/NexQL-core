@@ -49,12 +49,6 @@
     "serverless postgres"
   ],
   "contributes": {
-    "mcpServerDefinitionProviders": [
-      {
-        "id": "postgresExplorer.mcpServerProvider",
-        "label": "NexQL"
-      }
-    ],
     "languages": [
       {
         "id": "postgres",
@@ -3790,11 +3784,6 @@
         "mac": "cmd+alt+a"
       },
       {
-        "command": "postgres-explorer.showDashboard",
-        "key": "ctrl+alt+d",
-        "mac": "cmd+alt+d"
-      },
-      {
         "command": "postgres-explorer.queryTool",
         "key": "ctrl+alt+e",
         "mac": "cmd+alt+e"
@@ -3822,7 +3811,6 @@
     "onView:postgresExplorer",
     "onView:postgresExplorer.notebooks",
     "onView:postgresExplorer.savedQueries",
-    "onView:postgresExplorer.chatView",
     "onNotebook:postgres-notebook",
     "onNotebook:postgres-query",
     "onCommand:postgres-explorer.connect",
@@ -3833,7 +3821,6 @@
     "onCommand:postgres-explorer.exportNotebook",
     "onCommand:postgres-explorer.openListenNotify",
     "onCommand:postgres-explorer.openListenNotifyFromPalette",
-    "onCommand:postgres-explorer.showDashboardFromPalette",
     "onCommand:postgres-explorer.openSqlAssistantTab"
   ],
   "main": "./dist/extension.js",
@@ -3852,6 +3839,7 @@
     "esbuild-renderer:pro": "node scripts/clean-dist-chunks.js && esbuild ./src/ui/renderer/renderer_v2.ts --bundle --outdir=dist --format=esm --platform=browser --splitting --alias:@nexql/pro-renderer=./packages/pro/renderer",
     "esbuild-erd-webview": "npm run esbuild-erd-webview:free",
     "esbuild-erd-webview:free": "esbuild ./src/pro/erd-webview-stub.ts --bundle --outfile=dist/erd-webview.js --format=iife --platform=browser",
+    "build:vscode-stub": "esbuild src/test/unit/mocks/vscode.ts --bundle --platform=node --format=cjs --outfile=src/test/vscode-stub/index.js",
     "esbuild-erd-webview:pro": "esbuild ./packages/pro/src/schemaDesigner/erd/webview/main.ts --bundle --outfile=dist/erd-webview.js --format=iife --platform=browser",
     "copy-templates": "cp -r templates dist/",
     "compile": "tsc -p ./ && npm run esbuild-renderer:free && npm run esbuild-erd-webview && npm run copy-templates",
@@ -3861,7 +3849,8 @@
     "esbuild:pro": "npm run esbuild-base:pro -- --sourcemap && npm run esbuild-renderer:pro -- --sourcemap && npm run esbuild-erd-webview:pro -- --sourcemap",
     "esbuild-watch": "npm run esbuild-base:free -- --sourcemap --watch & npm run esbuild-renderer:free -- --sourcemap --watch & npm run esbuild-erd-webview:free -- --sourcemap --watch",
     "test": "npm run compile && mocha --loader ./node_modules/ts-node/esm/transpile-only.mjs -r tsconfig-paths/register -r src/test/setup.ts 'src/test/unit/**/*.test.ts'",
-    "test:unit": "npm run compile && TS_NODE_PROJECT=src/test/tsconfig.json node -r ts-node/register/transpile-only -r tsconfig-paths/register -r ./src/test/setup.ts ./node_modules/mocha/bin/mocha --exit 'src/test/unit/**/*.test.ts'",
+    "test:unit": "npm run compile && TS_NODE_PROJECT=src/test/tsconfig.json node --no-experimental-strip-types -r ts-node/register/transpile-only -r tsconfig-paths/register -r ./src/test/setup.ts ./node_modules/mocha/bin/mocha --exit 'src/test/unit/**/*.test.ts'",
+    "test:unit:pro": "if [ -d packages/pro/test ]; then TS_NODE_PROJECT=src/test/tsconfig.json node --no-experimental-strip-types -r ts-node/register/transpile-only -r tsconfig-paths/register -r ./src/test/setup.ts ./node_modules/mocha/bin/mocha --exit 'packages/pro/test/**/*.test.ts'; else echo 'packages/pro absent — skipping pro tests'; fi",
     "test:integration": "npm run compile && ts-mocha -p src/test/tsconfig.json -r tsconfig-paths/register -r src/test/setup.ts 'src/test/integration/**/*.test.ts'",
     "test:renderer": "npm run compile && ts-mocha -p src/test/tsconfig.json -r tsconfig-paths/register -r src/test/setup.ts 'src/test/unit/RendererComponents.test.ts'",
     "test:renderer:coverage": "npm run compile && nyc ts-mocha -p src/test/tsconfig.json -r tsconfig-paths/register -r src/test/setup.ts 'src/test/unit/RendererComponents.test.ts'",
@@ -3933,7 +3922,8 @@
     "ts-mocha": "^11.1.0",
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vscode": "file:src/test/vscode-stub"
   },
   "overrides": {
     "diff": "^8.0.4",

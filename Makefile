@@ -56,8 +56,9 @@ package-free:
 package-pro:
 	@echo "Merging pro manifest, building, and packaging pro VSIX..."
 	@cp package.json package.json.bak
-	@trap 'if [ -f package.json.bak ]; then mv package.json.bak package.json; fi' EXIT INT TERM; \
+	@trap 'if [ -f package.json.bak ]; then mv package.json.bak package.json; fi; for d in packages/pro/templates/*/; do rm -rf "templates/$$(basename $$d)"; done' EXIT INT TERM; \
 	$(NODE_BIN) ./scripts/merge-pro-manifest.js; \
+	cp -r packages/pro/templates/. templates/; \
 	$(NPM_BIN) run vscode:prepublish:pro; \
 	if [ -f README.md ]; then cp README.md README.md.bak; fi; \
 	cp MARKETPLACE.md README.md; \
@@ -65,7 +66,8 @@ package-pro:
 	EXIT_CODE=$$?; \
 	if [ -f README.md.bak ]; then mv README.md.bak README.md; fi; \
 	if [ -f package.json.bak ]; then mv package.json.bak package.json; fi; \
-	echo "Restored original README.md and package.json"; \
+	for d in packages/pro/templates/*/; do rm -rf "templates/$$(basename $$d)"; done; \
+	echo "Restored original README.md, package.json, and templates"; \
 	exit $$EXIT_CODE
 
 # Package nightly VSIX artifacts for Marketplace (pre-release) and Open VSX companion

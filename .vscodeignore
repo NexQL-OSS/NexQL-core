@@ -118,3 +118,19 @@ review-the-current-codebase-shimmering-bee.md
 .coverage-unit/
 packages/
 graphify-out/
+# SECURITY: never ship env files or local state (published VSIXs <=2.3.1 leaked .env)
+.env*
+.ua/**
+.vercel/**
+out/**
+coverage/**
+*.vsix
+pat
+pat-open-vsx
+CLAUDE.md
+docker-compose.test.yml
+tsconfig.pro.json
+analyze-coverage.js
+debug-coverage.js
+find-uncovered.js
+parse-lcov.js
