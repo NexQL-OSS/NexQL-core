@@ -1,10 +1,26 @@
 import * as vscode from 'vscode';
 import type { SettingsHubHostContext, SettingsHubMessage, SettingsSectionHandler } from '../types';
-import { NexqlMcpServer } from '../../../mcp/NexqlMcpServer';
+import type { IMcpServer } from '../../../pro/api';
+import { getChatViewProvider } from '../../../services/chatViewRegistry';
 
 const DDL_ENABLED_KEY = 'nexql.ddlViewer.enabled';
 const DDL_OPEN_ON_SELECTION_KEY = 'nexql.ddlViewer.openOnSelection';
 const HISTORY_MAX_ITEMS_KEY = 'postgresExplorer.queryHistory.maxItems';
+
+/**
+ * Retrieves the MCP server instance from the coreApi if pro is loaded.
+ * Returns undefined when running as a free build.
+ */
+function getMcpServerFromApi(): IMcpServer | undefined {
+  // coreApi.getMcpServer is injected by activatePro; access via a global accessor
+  // stored on extension module. Cast to any to avoid importing extension.ts.
+  try {
+    const extModule = require('../../../extension') as any;
+    return extModule._coreApi?.getMcpServer?.();
+  } catch {
+    return undefined;
+  }
+}
 
 export class PreferencesSectionHandler implements SettingsSectionHandler {
   readonly section = 'prefs';
@@ -31,7 +47,7 @@ export class PreferencesSectionHandler implements SettingsSectionHandler {
     let token = '';
     let mcpStarted = false;
 
-    const server = NexqlMcpServer.getInstance();
+    const server = getMcpServerFromApi();
     if (server) {
       if (mcpEnabled) {
         try {
@@ -93,7 +109,7 @@ export class PreferencesSectionHandler implements SettingsSectionHandler {
           .update('postgresExplorer.mcp.port', n, vscode.ConfigurationTarget.Global);
         // Server already binds the old port; restart so the new one takes effect now
         // instead of requiring a full window reload.
-        const server = NexqlMcpServer.getInstance();
+        const server = getMcpServerFromApi();
         if (server?.info) {
           try {
             await server.restart();

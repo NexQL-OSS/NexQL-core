@@ -23,7 +23,7 @@ import {
   RunDerivedQueryHandler,
   NotebookOutputToolbarHandler,
 } from '../services/handlers/CoreHandlers';
-import { SendToChatHandler } from '../services/handlers/ExplainHandlers';
+
 import { FkLookupHandler } from '../services/handlers/FkLookupHandler';
 import { CursorWindowHandler } from '../services/handlers/CursorWindowHandler';
 import { InsertRowHandler } from '../services/handlers/InsertRowHandler';
@@ -105,7 +105,7 @@ export class PostgresKernel implements vscode.Disposable {
     registry.register('openImportData', new OpenImportDataHandler());
     registry.register('delete_row', new DeleteRowsHandler());
     registry.register('delete_rows', new DeleteRowsHandler());
-    registry.register('sendToChat', new SendToChatHandler(undefined));
+
 
     registry.register('saveChanges', new SaveChangesHandler());
     registry.register(WEBVIEW_MESSAGE_TYPES.SHOW_ERROR_MESSAGE, new ShowErrorMessageHandler());

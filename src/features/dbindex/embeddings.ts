@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
 import * as https from 'https';
 import * as http from 'http';
-import { AiCredentialsService } from '../aiAssistant/AiCredentialsService';
-import { getEmbeddingsEndpoint } from '../aiAssistant/aiConfig';
+import { SecretStorageService } from '../../services/SecretStorageService';
+import { getEmbeddingsEndpoint } from '../../common/aiEndpoints';
 import { EmbeddingMetaEntry } from './types';
 
 /**
@@ -39,8 +39,7 @@ export async function generateEmbedding(
     throw new Error(`Provider "${provider}" does not support local embedding creation.`);
   }
 
-  const credentials = AiCredentialsService.getInstance();
-  const apiKey = await credentials.getApiKey(provider as any);
+  const apiKey = await SecretStorageService.getInstance().getAiProviderApiKey(provider);
 
   if (!apiKey && provider !== 'ollama' && provider !== 'lmstudio' && provider !== 'custom') {
     throw new Error(`API key is required for embedding provider "${provider}"`);

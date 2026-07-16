@@ -4,7 +4,6 @@ import { readSharedTemplateCss, getNonce } from '../../lib/template-loader';
 import { LicenseService } from '../../services/LicenseService';
 import type { SettingsHubMessage, SettingsSectionHandler } from './types';
 import { ConnectionsSectionHandler } from './handlers/connections';
-import { AiSectionHandler } from './handlers/ai';
 import { PreferencesSectionHandler } from './handlers/preferences';
 import { SyncSectionHandler } from './handlers/sync';
 import { LicenseSectionHandler } from './handlers/license';
@@ -46,6 +45,12 @@ export class SettingsHubPanel {
   private readonly _handlers: Map<string, SettingsSectionHandler>;
   private _disposables: vscode.Disposable[] = [];
 
+  public static readonly extraHandlers: Map<string, (host: any) => SettingsSectionHandler> = new Map();
+
+  public static registerExtraHandler(section: string, factory: (host: any) => SettingsSectionHandler) {
+    this.extraHandlers.set(section, factory);
+  }
+
   private constructor(
     panel: vscode.WebviewPanel,
     extensionUri: vscode.Uri,
@@ -63,16 +68,21 @@ export class SettingsHubPanel {
       },
     };
 
+    const handlerList: SettingsSectionHandler[] = [
+      new ConnectionsSectionHandler(host),
+      new PreferencesSectionHandler(host),
+      new SentinelSectionHandler(host, sentinelThemeSwap ?? new SentinelThemeSwapService(extensionContext)),
+      new SyncSectionHandler(host),
+      new LicenseSectionHandler(host),
+      new DbIndexSectionHandler(host),
+    ];
+
+    for (const factory of SettingsHubPanel.extraHandlers.values()) {
+      handlerList.push(factory(host));
+    }
+
     this._handlers = new Map<string, SettingsSectionHandler>(
-      [
-        new ConnectionsSectionHandler(host),
-        new AiSectionHandler(host),
-        new PreferencesSectionHandler(host),
-        new SentinelSectionHandler(host, sentinelThemeSwap ?? new SentinelThemeSwapService(extensionContext)),
-        new SyncSectionHandler(host),
-        new LicenseSectionHandler(host),
-        new DbIndexSectionHandler(host),
-      ].map((h) => [h.section, h]),
+      handlerList.map((h) => [h.section, h]),
     );
 
     this._panel.onDidDispose(() => this.dispose(), null, this._disposables);

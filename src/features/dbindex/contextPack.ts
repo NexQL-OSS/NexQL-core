@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { IndexManifest, ObjectEntry } from './types';
 import { IndexStore } from './IndexStore';
-import { TableSchema, ColumnInfo, ForeignKeyInfo, IndexInfo, renderTableSchema } from '../../providers/chat/schemaRender';
+import { TableSchema, ColumnInfo, ForeignKeyInfo, IndexInfo, renderTableSchema } from '../../common/schemaRender';
 
 /**
  * Maps an indexed ObjectEntry into the TableSchema structure required by schemaRender.ts.

@@ -1,0 +1,33 @@
+name: check-no-pro
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  check-no-pro:
+    name: IP Guardrail — No Premium Leakage
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Check no premium source in core
+        run: node scripts/check-no-pro.js
+
+      - name: Ensure packages/ is not tracked
+        run: |
+          tracked=$(git ls-files packages/ 2>/dev/null || true)
+          if [ -n "$tracked" ]; then
+            echo "❌ packages/ contains tracked files:"
+            echo "$tracked"
+            exit 1
+          fi
+          echo "✅ packages/ is untracked (correct)"

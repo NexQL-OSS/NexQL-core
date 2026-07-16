@@ -1,8 +1,7 @@
 import * as vscode from 'vscode';
-import { ChatViewProvider } from '../providers/ChatViewProvider';
+import { getChatViewProvider } from '../services/chatViewRegistry';
 import { ProfileManager, ConnectionProfile } from '../features/connections/ProfileManager';
 import { SavedQueriesService, SavedQuery } from '../features/savedQueries/SavedQueriesService';
-import { QueryAnalyzer } from '../services/QueryAnalyzer';
 import { ErrorService } from '../services/ErrorService';
 import { extensionContext, statusBar } from '../extension';
 import { SaveQueryPanel } from '../features/savedQueries/SaveQueryPanel';

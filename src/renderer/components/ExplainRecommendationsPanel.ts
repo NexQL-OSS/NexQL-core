@@ -1,4 +1,4 @@
-import { PerformanceRecommendation } from '../../services/QueryAnalyzer';
+import { PerformanceRecommendation } from '../../services/queryPerformance/QueryPerformanceAnalyzer';
 
 /**
  * UI panel for displaying performance recommendations

@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { QueryAnalyzer } from '../services/QueryAnalyzer';
+import { SqlSafetyAnalyzer } from '../services/sqlSafety';
 import { FullDatasetPreferenceService } from '../services/FullDatasetPreferenceService';
 import { QueryCodeLensProvider } from '../providers/QueryCodeLensProvider';
 import { SqlParser } from '../providers/kernel/SqlParser';
@@ -27,7 +27,7 @@ export async function toggleFullDatasetFromCell(cell?: vscode.NotebookCell): Pro
     vscode.window.showWarningMessage('Full dataset mode is not available for EXPLAIN queries.');
     return;
   }
-  if (!QueryAnalyzer.getInstance().isReadOnlyQuery(text)) {
+  if (!SqlSafetyAnalyzer.getInstance().isReadOnlyQuery(text)) {
     vscode.window.showWarningMessage('Full dataset mode is only available for read-only SELECT queries.');
     return;
   }

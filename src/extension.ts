@@ -9,18 +9,15 @@ import { SavedQueriesService } from './features/savedQueries/SavedQueriesService
 import { NotebookBuilder } from './commands/helper';
 import { SessionRegistry } from './services/SessionRegistry';
 import type { NotebookStatusBar } from './activation/statusBar';
-import type { ChatViewProvider } from './providers/ChatViewProvider';
+import type { IChatViewProvider } from './pro/api';
 import { QueryHistoryService } from './services/QueryHistoryService';
-import { QueryPerformanceService } from './services/QueryPerformanceService';
 import { WorkspaceStateService } from './services/WorkspaceStateService';
 import { QuotaService } from './services/QuotaService';
 import { invalidateAiUsageCache } from './services/aiUsage';
 import { MessageHandlerRegistry } from './services/MessageHandler';
 import { TelemetryService } from './services/TelemetryService';
 import { WEBVIEW_MESSAGE_TYPES } from './common/messageTypes';
-import { PlanStoreWorkspace } from './features/planStudio/PlanStoreWorkspace';
-import { PlanStudioPanel } from './features/planStudio/PlanStudioPanel';
-import { ConnectionConfig } from './common/types';
+
 
 export let outputChannel: vscode.OutputChannel;
 export let extensionContext: vscode.ExtensionContext;
@@ -28,7 +25,11 @@ export let statusBar: NotebookStatusBar;
 export let sentinelContextService: import('./features/sentinel').SentinelContextService | undefined;
 export let sentinelThemeSwapService: import('./features/sentinel').SentinelThemeSwapService | undefined;
 
-let chatViewProvider: ChatViewProvider | undefined;
+import { getChatViewProvider } from './services/chatViewRegistry';
+export { getChatViewProvider };
+
+/** Exposed for core settings handlers to access optional pro services (e.g. MCP server). */
+export let _coreApi: { getMcpServer?(): any; [key: string]: any } | undefined;
 
 function runDeferredStartupTask(taskName: string, task: () => Promise<void>): void {
   void (async () => {
@@ -67,39 +68,20 @@ function migrateLegacyAzureConnectionTimeouts(connections: any[]): { connections
   return { connections: migratedConnections, migratedCount };
 }
 
-export function getChatViewProvider(): ChatViewProvider | undefined {
-  return chatViewProvider;
-}
-
 async function ensureRendererMessageHandlers(
   registry: MessageHandlerRegistry,
-  chatView: ChatViewProvider,
   statusBarInstance: NotebookStatusBar,
-  context: vscode.ExtensionContext,
-  planStore: PlanStoreWorkspace
+  context: vscode.ExtensionContext
 ): Promise<void> {
   const [
-    explainHandlersModule,
     coreHandlersModule,
     queryHandlersModule,
     cursorBannerModule,
   ] = await Promise.all([
-    import('./services/handlers/ExplainHandlers'),
     import('./services/handlers/CoreHandlers'),
     import('./services/handlers/QueryHandlers'),
     import('./services/handlers/CursorStreamBannerHandler'),
   ]);
-
-  // Explain & Chat Handlers
-  registry.register('explainError', new explainHandlersModule.ExplainErrorHandler(chatView));
-  registry.register('fixQuery', new explainHandlersModule.FixQueryHandler(chatView));
-  registry.register('analyzeData', new explainHandlersModule.AnalyzeDataHandler(chatView));
-  registry.register('optimizeQuery', new explainHandlersModule.OptimizeQueryHandler(chatView));
-  registry.register('sendToChat', new explainHandlersModule.SendToChatHandler(chatView));
-  registry.register('showExplainPlan', new explainHandlersModule.ShowExplainPlanHandler(context.extensionUri, planStore));
-  registry.register('convertExplainToJson', new explainHandlersModule.ConvertExplainHandler(context, planStore));
-  registry.register('openPlanStudio', new explainHandlersModule.OpenPlanStudioHandler(context.extensionUri, planStore));
-  registry.register('syncPlanStudioFromRun', new explainHandlersModule.SyncPlanStudioFromRunHandler(context.extensionUri, planStore));
 
   // Core Handlers
   registry.register('showConnectionSwitcher', new coreHandlersModule.ShowConnectionSwitcherHandler(statusBarInstance));
@@ -145,8 +127,6 @@ export async function activate(context: vscode.ExtensionContext) {
   outputChannel = vscode.window.createOutputChannel('NexQL');
   outputChannel.appendLine('Activating NexQL extension');
 
-  const { OpencodeServeManager } = await import('./features/aiAssistant/opencode');
-  OpencodeServeManager.getInstance().init(context);
   const telemetry = TelemetryService.getInstance();
   telemetry.initialize(context);
   telemetry.trackEvent('extension_activated', {});
@@ -154,12 +134,9 @@ export async function activate(context: vscode.ExtensionContext) {
 
   SecretStorageService.getInstance(context);
   LicenseService.getInstance(context);
-  const { AiCredentialsService } = await import('./features/aiAssistant/AiCredentialsService');
-  AiCredentialsService.getInstance(context);
-  const { AiModelCatalogService } = await import('./features/aiAssistant/AiModelCatalogService');
-  AiModelCatalogService.getInstance(context);
   ConnectionManager.getInstance();
   QueryHistoryService.initialize(context.workspaceState);
+  const { QueryPerformanceService } = await import('./services/QueryPerformanceService');
   QueryPerformanceService.initialize(context.globalState);
 
   WorkspaceStateService.getInstance().initialize(context);
@@ -170,205 +147,7 @@ export async function activate(context: vscode.ExtensionContext) {
   // PROD DDL audit trail (Singularity feature).
   const { AuditLogService } = await import('./features/audit/AuditLogService');
   AuditLogService.getInstance().initialize(context);
-  const planStore = new PlanStoreWorkspace(context);
 
-  context.subscriptions.push(
-    vscode.commands.registerCommand('postgres-explorer.rerunPlanQuery', async (args?: { planId?: string; withAnalyze?: boolean }) => {
-      const planId = args?.planId;
-      if (!planId) {
-        vscode.window.showErrorMessage('Missing plan id for re-run.');
-        return;
-      }
-
-      const plan = planStore.getPlanById(planId);
-      if (!plan) {
-        vscode.window.showErrorMessage('Plan not found in workspace history.');
-        return;
-      }
-      if (!plan.query?.trim()) {
-        vscode.window.showErrorMessage('Plan has no query to re-run.');
-        return;
-      }
-
-      let resolvedConnectionId = plan.connectionId;
-      let resolvedDatabaseName = plan.databaseName;
-      if ((!resolvedConnectionId || !resolvedDatabaseName) && plan.notebookUri) {
-        try {
-          const notebookUri = vscode.Uri.parse(plan.notebookUri);
-          const notebook =
-            vscode.workspace.notebookDocuments.find((doc) => doc.uri.toString() === notebookUri.toString()) ??
-            await vscode.workspace.openNotebookDocument(notebookUri);
-          const metadata = notebook.metadata as {
-            connectionId?: string;
-            databaseName?: string;
-            database?: string;
-          };
-          resolvedConnectionId = resolvedConnectionId ?? metadata.connectionId;
-          resolvedDatabaseName = resolvedDatabaseName ?? metadata.databaseName ?? metadata.database;
-        } catch (error) {
-          outputChannel.appendLine(`[plan-studio] failed notebook context recovery for ${planId}: ${String(error)}`);
-        }
-      }
-      if (!resolvedConnectionId || !resolvedDatabaseName) {
-        vscode.window.showErrorMessage('Plan is missing connection/database context.');
-        return;
-      }
-
-      const configuredConnections = vscode.workspace.getConfiguration().get<any[]>('postgresExplorer.connections') || [];
-      const configuredConnection = configuredConnections.find((item) => item.id === resolvedConnectionId);
-      if (!configuredConnection) {
-        vscode.window.showErrorMessage('Connection not found in current settings.');
-        return;
-      }
-
-      const connection: ConnectionConfig = {
-        id: configuredConnection.id,
-        name: configuredConnection.name,
-        host: configuredConnection.host,
-        port: configuredConnection.port,
-        username: configuredConnection.username,
-        database: resolvedDatabaseName,
-        sslmode: configuredConnection.sslmode,
-        connectTimeout: configuredConnection.connectTimeout,
-      };
-
-      const extractInnerQuery = (sql: string): string => {
-        const src = sql.trim();
-        const explainPrefix = src.match(/^EXPLAIN\b/i);
-        if (!explainPrefix) {
-          return src;
-        }
-
-        let i = explainPrefix[0].length;
-        const len = src.length;
-        const skipWs = () => {
-          while (i < len && /\s/.test(src[i])) {
-            i++;
-          }
-        };
-
-        skipWs();
-        if (src[i] === '(') {
-          let depth = 0;
-          while (i < len) {
-            const ch = src[i];
-            if (ch === '(') {
-              depth++;
-            }
-            if (ch === ')') {
-              depth--;
-              if (depth === 0) {
-                i++;
-                break;
-              }
-            }
-            i++;
-          }
-        } else {
-          const optionTokens = new Set([
-            'ANALYZE',
-            'ANALYSE',
-            'VERBOSE',
-            'COSTS',
-            'SETTINGS',
-            'BUFFERS',
-            'WAL',
-            'TIMING',
-            'SUMMARY',
-            'FORMAT',
-            'TRUE',
-            'FALSE',
-            'TEXT',
-            'XML',
-            'JSON',
-            'YAML',
-            'ON',
-            'OFF',
-          ]);
-          while (i < len) {
-            skipWs();
-            const tokenMatch = src.slice(i).match(/^([A-Za-z_]+)/);
-            if (!tokenMatch) {
-              break;
-            }
-            const token = tokenMatch[1].toUpperCase();
-            if (!optionTokens.has(token)) {
-              break;
-            }
-            i += tokenMatch[1].length;
-          }
-        }
-
-        skipWs();
-        return src.slice(i).trim();
-      };
-
-      const innerQuery = extractInnerQuery(plan.query);
-      const withAnalyze = args?.withAnalyze === true;
-      const explainSql = withAnalyze
-        ? `EXPLAIN (FORMAT JSON, ANALYZE, BUFFERS, VERBOSE)\n${innerQuery}`
-        : `EXPLAIN (FORMAT JSON)\n${innerQuery}`;
-
-      let client: any;
-      try {
-        client = await ConnectionManager.getInstance().getPooledClient(connection);
-        const result = await client.query(explainSql);
-        const planCell = result.rows?.[0]?.['QUERY PLAN'] ?? result.rows?.[0]?.query_plan;
-        if (!planCell) {
-          vscode.window.showErrorMessage('Re-run succeeded but returned no plan payload.');
-          return;
-        }
-
-        const explainPlan = typeof planCell === 'string' ? JSON.parse(planCell) : planCell;
-        if (!(await requirePro(ProFeature.ExplainStudio, context))) return;
-        PlanStudioPanel.show(context.extensionUri, planStore, {
-          plan: explainPlan,
-          query: plan.query,
-          connectionId: resolvedConnectionId,
-          databaseName: resolvedDatabaseName,
-          source: plan.source,
-          sourceCellIndex: plan.sourceCellIndex,
-          performanceAnalysis: plan.performanceAnalysis,
-          notebookUri: plan.notebookUri,
-        });
-      } catch (error: any) {
-        const message = error?.message || String(error);
-        vscode.window.showErrorMessage(`Failed to re-run plan query: ${message}`);
-        outputChannel.appendLine(`[plan-studio] re-run failed for ${planId}: ${message}`);
-      } finally {
-        client?.release?.();
-      }
-    }),
-    vscode.commands.registerCommand('postgres-explorer.openPlanSourceCell', async (args?: { planId?: string }) => {
-      const planId = args?.planId;
-      if (!planId) {
-        vscode.window.showErrorMessage('Missing plan id.');
-        return;
-      }
-
-      const plan = planStore.getPlanById(planId);
-      if (!plan) {
-        vscode.window.showErrorMessage('Plan not found in workspace history.');
-        return;
-      }
-      if (!plan.notebookUri || typeof plan.sourceCellIndex !== 'number') {
-        vscode.window.showInformationMessage('This plan is not linked to a source notebook cell.');
-        return;
-      }
-
-      try {
-        const notebookUri = vscode.Uri.parse(plan.notebookUri);
-        const notebook = await vscode.workspace.openNotebookDocument(notebookUri);
-        const editor = await vscode.window.showNotebookDocument(notebook, { preserveFocus: false });
-        const index = Math.max(0, Math.min(plan.sourceCellIndex, notebook.cellCount - 1));
-        editor.selections = [new vscode.NotebookRange(index, index + 1)];
-        editor.revealRange(new vscode.NotebookRange(index, index + 1), vscode.NotebookEditorRevealType.AtTop);
-      } catch (error: any) {
-        const message = error?.message || String(error);
-        vscode.window.showErrorMessage(`Failed to open source cell: ${message}`);
-      }
-    })
-  );
 
   // Migration: Ensure all connections have an ID (legacy connections might not)
   const config = vscode.workspace.getConfiguration();
@@ -440,9 +219,9 @@ export async function activate(context: vscode.ExtensionContext) {
       import('./activation/statusBar'),
     ]);
 
-  const { databaseTreeProvider, treeView, chatViewProviderInstance: chatView, savedQueriesTreeProvider, notebooksTreeProvider, autoRefreshService } = providersModule.registerProviders(context, outputChannel);
+  const { databaseTreeProvider, treeView, savedQueriesTreeProvider, notebooksTreeProvider, autoRefreshService } = providersModule.registerProviders(context, outputChannel);
   context.subscriptions.push(autoRefreshService);
-  chatViewProvider = chatView;
+  // chatViewProvider is set by activatePro via coreApi.setChatViewProvider
 
   // Store tree view instance for reveal functionality
   (databaseTreeProvider as any).setTreeView(treeView);
@@ -451,15 +230,13 @@ export async function activate(context: vscode.ExtensionContext) {
   commandsModule.registerAllCommands(
     context,
     databaseTreeProvider,
-    chatView,
     outputChannel,
     whatsNewManager,
     savedQueriesTreeProvider,
     notebooksTreeProvider
   );
 
-  const { registerPgDumpTaskProvider } = await import('./features/backup/backupTaskProvider');
-  registerPgDumpTaskProvider(context);
+
 
   const rendererMessaging = vscode.notebooks.createRendererMessaging('postgres-query-renderer');
 
@@ -543,12 +320,16 @@ export async function activate(context: vscode.ExtensionContext) {
   );
   registerSentinelCommands(context, () => sentinelContextService);
 
-  if (chatView) {
-    const pushChatSentinel = () => chatView.syncSentinelContext(sentinelContextService!.getChatContext());
+  if (sentinelContextService) {
+    const pushChatSentinel = () => {
+      const activeChat = getChatViewProvider();
+      if (activeChat && typeof (activeChat as any).syncSentinelContext === 'function') {
+        (activeChat as any).syncSentinelContext(sentinelContextService!.getChatContext());
+      }
+    };
     context.subscriptions.push(
       sentinelContextService.onDidChangeContext(() => pushChatSentinel()),
     );
-    pushChatSentinel();
   }
 
   const { SyncController } = await import('./features/sync/SyncController');
@@ -617,7 +398,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
   rendererMessaging.onDidReceiveMessage(async (event) => {
     if (!handlersInitialized) {
-      await ensureRendererMessageHandlers(registry, chatView, statusBar!, context, planStore);
+      await ensureRendererMessageHandlers(registry, statusBar!, context);
       handlersInitialized = true;
     }
 
@@ -644,9 +425,31 @@ export async function activate(context: vscode.ExtensionContext) {
     await migrateExistingPasswords(context);
   });
 
-  runDeferredStartupTask('migrateAiCredentialsAndSettings', async () => {
-    const { migrateAiCredentialsAndSettings } = await import('./features/aiAssistant/AiCredentialsService');
-    await migrateAiCredentialsAndSettings(context);
+
+
+  runDeferredStartupTask('activatePro', async () => {
+    const { activatePro } = await import('@nexql/pro');
+    const { getChatViewProvider, setChatViewProvider, getAiService, setAiService } = await import('./services/chatViewRegistry');
+    let _mcpServer: any;
+    const coreApi = {
+      apiVersion: '1.0.0',
+      context,
+      outputChannel,
+      connectionManager: ConnectionManager.getInstance(),
+      secretStorageService: SecretStorageService.getInstance(),
+      licenseService: LicenseService.getInstance(),
+      telemetryService: TelemetryService.getInstance(),
+      messageHandlerRegistry: registry,
+      notebookBuilder: NotebookBuilder,
+      getChatViewProvider,
+      setChatViewProvider,
+      setMcpServer(server: any) { _mcpServer = server; },
+      getMcpServer() { return _mcpServer; },
+      setAiService,
+      getAiService,
+    };
+    _coreApi = coreApi;
+    await activatePro(coreApi as any, context);
   });
 
   outputChannel.appendLine(`NexQL activation completed in ${Date.now() - activationStart}ms`);
@@ -670,10 +473,11 @@ export async function deactivate() {
   await telemetry.flush();
 
   try {
-    const { OpencodeServeManager } = await import('./features/aiAssistant/opencode');
-    OpencodeServeManager.getInstance().dispose();
+    // OpencodeServeManager is a pro module; dispose via dynamic import if it was loaded
+    const { activatePro: _ } = await import('@nexql/pro').catch(() => ({ activatePro: undefined }));
+    // OpencodeServeManager cleanup happens within pro's own disposal subscriptions
   } catch {
-    // ignore if module unavailable
+    // ignore if pro module unavailable
   }
 
   outputChannel?.appendLine('NexQL extension deactivated');

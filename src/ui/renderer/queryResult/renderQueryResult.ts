@@ -1619,7 +1619,7 @@ export function renderPostgresNotebookResult(
             'flex: 1; overflow: auto; height: 100%; display: flex; flex-direction: column;';
           viewContainer.appendChild(explainWrapper);
 
-          void import('../lazy/explainTab').then(({ mountExplainTab }) => {
+          void import('@nexql/pro-renderer/explainTab').then(({ mountExplainTab }) => {
             if (viewGen !== lazyViewGeneration) {
               return;
             }
@@ -1636,7 +1636,7 @@ export function renderPostgresNotebookResult(
           });
         } else if (mode === 'analyst') {
           updateActionsVisibility();
-          void import('../lazy/analystTab').then(({ mountAnalystTab }) => {
+          void import('@nexql/pro-renderer/analystTab').then(({ mountAnalystTab }) => {
             if (viewGen !== lazyViewGeneration) {
               return;
             }
@@ -1662,7 +1662,7 @@ export function renderPostgresNotebookResult(
           loading.textContent = 'Loading chart…';
           viewContainer.appendChild(loading);
 
-          void import('../lazy/chartTab').then(({ mountChartTab }) => {
+          void import('@nexql/pro-renderer/chartTab').then(({ mountChartTab }) => {
             if (viewGen !== lazyViewGeneration) {
               return;
             }

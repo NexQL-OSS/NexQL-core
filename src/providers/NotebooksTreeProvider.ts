@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { setLastTreeDragPayload } from './chat/dragPayloadStore';
+import { setLastTreeDragPayload } from './dragPayloadStore';
 import { SyncIndex } from '../features/sync/SyncIndex';
 import { SyncController } from '../features/sync/SyncController';
 import {

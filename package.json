@@ -850,16 +850,6 @@
         "icon": "$(notebook)"
       },
       {
-        "command": "postgres-explorer.showDashboard",
-        "title": "Show Database Dashboard",
-        "icon": "$(dashboard)"
-      },
-      {
-        "command": "postgres-explorer.showDashboardFromPalette",
-        "title": "Live Dashboard: Choose Connection & Database…",
-        "icon": "$(graph)"
-      },
-      {
         "command": "postgres-explorer.openListenNotify",
         "title": "LISTEN/NOTIFY Monitor",
         "icon": "$(broadcast)"
@@ -920,22 +910,6 @@
         "icon": "$(refresh)"
       },
       {
-        "command": "postgres-explorer.backupDatabase",
-        "title": "Backup...",
-        "icon": "$(save)"
-      },
-      {
-        "command": "postgres-explorer.restoreDatabase",
-        "title": "Restore...",
-        "icon": "$(cloud-upload)"
-      },
-      {
-        "command": "postgres-explorer.openBackupWorkspace",
-        "title": "Backup & Restore Workspace: Choose Connection & Database…",
-        "category": "PostgreSQL",
-        "icon": "$(archive)"
-      },
-      {
         "command": "postgres-explorer.migrationHub",
         "title": "Migration Hub: Detect Framework & Show Runbook",
         "category": "NexQL",
@@ -985,21 +959,6 @@
         "command": "postgres-explorer.scriptAlterDatabase",
         "title": "ALTER Script",
         "icon": "$(edit)"
-      },
-      {
-        "command": "postgres-explorer.aiAssist",
-        "title": "Ask AI",
-        "icon": "$(sparkle)"
-      },
-      {
-        "command": "postgres-explorer.chatWithQuery",
-        "title": "Chat with Query",
-        "icon": "$(comment)"
-      },
-      {
-        "command": "postgres-explorer.attachToChat",
-        "title": "Attach to SQL Assistant",
-        "icon": "$(mention)"
       },
       {
         "command": "postgres-explorer.showColumnProperties",
@@ -1361,54 +1320,6 @@
         "title": "Import Saved Queries",
         "icon": "$(import)",
         "category": "NexQL: Queries"
-      },
-      {
-        "command": "postgres-explorer.openTableDesigner",
-        "title": "Open Table Designer (Visual)",
-        "icon": "$(layout)",
-        "category": "NexQL: Schema"
-      },
-      {
-        "command": "postgres-explorer.createTableVisual",
-        "title": "Create Table (Visual)",
-        "icon": "$(add)",
-        "category": "NexQL: Schema"
-      },
-      {
-        "command": "postgres-explorer.openSchemaDiff",
-        "title": "Schema Diff",
-        "icon": "$(diff)",
-        "category": "NexQL: Schema"
-      },
-      {
-        "command": "postgres-explorer.openSchemaDiffFromPalette",
-        "title": "Schema Diff: Choose Connection & Schema…",
-        "icon": "$(diff)",
-        "category": "NexQL: Schema"
-      },
-      {
-        "command": "postgres-explorer.openErd",
-        "title": "View ERD (Entity-Relationship Diagram)",
-        "icon": "$(type-hierarchy)",
-        "category": "NexQL: Schema"
-      },
-      {
-        "command": "postgres-explorer.openErdMulti",
-        "title": "View ERD (pick schemas)…",
-        "icon": "$(type-hierarchy)",
-        "category": "NexQL: Schema"
-      },
-      {
-        "command": "postgres-explorer.importDbml",
-        "title": "Import DBML → CREATE TABLE…",
-        "icon": "$(file-code)",
-        "category": "NexQL: Schema"
-      },
-      {
-        "command": "postgres-explorer.importData",
-        "title": "Import Data…",
-        "icon": "$(cloud-upload)",
-        "category": "NexQL"
       },
       {
         "command": "postgres-explorer.exportConnectionProfiles",
@@ -1852,11 +1763,6 @@
           "id": "postgres-explorer",
           "title": "NexQL",
           "icon": "resources/NexQL-vsc-icon.png"
-        },
-        {
-          "id": "postgres-sql-assistant",
-          "title": "SQL Assistant",
-          "icon": "resources/NexQL-chat-vsc-icon.png"
         }
       ]
     },
@@ -1889,15 +1795,6 @@
           "contextualTitle": "NexQL",
           "icon": "$(history)",
           "visibility": "collapsed"
-        }
-      ],
-      "postgres-sql-assistant": [
-        {
-          "id": "postgresExplorer.chatView",
-          "name": "SQL Assistant",
-          "type": "webview",
-          "contextualTitle": "SQL Assistant",
-          "icon": "resources/NexQL-chat-vsc-icon.png"
         }
       ]
     },
@@ -2054,28 +1951,6 @@
           "scope": "machine",
           "description": "Base URL for the NexQL license validation API."
         },
-        "postgresExplorer.mcp.enabled": {
-          "type": "boolean",
-          "default": false,
-          "scope": "window",
-          "markdownDescription": "Expose NexQL's read-only database tools (schema search, describe object, run SELECT, EXPLAIN) as an MCP server other agents (e.g. Claude Code, Copilot) can attach to. Off by default."
-        },
-        "postgresExplorer.mcp.port": {
-          "type": "number",
-          "default": 0,
-          "minimum": 0,
-          "maximum": 65535,
-          "scope": "window",
-          "markdownDescription": "Fixed local port for the NexQL MCP server, so external clients (Cursor, Antigravity, etc.) can hard-code the endpoint instead of re-reading a random port each time VS Code restarts. `0` picks a random free port (VS Code's own MCP integration doesn't need this — it re-resolves the URI automatically). Takes effect on next server start; if the port is already in use, start will fail."
-        },
-        "postgresExplorer.mcp.maxRows": {
-          "type": "number",
-          "default": 500,
-          "minimum": 1,
-          "maximum": 10000,
-          "scope": "window",
-          "markdownDescription": "Maximum number of rows returned by AI tool queries (`run_select`). Results beyond this limit are truncated and flagged. Applies to both the in-chat assistant and MCP clients."
-        },
         "postgresExplorer.connections": {
           "type": "array",
           "default": [],
@@ -2228,29 +2103,10 @@
           "default": true,
           "description": "Automatically build and keep the local database index up to date (structure only) in the background for connected databases. Requires Auto Database Indexing (Sponsor)."
         },
-        "postgresExplorer.aiProvider": {
-          "type": "string",
-          "enum": [
-            "vscode-lm",
-            "github",
-            "cursor",
-            "openai",
-            "anthropic",
-            "gemini",
-            "custom"
-          ],
-          "default": "vscode-lm",
-          "description": "Deprecated: use ai.notebook.provider or ai.chat.provider. Kept for migration."
-        },
         "postgresExplorer.aiApiKey": {
           "type": "string",
           "default": "",
           "description": "Deprecated: API keys are stored in Secret Storage per provider via AI Settings."
-        },
-        "postgresExplorer.aiModel": {
-          "type": "string",
-          "default": "",
-          "description": "Deprecated: use ai.notebook.model or ai.chat.model."
         },
         "postgresExplorer.ai.chat.provider": {
           "type": "string",
@@ -2786,11 +2642,6 @@
           "group": "2_delete@1"
         },
         {
-          "command": "postgres-explorer.attachToChat",
-          "when": "view == postgresExplorer && viewItem =~ /^(table|partition|view|function|procedure|materialized-view|type|foreign-table|schema)(:|$)/",
-          "group": "inline@0"
-        },
-        {
           "command": "postgres-explorer.openDefinition",
           "when": "view == postgresExplorer && viewItem =~ /^(table|partition|view|function|procedure|index|materialized-view|sequence|type|trigger|policy|extension|role|foreign-table|foreign-data-wrapper|foreign-server)(:|$)/",
           "group": "inline@1"
@@ -2879,11 +2730,6 @@
           "command": "postgres-explorer.newNotebook",
           "when": "view == postgresExplorer && (viewItem == connection || viewItem == connection-pinned)",
           "group": "inline@4"
-        },
-        {
-          "command": "postgres-explorer.showDashboard",
-          "when": "view == postgresExplorer && (viewItem == connection || viewItem == connection-pinned)",
-          "group": "inline@5"
         },
         {
           "command": "postgres-explorer.notebooks.rename",
@@ -3314,11 +3160,6 @@
           "icon": "$(add)"
         },
         {
-          "command": "postgres-explorer.showDashboard",
-          "when": "view == postgresExplorer && viewItem == database",
-          "group": "1_operations@1"
-        },
-        {
           "command": "postgres-explorer.openListenNotify",
           "when": "view == postgresExplorer && viewItem == database",
           "group": "1_operations@8"
@@ -3327,16 +3168,6 @@
           "command": "postgres-explorer.databaseOperations",
           "when": "view == postgresExplorer && viewItem == database",
           "group": "1_operations@3"
-        },
-        {
-          "command": "postgres-explorer.backupDatabase",
-          "when": "view == postgresExplorer && viewItem == database",
-          "group": "1_operations@4"
-        },
-        {
-          "command": "postgres-explorer.restoreDatabase",
-          "when": "view == postgresExplorer && viewItem == database",
-          "group": "1_operations@5"
         },
         {
           "command": "postgres-explorer.generateCreateScript",
@@ -3377,11 +3208,6 @@
           "command": "postgres-explorer.queryTool",
           "when": "view == postgresExplorer && viewItem == database",
           "group": "inline@2"
-        },
-        {
-          "command": "postgres-explorer.openErdMulti",
-          "when": "view == postgresExplorer && viewItem == database",
-          "group": "1_actions"
         },
         {
           "command": "postgres-explorer.psqlTool",
@@ -3532,41 +3358,6 @@
           "command": "postgres-explorer.sync.excludeItem",
           "when": "view == postgresExplorer.notebooks && viewItem == notebook-file",
           "group": "3_sync@2"
-        },
-        {
-          "command": "postgres-explorer.openTableDesigner",
-          "when": "view == postgresExplorer && viewItem =~ /^(table|partition)(:|$)/",
-          "group": "1_actions"
-        },
-        {
-          "command": "postgres-explorer.importData",
-          "when": "view == postgresExplorer && viewItem =~ /^(table|partition)(:|$)/",
-          "group": "1_actions"
-        },
-        {
-          "command": "postgres-explorer.openSchemaDiff",
-          "when": "view == postgresExplorer && viewItem =~ /^(table|partition)(:|$)/",
-          "group": "1_actions"
-        },
-        {
-          "command": "postgres-explorer.createTableVisual",
-          "when": "view == postgresExplorer && viewItem == schema",
-          "group": "1_actions"
-        },
-        {
-          "command": "postgres-explorer.openSchemaDiff",
-          "when": "view == postgresExplorer && viewItem == schema",
-          "group": "1_actions"
-        },
-        {
-          "command": "postgres-explorer.openErd",
-          "when": "view == postgresExplorer && viewItem == schema",
-          "group": "1_actions"
-        },
-        {
-          "command": "postgres-explorer.importData",
-          "when": "view == postgresExplorer && viewItem == schema",
-          "group": "1_actions"
         },
         {
           "command": "postgres-explorer.showTriggerProperties",
@@ -3959,16 +3750,6 @@
       ],
       "notebook/cell/title": [
         {
-          "command": "postgres-explorer.aiAssist",
-          "when": "notebookType == postgres-notebook && notebookCellType == code",
-          "group": "inline/cell@10"
-        },
-        {
-          "command": "postgres-explorer.chatWithQuery",
-          "when": "notebookType == postgres-notebook && notebookCellType == code",
-          "group": "inline/cell@11"
-        },
-        {
           "command": "postgres-explorer.saveQueryToLibraryUI",
           "when": "notebookType == postgres-notebook && notebookCellType == code",
           "group": "inline/cell@12"
@@ -4060,18 +3841,25 @@
     "dev:site": "node scripts/dev-server.js",
     "prebuild:site": "node scripts/sync-theme-parser.mjs",
     "build:site": "npm run prebuild:site && mkdir -p dist && cp -r docs/* dist/",
-    "vscode:prepublish": "npm run esbuild-base -- --minify && npm run esbuild-renderer -- --minify && npm run esbuild-erd-webview -- --minify",
+    "vscode:prepublish": "npm run esbuild-base:free -- --minify && npm run esbuild-renderer:free -- --minify && npm run esbuild-erd-webview:free -- --minify",
+    "vscode:prepublish:pro": "npm run esbuild-base:pro -- --minify && npm run esbuild-renderer:pro -- --minify && npm run esbuild-erd-webview:pro -- --minify",
     "prepare:nightly:manifests": "node ./scripts/prepare-nightly-manifests.js",
     "package:prerelease": "npx @vscode/vsce package --pre-release",
     "package:openvsx:nightly": "npx @vscode/vsce package",
-    "esbuild-base": "esbuild ./src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --external:ssh2 --external:pg --external:@cursor/sdk --external:@opencode-ai/sdk --external:@dbml/core --external:onnxruntime-node --external:@huggingface/transformers --format=cjs --platform=node --main-fields=main",
-    "esbuild-renderer": "node scripts/clean-dist-chunks.js && esbuild ./src/ui/renderer/renderer_v2.ts --bundle --outdir=dist --format=esm --platform=browser --splitting",
-    "esbuild-erd-webview": "esbuild ./src/schemaDesigner/erd/webview/main.ts --bundle --outfile=dist/erd-webview.js --format=iife --platform=browser",
+    "esbuild-base:free": "esbuild ./src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --external:ssh2 --external:pg --external:@cursor/sdk --external:@opencode-ai/sdk --external:@dbml/core --external:onnxruntime-node --external:@huggingface/transformers --format=cjs --platform=node --main-fields=main --alias:@nexql/pro=./src/pro/index.ts",
+    "esbuild-base:pro": "esbuild ./src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --external:ssh2 --external:pg --external:@cursor/sdk --external:@opencode-ai/sdk --external:@dbml/core --external:onnxruntime-node --external:@huggingface/transformers --format=cjs --platform=node --main-fields=main --alias:@nexql/pro=./packages/pro/src/index.ts",
+    "esbuild-renderer:free": "node scripts/clean-dist-chunks.js && esbuild ./src/ui/renderer/renderer_v2.ts --bundle --outdir=dist --format=esm --platform=browser --splitting --alias:@nexql/pro-renderer=./src/ui/renderer/lazy",
+    "esbuild-renderer:pro": "node scripts/clean-dist-chunks.js && esbuild ./src/ui/renderer/renderer_v2.ts --bundle --outdir=dist --format=esm --platform=browser --splitting --alias:@nexql/pro-renderer=./packages/pro/renderer",
+    "esbuild-erd-webview": "npm run esbuild-erd-webview:free",
+    "esbuild-erd-webview:free": "esbuild ./src/pro/erd-webview-stub.ts --bundle --outfile=dist/erd-webview.js --format=iife --platform=browser",
+    "esbuild-erd-webview:pro": "esbuild ./packages/pro/src/schemaDesigner/erd/webview/main.ts --bundle --outfile=dist/erd-webview.js --format=iife --platform=browser",
     "copy-templates": "cp -r templates dist/",
-    "compile": "tsc -p ./ && npm run esbuild-renderer && npm run esbuild-erd-webview && npm run copy-templates",
+    "compile": "tsc -p ./ && npm run esbuild-renderer:free && npm run esbuild-erd-webview && npm run copy-templates",
     "watch": "tsc -watch -p ./",
-    "esbuild": "npm run esbuild-base -- --sourcemap && npm run esbuild-renderer -- --sourcemap && npm run esbuild-erd-webview -- --sourcemap",
-    "esbuild-watch": "npm run esbuild-base -- --sourcemap --watch & npm run esbuild-renderer -- --sourcemap --watch & npm run esbuild-erd-webview -- --sourcemap --watch",
+    "esbuild": "npm run esbuild:free",
+    "esbuild:free": "npm run esbuild-base:free -- --sourcemap && npm run esbuild-renderer:free -- --sourcemap && npm run esbuild-erd-webview:free -- --sourcemap",
+    "esbuild:pro": "npm run esbuild-base:pro -- --sourcemap && npm run esbuild-renderer:pro -- --sourcemap && npm run esbuild-erd-webview:pro -- --sourcemap",
+    "esbuild-watch": "npm run esbuild-base:free -- --sourcemap --watch & npm run esbuild-renderer:free -- --sourcemap --watch & npm run esbuild-erd-webview:free -- --sourcemap --watch",
     "test": "npm run compile && mocha --loader ./node_modules/ts-node/esm/transpile-only.mjs -r tsconfig-paths/register -r src/test/setup.ts 'src/test/unit/**/*.test.ts'",
     "test:unit": "npm run compile && TS_NODE_PROJECT=src/test/tsconfig.json node -r ts-node/register/transpile-only -r tsconfig-paths/register -r ./src/test/setup.ts ./node_modules/mocha/bin/mocha --exit 'src/test/unit/**/*.test.ts'",
     "test:integration": "npm run compile && ts-mocha -p src/test/tsconfig.json -r tsconfig-paths/register -r src/test/setup.ts 'src/test/integration/**/*.test.ts'",
@@ -4151,7 +3939,7 @@
     "diff": "^8.0.4",
     "serialize-javascript": "^7.0.5",
     "tar": ">=7.5.11",
-    "undici": ">=8.0.0",
+    "undici": "^7.25.0",
     "@tootallnate/once": ">=3.0.1"
   },
   "resolutions": {

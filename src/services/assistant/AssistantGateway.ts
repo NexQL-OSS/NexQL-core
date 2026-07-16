@@ -7,7 +7,7 @@
  * hack is exactly what this class exists to remove.
  */
 import * as vscode from 'vscode';
-import type { DbObject, FileAttachment } from '../../providers/chat/types';
+import type { DbObject, FileAttachment } from '../../common/chatTypes';
 import { AssistantInvocation, ContextItem } from './contextItems';
 import { buildDraft } from './promptFraming';
 

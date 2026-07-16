@@ -1,7 +1,7 @@
 import { Client, PoolClient } from 'pg';
 import * as vscode from 'vscode';
 import { debugWarn } from '../common/logger';
-import { setLastTreeDragPayload } from './chat/dragPayloadStore';
+import { setLastTreeDragPayload } from './dragPayloadStore';
 import * as path from 'path';
 import { ConnectionManager } from '../services/ConnectionManager';
 import { getSchemaCache, SchemaCache } from '../lib/schema-cache';

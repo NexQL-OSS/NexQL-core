@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { setLastTreeDragPayload } from './chat/dragPayloadStore';
+import { setLastTreeDragPayload } from './dragPayloadStore';
 import { ProfileManager } from '../features/connections/ProfileManager';
 import { SavedQueriesService } from '../features/savedQueries/SavedQueriesService';
 import { extensionContext } from '../extension';

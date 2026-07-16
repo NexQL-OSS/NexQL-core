@@ -2,16 +2,16 @@ import * as vscode from 'vscode';
 import { DatabaseTreeItem } from '../providers/DatabaseTreeProvider';
 import { DatabaseTreeProvider } from '../providers/DatabaseTreeProvider';
 import { QueryHistoryService } from '../services/QueryHistoryService';
-import { ChatViewProvider } from '../providers/ChatViewProvider';
+import { getChatViewProvider } from '../services/chatViewRegistry';
 
-import { cmdAiAssist } from '../commands/aiAssist';
+
 import { showColumnProperties, copyColumnName, copyColumnNameQuoted, generateSelectStatement, generateWhereClause, generateAlterColumnScript, generateDropColumnScript, generateRenameColumnScript, addColumnComment, generateIndexOnColumn, viewColumnStatistics, cmdAddColumn } from '../commands/columns';
 import { showConstraintProperties, copyConstraintName, generateDropConstraintScript, generateAlterConstraintScript, validateConstraint, generateAddConstraintScript, viewConstraintDependencies, cmdConstraintOperations, cmdAddConstraint } from '../commands/constraints';
 import { cmdConnectDatabase, cmdDisconnectConnection, cmdDisconnectDatabase, cmdReconnectConnection, cmdDuplicateConnection, showConnectionSafety, revealInExplorer, cmdAssignConnectionColor, cmdSetConnectionGroup, cmdPinConnection, cmdUnpinConnection } from '../commands/connection';
 import { cmdImportConnectionFromDatabaseUrl } from '../commands/importConnectionFromDatabaseUrl';
 import { cmdSmartPasteConnection } from '../commands/smartPasteConnection';
 import { showIndexProperties, copyIndexName, generateDropIndexScript, generateReindexScript, generateScriptCreate, analyzeIndexUsage, generateAlterIndexScript, addIndexComment, cmdIndexOperations, cmdAddIndex } from '../commands/indexes';
-import { cmdAddObjectInDatabase, cmdBackupDatabase, cmdCreateDatabase, cmdDatabaseDashboard, cmdDatabaseDashboardFromPalette, cmdDatabaseOperations, cmdDeleteDatabase, cmdDisconnectDatabase as cmdDisconnectDatabaseLegacy, cmdGenerateCreateScript, cmdMaintenanceDatabase, cmdOpenBackupWorkspaceFromPalette, cmdPsqlTool, cmdQueryTool, cmdRestoreDatabase, cmdScriptAlterDatabase, cmdShowConfiguration } from '../commands/database';
+import { cmdAddObjectInDatabase, cmdCreateDatabase, cmdDatabaseOperations, cmdDeleteDatabase, cmdDisconnectDatabase as cmdDisconnectDatabaseLegacy, cmdGenerateCreateScript, cmdMaintenanceDatabase, cmdPsqlTool, cmdQueryTool, cmdScriptAlterDatabase, cmdShowConfiguration } from '../commands/database';
 import { cmdDropExtension, cmdEnableExtension, cmdExtensionOperations, cmdRefreshExtension } from '../commands/extensions';
 import { cmdCreateForeignTable, cmdDropForeignTable, cmdEditForeignTable, cmdForeignTableOperations, cmdRefreshForeignTable, cmdShowForeignTableProperties, cmdViewForeignTableData } from '../commands/foreignTables';
 import { cmdForeignDataWrapperOperations, cmdShowForeignDataWrapperProperties, cmdCreateForeignServer, cmdForeignServerOperations, cmdShowForeignServerProperties, cmdDropForeignServer, cmdCreateUserMapping, cmdUserMappingOperations, cmdShowUserMappingProperties, cmdDropUserMapping, cmdRefreshForeignDataWrapper, cmdRefreshForeignServer, cmdRefreshUserMapping } from '../commands/foreignDataWrappers';
@@ -63,18 +63,7 @@ import { SavedQueriesTreeProvider } from '../providers/Phase7TreeProviders';
 import { pickQueryHistory } from '../commands/pickQueryHistory';
 import { setTelemetryMode, showTelemetryModePicker } from '../commands/telemetryMode';
 
-// Visual Schema Design
-import {
-  cmdOpenTableDesigner,
-  cmdCreateTableVisual,
-  cmdOpenRoleDesigner,
-  cmdOpenSchemaDiff,
-  cmdOpenSchemaDiffFromPalette,
-  cmdOpenErd,
-  cmdOpenErdMultiFromDatabase,
-  cmdImportDbml,
-  cmdImportData,
-} from '../commands/schemaDesigner';
+
 import { NotebookTreeItem, NotebooksTreeProvider } from '../providers/NotebooksTreeProvider';
 
 // Phase 2: New object types
@@ -94,7 +83,7 @@ import {
 import { cmdListRules, cmdDropRule, cmdShowRuleProperties, cmdRuleOperations } from '../commands/rules';
 import { cmdListTablespaces, cmdShowTablespaceProperties, cmdTablespaceOperations } from '../commands/tablespaces';
 import { cmdListPublications, cmdCreatePublication, cmdDropPublication, cmdShowPublicationProperties, cmdListSubscriptions, cmdDropSubscription, cmdShowSubscriptionProperties, cmdPublicationOperations } from '../commands/publications';
-import { cmdDropPolicy, cmdCreatePolicy } from '../commands/rlsPolicies';
+
 import { cmdMigrationHub } from '../features/migrations/migrationHub';
 import { cmdOpenListenNotify, cmdOpenListenNotifyFromPalette } from '../commands/listenNotify';
 import { cmdSearchSchema } from '../commands/schemaSearch';
@@ -129,7 +118,6 @@ import {
 export function getCommandSpecs(
   context: vscode.ExtensionContext,
   databaseTreeProvider: DatabaseTreeProvider,
-  chatViewProviderInstance: ChatViewProvider | undefined,
   outputChannel: vscode.OutputChannel,
   whatsNewManager: WhatsNewManager,
   savedQueriesTreeProvider?: SavedQueriesTreeProvider,
@@ -412,6 +400,7 @@ export function getCommandSpecs(
     {
       command: 'postgres-explorer.generateQuery',
       callback: async () => {
+        const chatViewProviderInstance = getChatViewProvider() as any;
         if (!chatViewProviderInstance) {
           vscode.window.showErrorMessage('AI Chat is not initialized');
           return;
@@ -507,6 +496,7 @@ export function getCommandSpecs(
     {
       command: 'postgres-explorer.optimizeQuery',
       callback: async () => {
+        const chatViewProviderInstance = getChatViewProvider() as any;
         if (!chatViewProviderInstance) {
           vscode.window.showErrorMessage('AI Chat is not initialized');
           return;
@@ -539,6 +529,7 @@ export function getCommandSpecs(
     {
       command: 'postgres-explorer.openSqlAssistantTab',
       callback: async () => {
+        const chatViewProviderInstance = getChatViewProvider() as any;
         if (!chatViewProviderInstance) {
           vscode.window.showWarningMessage('SQL Assistant is not available');
           return;
@@ -791,32 +782,12 @@ export function getCommandSpecs(
       callback: async (item: DatabaseTreeItem) => await cmdDatabaseOperations(item, context)
     },
     {
-      command: 'postgres-explorer.showDashboard',
-      callback: async (item: DatabaseTreeItem) => await cmdDatabaseDashboard(item, context)
-    },
-    {
-      command: 'postgres-explorer.showDashboardFromPalette',
-      callback: () => cmdDatabaseDashboardFromPalette(context)
-    },
-    {
       command: 'postgres-explorer.openListenNotify',
       callback: async (item: DatabaseTreeItem) => await cmdOpenListenNotify(item, context)
     },
     {
       command: 'postgres-explorer.openListenNotifyFromPalette',
       callback: () => cmdOpenListenNotifyFromPalette(context)
-    },
-    {
-      command: 'postgres-explorer.backupDatabase',
-      callback: async (item: DatabaseTreeItem) => await cmdBackupDatabase(item, context)
-    },
-    {
-      command: 'postgres-explorer.restoreDatabase',
-      callback: async (item: DatabaseTreeItem) => await cmdRestoreDatabase(item, context)
-    },
-    {
-      command: 'postgres-explorer.openBackupWorkspace',
-      callback: () => cmdOpenBackupWorkspaceFromPalette(context)
     },
     {
       command: 'postgres-explorer.generateCreateScript',
@@ -1261,107 +1232,7 @@ export function getCommandSpecs(
       callback: async (item: DatabaseTreeItem) => await cmdEnableExtension(item, context)
     },
 
-    {
-      command: 'postgres-explorer.aiAssist',
-      callback: async (cell: vscode.NotebookCell) => await cmdAiAssist(cell, context, outputChannel)
-    },
-
-    {
-      command: 'postgres-explorer.chatWithQuery',
-      callback: async (cell: vscode.NotebookCell) => {
-        // Get the query from the active cell
-        let query = '';
-        let results = '';
-
-        if (cell) {
-          query = cell.document.getText();
-          // Check if there are outputs from previous execution
-          if (cell.outputs && cell.outputs.length > 0) {
-            const output = cell.outputs[0];
-            for (const item of output.items) {
-              if (item.mime === 'application/x-postgres-result' || item.mime === 'application/json') {
-                try {
-                  const data = JSON.parse(new TextDecoder().decode(item.data));
-                  if (data.rows && data.rows.length > 0) {
-                    results = `\nResults (${data.rows.length} rows): ${JSON.stringify(data.rows.slice(0, 5), null, 2)}${data.rows.length > 5 ? '\n... and more' : ''}`;
-                  }
-                } catch (e) {
-                  // Ignore parse errors
-                }
-              }
-            }
-          }
-        } else {
-          // Fallback to active notebook editor
-          const activeEditor = vscode.window.activeNotebookEditor;
-          if (activeEditor) {
-            const selections = activeEditor.selections;
-            if (selections && selections.length > 0) {
-              const cellIndex = selections[0].start;
-              const activeCell = activeEditor.notebook.cellAt(cellIndex);
-              query = activeCell.document.getText();
-            }
-          }
-        }
-
-        if (!query) {
-          vscode.window.showWarningMessage('No query found in the active cell.');
-          return;
-        }
-
-        // Focus the chat view and send the query
-        await vscode.commands.executeCommand('postgresExplorer.chatView.focus');
-
-        // Send message to chat view with query context
-        const message = `Help me with this SQL query:\n\`\`\`sql\n${query}\n\`\`\`${results}`;
-
-        // Use the chat view provider to send the message
-        if (chatViewProviderInstance) {
-          chatViewProviderInstance.sendToChat({ query, results, message });
-        }
-      }
-    },
-
-    {
-      command: 'postgres-explorer.sendToChat',
-      callback: async (data: { query: string; results?: string; message: string }) => {
-        if (chatViewProviderInstance) {
-          await chatViewProviderInstance.sendToChat(data);
-        }
-      }
-    },
-
-    {
-      command: 'postgres-explorer.attachToChat',
-      callback: async (item: DatabaseTreeItem) => {
-        if (!chatViewProviderInstance) {
-          vscode.window.showWarningMessage('SQL Assistant is not available');
-          return;
-        }
-        if (!item || !item.connectionId || !item.databaseName) {
-          vscode.window.showErrorMessage('Invalid database object');
-          return;
-        }
-
-        // Resolve connection name from config
-        const connections = vscode.workspace.getConfiguration().get<any[]>('postgresExplorer.connections') || [];
-        const conn = connections.find(c => c.id === item.connectionId);
-        const connectionName = conn?.name || conn?.host || 'Unknown';
-
-        // Convert DatabaseTreeItem to DbObject
-        const dbObject: any = {
-          name: item.label,
-          type: item.type,
-          schema: item.schema || '',
-          database: item.databaseName,
-          connectionId: item.connectionId,
-          connectionName: connectionName,
-          breadcrumb: [connectionName, item.databaseName, item.schema, item.label].filter(Boolean).join(' > ')
-        };
-
-        await chatViewProviderInstance.attachDbObject(dbObject);
-      }
-    },
+    // AI/chat command registrations have been moved to the pro index seam.
 
     // Column commands
     {
@@ -1639,45 +1510,7 @@ export function getCommandSpecs(
       callback: () => loadSavedQueryUI()
     },
 
-    // Visual Schema Design (Phase 7 Roadmap)
-    {
-      command: 'postgres-explorer.openTableDesigner',
-      callback: (item: DatabaseTreeItem) => cmdOpenTableDesigner(item, context)
-    },
-    {
-      command: 'postgres-explorer.openRoleDesigner',
-      callback: (item: DatabaseTreeItem) => cmdOpenRoleDesigner(item, context)
-    },
-    {
-      command: 'postgres-explorer.createTableVisual',
-      callback: (item: DatabaseTreeItem) => cmdCreateTableVisual(item, context)
-    },
-    {
-      command: 'postgres-explorer.openSchemaDiff',
-      callback: (item: DatabaseTreeItem) => cmdOpenSchemaDiff(item, context)
-    },
-    {
-      command: 'postgres-explorer.openSchemaDiffFromPalette',
-      callback: () => cmdOpenSchemaDiffFromPalette(context)
-    },
-    // D2: ERD
-    {
-      command: 'postgres-explorer.openErd',
-      callback: (item: DatabaseTreeItem) => cmdOpenErd(item, context)
-    },
-    {
-      command: 'postgres-explorer.openErdMulti',
-      callback: (item: DatabaseTreeItem) => cmdOpenErdMultiFromDatabase(item, context)
-    },
-    {
-      command: 'postgres-explorer.importDbml',
-      callback: (item?: DatabaseTreeItem) => cmdImportDbml(item, context)
-    },
-    // Import Data
-    {
-      command: 'postgres-explorer.importData',
-      callback: (item: DatabaseTreeItem) => cmdImportData(item, context)
-    },
+    // Visual Schema Design commands have been moved to the pro index seam.
     // D3: Profile export/import
     {
       command: 'postgres-explorer.exportConnectionProfiles',
@@ -1768,8 +1601,8 @@ export function getCommandSpecs(
     { command: 'postgres-explorer.publicationOperations', callback: async (item: DatabaseTreeItem) => await cmdPublicationOperations(item, context) },
     { command: 'postgres-explorer.listSubscriptions', callback: async (item: DatabaseTreeItem) => await cmdListSubscriptions(item, context) },
     { command: 'postgres-explorer.dropSubscription', callback: async (item: DatabaseTreeItem) => await cmdDropSubscription(item, context) },
-    { command: 'postgres-explorer.dropPolicy', callback: async (item: DatabaseTreeItem) => await cmdDropPolicy(item, context) },
-    { command: 'postgres-explorer.createPolicy', callback: async (item: DatabaseTreeItem) => await cmdCreatePolicy(item, context) },
+    { command: 'postgres-explorer.dropPolicy', callback: async (item: DatabaseTreeItem) => await vscode.commands.executeCommand('postgres-explorer.pro.dropPolicy', item, context) },
+    { command: 'postgres-explorer.createPolicy', callback: async (item: DatabaseTreeItem) => await vscode.commands.executeCommand('postgres-explorer.pro.createPolicy', item, context) },
     { command: 'postgres-explorer.showSubscriptionProperties', callback: async (item: DatabaseTreeItem) => await cmdShowSubscriptionProperties(item, context) },
 
     // Phase 2: Schema Search

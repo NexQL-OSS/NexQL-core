@@ -1,6 +1,3 @@
-import { ChartControls } from '../../../renderer/components/chart/ChartControls';
-import { ChartRenderer } from '../../../renderer/components/chart/ChartRenderer';
-
 export interface MountChartTabOptions {
   columns: string[];
   rows: unknown[];
@@ -9,37 +6,14 @@ export interface MountChartTabOptions {
 export function mountChartTab(
   viewContainer: HTMLElement,
   opts: MountChartTabOptions,
-): { chartRenderer: ChartRenderer; chartCanvas: HTMLCanvasElement } {
-  const chartCanvas = document.createElement('canvas');
-  const chartRenderer = new ChartRenderer(chartCanvas);
-
-  const chartWrapper = document.createElement('div');
-  chartWrapper.style.cssText =
-    'flex: 1; display: flex; flex-direction: column; height: 100%; overflow: hidden;';
-
-  const controlsContainer = document.createElement('div');
-  controlsContainer.style.cssText =
-    'width: 20%; min-width: 160px; max-width: 240px; display: flex; flex-direction: column; border-right: 1px solid var(--vscode-widget-border);';
-
-  const canvasContainer = document.createElement('div');
-  canvasContainer.style.cssText = 'flex: 1; padding: 8px; position: relative; min-height: 0;';
-  canvasContainer.appendChild(chartCanvas);
-
-  const innerContainer = document.createElement('div');
-  innerContainer.style.cssText = 'display: flex; flex: 1; overflow: hidden; height: 100%;';
-  innerContainer.appendChild(controlsContainer);
-  innerContainer.appendChild(canvasContainer);
-  chartWrapper.appendChild(innerContainer);
-
-  viewContainer.appendChild(chartWrapper);
-
-  new ChartControls(controlsContainer, {
-    columns: opts.columns,
-    rows: opts.rows,
-    onConfigChange: (config) => {
-      chartRenderer.render(opts.rows as any[], config);
-    },
-  });
-
-  return { chartRenderer, chartCanvas };
+): { chartRenderer: any; chartCanvas: HTMLCanvasElement } {
+  viewContainer.innerHTML = `
+    <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; padding:24px; color:var(--vscode-descriptionForeground); font-family:var(--vscode-font-family);">
+      <h3 style="margin-bottom:8px; color:var(--vscode-foreground);">Charts & Visualization</h3>
+      <p style="text-align:center; max-width:400px; margin-bottom:16px;">
+        Plotting and visualizing your query result set using graphs is a premium feature available in NexQL Pro.
+      </p>
+    </div>
+  `;
+  return { chartRenderer: null, chartCanvas: document.createElement('canvas') };
 }

@@ -2,7 +2,6 @@ import { Client } from 'pg';
 import * as vscode from 'vscode';
 import { createMetadata, getConnectionWithPassword } from '../commands/connection';
 import { ConnectionConfig } from '../common/types';
-import { DashboardPanel } from '../dashboard/DashboardPanel';
 import { requirePro, ProFeature } from '../services/featureGates';
 import { DatabaseTreeItem, DatabaseTreeProvider } from '../providers/DatabaseTreeProvider';
 import { ConnectionManager } from '../services/ConnectionManager';
@@ -16,7 +15,7 @@ import {
   validateCategoryItem
 } from './helper';
 import { openOrCreateNotebookWithPicker } from './notebook';
-import { BackupRestorePanel } from '../features/backup/BackupRestorePanel';
+
 
 
 
@@ -36,102 +35,22 @@ import { BackupRestorePanel } from '../features/backup/BackupRestorePanel';
  * await cmdShowDatabaseDashboard(databaseItem, context);
  * // Dashboard notebook is now displayed
  */
+/**
+ * cmdDatabaseDashboard — premium command, implementation in packages/pro/src.
+ * Core stub: delegates to the registered pro command.
+ */
 export async function cmdDatabaseDashboard(item: DatabaseTreeItem, context: vscode.ExtensionContext): Promise<void> {
-  if (!(await requirePro(ProFeature.Dashboard, context))) return;
-  try {
-    const { connection, release } = await getDatabaseConnection(item, validateCategoryItem);
-    // Release the client used for validation/setup immediately
-    release();
-
-    await DashboardPanel.show(context.extensionUri, connection, item.databaseName!, connection.id);
-  } catch (err: any) {
-    await ErrorHandlers.handleCommandError(err, 'show dashboard');
-  }
+  // Premium implementation registered by activatePro.
+  await vscode.commands.executeCommand('postgres-explorer.showDashboard', item);
 }
 
 /**
- * Command Palette: pick saved connection → database, then open the live dashboard webview.
+ * cmdDatabaseDashboardFromPalette — premium command, implementation in packages/pro/src.
  */
 export async function cmdDatabaseDashboardFromPalette(
   context: vscode.ExtensionContext,
 ): Promise<void> {
-  if (!(await requirePro(ProFeature.Dashboard, context))) return;
-  const connections =
-    vscode.workspace
-      .getConfiguration()
-      .get<Array<Record<string, unknown>>>('postgresExplorer.connections') || [];
-  if (connections.length === 0) {
-    await vscode.window.showErrorMessage(
-      'No saved connections. Add a connection first.',
-    );
-    return;
-  }
-
-  const connPick = await vscode.window.showQuickPick(
-    connections.map((c: Record<string, unknown>) => ({
-      label: (c.name as string) || `${c.host}:${c.port}`,
-      description: (c.database as string) || 'postgres',
-      conn: c,
-    })),
-    {
-      title: 'Live Dashboard: Connection',
-      placeHolder: 'Select a saved connection',
-    },
-  );
-  if (!connPick) {
-    return;
-  }
-
-  const connection = connPick.conn as Record<string, unknown> & {
-    id: string;
-    host: string;
-    port: number;
-    database?: string;
-  };
-  const bootstrapDb = connection.database || 'postgres';
-
-  let tempClient;
-  try {
-    tempClient = await ConnectionManager.getInstance().getPooledClient({
-      ...(connection as ConnectionConfig),
-      database: bootstrapDb,
-    });
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    await vscode.window.showErrorMessage(`Could not connect: ${msg}`);
-    return;
-  }
-
-  let dbName: string;
-  try {
-    const dbsResult = await tempClient.query(`
-      SELECT datname FROM pg_database
-      WHERE datallowconn = true AND datistemplate = false
-      ORDER BY datname
-    `);
-    const databases = dbsResult.rows.map((r: { datname: string }) => r.datname);
-    const dbChoice = await vscode.window.showQuickPick(databases, {
-      title: 'Live Dashboard: Database',
-      placeHolder: 'Database to open the dashboard for',
-    });
-    if (!dbChoice) {
-      return;
-    }
-    dbName = dbChoice;
-  } finally {
-    tempClient.release();
-  }
-
-  try {
-    await DashboardPanel.show(
-      context.extensionUri,
-      connection as ConnectionConfig,
-      dbName,
-      connection.id,
-    );
-  } catch (err: unknown) {
-    await ErrorHandlers.handleCommandError(err, 'show dashboard');
-  }
+  await vscode.commands.executeCommand('postgres-explorer.showDashboardFromPalette');
 }
 
 /**
@@ -622,107 +541,23 @@ DROP DATABASE IF EXISTS "${item.label}";`)
   }
 }
 
+/**
+ * cmdBackupDatabase — premium command, implementation in packages/pro/src.
+ */
 export async function cmdBackupDatabase(item: DatabaseTreeItem, context: vscode.ExtensionContext) {
-  try {
-    if (!(await requirePro(ProFeature.BackupRestore, context))) return;
-    if (!item.connectionId || !item.databaseName) {
-      throw new Error('Select a database in the explorer');
-    }
-    const labelStr = typeof item.label === 'string' ? item.label : String((item.label as { label?: string })?.label ?? item.databaseName);
-    await BackupRestorePanel.show(context, {
-      initialTab: 'dump',
-      connectionId: item.connectionId,
-      databaseName: item.databaseName,
-      databaseLabel: labelStr
-    });
-  } catch (err: any) {
-    await ErrorHandlers.handleCommandError(err, 'open backup workspace');
-  }
+  await vscode.commands.executeCommand('postgres-explorer.backupDatabase', item);
 }
 
+/**
+ * cmdRestoreDatabase — premium command, implementation in packages/pro/src.
+ */
 export async function cmdRestoreDatabase(item: DatabaseTreeItem, context: vscode.ExtensionContext) {
-  try {
-    if (!(await requirePro(ProFeature.BackupRestore, context))) return;
-    if (!item.connectionId || !item.databaseName) {
-      throw new Error('Select a database in the explorer');
-    }
-    const labelStr = typeof item.label === 'string' ? item.label : String((item.label as { label?: string })?.label ?? item.databaseName);
-    await BackupRestorePanel.show(context, {
-      initialTab: 'restore',
-      connectionId: item.connectionId,
-      databaseName: item.databaseName,
-      databaseLabel: labelStr
-    });
-  } catch (err: any) {
-    await ErrorHandlers.handleCommandError(err, 'open restore workspace');
-  }
+  await vscode.commands.executeCommand('postgres-explorer.restoreDatabase', item);
 }
 
-/** Command Palette: pick connection → database, then open Backup & Restore panel. */
+/** cmdOpenBackupWorkspaceFromPalette — premium command, implementation in packages/pro/src. */
 export async function cmdOpenBackupWorkspaceFromPalette(context: vscode.ExtensionContext): Promise<void> {
-  if (!(await requirePro(ProFeature.BackupRestore, context))) return;
-  const connections =
-    vscode.workspace.getConfiguration().get<Array<Record<string, unknown>>>('postgresExplorer.connections') || [];
-  if (connections.length === 0) {
-    await vscode.window.showErrorMessage('No saved connections. Add one in settings.');
-    return;
-  }
-
-  const connPick = await vscode.window.showQuickPick(
-    connections.map((c: any) => ({
-      label: (c.name as string) || `${c.host}:${c.port}`,
-      description: (c.database as string) || 'postgres',
-      conn: c
-    })),
-    { title: 'Backup & Restore: Connection', placeHolder: 'Select a saved connection' }
-  );
-  if (!connPick?.conn) {
-    return;
-  }
-
-  const connection = connPick.conn as Record<string, unknown> & {
-    id: string;
-    host: string;
-    port: number;
-    database?: string;
-  };
-  const bootstrapDb = connection.database || 'postgres';
-
-  let tempClient;
-  try {
-    tempClient = await ConnectionManager.getInstance().getPooledClient({
-      ...(connection as any),
-      database: bootstrapDb
-    });
-  } catch (err: any) {
-    await vscode.window.showErrorMessage(`Could not connect: ${err?.message || String(err)}`);
-    return;
-  }
-
-  try {
-    const dbsResult = await tempClient.query(`
-      SELECT datname FROM pg_database
-      WHERE datallowconn = true AND datistemplate = false
-      ORDER BY datname
-    `);
-    const databases = dbsResult.rows.map((r: { datname: string }) => r.datname);
-    const dbChoice = await vscode.window.showQuickPick(databases, {
-      title: 'Backup & Restore: Database',
-      placeHolder: 'Database to associate with the workspace'
-    });
-    if (!dbChoice) {
-      return;
-    }
-
-    await BackupRestorePanel.show(context, {
-      initialTab: 'dump',
-      connectionId: connection.id,
-      databaseName: dbChoice,
-      databaseLabel: dbChoice
-    });
-  } finally {
-    tempClient.release();
-  }
+  await vscode.commands.executeCommand('postgres-explorer.openBackupWorkspace');
 }
 
 export async function cmdGenerateCreateScript(item: DatabaseTreeItem, context: vscode.ExtensionContext) {

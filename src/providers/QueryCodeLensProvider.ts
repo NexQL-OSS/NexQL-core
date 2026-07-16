@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { QueryAnalyzer } from '../services/QueryAnalyzer';
+import { SqlSafetyAnalyzer } from '../services/sqlSafety';
 import { FullDatasetPreferenceService } from '../services/FullDatasetPreferenceService';
 import { SqlParser } from './kernel/SqlParser';
 
@@ -118,7 +118,7 @@ export class QueryCodeLensProvider implements vscode.CodeLensProvider {
     const hasParams =
       params.positional.length > 0 || params.named.length > 0 || params.quoted.length > 0;
     const showFullDatasetToggle =
-      !isExplainQuery && QueryAnalyzer.getInstance().isReadOnlyQuery(text) && !hasParams;
+      !isExplainQuery && SqlSafetyAnalyzer.getInstance().isReadOnlyQuery(text) && !hasParams;
 
     const runGroupLenses: vscode.CodeLens[] = [];
 

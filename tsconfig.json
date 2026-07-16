@@ -4,7 +4,9 @@
     "paths": {
       "@features/*": ["features/*"],
       "@core/*": ["core/*"],
-      "@ui/*": ["ui/*"]
+      "@ui/*": ["ui/*"],
+      "@nexql/pro": ["pro/index.ts"],
+      "@nexql/pro-renderer/*": ["ui/renderer/lazy/*"]
     },
     "jsx": "react",
     "module": "commonjs",

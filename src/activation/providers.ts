@@ -1,5 +1,4 @@
 import * as vscode from 'vscode';
-import { ChatViewProvider } from '../providers/ChatViewProvider';
 import { DatabaseTreeProvider, DatabaseDragAndDropController } from '../providers/DatabaseTreeProvider';
 import { DatabaseTreeDocumentDropProvider } from '../providers/DatabaseTreeDocumentDropProvider';
 import { PostgresNotebookProvider } from '../features/notebook/notebookProvider';
@@ -11,8 +10,6 @@ import { AutoRefreshService } from '../services/AutoRefreshService';
 import { DdlViewerService } from '../services/DdlViewerService';
 import { LicenseService } from '../services/LicenseService';
 import { NotebookIndexService } from '../services/NotebookIndexService';
-import { McpDefinitionProvider } from '../mcp/McpDefinitionProvider';
-import { NexqlMcpServer } from '../mcp/NexqlMcpServer';
 
 function runDeferredProviderTask(outputChannel: vscode.OutputChannel, taskName: string, task: () => Promise<void>) {
   setTimeout(() => {
@@ -73,37 +70,7 @@ export function registerProviders(context: vscode.ExtensionContext, outputChanne
     }
   });
 
-  // Register the chat view provider
-  const chatViewProviderInstance = new ChatViewProvider(context.extensionUri, context);
-  context.subscriptions.push(
-    vscode.window.registerWebviewViewProvider(
-      ChatViewProvider.viewType,
-      chatViewProviderInstance,
-      { webviewOptions: { retainContextWhenHidden: true } }
-    )
-  );
-
-  // MCP server: exposes NexQL's read-only DB tools to external agents (Claude Code,
-  // Copilot, ...) over local Streamable HTTP with a per-session bearer token. Gated
-  // behind a setting — off by default; the server binds lazily on first client attach.
-  {
-    const isMcpEnabled = () =>
-      vscode.workspace.getConfiguration().get<boolean>('postgresExplorer.mcp.enabled', false);
-
-    const mcpServer = new NexqlMcpServer(context);
-    const mcpProvider = new McpDefinitionProvider(mcpServer, isMcpEnabled);
-    context.subscriptions.push(mcpServer, mcpProvider);
-    context.subscriptions.push(
-      vscode.lm.registerMcpServerDefinitionProvider('postgresExplorer.mcpServerProvider', mcpProvider)
-    );
-    context.subscriptions.push(
-      vscode.workspace.onDidChangeConfiguration((e) => {
-        if (e.affectsConfiguration('postgresExplorer.mcp.enabled')) {
-          mcpProvider.refresh();
-        }
-      })
-    );
-  }
+  // ChatViewProvider and MCP registrations have been moved to the pro index seam.
 
   // Register notebook providers
   const notebookProvider = new PostgresNotebookProvider();
@@ -252,7 +219,7 @@ export function registerProviders(context: vscode.ExtensionContext, outputChanne
     databaseTreeProvider,
     treeView,
     ddlViewerService,
-    chatViewProviderInstance,
+    chatViewProviderInstance: undefined,
     queryHistoryProvider: undefined,
     savedQueriesTreeProvider,
     notebooksTreeProvider,

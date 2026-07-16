@@ -2,7 +2,7 @@ import { expect } from 'chai';
 import * as sinon from 'sinon';
 
 import { QueryPerformanceService } from '../../services/QueryPerformanceService';
-import { QueryBaseline } from '../../services/QueryAnalyzer';
+import { QueryBaseline } from '../../services/queryPerformance/QueryPerformanceAnalyzer';
 
 function createStorage(initialBaselines: Record<string, QueryBaseline> = {}) {
   const data: Record<string, any> = {

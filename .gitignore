@@ -47,3 +47,6 @@ docs/plan/
 .kv-dev.json
 .aura/
 .ua/
+
+# Pro package source — lives in the private repo, symlinked here for the build
+packages/

@@ -1,9 +1,9 @@
 import { expect } from 'chai';
-import { QueryAnalyzer } from '../../../../services/QueryAnalyzer';
+import { SqlSafetyAnalyzer } from '../../../../services/sqlSafety';
 
 describe('SqlExecutor - Consolidated Modal Confirmation', () => {
   it('should collect and group dangerous operations from multiple statements', () => {
-    const queryAnalyzer = QueryAnalyzer.getInstance();
+    const queryAnalyzer = SqlSafetyAnalyzer.getInstance();
 
     // Test case: cell with multiple DROP commands
     const queries = [
@@ -32,7 +32,7 @@ describe('SqlExecutor - Consolidated Modal Confirmation', () => {
   });
 
   it('should detect dangerous operations across mixed statement types', () => {
-    const queryAnalyzer = QueryAnalyzer.getInstance();
+    const queryAnalyzer = SqlSafetyAnalyzer.getInstance();
 
     const statements = [
       'SELECT * FROM users',
@@ -77,7 +77,7 @@ describe('SqlExecutor - Consolidated Modal Confirmation', () => {
   });
 
   it('should classify operation severity correctly', () => {
-    const queryAnalyzer = QueryAnalyzer.getInstance();
+    const queryAnalyzer = SqlSafetyAnalyzer.getInstance();
 
     const dropAnalysis = queryAnalyzer.analyzeQuery('DROP TABLE users');
     expect(dropAnalysis.operations[0].severity).to.equal('critical');
@@ -93,7 +93,7 @@ describe('SqlExecutor - Consolidated Modal Confirmation', () => {
   });
 
   it('should mark operations requiring confirmation correctly', () => {
-    const queryAnalyzer = QueryAnalyzer.getInstance();
+    const queryAnalyzer = SqlSafetyAnalyzer.getInstance();
 
     const dropAnalysis = queryAnalyzer.analyzeQuery('DROP TABLE users');
     expect(dropAnalysis.requiresConfirmation).to.be.true;

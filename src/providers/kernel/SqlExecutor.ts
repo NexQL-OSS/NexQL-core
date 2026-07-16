@@ -17,8 +17,7 @@ import { SecretStorageService } from '../../services/SecretStorageService';
 import { ErrorService, getErrorExplanation } from '../../services/ErrorService';
 import { QueryHistoryService } from '../../services/QueryHistoryService';
 import { getTransactionManager } from '../../services/TransactionManager';
-import { QueryAnalyzer } from '../../services/QueryAnalyzer';
-import { QueryPerformanceService } from '../../services/QueryPerformanceService';
+import { SqlSafetyAnalyzer } from '../../services/sqlSafety';
 import { extensionContext } from '../../extension';
 import {
   clearNotebookParameterValues,
@@ -660,7 +659,7 @@ export class SqlExecutor {
       debugLog('SqlExecutor: Executing', statements.length, 'statement(s)');
 
       // Safety check: Pre-analyze all queries for dangerous operations
-      const queryAnalyzer = QueryAnalyzer.getInstance();
+      const queryAnalyzer = SqlSafetyAnalyzer.getInstance();
       let userConfirmedDangerousOps: 'Execute' | 'Execute in Transaction' | 'Cancelled' | null = null;
 
       // Resolve autoApplySafetyCheck (activeProfileContext has precedence over notebook metadata)
@@ -870,8 +869,8 @@ export class SqlExecutor {
           const isSlow = durationMs >= slowThresholdMs;
 
           // Performance Tracking
-          const queryAnalyzer = QueryAnalyzer.getInstance();
-          const queryHash = queryAnalyzer.getQueryHash(queryForExecution);
+          const queryHash = SqlSafetyAnalyzer.getInstance().getQueryHash(queryForExecution);
+          const { QueryPerformanceService } = await import('../../services/QueryPerformanceService');
           const performanceService = QueryPerformanceService.getInstance();
 
           // Record this execution
@@ -914,7 +913,8 @@ export class SqlExecutor {
           }
 
           // Always analyze performance against baseline (even if no plan)
-          performanceAnalysis = queryAnalyzer.analyzePerformanceAgainstBaseline(
+          const { QueryPerformanceAnalyzer } = await import('../../services/queryPerformance/QueryPerformanceAnalyzer');
+          performanceAnalysis = QueryPerformanceAnalyzer.getInstance().analyzePerformanceAgainstBaseline(
             durationMs,
             baseline,
             explainPlan
@@ -1102,7 +1102,7 @@ export class SqlExecutor {
             executionTime,
           });
 
-          const qa = QueryAnalyzer.getInstance();
+          const qa = SqlSafetyAnalyzer.getInstance();
           if (qa.isCatalogInvalidatingSql(statements[stmtIndex]) || qa.isSearchPathChangingSql(statements[stmtIndex])) {
             const dbName = metadata.databaseName || connection.database || 'postgres';
             // Invalidate autocomplete cache so next completion triggers a fresh catalog fetch.

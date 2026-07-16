@@ -7,7 +7,7 @@
  * each call site hard-coded its own cap (10 / 5 / 5-3 / 50) and its own
  * prompt string — see promptFraming.ts for the framing side of this.
  */
-import type { DbObject, FileAttachment } from '../../providers/chat/types';
+import type { DbObject, FileAttachment } from '../../common/chatTypes';
 
 /** Sample rows shown to the model for any tabular result — the ONE cap. */
 export const CONTEXT_SAMPLE_ROW_CAP = 10;

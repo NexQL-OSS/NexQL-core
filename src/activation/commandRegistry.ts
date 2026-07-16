@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { DatabaseTreeItem } from '../providers/DatabaseTreeProvider';
 import { DatabaseTreeProvider } from '../providers/DatabaseTreeProvider';
-import { ChatViewProvider } from '../providers/ChatViewProvider';
+
 import { SavedQueriesTreeProvider } from '../providers/Phase7TreeProviders';
 import { NotebooksTreeProvider } from '../providers/NotebooksTreeProvider';
 import { cmdPasteTable } from '../commands/schema';
@@ -15,7 +15,6 @@ import { TelemetryService } from '../services/TelemetryService';
 export function registerAllCommands(
   context: vscode.ExtensionContext,
   databaseTreeProvider: DatabaseTreeProvider,
-  chatViewProviderInstance: ChatViewProvider | undefined,
   outputChannel: vscode.OutputChannel,
   whatsNewManager: WhatsNewManager,
   savedQueriesTreeProvider?: SavedQueriesTreeProvider,
@@ -24,7 +23,6 @@ export function registerAllCommands(
   const commands = getCommandSpecs(
     context,
     databaseTreeProvider,
-    chatViewProviderInstance,
     outputChannel,
     whatsNewManager,
     savedQueriesTreeProvider,
