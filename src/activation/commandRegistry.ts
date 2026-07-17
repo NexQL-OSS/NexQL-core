@@ -6,6 +6,7 @@ import { SavedQueriesTreeProvider } from '../providers/Phase7TreeProviders';
 import { NotebooksTreeProvider } from '../providers/NotebooksTreeProvider';
 import { cmdPasteTable } from '../commands/schema';
 import { getCommandSpecs } from './commandSpecs';
+import { isProBuild } from '../common/buildTier';
 import { WhatsNewManager } from './WhatsNewManager';
 import { TelemetryService } from '../services/TelemetryService';
 
@@ -31,7 +32,12 @@ export function registerAllCommands(
 
   outputChannel.appendLine('Starting command registration...');
 
-  commands.forEach(({ command, callback }) => {
+  commands.forEach(({ command, callback, proOnly }) => {
+    // Premium commands are declared only in the pro manifest and registered
+    // only in pro builds — the free/OSS build skips them entirely.
+    if (proOnly && !isProBuild()) {
+      return;
+    }
     try {
       context.subscriptions.push(
         vscode.commands.registerCommand(command, async (...args: unknown[]) => {

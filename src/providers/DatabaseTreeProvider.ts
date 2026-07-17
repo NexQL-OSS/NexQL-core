@@ -21,6 +21,7 @@ import { DatabaseLoader } from './tree/loaders/DatabaseLoader';
 import { SchemaLoader } from './tree/loaders/SchemaLoader';
 import { TableLoader } from './tree/loaders/TableLoader';
 import { LicenseService } from '../services/LicenseService';
+import { isProBuild } from '../common/buildTier';
 
 const buildItemKey = buildTreeItemKey;
 
@@ -438,8 +439,8 @@ export class DatabaseTreeProvider implements vscode.TreeDataProvider<DatabaseTre
       // Root level - show connections (grouped if configured)
       const rootItems: DatabaseTreeItem[] = [];
 
-      // Add subscription badge if user is subscribed to Sponsor or Team
-      const tier = LicenseService.getInstance().getTier();
+      // Add subscription badge if user is subscribed to Sponsor or Team (pro builds only)
+      const tier = isProBuild() ? LicenseService.getInstance().getTier() : 'free';
       if (tier === 'sponsor' || tier === 'singularity') {
         const badgeLabel = tier === 'sponsor' ? 'NexQL Sponsor' : 'NexQL Team';
         const badgeType = tier === 'sponsor' ? 'sponsor-badge' : 'team-badge';

@@ -11,16 +11,13 @@ export interface MountAnalystTabOptions {
   sourceCellIndex: number;
 }
 
+// Free-build fallback. The Analyst tab button is hidden in free builds
+// (renderQueryResult gates on isProBuild), so this is unreachable from the
+// UI; it exists only so the @nexql/pro-renderer alias always resolves.
 export async function mountAnalystTab(
   viewContainer: HTMLElement,
-  opts: MountAnalystTabOptions,
+  _opts: MountAnalystTabOptions,
 ): Promise<void> {
-  viewContainer.innerHTML = `
-    <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; padding:24px; color:var(--vscode-descriptionForeground); font-family:var(--vscode-font-family);">
-      <h3 style="margin-bottom:8px; color:var(--vscode-foreground);">Data Analyst Dashboard</h3>
-      <p style="text-align:center; max-width:400px; margin-bottom:16px;">
-        Interactive pivot tables, grouping, aggregation, and AI analyst guidance are premium features available in NexQL Pro.
-      </p>
-    </div>
-  `;
+  console.warn('[NexQL] Analyst tab is not included in this build.');
+  viewContainer.innerHTML = '';
 }

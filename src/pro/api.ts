@@ -12,6 +12,11 @@ import { NotebookBuilder } from '../commands/helper';
  * ever holds this type-safe interface reference.
  */
 export interface IChatViewProvider {
+  resolveWebviewView(
+    webviewView: vscode.WebviewView,
+    context: vscode.WebviewViewResolveContext,
+    token: vscode.CancellationToken
+  ): void | Thenable<void>;
   sendToChat(data: { query: string; results?: string; message: string }): void | Promise<void>;
   attachDbObject(dbObject: any): void | Promise<void>;
   syncSentinelContext?(context: any): void;

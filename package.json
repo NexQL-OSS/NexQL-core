@@ -102,151 +102,6 @@
     ],
     "commands": [
       {
-        "command": "postgres-explorer.dbindex.openPanel",
-        "title": "Database Index: Open Dashboard",
-        "category": "NexQL"
-      },
-      {
-        "command": "postgres-explorer.dbindex.build",
-        "title": "Database Index: Build Index...",
-        "category": "NexQL"
-      },
-      {
-        "command": "postgres-explorer.dbindex.clear",
-        "title": "Database Index: Clear Index...",
-        "category": "NexQL"
-      },
-      {
-        "command": "postgres-explorer.license.activate",
-        "title": "Activate License",
-        "category": "NexQL"
-      },
-      {
-        "command": "postgres-explorer.license.manage",
-        "title": "Manage License",
-        "category": "NexQL"
-      },
-      {
-        "command": "postgres-explorer.license.openUpgrade",
-        "title": "View Plans / Upgrade",
-        "category": "NexQL"
-      },
-      {
-        "command": "postgres-explorer.license.showUsage",
-        "title": "Show Free Usage",
-        "category": "NexQL"
-      },
-      {
-        "command": "postgres-explorer.audit.openLog",
-        "title": "Open Production Audit Log",
-        "category": "NexQL"
-      },
-      {
-        "command": "postgres-explorer.sync.setup",
-        "title": "Set Up Sync",
-        "category": "NexQL Sync"
-      },
-      {
-        "command": "postgres-explorer.sync.now",
-        "title": "Sync Now",
-        "category": "NexQL Sync"
-      },
-      {
-        "command": "postgres-explorer.sync.status",
-        "title": "Show Sync Status",
-        "category": "NexQL Sync"
-      },
-      {
-        "command": "postgres-explorer.sync.showSecretKey",
-        "title": "Privacy & Security Info",
-        "category": "NexQL Sync"
-      },
-      {
-        "command": "postgres-explorer.sync.pause",
-        "title": "Pause Sync",
-        "category": "NexQL Sync"
-      },
-      {
-        "command": "postgres-explorer.sync.signOut",
-        "title": "Sign Out of Sync",
-        "category": "NexQL Sync"
-      },
-      {
-        "command": "postgres-explorer.sync.inviteMember",
-        "title": "Invite to Workspace…",
-        "category": "NexQL Sync"
-      },
-      {
-        "command": "postgres-explorer.sync.shareWithTeam",
-        "title": "Share with Team…",
-        "category": "NexQL Sync"
-      },
-      {
-        "command": "postgres-explorer.sync.share",
-        "title": "Invite to Workspace…",
-        "category": "NexQL Sync"
-      },
-      {
-        "command": "postgres-explorer.sync.importShares",
-        "title": "Manage Workspaces…",
-        "category": "NexQL Sync"
-      },
-      {
-        "command": "postgres-explorer.sync.statusMenu",
-        "title": "Sync Menu",
-        "category": "NexQL Sync"
-      },
-      {
-        "command": "postgres-explorer.sync.pull",
-        "title": "Pull Only",
-        "category": "NexQL Sync"
-      },
-      {
-        "command": "postgres-explorer.sync.push",
-        "title": "Push Only",
-        "category": "NexQL Sync"
-      },
-      {
-        "command": "postgres-explorer.sync.preview",
-        "title": "Preview Sync",
-        "category": "NexQL Sync"
-      },
-      {
-        "command": "postgres-explorer.sync.conflicts",
-        "title": "Resolve Sync Conflicts",
-        "category": "NexQL Sync"
-      },
-      {
-        "command": "postgres-explorer.sync.replaceLocal",
-        "title": "Replace Local with Cloud",
-        "category": "NexQL Sync"
-      },
-      {
-        "command": "postgres-explorer.sync.replaceRemote",
-        "title": "Replace Cloud with Local",
-        "category": "NexQL Sync"
-      },
-      {
-        "command": "postgres-explorer.sync.rebuildIndex",
-        "title": "Rebuild Sync Index",
-        "category": "NexQL Sync"
-      },
-      {
-        "command": "postgres-explorer.sync.repair",
-        "title": "Repair Sync",
-        "category": "NexQL Sync"
-      },
-      {
-        "command": "postgres-explorer.sync.diagnostics",
-        "title": "Sync Diagnostics",
-        "category": "NexQL Sync"
-      },
-      {
-        "command": "postgres-explorer.sync.excludeItem",
-        "title": "Don't Sync This Item",
-        "category": "NexQL Sync"
-      },
-      {
         "command": "postgres-explorer.addConnection",
         "title": "Add PostgreSQL Connection",
         "icon": "$(add)"
@@ -1925,26 +1780,6 @@
           "scope": "machine",
           "markdownDescription": "Write verbose diagnostic logging to the **NexQL Debug** output channel. Off by default to keep SQL, schema, and AI payloads out of logs."
         },
-        "postgresExplorer.license.enforcement": {
-          "type": "string",
-          "enum": [
-            "off",
-            "freemium"
-          ],
-          "enumDescriptions": [
-            "No metering — all features unlimited for everyone (development / dark-ship).",
-            "Freemium: free tier gets daily/weekly per-feature allowances; paid tiers are unlimited (default)."
-          ],
-          "default": "freemium",
-          "scope": "machine",
-          "markdownDescription": "Controls premium feature access. `freemium` (default) gives the free tier metered daily/weekly use of premium features and unlimited use to paid subscribers. `off` disables all metering. Legacy values `soft`/`hard` are treated as `freemium`."
-        },
-        "postgresExplorer.license.endpoint": {
-          "type": "string",
-          "default": "https://nexql.astrx.dev/api",
-          "scope": "machine",
-          "description": "Base URL for the NexQL license validation API."
-        },
         "postgresExplorer.connections": {
           "type": "array",
           "default": [],
@@ -2058,44 +1893,6 @@
           "type": "object",
           "default": {},
           "description": "Map of environment (production, staging, development) to color theme label."
-        },
-        "postgresExplorer.sync.auto": {
-          "type": "boolean",
-          "default": true,
-          "description": "Enable automatic sync (pull on activation, debounced push, periodic pull)."
-        },
-        "postgresExplorer.sync.notebookFolder": {
-          "type": "string",
-          "default": "~/NexQLNotebooks",
-          "description": "Folder for synced .pgsql notebooks (supports ~ for home directory)."
-        },
-        "postgresExplorer.sync.pullIntervalMinutes": {
-          "type": "number",
-          "default": 5,
-          "minimum": 1,
-          "description": "Interval in minutes for periodic sync pulls."
-        },
-        "postgresExplorer.sync.apiEndpoint": {
-          "type": "string",
-          "default": "https://nexql.astrx.dev/api",
-          "scope": "machine",
-          "description": "Base URL for NexQL account and cloud sync API."
-        },
-        "postgresExplorer.sync.postgresConnectionId": {
-          "type": "string",
-          "default": "",
-          "scope": "machine",
-          "description": "Connection ID for optional team Postgres sync backend (nexql_sync schema)."
-        },
-        "postgresExplorer.dbIndex.enableEmbeddings": {
-          "type": "boolean",
-          "default": false,
-          "description": "Enable vector embeddings generation for tables and views to support semantic search grounding in AI tools."
-        },
-        "postgresExplorer.dbIndex.autoBuild": {
-          "type": "boolean",
-          "default": true,
-          "description": "Automatically build and keep the local database index up to date (structure only) in the background for connected databases. Requires Auto Database Indexing (Sponsor)."
         },
         "postgresExplorer.aiApiKey": {
           "type": "string",
@@ -3179,16 +2976,6 @@
           "group": "1_operations@2"
         },
         {
-          "command": "postgres-explorer.dbindex.build",
-          "when": "view == postgresExplorer && viewItem == database",
-          "group": "1_operations@9"
-        },
-        {
-          "command": "postgres-explorer.dbindex.openPanel",
-          "when": "view == postgresExplorer && viewItem == database",
-          "group": "1_operations@9.5"
-        },
-        {
           "command": "postgres-explorer.disconnectDatabase",
           "when": "view == postgresExplorer && viewItem == database",
           "group": "9_disconnect"
@@ -3332,26 +3119,6 @@
           "command": "postgres-explorer.deleteSavedQuery",
           "when": "view == postgresExplorer.savedQueries && viewItem == savedQuery",
           "group": "2_delete@1"
-        },
-        {
-          "command": "postgres-explorer.sync.shareWithTeam",
-          "when": "view == postgresExplorer.savedQueries && viewItem == savedQuery",
-          "group": "3_sync@1"
-        },
-        {
-          "command": "postgres-explorer.sync.excludeItem",
-          "when": "view == postgresExplorer.savedQueries && viewItem == savedQuery",
-          "group": "3_sync@2"
-        },
-        {
-          "command": "postgres-explorer.sync.shareWithTeam",
-          "when": "view == postgresExplorer.notebooks && viewItem == notebook-file",
-          "group": "3_sync@1"
-        },
-        {
-          "command": "postgres-explorer.sync.excludeItem",
-          "when": "view == postgresExplorer.notebooks && viewItem == notebook-file",
-          "group": "3_sync@2"
         },
         {
           "command": "postgres-explorer.showTriggerProperties",
@@ -3833,10 +3600,10 @@
     "prepare:nightly:manifests": "node ./scripts/prepare-nightly-manifests.js",
     "package:prerelease": "npx @vscode/vsce package --pre-release",
     "package:openvsx:nightly": "npx @vscode/vsce package",
-    "esbuild-base:free": "esbuild ./src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --external:ssh2 --external:pg --external:@cursor/sdk --external:@opencode-ai/sdk --external:@dbml/core --external:onnxruntime-node --external:@huggingface/transformers --format=cjs --platform=node --main-fields=main --alias:@nexql/pro=./src/pro/index.ts",
-    "esbuild-base:pro": "esbuild ./src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --external:ssh2 --external:pg --external:@cursor/sdk --external:@opencode-ai/sdk --external:@dbml/core --external:onnxruntime-node --external:@huggingface/transformers --format=cjs --platform=node --main-fields=main --alias:@nexql/pro=./packages/pro/src/index.ts",
-    "esbuild-renderer:free": "node scripts/clean-dist-chunks.js && esbuild ./src/ui/renderer/renderer_v2.ts --bundle --outdir=dist --format=esm --platform=browser --splitting --alias:@nexql/pro-renderer=./src/ui/renderer/lazy",
-    "esbuild-renderer:pro": "node scripts/clean-dist-chunks.js && esbuild ./src/ui/renderer/renderer_v2.ts --bundle --outdir=dist --format=esm --platform=browser --splitting --alias:@nexql/pro-renderer=./packages/pro/renderer",
+    "esbuild-base:free": "esbuild ./src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --external:ssh2 --external:pg --external:@cursor/sdk --external:@opencode-ai/sdk --external:@dbml/core --external:onnxruntime-node --external:@huggingface/transformers --format=cjs --platform=node --main-fields=main --alias:@nexql/pro=./src/pro/index.ts --define:__NEXQL_PRO__=false",
+    "esbuild-base:pro": "esbuild ./src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --external:ssh2 --external:pg --external:@cursor/sdk --external:@opencode-ai/sdk --external:@dbml/core --external:onnxruntime-node --external:@huggingface/transformers --format=cjs --platform=node --main-fields=main --alias:@nexql/pro=./packages/pro/src/index.ts --tsconfig=tsconfig.pro.json --define:__NEXQL_PRO__=true",
+    "esbuild-renderer:free": "node scripts/clean-dist-chunks.js && esbuild ./src/ui/renderer/renderer_v2.ts --bundle --outdir=dist --format=esm --platform=browser --splitting --alias:@nexql/pro-renderer=./src/ui/renderer/lazy --define:__NEXQL_PRO__=false",
+    "esbuild-renderer:pro": "node scripts/clean-dist-chunks.js && esbuild ./src/ui/renderer/renderer_v2.ts --bundle --outdir=dist --format=esm --platform=browser --splitting --alias:@nexql/pro-renderer=./packages/pro/renderer --tsconfig=tsconfig.pro.json --define:__NEXQL_PRO__=true",
     "esbuild-erd-webview": "npm run esbuild-erd-webview:free",
     "esbuild-erd-webview:free": "esbuild ./src/pro/erd-webview-stub.ts --bundle --outfile=dist/erd-webview.js --format=iife --platform=browser",
     "build:vscode-stub": "esbuild src/test/unit/mocks/vscode.ts --bundle --platform=node --format=cjs --outfile=src/test/vscode-stub/index.js",

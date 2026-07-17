@@ -3,17 +3,14 @@ export interface MountChartTabOptions {
   rows: unknown[];
 }
 
+// Free-build fallback. The Chart tab button is hidden in free builds
+// (renderQueryResult gates on isProBuild), so this is unreachable from the
+// UI; it exists only so the @nexql/pro-renderer alias always resolves.
 export function mountChartTab(
   viewContainer: HTMLElement,
-  opts: MountChartTabOptions,
+  _opts: MountChartTabOptions,
 ): { chartRenderer: any; chartCanvas: HTMLCanvasElement } {
-  viewContainer.innerHTML = `
-    <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; padding:24px; color:var(--vscode-descriptionForeground); font-family:var(--vscode-font-family);">
-      <h3 style="margin-bottom:8px; color:var(--vscode-foreground);">Charts & Visualization</h3>
-      <p style="text-align:center; max-width:400px; margin-bottom:16px;">
-        Plotting and visualizing your query result set using graphs is a premium feature available in NexQL Pro.
-      </p>
-    </div>
-  `;
+  console.warn('[NexQL] Chart tab is not included in this build.');
+  viewContainer.innerHTML = '';
   return { chartRenderer: null, chartCanvas: document.createElement('canvas') };
 }

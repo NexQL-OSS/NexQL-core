@@ -53,6 +53,11 @@ const FORBIDDEN_PATTERNS = [
   /from ['"]\.\.\/features\/planStudio\//,
   /from ['"]\.\.\/features\/backup\//,
   /from ['"]\.\.\/features\/aiAssistant\//,
+  // moved to packages/pro in the free/pro gating pass
+  /\bDbIndexPanel\b/,
+  /features\/dbindex\//,
+  /import\((['"])[^'"]*commands\/license\1\)/,
+  /from (['"])[^'"]*commands\/license\1/,
 ];
 
 // ---------------------------------------------------------------------------

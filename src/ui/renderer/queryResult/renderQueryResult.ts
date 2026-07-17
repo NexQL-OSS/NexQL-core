@@ -1,5 +1,6 @@
 import type { ActivationFunction } from 'vscode-notebook-renderer';
 import type { ChartRenderer } from '../../../renderer/components/chart/ChartRenderer';
+import { isProBuild } from '../../../common/buildTier';
 import {
   createExportButton,
   positionExportDropdown,
@@ -1031,7 +1032,7 @@ export function renderPostgresNotebookResult(
         command === 'EXPLAIN' ||
         (columns.length === 1 && columns[0] === 'QUERY PLAN');
 
-      if (json.explainPlan && isExplainQuery) {
+      if (json.explainPlan && isExplainQuery && isProBuild()) {
         context.postMessage?.({
           type: 'syncPlanStudioFromRun',
           plan: json.explainPlan,
@@ -1041,7 +1042,7 @@ export function renderPostgresNotebookResult(
         });
       }
 
-      if (isExplainQuery) {
+      if (isExplainQuery && isProBuild()) {
         const explainPlanBtn = document.createElement('button');
         explainPlanBtn.type = 'button';
         fillToolbarButtonContent(explainPlanBtn, 'explain', 'View Plan');
@@ -1122,7 +1123,7 @@ export function renderPostgresNotebookResult(
       reviewTabBtn.onclick = () => switchTab('review');
 
       let explainTabBtn: HTMLButtonElement | null = null;
-      if (isExplainQuery) {
+      if (isExplainQuery && isProBuild()) {
         explainTabBtn = document.createElement('button');
         explainTabBtn.type = 'button';
         fillToolbarButtonContent(explainTabBtn, 'explain', 'Explain Plan');
@@ -1150,8 +1151,10 @@ export function renderPostgresNotebookResult(
       reviewTabBtn.addEventListener('mouseleave', () => syncReviewTabButton());
 
       secondaryTabsLeft.appendChild(tableViewBtn);
-      secondaryTabsLeft.appendChild(chartViewBtn);
-      secondaryTabsLeft.appendChild(analystViewBtn);
+      if (isProBuild()) {
+        secondaryTabsLeft.appendChild(chartViewBtn);
+        secondaryTabsLeft.appendChild(analystViewBtn);
+      }
       secondaryTabsLeft.appendChild(noticesBtn);
       secondaryTabsLeft.appendChild(transposeBtn);
       secondaryTabsLeft.appendChild(reviewTabBtn);
@@ -1543,8 +1546,10 @@ export function renderPostgresNotebookResult(
         },
       };
 
-      secondaryTabsRight.appendChild(exportChartBtn);
-      secondaryTabsRight.appendChild(createAiMenuButton(aiMenuCallbacks));
+      if (isProBuild()) {
+        secondaryTabsRight.appendChild(exportChartBtn);
+        secondaryTabsRight.appendChild(createAiMenuButton(aiMenuCallbacks));
+      }
       secondaryTabsRight.appendChild(createActionsMenuButton(actionsMenuCallbacks));
 
       const updateActionsVisibility = () => {

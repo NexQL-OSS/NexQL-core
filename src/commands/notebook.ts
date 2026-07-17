@@ -5,6 +5,7 @@ import { getDatabaseConnection, NotebookBuilder, MarkdownUtils, ErrorHandlers, v
 import { PostgresMetadata } from '../common/types';
 import { ConnectionUtils } from '../utils/connectionUtils';
 import { isProFeatureEnabled, ProFeature } from '../services/featureGates';
+import { isProBuild } from '../common/buildTier';
 import { NotebookIndexService } from '../services/NotebookIndexService';
 
 type NotebookCellSeed = {
@@ -230,7 +231,8 @@ export async function openOrCreateNotebookWithPicker(
   const connectionNameOrId = (metadata?.name ?? metadata?.connectionName ?? metadata?.connectionId) as string | undefined;
   if (connectionNameOrId) {
     const { count: totalNotebooks, uris: connectionNotebookUris } = await ConnectionUtils.countNotebooksInConnection(context, connectionNameOrId);
-    const isUnlimited = isProFeatureEnabled(ProFeature.UnlimitedNotebooks);
+    // Free/OSS build has no notebook quota; the license gate only applies in pro builds.
+    const isUnlimited = !isProBuild() || isProFeatureEnabled(ProFeature.UnlimitedNotebooks);
 
     if (!isUnlimited && totalNotebooks >= 5) {
       const choice = await vscode.window.showWarningMessage(

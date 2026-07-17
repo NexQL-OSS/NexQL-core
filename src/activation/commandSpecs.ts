@@ -90,30 +90,6 @@ import { cmdSearchSchema } from '../commands/schemaSearch';
 import { WorkspaceStateService } from '../services/WorkspaceStateService';
 import { switchWorkspaceDefaultConnection } from '../commands/workspaceConnection';
 import { WhatsNewManager } from './WhatsNewManager';
-import { cmdLicenseActivate, cmdLicenseManage, cmdLicenseOpenUpgrade, cmdLicenseShowUsage } from '../commands/license';
-import {
-  cmdSyncNow,
-  cmdSyncPause,
-  cmdSyncSetup,
-  cmdSyncInviteMember,
-  cmdSyncShareWithTeam,
-  cmdSyncShare,
-  cmdSyncImportShares,
-  cmdSyncShowSecretKey,
-  cmdSyncSignOut,
-  cmdSyncStatus,
-  cmdSyncStatusMenu,
-  cmdSyncPull,
-  cmdSyncPush,
-  cmdSyncPreview,
-  cmdSyncConflicts,
-  cmdSyncReplaceLocal,
-  cmdSyncReplaceRemote,
-  cmdSyncRebuildIndex,
-  cmdSyncRepair,
-  cmdSyncDiagnostics,
-  cmdSyncExcludeItem,
-} from '../features/sync/syncCommands';
 
 export function getCommandSpecs(
   context: vscode.ExtensionContext,
@@ -122,122 +98,125 @@ export function getCommandSpecs(
   whatsNewManager: WhatsNewManager,
   savedQueriesTreeProvider?: SavedQueriesTreeProvider,
   notebooksTreeProvider?: NotebooksTreeProvider
-): Array<{ command: string; callback: (...args: any[]) => any }> {
+): Array<{ command: string; callback: (...args: any[]) => any; proOnly?: boolean }> {
   const commands = [
     {
       command: 'postgres-explorer.sync.setup',
-      callback: () => cmdSyncSetup(context),
+      proOnly: true,
+      callback: async () => { const m = await import('../features/sync/syncCommands'); return m.cmdSyncSetup(context); },
     },
     {
       command: 'postgres-explorer.sync.now',
-      callback: () => cmdSyncNow(),
+      proOnly: true,
+      callback: async () => { const m = await import('../features/sync/syncCommands'); return m.cmdSyncNow(); },
     },
     {
       command: 'postgres-explorer.sync.status',
-      callback: () => cmdSyncStatus(),
+      proOnly: true,
+      callback: async () => { const m = await import('../features/sync/syncCommands'); return m.cmdSyncStatus(); },
     },
     {
       command: 'postgres-explorer.sync.statusMenu',
-      callback: () => cmdSyncStatusMenu(context),
+      proOnly: true,
+      callback: async () => { const m = await import('../features/sync/syncCommands'); return m.cmdSyncStatusMenu(context); },
     },
     {
       command: 'postgres-explorer.sync.showSecretKey',
-      callback: () => cmdSyncShowSecretKey(context),
+      proOnly: true,
+      callback: async () => { const m = await import('../features/sync/syncCommands'); return m.cmdSyncShowSecretKey(context); },
     },
     {
       command: 'postgres-explorer.sync.pause',
-      callback: () => cmdSyncPause(),
+      proOnly: true,
+      callback: async () => { const m = await import('../features/sync/syncCommands'); return m.cmdSyncPause(); },
     },
     {
       command: 'postgres-explorer.sync.signOut',
-      callback: () => cmdSyncSignOut(),
+      proOnly: true,
+      callback: async () => { const m = await import('../features/sync/syncCommands'); return m.cmdSyncSignOut(); },
     },
     {
       command: 'postgres-explorer.sync.inviteMember',
-      callback: () => cmdSyncInviteMember(context),
+      proOnly: true,
+      callback: async () => { const m = await import('../features/sync/syncCommands'); return m.cmdSyncInviteMember(context); },
     },
     {
       command: 'postgres-explorer.sync.shareWithTeam',
-      callback: (treeItem?: { id?: string; query?: { id?: string }; uri?: vscode.Uri }) =>
-        cmdSyncShareWithTeam(context, treeItem),
-    },
-    {
-      command: 'postgres-explorer.sync.share',
-      callback: () => cmdSyncInviteMember(context),
-    },
-    {
-      command: 'postgres-explorer.sync.importShares',
-      callback: () => cmdSyncImportShares(context),
-    },
-    {
-      command: 'postgres-explorer.sync.pull',
-      callback: () => cmdSyncPull(),
-    },
-    {
-      command: 'postgres-explorer.sync.push',
-      callback: () => cmdSyncPush(),
-    },
-    {
-      command: 'postgres-explorer.sync.preview',
-      callback: () => cmdSyncPreview(),
-    },
-    {
-      command: 'postgres-explorer.sync.conflicts',
-      callback: () => cmdSyncConflicts(),
-    },
-    {
-      command: 'postgres-explorer.sync.replaceLocal',
-      callback: () => cmdSyncReplaceLocal(),
-    },
-    {
-      command: 'postgres-explorer.sync.replaceRemote',
-      callback: () => cmdSyncReplaceRemote(),
-    },
-    {
-      command: 'postgres-explorer.sync.rebuildIndex',
-      callback: () => cmdSyncRebuildIndex(),
-    },
-    {
-      command: 'postgres-explorer.sync.repair',
-      callback: () => cmdSyncRepair(),
-    },
-    {
-      command: 'postgres-explorer.sync.diagnostics',
-      callback: () => cmdSyncDiagnostics(),
-    },
-    {
-      command: 'postgres-explorer.sync.excludeItem',
+      proOnly: true,
       callback: async (treeItem?: { id?: string; query?: { id?: string }; uri?: vscode.Uri }) => {
-        const { resolveSyncItemIdFromTreeItem } = await import('../features/sync/syncCommands');
-        await cmdSyncExcludeItem(await resolveSyncItemIdFromTreeItem(treeItem));
+        const m = await import('../features/sync/syncCommands');
+        return m.cmdSyncShareWithTeam(context, treeItem);
       },
     },
     {
-      command: 'postgres-explorer.license.activate',
-      callback: (prefillKey?: string) => cmdLicenseActivate(prefillKey)
+      command: 'postgres-explorer.sync.share',
+      proOnly: true,
+      callback: async () => { const m = await import('../features/sync/syncCommands'); return m.cmdSyncInviteMember(context); },
     },
+    {
+      command: 'postgres-explorer.sync.importShares',
+      proOnly: true,
+      callback: async () => { const m = await import('../features/sync/syncCommands'); return m.cmdSyncImportShares(context); },
+    },
+    {
+      command: 'postgres-explorer.sync.pull',
+      proOnly: true,
+      callback: async () => { const m = await import('../features/sync/syncCommands'); return m.cmdSyncPull(); },
+    },
+    {
+      command: 'postgres-explorer.sync.push',
+      proOnly: true,
+      callback: async () => { const m = await import('../features/sync/syncCommands'); return m.cmdSyncPush(); },
+    },
+    {
+      command: 'postgres-explorer.sync.preview',
+      proOnly: true,
+      callback: async () => { const m = await import('../features/sync/syncCommands'); return m.cmdSyncPreview(); },
+    },
+    {
+      command: 'postgres-explorer.sync.conflicts',
+      proOnly: true,
+      callback: async () => { const m = await import('../features/sync/syncCommands'); return m.cmdSyncConflicts(); },
+    },
+    {
+      command: 'postgres-explorer.sync.replaceLocal',
+      proOnly: true,
+      callback: async () => { const m = await import('../features/sync/syncCommands'); return m.cmdSyncReplaceLocal(); },
+    },
+    {
+      command: 'postgres-explorer.sync.replaceRemote',
+      proOnly: true,
+      callback: async () => { const m = await import('../features/sync/syncCommands'); return m.cmdSyncReplaceRemote(); },
+    },
+    {
+      command: 'postgres-explorer.sync.rebuildIndex',
+      proOnly: true,
+      callback: async () => { const m = await import('../features/sync/syncCommands'); return m.cmdSyncRebuildIndex(); },
+    },
+    {
+      command: 'postgres-explorer.sync.repair',
+      proOnly: true,
+      callback: async () => { const m = await import('../features/sync/syncCommands'); return m.cmdSyncRepair(); },
+    },
+    {
+      command: 'postgres-explorer.sync.diagnostics',
+      proOnly: true,
+      callback: async () => { const m = await import('../features/sync/syncCommands'); return m.cmdSyncDiagnostics(); },
+    },
+    {
+      command: 'postgres-explorer.sync.excludeItem',
+      proOnly: true,
+      callback: async (treeItem?: { id?: string; query?: { id?: string }; uri?: vscode.Uri }) => {
+        const m = await import('../features/sync/syncCommands');
+        await m.cmdSyncExcludeItem(await m.resolveSyncItemIdFromTreeItem(treeItem));
+      },
+    },
+    // license.*, audit.*, and dbindex.* commands are registered by the pro
+    // package in activatePro (packages/pro/src/index.ts) — their modules no
+    // longer exist in the core tree.
     {
       command: 'postgres-explorer.migrationHub',
       callback: () => cmdMigrationHub()
-    },
-    {
-      command: 'postgres-explorer.license.manage',
-      callback: () => cmdLicenseManage()
-    },
-    {
-      command: 'postgres-explorer.license.openUpgrade',
-      callback: () => cmdLicenseOpenUpgrade()
-    },
-    {
-      command: 'postgres-explorer.license.showUsage',
-      callback: () => cmdLicenseShowUsage()
-    },
-    {
-      command: 'postgres-explorer.audit.openLog',
-      callback: async () => {
-        const { AuditLogService } = await import('../features/audit/AuditLogService');
-        await AuditLogService.getInstance().openLog();
-      }
     },
     {
       command: 'postgres-explorer.addConnection',
@@ -1607,73 +1586,6 @@ export function getCommandSpecs(
 
     // Phase 2: Schema Search
     { command: 'postgres-explorer.searchSchema', callback: async () => await cmdSearchSchema() },
-
-    // Database Index Grounding Commands
-    {
-      command: 'postgres-explorer.dbindex.openPanel',
-      callback: async () => {
-        const { DbIndexPanel } = await import('../features/dbindex/panel/DbIndexPanel');
-        await DbIndexPanel.show(context.extensionUri, context);
-      }
-    },
-    {
-      command: 'postgres-explorer.dbindex.build',
-      callback: async (_item?: DatabaseTreeItem) => {
-        const { SettingsHubPanel } = await import('../features/settings/SettingsHubPanel');
-        SettingsHubPanel.show(context.extensionUri, context, {
-          section: 'dbindex',
-          wizard: 'build',
-        });
-      }
-    },
-    {
-      command: 'postgres-explorer.dbindex.clear',
-      callback: async () => {
-        const { IndexStore } = await import('../features/dbindex/IndexStore');
-        const store = new IndexStore(context.globalStorageUri);
-        const connection = await ConnectionUtils.showConnectionPicker(undefined, {
-          title: 'Clear Database Index',
-          placeHolder: 'Select a connection',
-        });
-        if (!connection) return;
-        const database = await ConnectionUtils.showDatabasePicker(connection, undefined, {
-          title: 'Clear Database Index',
-          placeHolder: 'Select a database',
-        });
-        if (!database) return;
-        
-        const confirm = await vscode.window.showWarningMessage(
-          `Are you sure you want to delete the local index for "${database}"?`,
-          'Delete'
-        );
-        if (confirm === 'Delete') {
-          await store.clearIndex(connection.id, database);
-          vscode.window.showInformationMessage(`Index cleared for "${database}".`);
-
-          // Refresh active panels
-          try {
-            const { SettingsHubPanel } = await import('../features/settings/SettingsHubPanel');
-            if (SettingsHubPanel.currentPanel) {
-              SettingsHubPanel.currentPanel.refreshSection('dbindex');
-            }
-          } catch {}
-          try {
-            const { DbIndexPanel } = await import('../features/dbindex/panel/DbIndexPanel');
-            if (DbIndexPanel.currentPanel) {
-              DbIndexPanel.currentPanel.refreshState();
-            }
-          } catch {}
-        }
-      }
-    },
-    {
-      command: 'postgres-explorer.dbindex.updateBackground',
-      callback: async (connectionId: string, database?: string) => {
-        const { AutoIndexService } = await import('../features/dbindex/AutoIndexService');
-        AutoIndexService.initialize(context.globalStorageUri, outputChannel)
-          .ensureIndex(connectionId, database);
-      }
-    }
   ];
 
   return commands;
