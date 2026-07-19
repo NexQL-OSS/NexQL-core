@@ -274,8 +274,7 @@ NexQL/
 ├── dist/                     # Compiled output (bundled)
 ├── out/                      # Compiled output (tsc)
 ├── package.json              # Extension manifest
-├── tsconfig.json             # TypeScript config
-└── webpack.config.js         # Webpack config
+└── tsconfig.json             # TypeScript config
 ```
 
 ---
