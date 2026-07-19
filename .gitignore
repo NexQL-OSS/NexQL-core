@@ -47,5 +47,5 @@ docs/plan/
 .ua/
 
 # Pro package source — lives in the private repo, symlinked here for the build
-# packages/
+packages/
 package.json.dev-bak
