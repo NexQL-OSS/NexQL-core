@@ -55,7 +55,10 @@ dev-pro:
 # Restore free/OSS dev state (undo dev-pro)
 dev-free:
 	@if [ -f package.json.dev-bak ]; then mv package.json.dev-bak package.json; fi
-	@if [ -d packages/pro/templates ]; then for d in packages/pro/templates/*/; do rm -rf "templates/$$(basename $$d)"; done; fi
+	@if [ -d packages/pro/templates ]; then \
+		(cd packages/pro/templates && find . -type f) | while read -r f; do rm -f "templates/$$f"; done; \
+		find templates -type d -empty -delete 2>/dev/null || true; \
+	fi
 	$(NPM_BIN) run esbuild:free
 	@echo "Free dev mode restored."
 
@@ -76,7 +79,7 @@ package-free:
 package-pro:
 	@echo "Merging pro manifest, building, and packaging pro VSIX..."
 	@cp package.json package.json.bak
-	@trap 'if [ -f package.json.bak ]; then mv package.json.bak package.json; fi; for d in packages/pro/templates/*/; do rm -rf "templates/$$(basename $$d)"; done' EXIT INT TERM; \
+	@trap 'if [ -f package.json.bak ]; then mv package.json.bak package.json; fi; (cd packages/pro/templates && find . -type f) | while read -r f; do rm -f "templates/$$f"; done; find templates -type d -empty -delete 2>/dev/null || true' EXIT INT TERM; \
 	$(NODE_BIN) ./scripts/merge-pro-manifest.js; \
 	cp -r packages/pro/templates/. templates/; \
 	$(NPM_BIN) run vscode:prepublish:pro; \
@@ -86,7 +89,8 @@ package-pro:
 	EXIT_CODE=$$?; \
 	if [ -f README.md.bak ]; then mv README.md.bak README.md; fi; \
 	if [ -f package.json.bak ]; then mv package.json.bak package.json; fi; \
-	for d in packages/pro/templates/*/; do rm -rf "templates/$$(basename $$d)"; done; \
+	(cd packages/pro/templates && find . -type f) | while read -r f; do rm -f "templates/$$f"; done; \
+	find templates -type d -empty -delete 2>/dev/null || true; \
 	echo "Restored original README.md, package.json, and templates"; \
 	exit $$EXIT_CODE
 
