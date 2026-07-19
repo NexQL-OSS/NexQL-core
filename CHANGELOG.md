@@ -3,10 +3,7 @@
 <a href="https://www.producthunt.com/products/nexql?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-nexql" target="_blank" rel="noopener noreferrer"><img alt="NexQL - AI-native Postgres tooling, All in VS Code | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.png?post_id=1198080&amp;theme=neutral&amp;t=1784198674691"></a>
 
 Quick links:
-- [NexQL Homepage](https://nexql.astrx.dev/)
-- [Github](https://github.com/dev-asterix/NexQL) 
-- [NexQL VSC Themes](https://marketplace.visualstudio.com/items?itemName=ric-v.nexql-themes&ssr=false#overview) 
-- [NexQL OpenVSC Themes](https://open-vsx.org/extension/ric-v/nexql-themes)
+[NexQL Homepage](https://nexql.astrx.dev/) • [NexQL VSC Theme](https://nexql-themes.astrx.dev/) • [Terms of Service](https://nexql.astrx.dev/terms.html) • [Privacy Policy](https://nexql.astrx.dev/privacy.html)
 
 ---
 
