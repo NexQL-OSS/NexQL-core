@@ -10,7 +10,7 @@ Quick links:
 
 ---
 
-## [2.2.1] - 2026-07-16
+## [2.2.2] - 2026-07-17
 > Nightly releases -  v2.3.1 • v2.3.2
 
 ### 🖱️ Drag & Drop into Chat and Notebooks
