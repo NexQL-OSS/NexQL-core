@@ -82,7 +82,6 @@ package-pro:
 	@trap 'if [ -f package.json.bak ]; then mv package.json.bak package.json; fi; (cd packages/pro/templates && find . -type f) | while read -r f; do rm -f "templates/$$f"; done; find templates -type d -empty -delete 2>/dev/null || true' EXIT INT TERM; \
 	$(NODE_BIN) ./scripts/merge-pro-manifest.js; \
 	cp -r packages/pro/templates/. templates/; \
-	$(NPM_BIN) run vscode:prepublish:pro; \
 	if [ -f README.md ]; then cp README.md README.md.bak; fi; \
 	cp MARKETPLACE.md README.md; \
 	$(VSCE_CMD) package --out postgres-explorer-pro.vsix; \

@@ -144,6 +144,13 @@ function main() {
     }
   }
 
+  // 9. Point vscode:prepublish at the pro build. vsce package re-runs
+  // vscode:prepublish automatically, which would otherwise overwrite dist/
+  // with the free bundle right before zipping the pro VSIX.
+  if (pkg.scripts && pkg.scripts['vscode:prepublish:pro']) {
+    pkg.scripts['vscode:prepublish'] = pkg.scripts['vscode:prepublish:pro'];
+  }
+
   // Save merged package.json
   fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n', 'utf8');
   console.log('Successfully merged contributes.pro.json into package.json.');
