@@ -1,15 +1,14 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { setLastTreeDragPayload } from './dragPayloadStore';
-import { SyncIndex } from '../features/sync/SyncIndex';
-import { SyncController } from '../features/sync/SyncController';
+import { getSyncDataSource } from '../services/syncRegistry';
 import {
   SharedTeamRootTreeItem,
   WorkspaceFolderTreeItem,
   groupTeamItemsByWorkspace,
   isViewerForSpace,
   workspaceDisplayName,
-} from '../features/sync/SharedTeamTree';
+} from './SharedTeamTree';
 import { getNotebookTreeIcon } from './tree/treeIconTheme';
 
 export type NotebookTreeItemType =
@@ -101,8 +100,7 @@ export class NotebooksTreeProvider implements vscode.TreeDataProvider<NotebookTr
     if (!this.extensionContext) {
       return undefined;
     }
-    const notebooks = SyncController.getInstance()
-      .listTeamItems()
+    const notebooks = (getSyncDataSource()?.listTeamItems() ?? [])
       .filter((i) => i.entry.kind === 'notebook');
     if (!notebooks.length) {
       return undefined;
@@ -111,7 +109,7 @@ export class NotebooksTreeProvider implements vscode.TreeDataProvider<NotebookTr
   }
 
   private _getWorkspaceFolders(): WorkspaceFolderTreeItem[] {
-    const grouped = groupTeamItemsByWorkspace(SyncController.getInstance().listTeamItems(), 'notebook');
+    const grouped = groupTeamItemsByWorkspace(getSyncDataSource()?.listTeamItems() ?? [], 'notebook');
     return [...grouped.entries()].map(
       ([spaceId, items]) => new WorkspaceFolderTreeItem(spaceId, workspaceDisplayName(spaceId), items.length),
     );
@@ -119,7 +117,7 @@ export class NotebooksTreeProvider implements vscode.TreeDataProvider<NotebookTr
 
   private _getSharedNotebookFiles(spaceId: string): NotebookTreeItem[] {
     const items: NotebookTreeItem[] = [];
-    for (const { id, entry } of SyncController.getInstance().listTeamItems()) {
+    for (const { id, entry } of getSyncDataSource()?.listTeamItems() ?? []) {
       if (entry.kind !== 'notebook' || entry.spaceId !== spaceId || !entry.filePath) {
         continue;
       }
@@ -147,7 +145,7 @@ export class NotebooksTreeProvider implements vscode.TreeDataProvider<NotebookTr
     if (!this.extensionContext) {
       return false;
     }
-    const match = new SyncIndex(this.extensionContext).findByPath(filePath);
+    const match = getSyncDataSource()?.findByPath(filePath);
     return !!match?.entry.spaceId?.startsWith('ws_');
   }
 

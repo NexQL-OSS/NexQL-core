@@ -31,10 +31,6 @@ FIXES_APPLIED.md
 skills-lock.json
 graphify-out/
 .superpowers/
-docs/roadmap/
-docs/plans/
-docs/specs/
-docs/plan/
 .commandcode/
 /test/
 .vercel
@@ -49,3 +45,4 @@ docs/plan/
 # Pro package source — lives in the private repo, symlinked here for the build
 packages/
 package.json.dev-bak
+NexQL-backend/

@@ -58,6 +58,11 @@ const FORBIDDEN_PATTERNS = [
   /features\/dbindex\//,
   /import\((['"])[^'"]*commands\/license\1\)/,
   /from (['"])[^'"]*commands\/license\1/,
+  // Cloud Sync — core calls through src/services/syncRegistry.ts instead
+  /\bSyncController\b/,
+  /\bSyncIndex\b/,
+  /\bAccountService\b/,
+  /features\/sync\//,
 ];
 
 // ---------------------------------------------------------------------------

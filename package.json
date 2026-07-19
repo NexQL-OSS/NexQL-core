@@ -3592,9 +3592,6 @@
   ],
   "main": "./dist/extension.js",
   "scripts": {
-    "dev:site": "node scripts/dev-server.js",
-    "prebuild:site": "node scripts/sync-theme-parser.mjs",
-    "build:site": "npm run prebuild:site && mkdir -p dist && cp -r docs/* dist/",
     "vscode:prepublish": "npm run esbuild-base:free -- --minify && npm run esbuild-renderer:free -- --minify && npm run esbuild-erd-webview:free -- --minify",
     "vscode:prepublish:pro": "npm run esbuild-base:pro -- --minify && npm run esbuild-renderer:pro -- --minify && npm run esbuild-erd-webview:pro -- --minify",
     "prepare:nightly:manifests": "node ./scripts/prepare-nightly-manifests.js",

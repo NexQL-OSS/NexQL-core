@@ -100,118 +100,7 @@ export function getCommandSpecs(
   notebooksTreeProvider?: NotebooksTreeProvider
 ): Array<{ command: string; callback: (...args: any[]) => any; proOnly?: boolean }> {
   const commands = [
-    {
-      command: 'postgres-explorer.sync.setup',
-      proOnly: true,
-      callback: async () => { const m = await import('../features/sync/syncCommands'); return m.cmdSyncSetup(context); },
-    },
-    {
-      command: 'postgres-explorer.sync.now',
-      proOnly: true,
-      callback: async () => { const m = await import('../features/sync/syncCommands'); return m.cmdSyncNow(); },
-    },
-    {
-      command: 'postgres-explorer.sync.status',
-      proOnly: true,
-      callback: async () => { const m = await import('../features/sync/syncCommands'); return m.cmdSyncStatus(); },
-    },
-    {
-      command: 'postgres-explorer.sync.statusMenu',
-      proOnly: true,
-      callback: async () => { const m = await import('../features/sync/syncCommands'); return m.cmdSyncStatusMenu(context); },
-    },
-    {
-      command: 'postgres-explorer.sync.showSecretKey',
-      proOnly: true,
-      callback: async () => { const m = await import('../features/sync/syncCommands'); return m.cmdSyncShowSecretKey(context); },
-    },
-    {
-      command: 'postgres-explorer.sync.pause',
-      proOnly: true,
-      callback: async () => { const m = await import('../features/sync/syncCommands'); return m.cmdSyncPause(); },
-    },
-    {
-      command: 'postgres-explorer.sync.signOut',
-      proOnly: true,
-      callback: async () => { const m = await import('../features/sync/syncCommands'); return m.cmdSyncSignOut(); },
-    },
-    {
-      command: 'postgres-explorer.sync.inviteMember',
-      proOnly: true,
-      callback: async () => { const m = await import('../features/sync/syncCommands'); return m.cmdSyncInviteMember(context); },
-    },
-    {
-      command: 'postgres-explorer.sync.shareWithTeam',
-      proOnly: true,
-      callback: async (treeItem?: { id?: string; query?: { id?: string }; uri?: vscode.Uri }) => {
-        const m = await import('../features/sync/syncCommands');
-        return m.cmdSyncShareWithTeam(context, treeItem);
-      },
-    },
-    {
-      command: 'postgres-explorer.sync.share',
-      proOnly: true,
-      callback: async () => { const m = await import('../features/sync/syncCommands'); return m.cmdSyncInviteMember(context); },
-    },
-    {
-      command: 'postgres-explorer.sync.importShares',
-      proOnly: true,
-      callback: async () => { const m = await import('../features/sync/syncCommands'); return m.cmdSyncImportShares(context); },
-    },
-    {
-      command: 'postgres-explorer.sync.pull',
-      proOnly: true,
-      callback: async () => { const m = await import('../features/sync/syncCommands'); return m.cmdSyncPull(); },
-    },
-    {
-      command: 'postgres-explorer.sync.push',
-      proOnly: true,
-      callback: async () => { const m = await import('../features/sync/syncCommands'); return m.cmdSyncPush(); },
-    },
-    {
-      command: 'postgres-explorer.sync.preview',
-      proOnly: true,
-      callback: async () => { const m = await import('../features/sync/syncCommands'); return m.cmdSyncPreview(); },
-    },
-    {
-      command: 'postgres-explorer.sync.conflicts',
-      proOnly: true,
-      callback: async () => { const m = await import('../features/sync/syncCommands'); return m.cmdSyncConflicts(); },
-    },
-    {
-      command: 'postgres-explorer.sync.replaceLocal',
-      proOnly: true,
-      callback: async () => { const m = await import('../features/sync/syncCommands'); return m.cmdSyncReplaceLocal(); },
-    },
-    {
-      command: 'postgres-explorer.sync.replaceRemote',
-      proOnly: true,
-      callback: async () => { const m = await import('../features/sync/syncCommands'); return m.cmdSyncReplaceRemote(); },
-    },
-    {
-      command: 'postgres-explorer.sync.rebuildIndex',
-      proOnly: true,
-      callback: async () => { const m = await import('../features/sync/syncCommands'); return m.cmdSyncRebuildIndex(); },
-    },
-    {
-      command: 'postgres-explorer.sync.repair',
-      proOnly: true,
-      callback: async () => { const m = await import('../features/sync/syncCommands'); return m.cmdSyncRepair(); },
-    },
-    {
-      command: 'postgres-explorer.sync.diagnostics',
-      proOnly: true,
-      callback: async () => { const m = await import('../features/sync/syncCommands'); return m.cmdSyncDiagnostics(); },
-    },
-    {
-      command: 'postgres-explorer.sync.excludeItem',
-      proOnly: true,
-      callback: async (treeItem?: { id?: string; query?: { id?: string }; uri?: vscode.Uri }) => {
-        const m = await import('../features/sync/syncCommands');
-        await m.cmdSyncExcludeItem(await m.resolveSyncItemIdFromTreeItem(treeItem));
-      },
-    },
-    // license.*, audit.*, and dbindex.* commands are registered by the pro
+    // license.*, audit.*, dbindex.*, and sync.* commands are registered by the pro
     // package in activatePro (packages/pro/src/index.ts) — their modules no
     // longer exist in the core tree.
     {
@@ -641,12 +530,11 @@ export function getCommandSpecs(
         try {
           const raw = await vscode.workspace.fs.readFile(newUri);
           const parsed = JSON.parse(Buffer.from(raw).toString()) as Record<string, unknown>;
-          const { readNotebookSyncId } = await import('../features/sync/notebookSyncId');
-          const { SyncIndex } = await import('../features/sync/SyncIndex');
-          const { recordSyncActivity } = await import('../features/sync/SyncActivityLog');
+          const { readNotebookSyncId } = await import('../common/notebookSyncId');
+          const { createSyncIndex, recordSyncActivity } = await import('../services/syncRegistry');
           const syncId = readNotebookSyncId(parsed);
-          if (syncId) {
-            const index = new SyncIndex(context);
+          const index = syncId ? createSyncIndex(context) : undefined;
+          if (syncId && index) {
             index.update(syncId, { kind: 'notebook', name: newName, filePath: newUri.fsPath });
             await index.flush();
             recordSyncActivity({
@@ -660,7 +548,7 @@ export function getCommandSpecs(
         } catch {
           /* index update is best-effort */
         }
-        const { triggerInstantSync } = await import('../features/sync/syncTriggers');
+        const { triggerInstantSync } = await import('../services/syncRegistry');
         triggerInstantSync();
         notebooksTreeProvider?.refresh();
       }
@@ -674,16 +562,16 @@ export function getCommandSpecs(
         try {
           const raw = await vscode.workspace.fs.readFile(item.uri);
           const parsed = JSON.parse(Buffer.from(raw).toString()) as Record<string, unknown>;
-          const { readNotebookSyncId } = await import('../features/sync/notebookSyncId');
+          const { readNotebookSyncId } = await import('../common/notebookSyncId');
           syncId = readNotebookSyncId(parsed);
         } catch {
           /* best-effort */
         }
-        const { isItemSyncedToCloud, resolveDeleteCloudChoice, applyLocalDeleteCloudChoice } =
-          await import('../features/sync/localDeletePrompt');
-        const synced = !!(syncId && isItemSyncedToCloud(context, syncId));
-        const cloudChoice = syncId
-          ? await resolveDeleteCloudChoice(context, syncId, notebookName)
+        const { getCloudDeletePrompt } = await import('../services/syncRegistry');
+        const cloudPrompt = getCloudDeletePrompt();
+        const synced = !!(syncId && cloudPrompt?.isItemSyncedToCloud(context, syncId));
+        const cloudChoice = syncId && cloudPrompt
+          ? await cloudPrompt.resolveDeleteCloudChoice(context, syncId, notebookName)
           : 'keep-cloud';
         if (!cloudChoice) { return; }
         if (!synced) {
@@ -694,8 +582,8 @@ export function getCommandSpecs(
           if (confirm !== 'Delete') { return; }
         }
         await vscode.workspace.fs.delete(item.uri, { recursive: false });
-        if (syncId) {
-          await applyLocalDeleteCloudChoice(syncId, cloudChoice);
+        if (syncId && cloudPrompt) {
+          await cloudPrompt.applyLocalDeleteCloudChoice(syncId, cloudChoice);
         }
         notebooksTreeProvider?.refresh();
       }
@@ -712,7 +600,7 @@ export function getCommandSpecs(
         );
         if (confirm !== 'Delete Folder') { return; }
         await vscode.workspace.fs.delete(item.uri, { recursive: true, useTrash: false });
-        const { triggerInstantSync } = await import('../features/sync/syncTriggers');
+        const { triggerInstantSync } = await import('../services/syncRegistry');
         triggerInstantSync();
         notebooksTreeProvider?.refresh();
       }

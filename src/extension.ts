@@ -345,19 +345,20 @@ export async function activate(context: vscode.ExtensionContext) {
   // Cloud sync, license bootstrap, and auto-indexing are pro-build-only:
   // the free/OSS build has zero license or sync surface.
   if (isProBuild()) {
-    const { SyncController } = await import('./features/sync/SyncController');
-    const syncController = SyncController.getInstance(context, outputChannel);
+    const { initializeSyncEngineEarly } = await import('@nexql/pro');
     const syncStatusBar = new statusBarModule.SyncStatusBar();
     context.subscriptions.push(syncStatusBar);
-    syncController.initialize(syncStatusBar);
-    context.subscriptions.push(syncController);
-    context.subscriptions.push(
-      syncController.onDidCompleteSync(() => {
-        databaseTreeProvider?.refresh();
-        notebooksTreeProvider?.refresh();
-        savedQueriesTreeProvider?.refresh();
-      }),
-    );
+    const syncController = await initializeSyncEngineEarly(context, outputChannel, syncStatusBar);
+    if (syncController) {
+      context.subscriptions.push(syncController);
+      context.subscriptions.push(
+        syncController.onDidCompleteSync(() => {
+          databaseTreeProvider?.refresh();
+          notebooksTreeProvider?.refresh();
+          savedQueriesTreeProvider?.refresh();
+        }),
+      );
+    }
 
     // License tier indicator
     const license = LicenseService.getInstance();

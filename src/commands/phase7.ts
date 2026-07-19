@@ -5,7 +5,7 @@ import { SavedQueriesService, SavedQuery } from '../features/savedQueries/SavedQ
 import { ErrorService } from '../services/ErrorService';
 import { extensionContext, statusBar } from '../extension';
 import { SaveQueryPanel } from '../features/savedQueries/SaveQueryPanel';
-import { deleteSavedQueryWithCloudPrompt } from '../features/sync/localDeletePrompt';
+import { deleteSavedQueryWithCloudPrompt } from '../features/savedQueries/deleteWithCloudPrompt';
 import { SavedQueryDetailsPanel } from '../features/savedQueries/SavedQueryDetailsPanel';
 import { ConnectionUtils } from '../utils/connectionUtils';
 import { SecretStorageService } from '../services/SecretStorageService';

@@ -3,7 +3,7 @@ import * as https from 'https';
 import * as http from 'http';
 import { URL } from 'url';
 import { SecretStorageService } from './SecretStorageService';
-import { getDeviceName } from '../features/sync/deviceId';
+import { getDeviceName } from './deviceIdentity';
 
 export type LicenseTier = 'free' | 'sponsor' | 'singularity';
 
@@ -254,7 +254,8 @@ export class LicenseService {
     void this.maybeNotifyDevicesPruned(res.devicesPruned);
 
     if (res.tier === 'sponsor' || res.tier === 'singularity') {
-      void import('../features/sync/syncBootstrap').then((m) => m.maybePromptSyncBootstrap(this.context));
+      const { getSyncBootstrapHook } = await import('./syncRegistry');
+      void getSyncBootstrapHook()?.(this.context);
     }
 
     this.ensureBackgroundRetry();

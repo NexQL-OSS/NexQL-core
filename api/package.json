@@ -1,8 +1,0 @@
-{
-  "private": true,
-  "dependencies": {
-    "@neondatabase/serverless": "^1.0.0",
-    "@vercel/kv": "^3.0.0",
-    "razorpay": "^2.9.0"
-  }
-}

@@ -65,38 +65,9 @@ export function invalidateAiUsageCache(): void {
 /** Fetch current usage from the server, updating the cache. Returns null when unavailable. */
 export async function fetchAiUsage(context: vscode.ExtensionContext): Promise<AiUsage | null> {
   try {
-    const { AccountService } = await import('../features/sync/AccountService');
-    const { httpRequest } = await import('../features/sync/providers/httpUtils');
-    const { DEFAULT_SYNC_API_ENDPOINT } = await import('../features/sync/constants');
-
-    const account = AccountService.getInstance(context);
-    if (!(await account.isSignedIn())) {
-      return null;
-    }
-
-    const token = await account.ensureAiSession().catch(() => undefined);
-    if (!token) {
-      return null;
-    }
-
-    const res = await httpRequest(`${DEFAULT_SYNC_API_ENDPOINT.replace(/\/$/, '')}/ai/usage`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: '{}',
-    });
-
-    if (res.statusCode === 200) {
-      const data = JSON.parse(res.body.toString());
-      const limit = typeof data.limit === 'number' ? data.limit : 600_000;
-      const usage: AiUsage = {
-        used: typeof data.used === 'number' ? data.used : 0,
-        limit,
-        remaining: typeof data.remaining === 'number' ? data.remaining : limit,
-        resetAt: typeof data.resetAt === 'string' ? data.resetAt : undefined,
-      };
+    const { getAiUsageBackend } = await import('./syncRegistry');
+    const usage = await getAiUsageBackend()?.fetchUsage(context);
+    if (usage) {
       cached = usage;
       lastFetch = Date.now();
       return usage;

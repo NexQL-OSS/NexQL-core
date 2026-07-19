@@ -22,10 +22,7 @@ import {
 } from '../../../lib/platform/connectionPresets';
 import { isSupportedPostgresVersion } from '../../../lib/platform/pgVersionSupport';
 import { isTransactionPooler } from '../../../lib/platform/detectPlatform';
-import {
-  applyLocalDeleteCloudChoice,
-  resolveDeleteCloudChoice,
-} from '../../sync/localDeletePrompt';
+import { getCloudDeletePrompt } from '../../../services/syncRegistry';
 import type { SettingsHubHostContext, SettingsHubMessage, SettingsSectionHandler } from '../types';
 
 function resolvePlatformPreset(
@@ -359,11 +356,10 @@ export class ConnectionsSectionHandler implements SettingsSectionHandler {
         return;
       }
 
-      const cloudChoice = await resolveDeleteCloudChoice(
-        this.host.extensionContext,
-        id,
-        connection.name || id,
-      );
+      const cloudPrompt = getCloudDeletePrompt();
+      const cloudChoice = cloudPrompt
+        ? await cloudPrompt.resolveDeleteCloudChoice(this.host.extensionContext, id, connection.name || id)
+        : 'keep-cloud';
       if (!cloudChoice) {
         return;
       }
@@ -380,7 +376,9 @@ export class ConnectionsSectionHandler implements SettingsSectionHandler {
       } catch {
         // Connection might not be open.
       }
-      await applyLocalDeleteCloudChoice(id, cloudChoice);
+      if (cloudPrompt) {
+        await cloudPrompt.applyLocalDeleteCloudChoice(id, cloudChoice);
+      }
       refreshTree();
       this.host.post({ type: 'connections/deleted', id });
       await this.sendList();

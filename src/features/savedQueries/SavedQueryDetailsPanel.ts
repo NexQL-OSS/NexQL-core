@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { extensionContext } from '../../extension';
-import { deleteSavedQueryWithCloudPrompt } from '../sync/localDeletePrompt';
+import { deleteSavedQueryWithCloudPrompt } from './deleteWithCloudPrompt';
 import { loadPanelTemplate } from '../../lib/template-loader';
 import { highlightSql } from '../../lib/sqlHighlight';
 

@@ -143,12 +143,20 @@ export class ChartControls {
 
     // ── 3. Y-Axis ──────────────────────────────────────────────────
     this.container.appendChild(this.makeLabel('Y-Axis'));
+    const yOptions: [string, string][] = numericCols.length > 0
+      ? numericCols.map(c => [c, c])
+      : [];
     const ySelect = this.makeSelect(
-      numericCols.length > 0
-        ? numericCols.map(c => [c, c])
-        : this.props.columns.map(c => [c, c]),
+      yOptions.length > 0 ? yOptions : [['', '(no numeric columns)']],
       this.selectedYAxis[0] ?? ''
     );
+    if (yOptions.length === 0) {
+      ySelect.disabled = true;
+    }
+    // A <select> with no matching selected option silently falls back to
+    // showing its first entry — sync state to match so the emitted config
+    // (and every subsequent render) reflects what the dropdown actually shows.
+    this.selectedYAxis = ySelect.value ? [ySelect.value] : [];
     ySelect.onchange = () => {
       this.selectedYAxis = ySelect.value ? [ySelect.value] : [];
       this.emitConfig(); // Requirement 7.4

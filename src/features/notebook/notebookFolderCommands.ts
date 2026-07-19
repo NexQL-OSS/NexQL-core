@@ -2,10 +2,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { ConnectionUtils } from '../../utils/connectionUtils';
-import { SyncIndex } from '../sync/SyncIndex';
-import { readNotebookSyncId } from '../sync/notebookSyncId';
-import { recordSyncActivity } from '../sync/SyncActivityLog';
-import { triggerInstantSync } from '../sync/syncTriggers';
+import { readNotebookSyncId } from '../../common/notebookSyncId';
+import { createSyncIndex, recordSyncActivity, triggerInstantSync } from '../../services/syncRegistry';
 import type { NotebooksTreeProvider, NotebookTreeItem } from '../../providers/NotebooksTreeProvider';
 
 const FOLDER_NAME_PATTERN = /^[a-zA-Z0-9 _-]+$/;
@@ -24,7 +22,10 @@ function validateFolderName(value: string): string | null {
 
 /** Re-index notebook file paths under a directory after move/rename. */
 async function reindexNotebookFiles(context: vscode.ExtensionContext, rootDir: string): Promise<void> {
-  const index = new SyncIndex(context);
+  const index = createSyncIndex(context);
+  if (!index) {
+    return;
+  }
   const walk = (dir: string): void => {
     if (!fs.existsSync(dir)) {
       return;
@@ -165,8 +166,8 @@ export async function cmdMoveNotebook(
     const raw = await vscode.workspace.fs.readFile(destUri);
     const parsed = JSON.parse(Buffer.from(raw).toString()) as Record<string, unknown>;
     const syncId = readNotebookSyncId(parsed);
-    if (syncId) {
-      const index = new SyncIndex(context);
+    const index = syncId ? createSyncIndex(context) : undefined;
+    if (syncId && index) {
       index.update(syncId, {
         kind: 'notebook',
         filePath: destUri.fsPath,

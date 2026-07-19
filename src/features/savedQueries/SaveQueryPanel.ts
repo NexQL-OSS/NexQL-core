@@ -100,9 +100,9 @@ export class SaveQueryPanel {
   }
 
   private static scheduleRemoteCheck(query: SavedQuery): void {
-    void import('../sync/SyncController').then(({ SyncController }) => {
+    void import('../../services/syncRegistry').then(({ getSyncDataSource }) => {
       try {
-        SyncController.getInstance().scheduleOpenCheck(query.id, {
+        getSyncDataSource()?.scheduleOpenCheck(query.id, {
           kind: 'query',
           label: query.title,
           onReload: () => {
@@ -305,8 +305,8 @@ export class SaveQueryPanel {
 
     if (this._editMode && this._editingQuery) {
       try {
-        const { SyncController } = await import('../sync/SyncController');
-        if (SyncController.getInstance().isItemReadOnly(this._editingQuery.id)) {
+        const { getSyncDataSource } = await import('../../services/syncRegistry');
+        if (getSyncDataSource()?.isItemReadOnly(this._editingQuery.id)) {
           void vscode.window.showWarningMessage('This query is read-only (team viewer access).');
           return;
         }

@@ -589,8 +589,8 @@ export async function cmdQuickOpenNotebook(context: vscode.ExtensionContext): Pr
   const localNotebooks = NotebookIndexService.getInstance().getAllNotebooks();
   const sharedNotebooks: Array<{ name: string; uri: vscode.Uri; isShared: boolean }> = [];
   try {
-    const { SyncController } = await import('../features/sync/SyncController');
-    const teamItems = SyncController.getInstance().listTeamItems();
+    const { getSyncDataSource } = await import('../services/syncRegistry');
+    const teamItems = getSyncDataSource()?.listTeamItems() ?? [];
     for (const { entry } of teamItems) {
       if (entry.kind === 'notebook' && entry.filePath) {
         sharedNotebooks.push({
