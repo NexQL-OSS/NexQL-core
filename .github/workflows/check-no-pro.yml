@@ -31,3 +31,30 @@ jobs:
             exit 1
           fi
           echo "✅ packages/ is untracked (correct)"
+
+  package-free-standalone:
+    name: Free VSIX builds without packages/pro
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Package free VSIX (bare checkout, no pro sources)
+        run: make package-free
+
+      - name: Assert no premium implementation strings in bundle
+        run: |
+          if grep -qE "Activating NexQL Pro|postgres-explorer\.dbindex\.openPanel" dist/extension.js; then
+            echo "❌ Free bundle contains premium implementation strings"
+            exit 1
+          fi
+          echo "✅ Free bundle clean"
