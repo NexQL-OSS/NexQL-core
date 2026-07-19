@@ -3696,7 +3696,7 @@
     "diff": "^8.0.4",
     "serialize-javascript": "^7.0.5",
     "tar": ">=7.5.11",
-    "undici": "^7.25.0",
+    "undici": "7.28.0",
     "@tootallnate/once": ">=3.0.1"
   },
   "resolutions": {
