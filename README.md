@@ -570,6 +570,8 @@ Nightly versioning policy:
 
 [MIT License](LICENSE)
 
+**Open-core notice:** This repository is the open-source core of NexQL. It builds a fully working free extension (`make package-free`) that anyone may fork, rebrand, and publish under their own extension ID (MIT). The extension published as `ric-v.postgres-explorer` on the Marketplace/Open VSX is the **pro** build — this core plus proprietary premium features (AI chat assistant, MCP server, live dashboard, Plan Studio, backup/restore, visual schema designer, database indexing) maintained in a private repository and published from there. Repository history up to v2.x predates the split and contains the formerly-bundled premium sources under MIT.
+
 ---
 
 <div align="center">
