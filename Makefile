@@ -1,4 +1,4 @@
-.PHONY: all clean install build package package-nightly publish publish-nightly publish-ovsx publish-vsx git-tag test test-unit test-integration test-renderer test-all coverage docker-up docker-down
+.PHONY: dev-pro dev-free all clean install build package package-nightly publish publish-nightly publish-ovsx publish-vsx git-tag test test-unit test-integration test-renderer test-all coverage docker-up docker-down
 
 # Variables
 NODE_BIN := node
@@ -39,6 +39,58 @@ package: build
 	if [ -f README.md.bak ]; then mv README.md.bak README.md; fi; \
 	if [ -d /tmp/vscode-pkg-temp ]; then mv /tmp/vscode-pkg-temp node_modules/vscode; fi; \
 	echo "Restored original README.md and vscode mock"; \
+	exit $$EXIT_CODE
+
+# Pro dev mode: merge pro manifest + templates into the working tree and build
+# the pro bundle so F5 runs the full extension. Idempotent (restores from the
+# dev backup before re-merging). Run `make dev-free` before committing.
+dev-pro:
+	@if [ ! -d packages/pro ]; then echo "packages/pro missing — clone NexQL-Pro first"; exit 1; fi
+	@if [ -f package.json.dev-bak ]; then cp package.json.dev-bak package.json; else cp package.json package.json.dev-bak; fi
+	$(NODE_BIN) ./scripts/merge-pro-manifest.js
+	cp -r packages/pro/templates/. templates/
+	$(NPM_BIN) run esbuild:pro
+	@echo "Pro dev mode ON — package.json has merged pro manifest; press F5. Run 'make dev-free' before committing."
+
+# Restore free/OSS dev state (undo dev-pro)
+dev-free:
+	@if [ -f package.json.dev-bak ]; then mv package.json.dev-bak package.json; fi
+	@if [ -d packages/pro/templates ]; then \
+		(cd packages/pro/templates && find . -type f) | while read -r f; do rm -f "templates/$$f"; done; \
+		find templates -type d -empty -delete 2>/dev/null || true; \
+	fi
+	$(NPM_BIN) run esbuild:free
+	@echo "Free dev mode restored."
+
+# Package the free version
+package-free:
+	@echo "Building and packaging free VSIX..."
+	$(NPM_BIN) run vscode:prepublish
+	@if [ -f README.md ]; then cp README.md README.md.bak; fi
+	@cp MARKETPLACE.md README.md
+	@trap 'if [ -f README.md.bak ]; then mv README.md.bak README.md; fi' EXIT INT TERM; \
+	$(VSCE_CMD) package --out postgres-explorer-free.vsix; \
+	EXIT_CODE=$$?; \
+	if [ -f README.md.bak ]; then mv README.md.bak README.md; fi; \
+	echo "Restored original README.md"; \
+	exit $$EXIT_CODE
+
+# Package the pro version
+package-pro:
+	@echo "Merging pro manifest, building, and packaging pro VSIX..."
+	@cp package.json package.json.bak
+	@trap 'if [ -f package.json.bak ]; then mv package.json.bak package.json; fi; (cd packages/pro/templates && find . -type f) | while read -r f; do rm -f "templates/$$f"; done; find templates -type d -empty -delete 2>/dev/null || true' EXIT INT TERM; \
+	$(NODE_BIN) ./scripts/merge-pro-manifest.js; \
+	cp -r packages/pro/templates/. templates/; \
+	if [ -f README.md ]; then cp README.md README.md.bak; fi; \
+	cp MARKETPLACE.md README.md; \
+	$(VSCE_CMD) package --out postgres-explorer-pro.vsix; \
+	EXIT_CODE=$$?; \
+	if [ -f README.md.bak ]; then mv README.md.bak README.md; fi; \
+	if [ -f package.json.bak ]; then mv package.json.bak package.json; fi; \
+	(cd packages/pro/templates && find . -type f) | while read -r f; do rm -f "templates/$$f"; done; \
+	find templates -type d -empty -delete 2>/dev/null || true; \
+	echo "Restored original README.md, package.json, and templates"; \
 	exit $$EXIT_CODE
 
 # Package nightly VSIX artifacts for Marketplace (pre-release) and Open VSX companion

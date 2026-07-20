@@ -5,6 +5,7 @@ import { getDatabaseConnection, NotebookBuilder, MarkdownUtils, ErrorHandlers, v
 import { PostgresMetadata } from '../common/types';
 import { ConnectionUtils } from '../utils/connectionUtils';
 import { isProFeatureEnabled, ProFeature } from '../services/featureGates';
+import { isProBuild } from '../common/buildTier';
 import { NotebookIndexService } from '../services/NotebookIndexService';
 
 type NotebookCellSeed = {
@@ -230,7 +231,8 @@ export async function openOrCreateNotebookWithPicker(
   const connectionNameOrId = (metadata?.name ?? metadata?.connectionName ?? metadata?.connectionId) as string | undefined;
   if (connectionNameOrId) {
     const { count: totalNotebooks, uris: connectionNotebookUris } = await ConnectionUtils.countNotebooksInConnection(context, connectionNameOrId);
-    const isUnlimited = isProFeatureEnabled(ProFeature.UnlimitedNotebooks);
+    // Free/OSS build has no notebook quota; the license gate only applies in pro builds.
+    const isUnlimited = !isProBuild() || isProFeatureEnabled(ProFeature.UnlimitedNotebooks);
 
     if (!isUnlimited && totalNotebooks >= 5) {
       const choice = await vscode.window.showWarningMessage(
@@ -587,8 +589,8 @@ export async function cmdQuickOpenNotebook(context: vscode.ExtensionContext): Pr
   const localNotebooks = NotebookIndexService.getInstance().getAllNotebooks();
   const sharedNotebooks: Array<{ name: string; uri: vscode.Uri; isShared: boolean }> = [];
   try {
-    const { SyncController } = await import('../features/sync/SyncController');
-    const teamItems = SyncController.getInstance().listTeamItems();
+    const { getSyncDataSource } = await import('../services/syncRegistry');
+    const teamItems = getSyncDataSource()?.listTeamItems() ?? [];
     for (const { entry } of teamItems) {
       if (entry.kind === 'notebook' && entry.filePath) {
         sharedNotebooks.push({

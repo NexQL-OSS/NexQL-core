@@ -6,7 +6,6 @@ import * as connectionModule from '../../commands/connection';
 import * as databaseCommands from '../../commands/database';
 import * as helper from '../../commands/helper';
 import { ConnectionManager } from '../../services/ConnectionManager';
-import { DashboardPanel } from '../../dashboard/DashboardPanel';
 
 function createBuilderStub(sandbox: sinon.SinonSandbox) {
   const builder: any = {};
@@ -57,9 +56,7 @@ describe('database commands', () => {
   });
 
   it('shows the dashboard, refreshes the tree, and disconnects a database', async () => {
-    const dbConnection = createDbConnection();
-    const getDatabaseConnectionStub = sandbox.stub(helper, 'getDatabaseConnection').resolves(dbConnection as any);
-    const dashboardShowStub = sandbox.stub(DashboardPanel, 'show').resolves();
+    const executeCommandStub = sandbox.stub(vscode.commands, 'executeCommand').resolves();
     const refreshStub = sandbox.stub();
     const infoStub = sandbox.stub(vscode.window, 'showInformationMessage').resolves(undefined);
 
@@ -67,9 +64,7 @@ describe('database commands', () => {
     const context = { extensionUri: vscode.Uri.file('/ext') } as any;
 
     await databaseCommands.cmdDatabaseDashboard(item, context);
-    expect(getDatabaseConnectionStub.calledOnce).to.be.true;
-    expect(dbConnection.release.calledOnce).to.be.true;
-    expect(dashboardShowStub.calledOnceWithExactly(context.extensionUri, dbConnection.connection, 'appdb', 'c1')).to.be.true;
+    expect(executeCommandStub.calledOnceWithExactly('postgres-explorer.showDashboard', item)).to.be.true;
 
     await databaseCommands.cmdRefreshDatabase(item, context, { refresh: refreshStub } as any);
     expect(refreshStub.calledOnceWithExactly(item)).to.be.true;

@@ -1,8 +1,6 @@
 import * as vscode from 'vscode';
 import { TelemetryService } from '../../services/TelemetryService';
-import { recordSyncActivity } from '../sync/SyncActivityLog';
-import { triggerInstantSync } from '../sync/syncTriggers';
-import { SyncController } from '../sync/SyncController';
+import { recordSyncActivity, triggerInstantSync, getSyncDataSource } from '../../services/syncRegistry';
 
 /**
  * Saved query with metadata for quick access and reuse
@@ -216,7 +214,7 @@ export class SavedQueriesService {
     }
 
     if (options?.cloudChoice === 'keep-cloud') {
-      await SyncController.getInstance().setItemExcluded(queryId, true);
+      await getSyncDataSource()?.setItemExcluded(queryId, true);
       this.queries.delete(queryId);
       this.tombstones = this.tombstones.filter((t) => t.id !== queryId);
       await this.saveQueries();
@@ -227,7 +225,7 @@ export class SavedQueriesService {
       this.queries.delete(queryId);
       this.tombstones = this.tombstones.filter((t) => t.id !== queryId);
       await this.saveQueries();
-      void SyncController.getInstance().removeFromCloud(queryId);
+      void getSyncDataSource()?.removeFromCloud(queryId);
       return;
     }
 

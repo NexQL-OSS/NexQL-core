@@ -2,6 +2,21 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "Run Extension (Pro)",
+            "type": "extensionHost",
+            "request": "launch",
+            "args": [
+                "--extensionDevelopmentPath=${workspaceFolder}"
+            ],
+            "outFiles": [
+                "${workspaceFolder}/dist/**/*.js"
+            ],
+            "preLaunchTask": "dev-pro",
+            "settings": {
+                "postgresExplorer.license.endpoint": "http://localhost:3000/api"
+            }
+        },
+        {
             "name": "Run Extension",
             "type": "extensionHost",
             "request": "launch",

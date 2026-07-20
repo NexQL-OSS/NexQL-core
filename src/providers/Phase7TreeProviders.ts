@@ -1,17 +1,16 @@
 import * as vscode from 'vscode';
-import { setLastTreeDragPayload } from './chat/dragPayloadStore';
+import { setLastTreeDragPayload } from './dragPayloadStore';
 import { ProfileManager } from '../features/connections/ProfileManager';
 import { SavedQueriesService } from '../features/savedQueries/SavedQueriesService';
 import { extensionContext } from '../extension';
-import { SyncIndex } from '../features/sync/SyncIndex';
-import { SyncController } from '../features/sync/SyncController';
+import { getSyncDataSource } from '../services/syncRegistry';
 import {
   SharedTeamRootTreeItem,
   WorkspaceFolderTreeItem,
   groupTeamItemsByWorkspace,
   isViewerForSpace,
   workspaceDisplayName,
-} from '../features/sync/SharedTeamTree';
+} from './SharedTeamTree';
 
 /**
  * Tree view item for connection profiles
@@ -188,8 +187,8 @@ export class SavedQueriesTreeProvider
     if (!extensionContext) {
       return false;
     }
-    const entry = new SyncIndex(extensionContext).get(queryId);
-    return !!entry?.spaceId?.startsWith('ws_');
+    const entry = getSyncDataSource()?.getEntryById(queryId);
+    return !!entry?.entry.spaceId?.startsWith('ws_');
   }
 
   private _personalQueries(queries: any[]): any[] {
@@ -241,8 +240,7 @@ export class SavedQueriesTreeProvider
   }
 
   private _getSharedTeamRoot(): SharedTeamRootTreeItem | undefined {
-    const teamQueries = SyncController.getInstance()
-      .listTeamItems()
+    const teamQueries = (getSyncDataSource()?.listTeamItems() ?? [])
       .filter((i) => i.entry.kind === 'query');
     if (!teamQueries.length) {
       return undefined;
@@ -251,7 +249,7 @@ export class SavedQueriesTreeProvider
   }
 
   private _getWorkspaceFolders(): WorkspaceFolderTreeItem[] {
-    const grouped = groupTeamItemsByWorkspace(SyncController.getInstance().listTeamItems(), 'query');
+    const grouped = groupTeamItemsByWorkspace(getSyncDataSource()?.listTeamItems() ?? [], 'query');
     return [...grouped.entries()].map(
       ([spaceId, items]) => new WorkspaceFolderTreeItem(spaceId, workspaceDisplayName(spaceId), items.length),
     );
@@ -261,7 +259,7 @@ export class SavedQueriesTreeProvider
     const service = SavedQueriesService.getInstance();
     const readOnly = isViewerForSpace(spaceId);
     const items: SavedQueryTreeItem[] = [];
-    for (const { id, entry } of SyncController.getInstance().listTeamItems()) {
+    for (const { id, entry } of getSyncDataSource()?.listTeamItems() ?? []) {
       if (entry.kind !== 'query' || entry.spaceId !== spaceId) {
         continue;
       }

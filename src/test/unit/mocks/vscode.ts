@@ -164,6 +164,15 @@ Object.assign(NotebookDocument.prototype, { notebookType: undefined });
 declare module './vscode' { interface NotebookDocument { notebookType?: string } }
 export class NotebookEditor { notebook: NotebookDocument = new NotebookDocument(new Uri('/tmp/mock')); selection?: NotebookRange; revealRange(_range: NotebookRange, _revealType?: any) { } }
 
+export class CodeActionKind {
+    static readonly Empty = new CodeActionKind('');
+    static readonly QuickFix = new CodeActionKind('quickfix');
+    static readonly Refactor = new CodeActionKind('refactor');
+    static readonly Source = new CodeActionKind('source');
+    constructor(public readonly value: string) { }
+    append(parts: string): CodeActionKind { return new CodeActionKind(this.value ? `${this.value}.${parts}` : parts); }
+}
+export class CodeAction { edit?: any; diagnostics?: any[]; command?: any; isPreferred?: boolean; constructor(public title: string, public kind?: CodeActionKind) { } }
 export class CompletionItem { detail?: string; documentation?: string | MarkdownString; insertText?: string | SnippetString; sortText?: string; filterText?: string; constructor(public label: string, public kind?: number) { } }
 export const CompletionItemKind = { Text: 0, Method: 1, Function: 2, Constructor: 3, Field: 4, Variable: 5, Class: 6, Interface: 7, Module: 8, Property: 9, Unit: 10, Value: 11, Enum: 12, Keyword: 13, Snippet: 14, Color: 15, File: 16, Reference: 17, Folder: 18, EnumMember: 19, Constant: 20, Struct: 21, Event: 22, Operator: 23, TypeParameter: 24 } as const;
 export type CompletionItemKind = typeof CompletionItemKind[keyof typeof CompletionItemKind];
@@ -364,6 +373,8 @@ const vscode = {
   NotebookCellOutputItem,
   NotebookDocument,
   NotebookEditor,
+  CodeAction,
+  CodeActionKind,
   CompletionItem,
   CompletionItemKind,
   MarkdownString,

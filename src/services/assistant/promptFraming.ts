@@ -7,7 +7,7 @@
  * and the (invisible, in-memory) attachments a caller wants prefilled. Nothing
  * here touches disk.
  */
-import type { FileAttachment } from '../../providers/chat/types';
+import type { FileAttachment } from '../../common/chatTypes';
 import { AssistantInvocation, ContextItem, CONTEXT_SAMPLE_ROW_CAP } from './contextItems';
 
 export interface DraftResult {

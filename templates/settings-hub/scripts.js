@@ -297,8 +297,21 @@ function enhanceAllSelects(root) {
 // Section navigation
 // ─────────────────────────────────────────────────────────────────────────────
 
-const SECTIONS = ['connections', 'ai', 'prefs', 'dbindex', 'sentinel', 'sync', 'license'];
+// Host passes the sections that actually have a registered handler
+// (free builds omit the premium ones: ai, license, sync, dbindex).
+const ALL_SECTIONS = ['connections', 'ai', 'prefs', 'dbindex', 'sentinel', 'sync', 'license'];
+const SECTIONS = Array.isArray(initialState.availableSections) && initialState.availableSections.length
+  ? ALL_SECTIONS.filter((s) => initialState.availableSections.includes(s))
+  : ALL_SECTIONS;
 let activeSection = null;
+
+// Remove nav entries (and leave panels hidden) for unavailable sections.
+document.querySelectorAll('.nav-item').forEach((btn) => {
+  if (!SECTIONS.includes(btn.dataset.section)) {
+    const li = btn.closest('li');
+    (li || btn).remove();
+  }
+});
 
 function loadSection(section) {
   switch (section) {
@@ -313,7 +326,7 @@ function loadSection(section) {
 }
 
 function showSection(section) {
-  if (!SECTIONS.includes(section)) { section = 'connections'; }
+  if (!SECTIONS.includes(section)) { section = SECTIONS[0] || 'connections'; }
   activeSection = section;
   SECTIONS.forEach((s) => {
     const el = $('section-' + s);

@@ -4,11 +4,7 @@ import { readSharedTemplateCss, getNonce } from '../../lib/template-loader';
 import { LicenseService } from '../../services/LicenseService';
 import type { SettingsHubMessage, SettingsSectionHandler } from './types';
 import { ConnectionsSectionHandler } from './handlers/connections';
-import { AiSectionHandler } from './handlers/ai';
 import { PreferencesSectionHandler } from './handlers/preferences';
-import { SyncSectionHandler } from './handlers/sync';
-import { LicenseSectionHandler } from './handlers/license';
-import { DbIndexSectionHandler } from './handlers/dbindex';
 import { SentinelSectionHandler } from '../sentinel/SentinelSectionHandler';
 import { SentinelThemeSwapService } from '../sentinel/SentinelThemeSwapService';
 import { CONNECTION_PLATFORM_PRESETS } from '../../lib/platform/connectionPresets';
@@ -46,6 +42,12 @@ export class SettingsHubPanel {
   private readonly _handlers: Map<string, SettingsSectionHandler>;
   private _disposables: vscode.Disposable[] = [];
 
+  public static readonly extraHandlers: Map<string, (host: any) => SettingsSectionHandler> = new Map();
+
+  public static registerExtraHandler(section: string, factory: (host: any) => SettingsSectionHandler) {
+    this.extraHandlers.set(section, factory);
+  }
+
   private constructor(
     panel: vscode.WebviewPanel,
     extensionUri: vscode.Uri,
@@ -63,16 +65,22 @@ export class SettingsHubPanel {
       },
     };
 
+    // Core sections only. Premium sections (ai, license, sync, dbindex)
+    // are contributed by the pro package via registerExtraHandler during
+    // activatePro — the free build never registers them, and the webview
+    // nav renders only the sections present in this map.
+    const handlerList: SettingsSectionHandler[] = [
+      new ConnectionsSectionHandler(host),
+      new PreferencesSectionHandler(host),
+      new SentinelSectionHandler(host, sentinelThemeSwap ?? new SentinelThemeSwapService(extensionContext)),
+    ];
+
+    for (const factory of SettingsHubPanel.extraHandlers.values()) {
+      handlerList.push(factory(host));
+    }
+
     this._handlers = new Map<string, SettingsSectionHandler>(
-      [
-        new ConnectionsSectionHandler(host),
-        new AiSectionHandler(host),
-        new PreferencesSectionHandler(host),
-        new SentinelSectionHandler(host, sentinelThemeSwap ?? new SentinelThemeSwapService(extensionContext)),
-        new SyncSectionHandler(host),
-        new LicenseSectionHandler(host),
-        new DbIndexSectionHandler(host),
-      ].map((h) => [h.section, h]),
+      handlerList.map((h) => [h.section, h]),
     );
 
     this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
@@ -84,12 +92,15 @@ export class SettingsHubPanel {
     );
 
     // Tier changes affect both the License section and Cloud Sync gating.
-    this._disposables.push(
-      LicenseService.getInstance().onDidChangeLicense(() => {
-        void this._handlers.get('license')?.handle('load', { command: 'license/load' });
-        void this._handlers.get('sync')?.handle('load', { command: 'sync/load' });
-      }),
-    );
+    // Only wired when those (pro-contributed) sections are registered.
+    if (this._handlers.has('license') || this._handlers.has('sync')) {
+      this._disposables.push(
+        LicenseService.getInstance().onDidChangeLicense(() => {
+          void this._handlers.get('license')?.handle('load', { command: 'license/load' });
+          void this._handlers.get('sync')?.handle('load', { command: 'sync/load' });
+        }),
+      );
+    }
 
     void this._initialize();
   }
@@ -212,6 +223,7 @@ export class SettingsHubPanel {
       }));
 
       const initialState = JSON.stringify({
+        availableSections: Array.from(this._handlers.keys()),
         section: this._initialOptions.section ?? DEFAULT_SECTION,
         editConnectionId: this._initialOptions.editConnectionId ?? null,
         addConnection: !!this._initialOptions.addConnection,

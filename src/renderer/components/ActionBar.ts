@@ -1,4 +1,5 @@
 import { prefersReducedMotion } from '../../ui/theme/motion';
+import { isProBuild } from '../../common/buildTier';
 import { EXPORT_MENU_Z_INDEX, positionExportDropdown } from '../features/export';
 import {
   RESULT_TOOLBAR_ICON_CLASS,
@@ -365,7 +366,9 @@ export function createActionsMenuButton(options: ActionsMenuOptions): HTMLElemen
       popover!.appendChild(item);
     };
 
-    addItem('Send to Chat', 'menuChat', options.onSendToChat);
+    if (isProBuild()) {
+      addItem('Send to Chat', 'menuChat', options.onSendToChat);
+    }
     addItem('Save Query', 'save', options.onSaveQuery);
     addItem('Run for full dataset', 'table', options.onRunFullDataset);
     addItem('Explain analyze', 'explain', options.onExplainAnalyze);

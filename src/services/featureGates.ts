@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { LicenseService, LicenseTier } from './LicenseService';
+import { isProBuild } from '../common/buildTier';
 import { TelemetryService } from './TelemetryService';
 
 /** Fire-and-forget gate telemetry; never let instrumentation break gating. */
@@ -225,6 +226,11 @@ export async function requirePro(feature: ProFeature, _context?: vscode.Extensio
 }
 
 function promptUpgrade(message: string): void {
+  // Free/OSS builds never surface upgrade prompts (defensive: gates should
+  // not even be reachable there).
+  if (!isProBuild()) {
+    return;
+  }
   void vscode.window
     .showInformationMessage(message, 'View Plans', 'Activate License')
     .then((choice) => handleUpgradeChoice(choice));

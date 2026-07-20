@@ -1,6 +1,7 @@
 import * as crypto from 'crypto';
 import * as vscode from 'vscode';
 import { debugLog } from '../common/logger';
+import { AiCredentialsProviderLike } from '../common/aiCredentials';
 
 /**
  * Derive a stable connection ID from connection properties.
@@ -15,7 +16,13 @@ function stableLegacyId(conn: { host?: string; port?: number; username?: string;
 
 export class SecretStorageService {
   private static instance: SecretStorageService;
+  private aiCredentialsProvider: AiCredentialsProviderLike | undefined;
   private constructor(private readonly context: vscode.ExtensionContext) { }
+
+  /** Registered by the AI assistant feature at activation; absent in builds without it. */
+  public setAiCredentialsProvider(provider: AiCredentialsProviderLike): void {
+    this.aiCredentialsProvider = provider;
+  }
 
   public static getInstance(context?: vscode.ExtensionContext): SecretStorageService {
     if (!SecretStorageService.instance) {
@@ -37,13 +44,16 @@ export class SecretStorageService {
     if (legacy) {
       return legacy;
     }
-    const { AiCredentialsService } = await import('../features/aiAssistant/AiCredentialsService');
-    return (await AiCredentialsService.getInstance().getApiKey('openai')) || undefined;
+    return (await this.aiCredentialsProvider?.getApiKey('openai')) || undefined;
   }
 
   public async getCursorApiKey(): Promise<string | undefined> {
-    const { AiCredentialsService } = await import('../features/aiAssistant/AiCredentialsService');
-    return await AiCredentialsService.getInstance().getCursorApiKey();
+    return await this.aiCredentialsProvider?.getCursorApiKey();
+  }
+
+  /** Provider-specific AI API key via the registered credentials provider (undefined without the AI feature). */
+  public async getAiProviderApiKey(provider: string): Promise<string | undefined> {
+    return (await this.aiCredentialsProvider?.getApiKey(provider)) || undefined;
   }
 
   public async setPassword(connectionId: string, password: string): Promise<void> {
@@ -52,13 +62,11 @@ export class SecretStorageService {
 
   /** @deprecated Use AiCredentialsService.setApiKey(provider, key) */
   public async setAiApiKey(apiKey: string): Promise<void> {
-    const { AiCredentialsService } = await import('../features/aiAssistant/AiCredentialsService');
-    await AiCredentialsService.getInstance().setApiKey('openai', apiKey);
+    await this.aiCredentialsProvider?.setApiKey('openai', apiKey);
   }
 
   public async setCursorApiKey(apiKey: string): Promise<void> {
-    const { AiCredentialsService } = await import('../features/aiAssistant/AiCredentialsService');
-    await AiCredentialsService.getInstance().setCursorApiKey(apiKey);
+    await this.aiCredentialsProvider?.setCursorApiKey(apiKey);
   }
 
   public async deletePassword(connectionId: string): Promise<void> {
@@ -68,13 +76,11 @@ export class SecretStorageService {
   /** @deprecated Use AiCredentialsService.setApiKey(provider, undefined) */
   public async deleteAiApiKey(): Promise<void> {
     await this.context.secrets.delete('postgresExplorer.aiApiKey');
-    const { AiCredentialsService } = await import('../features/aiAssistant/AiCredentialsService');
-    await AiCredentialsService.getInstance().setApiKey('openai', undefined);
+    await this.aiCredentialsProvider?.setApiKey('openai', undefined);
   }
 
   public async deleteCursorApiKey(): Promise<void> {
-    const { AiCredentialsService } = await import('../features/aiAssistant/AiCredentialsService');
-    await AiCredentialsService.getInstance().setCursorApiKey(undefined);
+    await this.aiCredentialsProvider?.setCursorApiKey(undefined);
   }
 
   /** License entitlement cache (JSON). Held in SecretStorage so the key never lands in settings. */

@@ -4,7 +4,6 @@ import * as pg from 'pg';
 import * as vscode from 'vscode';
 
 import * as pgPassUtils from '../../utils/pgPassUtils';
-import * as localDeletePrompt from '../../features/sync/localDeletePrompt';
 import { ConnectionManager } from '../../services/ConnectionManager';
 import { SecretStorageService } from '../../services/SecretStorageService';
 import { ErrorHandlers } from '../../commands/helper';
@@ -145,8 +144,6 @@ describe('Connection commands', () => {
 
     sandbox.stub(SecretStorageService, 'getInstance').returns({ deletePassword } as any);
     sandbox.stub(ConnectionManager, 'getInstance').returns({ closeConnection } as any);
-    sandbox.stub(localDeletePrompt, 'resolveDeleteCloudChoice').resolves('keep-cloud');
-    sandbox.stub(localDeletePrompt, 'applyLocalDeleteCloudChoice').resolves();
 
     await cmdDisconnectDatabase(item, context, provider);
 

@@ -5,6 +5,7 @@ import { ProfileManager } from '../features/connections/ProfileManager';
 import { getTransactionManager } from '../services/TransactionManager';
 import { ConnectionUtils } from '../utils/connectionUtils';
 import { getCachedAiUsage, refreshAiUsageInBackground, remainingPercentLabel } from '../services/aiUsage';
+import { isProBuild } from '../common/buildTier';
 import { environmentLabel } from '../features/sentinel/constants';
 import type { SentinelEnvironment } from '../features/sentinel/types';
 import type { SentinelContext, SentinelSettings } from '../features/sentinel/types';
@@ -396,6 +397,11 @@ export class NotebookStatusBar implements vscode.Disposable {
     let envTooltip = '';
     let finalColor: vscode.ThemeColor | undefined = tierColor;
 
+    // Free/OSS build: no license surface. The item degrades to a pure
+    // environment-risk indicator ([PROD]/[STAGING]/[RO]) and stays hidden
+    // when there is no environment context.
+    const licensedBuild = isProBuild();
+
     if (!demoteEnvSuffix) {
       if (env === 'production') {
         suffix = ro ? ' [PROD-RO]' : ' [PROD]';
@@ -423,6 +429,20 @@ export class NotebookStatusBar implements vscode.Disposable {
     } else if (ro) {
       suffix = ' [RO]';
       envTooltip = '\nRead-only mode active';
+    }
+
+    if (!licensedBuild) {
+      if (!suffix) {
+        this.tierItem.hide();
+        return;
+      }
+      this.tierItem.text = suffix.trim();
+      this.tierItem.tooltip = envTooltip.trim() || 'Connection environment';
+      this.tierItem.command = 'postgres-explorer.showConnectionSafety';
+      this.tierItem.backgroundColor = undefined;
+      this.tierItem.color = demoteEnvSuffix ? undefined : finalColor;
+      this.tierItem.show();
+      return;
     }
 
     if (offline && tier !== 'free') {

@@ -4,10 +4,7 @@ import { PostgresMetadata } from '../common/types';
 import { DatabaseTreeItem, DatabaseTreeProvider } from '../providers/DatabaseTreeProvider';
 import { ConnectionManager } from '../services/ConnectionManager';
 import { SecretStorageService } from '../services/SecretStorageService';
-import {
-  applyLocalDeleteCloudChoice,
-  resolveDeleteCloudChoice,
-} from '../features/sync/localDeletePrompt';
+import { getCloudDeletePrompt } from '../services/syncRegistry';
 import { resolvePgPassPassword } from '../utils/pgPassUtils';
 import { ErrorHandlers } from './helper';
 import { debugLog } from '../common/logger';
@@ -149,11 +146,14 @@ export async function cmdDisconnectDatabase(item: DatabaseTreeItem, context: vsc
                 return;
             }
 
-            const cloudChoice = await resolveDeleteCloudChoice(
-                context,
-                String(item.connectionId),
-                connectionToDelete.name || String(item.label),
-            );
+            const cloudPrompt = getCloudDeletePrompt();
+            const cloudChoice = cloudPrompt
+                ? await cloudPrompt.resolveDeleteCloudChoice(
+                    context,
+                    String(item.connectionId),
+                    connectionToDelete.name || String(item.label),
+                  )
+                : 'keep-cloud';
             if (!cloudChoice) {
                 return;
             }
@@ -184,7 +184,9 @@ export async function cmdDisconnectDatabase(item: DatabaseTreeItem, context: vsc
                 debugLog(`No active connection to close for ${item.connectionId}`);
             }
 
-            await applyLocalDeleteCloudChoice(String(item.connectionId), cloudChoice);
+            if (cloudPrompt) {
+                await cloudPrompt.applyLocalDeleteCloudChoice(String(item.connectionId), cloudChoice);
+            }
 
             // Refresh the tree view
             databaseTreeProvider?.refresh();

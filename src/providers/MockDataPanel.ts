@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { DatabaseTreeItem } from '../providers/DatabaseTreeProvider';
-import { resolveTreeItemConnection } from '../schemaDesigner/connectionHelper';
+import { resolveTreeItemConnection } from '../utils/resolveTreeItemConnection';
 import { ErrorHandlers } from '../commands/helper';
 import { MODERN_WEBVIEW_BASE_CSS } from '../common/htmlStyles';
 import { disposePooledOwner, WebviewPool } from '../utils/WebviewPool';

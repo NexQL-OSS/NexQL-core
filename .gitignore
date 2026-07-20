@@ -18,8 +18,6 @@ mock_ai_server.js
 src/test/unit/PgPassSupport.test.ts
 .kiro/
 .nightly/
-CLAUDE.md
-.claude/
 docs/.next/
 .c8rc.phase-handlers.json
 .c8rc.phase-utils.json
@@ -33,10 +31,6 @@ FIXES_APPLIED.md
 skills-lock.json
 graphify-out/
 .superpowers/
-docs/roadmap/
-docs/plans/
-docs/specs/
-docs/plan/
 .commandcode/
 /test/
 .vercel
@@ -47,3 +41,8 @@ docs/plan/
 .kv-dev.json
 .aura/
 .ua/
+
+# Pro package source — lives in the private repo, symlinked here for the build
+packages/
+package.json.dev-bak
+NexQL-backend/

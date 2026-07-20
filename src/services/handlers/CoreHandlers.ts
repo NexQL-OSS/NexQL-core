@@ -7,7 +7,7 @@ import { DatabaseTreeItem } from '../../providers/DatabaseTreeProvider';
 import { ConnectionManager } from '../ConnectionManager';
 import { errorResponse, okResponse } from './messaging';
 import { extensionContext } from '../../extension';
-import { QueryAnalyzer } from '../../services/QueryAnalyzer';
+import { SqlSafetyAnalyzer } from '../../services/sqlSafety';
 import { debugWarn } from '../../common/logger';
 
 export class ShowConnectionSwitcherHandler implements IMessageHandler {
@@ -573,7 +573,7 @@ export class RunDerivedQueryHandler implements IMessageHandler {
       vscode.window.showErrorMessage('No derived query provided.');
       return;
     }
-    if (!QueryAnalyzer.getInstance().isReadOnlyQuery(sql)) {
+    if (!SqlSafetyAnalyzer.getInstance().isReadOnlyQuery(sql)) {
       vscode.window.showErrorMessage('Only SELECT/WITH derived queries are allowed.');
       return;
     }

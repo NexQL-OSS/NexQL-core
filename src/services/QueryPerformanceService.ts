@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { QueryBaseline, BASELINE_MIN_SAMPLES, OUTLIER_SIGMA_THRESHOLD } from './QueryAnalyzer';
+import { QueryBaseline, BASELINE_MIN_SAMPLES, OUTLIER_SIGMA_THRESHOLD } from './queryPerformance/QueryPerformanceAnalyzer';
 
 /** Current shape version — increment if QueryBaseline fields change. */
 const SCHEMA_VERSION = 2;

@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "@features/*": ["features/*"],
+      "@core/*": ["core/*"],
+      "@ui/*": ["ui/*"],
+      "@nexql/pro": ["../packages/pro/src/index.ts"],
+      "@nexql/pro-renderer/*": ["../packages/pro/renderer/*"]
+    }
+  }
+}

@@ -2,16 +2,16 @@ import * as vscode from 'vscode';
 import { DatabaseTreeItem } from '../providers/DatabaseTreeProvider';
 import { DatabaseTreeProvider } from '../providers/DatabaseTreeProvider';
 import { QueryHistoryService } from '../services/QueryHistoryService';
-import { ChatViewProvider } from '../providers/ChatViewProvider';
+import { getChatViewProvider } from '../services/chatViewRegistry';
 
-import { cmdAiAssist } from '../commands/aiAssist';
+
 import { showColumnProperties, copyColumnName, copyColumnNameQuoted, generateSelectStatement, generateWhereClause, generateAlterColumnScript, generateDropColumnScript, generateRenameColumnScript, addColumnComment, generateIndexOnColumn, viewColumnStatistics, cmdAddColumn } from '../commands/columns';
 import { showConstraintProperties, copyConstraintName, generateDropConstraintScript, generateAlterConstraintScript, validateConstraint, generateAddConstraintScript, viewConstraintDependencies, cmdConstraintOperations, cmdAddConstraint } from '../commands/constraints';
 import { cmdConnectDatabase, cmdDisconnectConnection, cmdDisconnectDatabase, cmdReconnectConnection, cmdDuplicateConnection, showConnectionSafety, revealInExplorer, cmdAssignConnectionColor, cmdSetConnectionGroup, cmdPinConnection, cmdUnpinConnection } from '../commands/connection';
 import { cmdImportConnectionFromDatabaseUrl } from '../commands/importConnectionFromDatabaseUrl';
 import { cmdSmartPasteConnection } from '../commands/smartPasteConnection';
 import { showIndexProperties, copyIndexName, generateDropIndexScript, generateReindexScript, generateScriptCreate, analyzeIndexUsage, generateAlterIndexScript, addIndexComment, cmdIndexOperations, cmdAddIndex } from '../commands/indexes';
-import { cmdAddObjectInDatabase, cmdBackupDatabase, cmdCreateDatabase, cmdDatabaseDashboard, cmdDatabaseDashboardFromPalette, cmdDatabaseOperations, cmdDeleteDatabase, cmdDisconnectDatabase as cmdDisconnectDatabaseLegacy, cmdGenerateCreateScript, cmdMaintenanceDatabase, cmdOpenBackupWorkspaceFromPalette, cmdPsqlTool, cmdQueryTool, cmdRestoreDatabase, cmdScriptAlterDatabase, cmdShowConfiguration } from '../commands/database';
+import { cmdAddObjectInDatabase, cmdCreateDatabase, cmdDatabaseOperations, cmdDeleteDatabase, cmdDisconnectDatabase as cmdDisconnectDatabaseLegacy, cmdGenerateCreateScript, cmdMaintenanceDatabase, cmdPsqlTool, cmdQueryTool, cmdScriptAlterDatabase, cmdShowConfiguration } from '../commands/database';
 import { cmdDropExtension, cmdEnableExtension, cmdExtensionOperations, cmdRefreshExtension } from '../commands/extensions';
 import { cmdCreateForeignTable, cmdDropForeignTable, cmdEditForeignTable, cmdForeignTableOperations, cmdRefreshForeignTable, cmdShowForeignTableProperties, cmdViewForeignTableData } from '../commands/foreignTables';
 import { cmdForeignDataWrapperOperations, cmdShowForeignDataWrapperProperties, cmdCreateForeignServer, cmdForeignServerOperations, cmdShowForeignServerProperties, cmdDropForeignServer, cmdCreateUserMapping, cmdUserMappingOperations, cmdShowUserMappingProperties, cmdDropUserMapping, cmdRefreshForeignDataWrapper, cmdRefreshForeignServer, cmdRefreshUserMapping } from '../commands/foreignDataWrappers';
@@ -63,18 +63,7 @@ import { SavedQueriesTreeProvider } from '../providers/Phase7TreeProviders';
 import { pickQueryHistory } from '../commands/pickQueryHistory';
 import { setTelemetryMode, showTelemetryModePicker } from '../commands/telemetryMode';
 
-// Visual Schema Design
-import {
-  cmdOpenTableDesigner,
-  cmdCreateTableVisual,
-  cmdOpenRoleDesigner,
-  cmdOpenSchemaDiff,
-  cmdOpenSchemaDiffFromPalette,
-  cmdOpenErd,
-  cmdOpenErdMultiFromDatabase,
-  cmdImportDbml,
-  cmdImportData,
-} from '../commands/schemaDesigner';
+
 import { NotebookTreeItem, NotebooksTreeProvider } from '../providers/NotebooksTreeProvider';
 
 // Phase 2: New object types
@@ -94,162 +83,29 @@ import {
 import { cmdListRules, cmdDropRule, cmdShowRuleProperties, cmdRuleOperations } from '../commands/rules';
 import { cmdListTablespaces, cmdShowTablespaceProperties, cmdTablespaceOperations } from '../commands/tablespaces';
 import { cmdListPublications, cmdCreatePublication, cmdDropPublication, cmdShowPublicationProperties, cmdListSubscriptions, cmdDropSubscription, cmdShowSubscriptionProperties, cmdPublicationOperations } from '../commands/publications';
-import { cmdDropPolicy, cmdCreatePolicy } from '../commands/rlsPolicies';
+
 import { cmdMigrationHub } from '../features/migrations/migrationHub';
 import { cmdOpenListenNotify, cmdOpenListenNotifyFromPalette } from '../commands/listenNotify';
 import { cmdSearchSchema } from '../commands/schemaSearch';
 import { WorkspaceStateService } from '../services/WorkspaceStateService';
 import { switchWorkspaceDefaultConnection } from '../commands/workspaceConnection';
 import { WhatsNewManager } from './WhatsNewManager';
-import { cmdLicenseActivate, cmdLicenseManage, cmdLicenseOpenUpgrade, cmdLicenseShowUsage } from '../commands/license';
-import {
-  cmdSyncNow,
-  cmdSyncPause,
-  cmdSyncSetup,
-  cmdSyncInviteMember,
-  cmdSyncShareWithTeam,
-  cmdSyncShare,
-  cmdSyncImportShares,
-  cmdSyncShowSecretKey,
-  cmdSyncSignOut,
-  cmdSyncStatus,
-  cmdSyncStatusMenu,
-  cmdSyncPull,
-  cmdSyncPush,
-  cmdSyncPreview,
-  cmdSyncConflicts,
-  cmdSyncReplaceLocal,
-  cmdSyncReplaceRemote,
-  cmdSyncRebuildIndex,
-  cmdSyncRepair,
-  cmdSyncDiagnostics,
-  cmdSyncExcludeItem,
-} from '../features/sync/syncCommands';
 
 export function getCommandSpecs(
   context: vscode.ExtensionContext,
   databaseTreeProvider: DatabaseTreeProvider,
-  chatViewProviderInstance: ChatViewProvider | undefined,
   outputChannel: vscode.OutputChannel,
   whatsNewManager: WhatsNewManager,
   savedQueriesTreeProvider?: SavedQueriesTreeProvider,
   notebooksTreeProvider?: NotebooksTreeProvider
-): Array<{ command: string; callback: (...args: any[]) => any }> {
+): Array<{ command: string; callback: (...args: any[]) => any; proOnly?: boolean }> {
   const commands = [
-    {
-      command: 'postgres-explorer.sync.setup',
-      callback: () => cmdSyncSetup(context),
-    },
-    {
-      command: 'postgres-explorer.sync.now',
-      callback: () => cmdSyncNow(),
-    },
-    {
-      command: 'postgres-explorer.sync.status',
-      callback: () => cmdSyncStatus(),
-    },
-    {
-      command: 'postgres-explorer.sync.statusMenu',
-      callback: () => cmdSyncStatusMenu(context),
-    },
-    {
-      command: 'postgres-explorer.sync.showSecretKey',
-      callback: () => cmdSyncShowSecretKey(context),
-    },
-    {
-      command: 'postgres-explorer.sync.pause',
-      callback: () => cmdSyncPause(),
-    },
-    {
-      command: 'postgres-explorer.sync.signOut',
-      callback: () => cmdSyncSignOut(),
-    },
-    {
-      command: 'postgres-explorer.sync.inviteMember',
-      callback: () => cmdSyncInviteMember(context),
-    },
-    {
-      command: 'postgres-explorer.sync.shareWithTeam',
-      callback: (treeItem?: { id?: string; query?: { id?: string }; uri?: vscode.Uri }) =>
-        cmdSyncShareWithTeam(context, treeItem),
-    },
-    {
-      command: 'postgres-explorer.sync.share',
-      callback: () => cmdSyncInviteMember(context),
-    },
-    {
-      command: 'postgres-explorer.sync.importShares',
-      callback: () => cmdSyncImportShares(context),
-    },
-    {
-      command: 'postgres-explorer.sync.pull',
-      callback: () => cmdSyncPull(),
-    },
-    {
-      command: 'postgres-explorer.sync.push',
-      callback: () => cmdSyncPush(),
-    },
-    {
-      command: 'postgres-explorer.sync.preview',
-      callback: () => cmdSyncPreview(),
-    },
-    {
-      command: 'postgres-explorer.sync.conflicts',
-      callback: () => cmdSyncConflicts(),
-    },
-    {
-      command: 'postgres-explorer.sync.replaceLocal',
-      callback: () => cmdSyncReplaceLocal(),
-    },
-    {
-      command: 'postgres-explorer.sync.replaceRemote',
-      callback: () => cmdSyncReplaceRemote(),
-    },
-    {
-      command: 'postgres-explorer.sync.rebuildIndex',
-      callback: () => cmdSyncRebuildIndex(),
-    },
-    {
-      command: 'postgres-explorer.sync.repair',
-      callback: () => cmdSyncRepair(),
-    },
-    {
-      command: 'postgres-explorer.sync.diagnostics',
-      callback: () => cmdSyncDiagnostics(),
-    },
-    {
-      command: 'postgres-explorer.sync.excludeItem',
-      callback: async (treeItem?: { id?: string; query?: { id?: string }; uri?: vscode.Uri }) => {
-        const { resolveSyncItemIdFromTreeItem } = await import('../features/sync/syncCommands');
-        await cmdSyncExcludeItem(await resolveSyncItemIdFromTreeItem(treeItem));
-      },
-    },
-    {
-      command: 'postgres-explorer.license.activate',
-      callback: (prefillKey?: string) => cmdLicenseActivate(prefillKey)
-    },
+    // license.*, audit.*, dbindex.*, and sync.* commands are registered by the pro
+    // package in activatePro (packages/pro/src/index.ts) — their modules no
+    // longer exist in the core tree.
     {
       command: 'postgres-explorer.migrationHub',
       callback: () => cmdMigrationHub()
-    },
-    {
-      command: 'postgres-explorer.license.manage',
-      callback: () => cmdLicenseManage()
-    },
-    {
-      command: 'postgres-explorer.license.openUpgrade',
-      callback: () => cmdLicenseOpenUpgrade()
-    },
-    {
-      command: 'postgres-explorer.license.showUsage',
-      callback: () => cmdLicenseShowUsage()
-    },
-    {
-      command: 'postgres-explorer.audit.openLog',
-      callback: async () => {
-        const { AuditLogService } = await import('../features/audit/AuditLogService');
-        await AuditLogService.getInstance().openLog();
-      }
     },
     {
       command: 'postgres-explorer.addConnection',
@@ -412,6 +268,7 @@ export function getCommandSpecs(
     {
       command: 'postgres-explorer.generateQuery',
       callback: async () => {
+        const chatViewProviderInstance = getChatViewProvider() as any;
         if (!chatViewProviderInstance) {
           vscode.window.showErrorMessage('AI Chat is not initialized');
           return;
@@ -507,6 +364,7 @@ export function getCommandSpecs(
     {
       command: 'postgres-explorer.optimizeQuery',
       callback: async () => {
+        const chatViewProviderInstance = getChatViewProvider() as any;
         if (!chatViewProviderInstance) {
           vscode.window.showErrorMessage('AI Chat is not initialized');
           return;
@@ -539,6 +397,7 @@ export function getCommandSpecs(
     {
       command: 'postgres-explorer.openSqlAssistantTab',
       callback: async () => {
+        const chatViewProviderInstance = getChatViewProvider() as any;
         if (!chatViewProviderInstance) {
           vscode.window.showWarningMessage('SQL Assistant is not available');
           return;
@@ -671,12 +530,11 @@ export function getCommandSpecs(
         try {
           const raw = await vscode.workspace.fs.readFile(newUri);
           const parsed = JSON.parse(Buffer.from(raw).toString()) as Record<string, unknown>;
-          const { readNotebookSyncId } = await import('../features/sync/notebookSyncId');
-          const { SyncIndex } = await import('../features/sync/SyncIndex');
-          const { recordSyncActivity } = await import('../features/sync/SyncActivityLog');
+          const { readNotebookSyncId } = await import('../common/notebookSyncId');
+          const { createSyncIndex, recordSyncActivity } = await import('../services/syncRegistry');
           const syncId = readNotebookSyncId(parsed);
-          if (syncId) {
-            const index = new SyncIndex(context);
+          const index = syncId ? createSyncIndex(context) : undefined;
+          if (syncId && index) {
             index.update(syncId, { kind: 'notebook', name: newName, filePath: newUri.fsPath });
             await index.flush();
             recordSyncActivity({
@@ -690,7 +548,7 @@ export function getCommandSpecs(
         } catch {
           /* index update is best-effort */
         }
-        const { triggerInstantSync } = await import('../features/sync/syncTriggers');
+        const { triggerInstantSync } = await import('../services/syncRegistry');
         triggerInstantSync();
         notebooksTreeProvider?.refresh();
       }
@@ -704,16 +562,16 @@ export function getCommandSpecs(
         try {
           const raw = await vscode.workspace.fs.readFile(item.uri);
           const parsed = JSON.parse(Buffer.from(raw).toString()) as Record<string, unknown>;
-          const { readNotebookSyncId } = await import('../features/sync/notebookSyncId');
+          const { readNotebookSyncId } = await import('../common/notebookSyncId');
           syncId = readNotebookSyncId(parsed);
         } catch {
           /* best-effort */
         }
-        const { isItemSyncedToCloud, resolveDeleteCloudChoice, applyLocalDeleteCloudChoice } =
-          await import('../features/sync/localDeletePrompt');
-        const synced = !!(syncId && isItemSyncedToCloud(context, syncId));
-        const cloudChoice = syncId
-          ? await resolveDeleteCloudChoice(context, syncId, notebookName)
+        const { getCloudDeletePrompt } = await import('../services/syncRegistry');
+        const cloudPrompt = getCloudDeletePrompt();
+        const synced = !!(syncId && cloudPrompt?.isItemSyncedToCloud(context, syncId));
+        const cloudChoice = syncId && cloudPrompt
+          ? await cloudPrompt.resolveDeleteCloudChoice(context, syncId, notebookName)
           : 'keep-cloud';
         if (!cloudChoice) { return; }
         if (!synced) {
@@ -724,8 +582,8 @@ export function getCommandSpecs(
           if (confirm !== 'Delete') { return; }
         }
         await vscode.workspace.fs.delete(item.uri, { recursive: false });
-        if (syncId) {
-          await applyLocalDeleteCloudChoice(syncId, cloudChoice);
+        if (syncId && cloudPrompt) {
+          await cloudPrompt.applyLocalDeleteCloudChoice(syncId, cloudChoice);
         }
         notebooksTreeProvider?.refresh();
       }
@@ -742,7 +600,7 @@ export function getCommandSpecs(
         );
         if (confirm !== 'Delete Folder') { return; }
         await vscode.workspace.fs.delete(item.uri, { recursive: true, useTrash: false });
-        const { triggerInstantSync } = await import('../features/sync/syncTriggers');
+        const { triggerInstantSync } = await import('../services/syncRegistry');
         triggerInstantSync();
         notebooksTreeProvider?.refresh();
       }
@@ -791,32 +649,12 @@ export function getCommandSpecs(
       callback: async (item: DatabaseTreeItem) => await cmdDatabaseOperations(item, context)
     },
     {
-      command: 'postgres-explorer.showDashboard',
-      callback: async (item: DatabaseTreeItem) => await cmdDatabaseDashboard(item, context)
-    },
-    {
-      command: 'postgres-explorer.showDashboardFromPalette',
-      callback: () => cmdDatabaseDashboardFromPalette(context)
-    },
-    {
       command: 'postgres-explorer.openListenNotify',
       callback: async (item: DatabaseTreeItem) => await cmdOpenListenNotify(item, context)
     },
     {
       command: 'postgres-explorer.openListenNotifyFromPalette',
       callback: () => cmdOpenListenNotifyFromPalette(context)
-    },
-    {
-      command: 'postgres-explorer.backupDatabase',
-      callback: async (item: DatabaseTreeItem) => await cmdBackupDatabase(item, context)
-    },
-    {
-      command: 'postgres-explorer.restoreDatabase',
-      callback: async (item: DatabaseTreeItem) => await cmdRestoreDatabase(item, context)
-    },
-    {
-      command: 'postgres-explorer.openBackupWorkspace',
-      callback: () => cmdOpenBackupWorkspaceFromPalette(context)
     },
     {
       command: 'postgres-explorer.generateCreateScript',
@@ -1261,107 +1099,7 @@ export function getCommandSpecs(
       callback: async (item: DatabaseTreeItem) => await cmdEnableExtension(item, context)
     },
 
-    {
-      command: 'postgres-explorer.aiAssist',
-      callback: async (cell: vscode.NotebookCell) => await cmdAiAssist(cell, context, outputChannel)
-    },
-
-    {
-      command: 'postgres-explorer.chatWithQuery',
-      callback: async (cell: vscode.NotebookCell) => {
-        // Get the query from the active cell
-        let query = '';
-        let results = '';
-
-        if (cell) {
-          query = cell.document.getText();
-          // Check if there are outputs from previous execution
-          if (cell.outputs && cell.outputs.length > 0) {
-            const output = cell.outputs[0];
-            for (const item of output.items) {
-              if (item.mime === 'application/x-postgres-result' || item.mime === 'application/json') {
-                try {
-                  const data = JSON.parse(new TextDecoder().decode(item.data));
-                  if (data.rows && data.rows.length > 0) {
-                    results = `\nResults (${data.rows.length} rows): ${JSON.stringify(data.rows.slice(0, 5), null, 2)}${data.rows.length > 5 ? '\n... and more' : ''}`;
-                  }
-                } catch (e) {
-                  // Ignore parse errors
-                }
-              }
-            }
-          }
-        } else {
-          // Fallback to active notebook editor
-          const activeEditor = vscode.window.activeNotebookEditor;
-          if (activeEditor) {
-            const selections = activeEditor.selections;
-            if (selections && selections.length > 0) {
-              const cellIndex = selections[0].start;
-              const activeCell = activeEditor.notebook.cellAt(cellIndex);
-              query = activeCell.document.getText();
-            }
-          }
-        }
-
-        if (!query) {
-          vscode.window.showWarningMessage('No query found in the active cell.');
-          return;
-        }
-
-        // Focus the chat view and send the query
-        await vscode.commands.executeCommand('postgresExplorer.chatView.focus');
-
-        // Send message to chat view with query context
-        const message = `Help me with this SQL query:\n\`\`\`sql\n${query}\n\`\`\`${results}`;
-
-        // Use the chat view provider to send the message
-        if (chatViewProviderInstance) {
-          chatViewProviderInstance.sendToChat({ query, results, message });
-        }
-      }
-    },
-
-    {
-      command: 'postgres-explorer.sendToChat',
-      callback: async (data: { query: string; results?: string; message: string }) => {
-        if (chatViewProviderInstance) {
-          await chatViewProviderInstance.sendToChat(data);
-        }
-      }
-    },
-
-    {
-      command: 'postgres-explorer.attachToChat',
-      callback: async (item: DatabaseTreeItem) => {
-        if (!chatViewProviderInstance) {
-          vscode.window.showWarningMessage('SQL Assistant is not available');
-          return;
-        }
-        if (!item || !item.connectionId || !item.databaseName) {
-          vscode.window.showErrorMessage('Invalid database object');
-          return;
-        }
-
-        // Resolve connection name from config
-        const connections = vscode.workspace.getConfiguration().get<any[]>('postgresExplorer.connections') || [];
-        const conn = connections.find(c => c.id === item.connectionId);
-        const connectionName = conn?.name || conn?.host || 'Unknown';
-
-        // Convert DatabaseTreeItem to DbObject
-        const dbObject: any = {
-          name: item.label,
-          type: item.type,
-          schema: item.schema || '',
-          database: item.databaseName,
-          connectionId: item.connectionId,
-          connectionName: connectionName,
-          breadcrumb: [connectionName, item.databaseName, item.schema, item.label].filter(Boolean).join(' > ')
-        };
-
-        await chatViewProviderInstance.attachDbObject(dbObject);
-      }
-    },
+    // AI/chat command registrations have been moved to the pro index seam.
 
     // Column commands
     {
@@ -1639,45 +1377,7 @@ export function getCommandSpecs(
       callback: () => loadSavedQueryUI()
     },
 
-    // Visual Schema Design (Phase 7 Roadmap)
-    {
-      command: 'postgres-explorer.openTableDesigner',
-      callback: (item: DatabaseTreeItem) => cmdOpenTableDesigner(item, context)
-    },
-    {
-      command: 'postgres-explorer.openRoleDesigner',
-      callback: (item: DatabaseTreeItem) => cmdOpenRoleDesigner(item, context)
-    },
-    {
-      command: 'postgres-explorer.createTableVisual',
-      callback: (item: DatabaseTreeItem) => cmdCreateTableVisual(item, context)
-    },
-    {
-      command: 'postgres-explorer.openSchemaDiff',
-      callback: (item: DatabaseTreeItem) => cmdOpenSchemaDiff(item, context)
-    },
-    {
-      command: 'postgres-explorer.openSchemaDiffFromPalette',
-      callback: () => cmdOpenSchemaDiffFromPalette(context)
-    },
-    // D2: ERD
-    {
-      command: 'postgres-explorer.openErd',
-      callback: (item: DatabaseTreeItem) => cmdOpenErd(item, context)
-    },
-    {
-      command: 'postgres-explorer.openErdMulti',
-      callback: (item: DatabaseTreeItem) => cmdOpenErdMultiFromDatabase(item, context)
-    },
-    {
-      command: 'postgres-explorer.importDbml',
-      callback: (item?: DatabaseTreeItem) => cmdImportDbml(item, context)
-    },
-    // Import Data
-    {
-      command: 'postgres-explorer.importData',
-      callback: (item: DatabaseTreeItem) => cmdImportData(item, context)
-    },
+    // Visual Schema Design commands have been moved to the pro index seam.
     // D3: Profile export/import
     {
       command: 'postgres-explorer.exportConnectionProfiles',
@@ -1768,79 +1468,12 @@ export function getCommandSpecs(
     { command: 'postgres-explorer.publicationOperations', callback: async (item: DatabaseTreeItem) => await cmdPublicationOperations(item, context) },
     { command: 'postgres-explorer.listSubscriptions', callback: async (item: DatabaseTreeItem) => await cmdListSubscriptions(item, context) },
     { command: 'postgres-explorer.dropSubscription', callback: async (item: DatabaseTreeItem) => await cmdDropSubscription(item, context) },
-    { command: 'postgres-explorer.dropPolicy', callback: async (item: DatabaseTreeItem) => await cmdDropPolicy(item, context) },
-    { command: 'postgres-explorer.createPolicy', callback: async (item: DatabaseTreeItem) => await cmdCreatePolicy(item, context) },
+    { command: 'postgres-explorer.dropPolicy', callback: async (item: DatabaseTreeItem) => await vscode.commands.executeCommand('postgres-explorer.pro.dropPolicy', item, context) },
+    { command: 'postgres-explorer.createPolicy', callback: async (item: DatabaseTreeItem) => await vscode.commands.executeCommand('postgres-explorer.pro.createPolicy', item, context) },
     { command: 'postgres-explorer.showSubscriptionProperties', callback: async (item: DatabaseTreeItem) => await cmdShowSubscriptionProperties(item, context) },
 
     // Phase 2: Schema Search
     { command: 'postgres-explorer.searchSchema', callback: async () => await cmdSearchSchema() },
-
-    // Database Index Grounding Commands
-    {
-      command: 'postgres-explorer.dbindex.openPanel',
-      callback: async () => {
-        const { DbIndexPanel } = await import('../features/dbindex/panel/DbIndexPanel');
-        await DbIndexPanel.show(context.extensionUri, context);
-      }
-    },
-    {
-      command: 'postgres-explorer.dbindex.build',
-      callback: async (_item?: DatabaseTreeItem) => {
-        const { SettingsHubPanel } = await import('../features/settings/SettingsHubPanel');
-        SettingsHubPanel.show(context.extensionUri, context, {
-          section: 'dbindex',
-          wizard: 'build',
-        });
-      }
-    },
-    {
-      command: 'postgres-explorer.dbindex.clear',
-      callback: async () => {
-        const { IndexStore } = await import('../features/dbindex/IndexStore');
-        const store = new IndexStore(context.globalStorageUri);
-        const connection = await ConnectionUtils.showConnectionPicker(undefined, {
-          title: 'Clear Database Index',
-          placeHolder: 'Select a connection',
-        });
-        if (!connection) return;
-        const database = await ConnectionUtils.showDatabasePicker(connection, undefined, {
-          title: 'Clear Database Index',
-          placeHolder: 'Select a database',
-        });
-        if (!database) return;
-        
-        const confirm = await vscode.window.showWarningMessage(
-          `Are you sure you want to delete the local index for "${database}"?`,
-          'Delete'
-        );
-        if (confirm === 'Delete') {
-          await store.clearIndex(connection.id, database);
-          vscode.window.showInformationMessage(`Index cleared for "${database}".`);
-
-          // Refresh active panels
-          try {
-            const { SettingsHubPanel } = await import('../features/settings/SettingsHubPanel');
-            if (SettingsHubPanel.currentPanel) {
-              SettingsHubPanel.currentPanel.refreshSection('dbindex');
-            }
-          } catch {}
-          try {
-            const { DbIndexPanel } = await import('../features/dbindex/panel/DbIndexPanel');
-            if (DbIndexPanel.currentPanel) {
-              DbIndexPanel.currentPanel.refreshState();
-            }
-          } catch {}
-        }
-      }
-    },
-    {
-      command: 'postgres-explorer.dbindex.updateBackground',
-      callback: async (connectionId: string, database?: string) => {
-        const { AutoIndexService } = await import('../features/dbindex/AutoIndexService');
-        AutoIndexService.initialize(context.globalStorageUri, outputChannel)
-          .ensureIndex(connectionId, database);
-      }
-    }
   ];
 
   return commands;

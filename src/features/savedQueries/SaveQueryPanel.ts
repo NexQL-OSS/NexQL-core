@@ -1,10 +1,9 @@
 import * as vscode from 'vscode';
 import { SqlParser } from '../../providers/kernel/SqlParser';
 import { SavedQueriesService, SavedQuery } from './SavedQueriesService';
-import { QueryAnalyzer } from '../../services/QueryAnalyzer';
-import { AiService } from '../../providers/chat/AiService';
 import { loadPanelTemplate } from '../../lib/template-loader';
 import { highlightSql } from '../../lib/sqlHighlight';
+import { getAiService } from '../../services/chatViewRegistry';
 
 export class SaveQueryPanel {
   public static currentPanel: SaveQueryPanel | undefined;
@@ -12,7 +11,6 @@ export class SaveQueryPanel {
   private readonly _extensionUri: vscode.Uri;
   private readonly _queryText: string;
   private readonly _disposables: vscode.Disposable[] = [];
-  private readonly _aiService: AiService;
   private _connectionMetadata: any = {};
   private _editMode: boolean = false;
   private _editingQuery: SavedQuery | undefined;
@@ -102,9 +100,9 @@ export class SaveQueryPanel {
   }
 
   private static scheduleRemoteCheck(query: SavedQuery): void {
-    void import('../sync/SyncController').then(({ SyncController }) => {
+    void import('../../services/syncRegistry').then(({ getSyncDataSource }) => {
       try {
-        SyncController.getInstance().scheduleOpenCheck(query.id, {
+        getSyncDataSource()?.scheduleOpenCheck(query.id, {
           kind: 'query',
           label: query.title,
           onReload: () => {
@@ -136,7 +134,6 @@ export class SaveQueryPanel {
     this._panel = panel;
     this._extensionUri = extensionUri;
     this._queryText = queryText;
-    this._aiService = new AiService();
 
     // Set the webview's initial html content
     void this._update();
@@ -189,13 +186,21 @@ export class SaveQueryPanel {
 
   private async _handleAIGeneration(field: 'title' | 'description' | 'tags' | 'all') {
     try {
+      const aiService = getAiService();
+      if (!aiService) {
+        this._panel.webview.postMessage({
+          command: 'aiError',
+          message: 'AI Assistant is premium-only or not initialized. Please active NexQL Pro or fill the fields manually.'
+        });
+        return;
+      }
+
       const config = vscode.workspace.getConfiguration('postgresExplorer');
-      const { readAiScopeSettings } = await import('../aiAssistant/aiConfig');
-      const provider = readAiScopeSettings(config, 'notebook').provider;
+      const provider = config.get<string>('ai.notebook.provider') || config.get<string>('aiProvider') || 'nexql-free';
 
       // Check if AI is available
       try {
-        await this._aiService.getModelInfo(provider, config, 'notebook');
+        await aiService.getModelInfo(provider, config, 'notebook');
       } catch (error) {
         this._panel.webview.postMessage({
           command: 'aiError',
@@ -218,7 +223,7 @@ export class SaveQueryPanel {
       }
 
       // Call AI
-      const result = await this._aiService.callProvider(provider, prompt, config, '', 'notebook');
+      const result = await aiService.callProvider(provider, prompt, config, '', 'notebook');
 
       // Clean up the response
       let generated = result.text.trim();
@@ -231,17 +236,17 @@ export class SaveQueryPanel {
       if (field === 'all') {
         // Generate title
         const titlePrompt = `Analyze this SQL query and generate a SHORT, DESCRIPTIVE title (max 6 words):\n\n${this._queryText}\n\nRespond with ONLY the title, nothing else.`;
-        const titleResult = await this._aiService.callProvider(provider, titlePrompt, config, '', 'notebook');
+        const titleResult = await aiService.callProvider(provider, titlePrompt, config, '', 'notebook');
         const title = titleResult.text.trim().replace(/^["']|["']$/g, '').trim();
 
         // Generate description
         const descPrompt = `Analyze this SQL query and generate a brief description (1-2 sentences) explaining what it does:\n\n${this._queryText}\n\nRespond with ONLY the description, nothing else.`;
-        const descResult = await this._aiService.callProvider(provider, descPrompt, config, '', 'notebook');
+        const descResult = await aiService.callProvider(provider, descPrompt, config, '', 'notebook');
         const description = descResult.text.trim().replace(/^["']|["']$/g, '').trim();
 
         // Generate tags
         const tagsPrompt = `Analyze this SQL query and generate 3-5 relevant tags (single words or short phrases) separated by commas:\n\n${this._queryText}\n\nRespond with ONLY the comma-separated tags, nothing else.`;
-        const tagsResult = await this._aiService.callProvider(provider, tagsPrompt, config, '', 'notebook');
+        const tagsResult = await aiService.callProvider(provider, tagsPrompt, config, '', 'notebook');
         const tags = tagsResult.text.trim().replace(/^["']|["']$/g, '').trim();
 
         this._panel.webview.postMessage({
@@ -300,8 +305,8 @@ export class SaveQueryPanel {
 
     if (this._editMode && this._editingQuery) {
       try {
-        const { SyncController } = await import('../sync/SyncController');
-        if (SyncController.getInstance().isItemReadOnly(this._editingQuery.id)) {
+        const { getSyncDataSource } = await import('../../services/syncRegistry');
+        if (getSyncDataSource()?.isItemReadOnly(this._editingQuery.id)) {
           void vscode.window.showWarningMessage('This query is read-only (team viewer access).');
           return;
         }

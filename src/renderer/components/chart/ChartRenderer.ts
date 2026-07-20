@@ -24,6 +24,11 @@ export class ChartRenderer {
     this.destroy();
 
     if (!rows || rows.length === 0 || options.yAxisCols.length === 0) {
+      this.drawEmptyMessage(
+        !rows || rows.length === 0
+          ? 'No rows to chart.'
+          : 'No numeric column available for the Y-axis.'
+      );
       return;
     }
 
@@ -94,6 +99,21 @@ export class ChartRenderer {
       this.chartInstance.destroy();
       this.chartInstance = null;
     }
+  }
+
+  private drawEmptyMessage(text: string) {
+    const ctx = this.canvas.getContext('2d');
+    if (!ctx) return;
+    const { width, height } = this.canvas.getBoundingClientRect();
+    if (width === 0 || height === 0) return;
+    this.canvas.width = width;
+    this.canvas.height = height;
+    ctx.clearRect(0, 0, width, height);
+    ctx.fillStyle = 'rgba(128, 128, 128, 0.8)';
+    ctx.font = '13px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, width / 2, height / 2);
   }
 
   private sortData(data: any[], options: ChartRenderOptions) {

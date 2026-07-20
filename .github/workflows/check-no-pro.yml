@@ -1,0 +1,60 @@
+name: check-no-pro
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  check-no-pro:
+    name: IP Guardrail — No Premium Leakage
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Check no premium source in core
+        run: node scripts/check-no-pro.js
+
+      - name: Ensure packages/ is not tracked
+        run: |
+          tracked=$(git ls-files packages/ 2>/dev/null || true)
+          if [ -n "$tracked" ]; then
+            echo "❌ packages/ contains tracked files:"
+            echo "$tracked"
+            exit 1
+          fi
+          echo "✅ packages/ is untracked (correct)"
+
+  package-free-standalone:
+    name: Free VSIX builds without packages/pro
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Package free VSIX (bare checkout, no pro sources)
+        run: make package-free
+
+      - name: Assert no premium implementation strings in bundle
+        run: |
+          if grep -qE "Activating NexQL Pro|postgres-explorer\.dbindex\.openPanel" dist/extension.js; then
+            echo "❌ Free bundle contains premium implementation strings"
+            exit 1
+          fi
+          echo "✅ Free bundle clean"
